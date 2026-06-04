@@ -20,6 +20,7 @@ PRIORITIES_TOML = DATA_DIR / "priorities.toml"
 SESSIONS_JSONL = DATA_DIR / "sessions.jsonl"
 DERIVED_DIR = DATA_DIR / "derived"
 OBJECTS_DIR = DATA_DIR / "objects"
+SITE_DIR = DATA_ROOT / "site"   # generated site (hero/thumb images live here)
 
 
 def data_root_ok() -> bool:

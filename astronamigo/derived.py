@@ -44,3 +44,15 @@ def load_summary() -> dict:
 
 def load_processing() -> dict:
     return _load("processing.json") or {}
+
+
+def load_images() -> dict:
+    """{slug: [ {name, display_name, label, viewable, thumb, full, ...} ]}.
+
+    `thumb`/`full` are paths relative to `config.SITE_DIR`.
+    """
+    return _load("images.json") or {}
+
+
+def images_for(slug: str) -> list:
+    return load_images().get(slug, [])
