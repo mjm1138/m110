@@ -9,11 +9,12 @@ description = "Library / tracker / processing-prep desktop app for smart-telesco
 requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.6",
+    "astropy>=6.0",   # build_derived reads FITS stack-metadata headers
 ]
 
 [project.optional-dependencies]
-# Engine extras, pulled in as Phase-0 modules are ported from Astronomy/scripts.
-engine = ["astropy>=6.0", "numpy>=1.26", "jinja2>=3.1", "markdown>=3.5", "pillow>=10"]
+# Extras pulled in as later Phase-0 modules (build_site / rendering) are ported.
+render = ["jinja2>=3.1", "markdown>=3.5", "pillow>=10", "numpy>=1.26"]
 dev = ["pytest>=8"]
 
 [project.gui-scripts]
