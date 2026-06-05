@@ -42,3 +42,17 @@ pytest
 
 Engine modules are ported incrementally from `~/Astronomy/scripts/` (Phase 0);
 `display_names` is the first across.
+
+## Roadmap
+
+See [`ROADMAP.md`](ROADMAP.md) for the canonical roadmap, and
+[`CLAUDE.md`](CLAUDE.md) for full developer context.
+
+## Name
+
+**"Astronamigo" is a provisional working title** — the final public name is TBD
+before release.
+
+## License
+
+Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

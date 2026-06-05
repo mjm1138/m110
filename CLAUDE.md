@@ -3,8 +3,11 @@
 **Astronamigo** is a cross-platform desktop app for managing a smart-telescope
 deep-sky imaging collection: catalog/library, capture tracking, ingest from the
 telescope/staging, and Siril processing-prep. North star: **"Lightroom for
-smart telescopes."** Working title (rename before any public release — "Seestar"
-is a ZWO trademark, deliberately avoided here).
+smart telescopes."**
+
+- **Name:** "Astronamigo" is a **provisional working title** — final public name
+  TBD before release (deliberately avoids the ZWO "Seestar" trademark).
+- **License:** Apache-2.0 (see `LICENSE` / `NOTICE`).
 
 This file is the entry point for working in this repo productively. Read it
 first.
@@ -163,49 +166,16 @@ that.
 
 ## Roadmap
 
-Distribution & tech decisions (from `workflow_app_plan.md`):
-- **Open-source, Developer-ID direct distribution** (notarized `.dmg` /
-  Homebrew cask), **not** the Mac App Store (sandbox can't orchestrate the
-  workflow; the audience is open-source-native).
-- **PySide6** one cross-platform codebase over a headless Python engine. A
-  native SwiftUI Mac wrapper is a *deferred* future option (the engine boundary
-  keeps it open).
-- **Processing = prepare-and-guide, not control.** The app arranges files into
-  Siril's expected layout and emits Siril-ready configs + guidance; it does not
-  drive Siril/StarNet directly (avoids the maintenance tax of wrapping volatile
-  CLIs).
+**The canonical roadmap lives in [`ROADMAP.md`](ROADMAP.md)** — foundational
+decisions (distribution, tech, processing model, data), the v0.1 build order
+with status, later phases, and open decisions. Keep `ROADMAP.md` current as work
+lands.
 
-### MVP (v0.1) — "the Library" — build order
-
-| Step | Status | What |
-|---|---|---|
-| 0.1a | ✅ | engine package + read functions (config, catalog, derived, objects) |
-| 0.1b | ✅ | read-only Library: capture-status table (natural sort) + object detail/gallery |
-| 0.1c | ✅ | in-app **Refresh** (threaded) — ported scan_sessions + build_derived |
-| — | ✅ | **Split to own data root** (`~/Documents/Astronamigo`) + bootstrap/seed + Preferences + Seestar mount detection |
-| — | ✅ | **Image rendering** port (build_images: thumbnails/heroes/images.json) |
-| 0.1d | ✅ | **Ingest** — preview-then-confirm; sources: staging (move) + mounted Seestar `MyWorks` (copy); threaded + cancellable |
-| 0.1e | ⬜ | **inline journal editing** — edit `data/objects/<slug>.md` in-app |
-| 0.1f | ⬜ | **processing-prep** — arrange Siril folder layout (incl. per-filter split), emit Naztronomy preset JSON, show workflow guidance |
-
-### Later phases (post-MVP)
-
-- **Session planning** — priorities + twilight/moon/obstruction/altitude math
-  (port the positional logic into `planning.py`), generate plan files.
-- **Plan-file generation** — SSC schedule JSON (port the generator), NINA
-  Advanced Sequences (schema capture pending), maybe INDI/Ekos.
-- **Alpaca equipment control** — monitor/author companion to a headless Pi
-  stack (SSC/PINS/INDI); *last and riskiest* — keep it a thin companion, not a
-  hardware-control reimplementation.
-
-### Known follow-ups / open decisions
-
-- **License** (MIT/Apache vs GPL) — settle before going public.
-- **Public name** — rename off "Astronamigo"? (working title; trademark-safe.)
-- `build_site`'s **Jinja static-site rendering** is intentionally *not* ported
-  (the app is the UI). Only the image pipeline was ported.
-- A native **SwiftUI** front end on the same engine, if the project resonates
-  with Mac users (would reintroduce a FastAPI layer for the engine).
+Current status at a glance: **0.1a–0.1d done**, plus the split to an own data
+root and the image-rendering port. **Next: 0.1e (inline journal editing)**, then
+0.1f (processing-prep). Foundational decisions in brief: open-source /
+Developer-ID distribution (not App Store); PySide6 over a headless engine;
+processing is prepare-and-guide, not direct Siril control.
 
 ---
 
@@ -237,5 +207,7 @@ tests/                  pytest suite (fixture-based)
 pyproject.toml          deps + entry point (gui-script: astronamigo)
 README.md               user-facing quickstart
 CLAUDE.md               this file
+ROADMAP.md              canonical roadmap
+LICENSE / NOTICE        Apache-2.0
 .venv/                  local virtualenv (gitignored)
 ```

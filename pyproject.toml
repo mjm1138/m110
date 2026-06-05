@@ -3,10 +3,19 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "astronamigo"
+name = "astronamigo"  # working title (provisional) — final public name TBD before release
 version = "0.0.1"
 description = "Library / tracker / processing-prep desktop app for smart-telescope deep-sky workflows (PySide6 GUI over a headless Python engine)."
+readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Michael Merideth", email = "mjm1138@gmail.com" }]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Environment :: X11 Applications :: Qt",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
 dependencies = [
     "PySide6>=6.6",
     "astropy>=6.0",     # build_derived reads FITS stack-metadata headers
