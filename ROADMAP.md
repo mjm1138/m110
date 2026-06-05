@@ -56,6 +56,65 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    not a hardware-control reimplementation. Owning hardware control means owning
    every "it disconnected at 2am" report.
 
+4. **In-app assistant (bring-your-own LLM).** Put the LLM value that's proven out
+   in this project — **session planning, image analysis, workflow coaching** —
+   *inside* the app, grounded in the user's own data.
+
+   **Why M110 is unusually well-positioned.** The three things that make an LLM
+   genuinely useful here, the app already holds in structured form:
+   - **Context** — catalog, priorities, capture status, per-object journals, and
+     the site / equipment / obstruction profile (the `config` generalization seam).
+   - **Tools** — the engine's real computations (twilight / moon / transit-altitude
+     / obstruction once the planning module lands; derived rollups; image access).
+   - **Knowledge** — the workflow playbooks (drizzle / PSF / colour / planning).
+
+   So "skilling" the model is mostly wiring: **data → context, engine functions →
+   tools, docs → reference.** The app is the ideal host because it owns all three;
+   the LLM stops guessing and starts calling real functions over real data.
+
+   **Architecture (Qt-free `m110/assistant/`):**
+   - `credentials` — API keys in the OS keychain (`keyring`), never plaintext;
+     per-provider.
+   - `providers/` — adapters behind one interface (chat + tools + vision +
+     streaming). **Claude first** (Anthropic Messages API: tool use, image input,
+     **prompt caching** for the large static context, streaming). Design the seam
+     for OpenAI / local (Ollama) later.
+   - `context` — assemble the system payload from app data + playbooks, with cache
+     markers on the static parts.
+   - `tools` — expose engine functions as LLM tools: altitude / twilight / moon,
+     priorities, object lookup, captured list, workflow-doc fetch, image fetch
+     (vision), propose-plan, save-critique/journal. Grounds answers in real
+     computation, not guessed numbers.
+   - UI — a dockable Assistant chat plus context-seeded entry points
+     ("Plan tonight", "Critique this image", "How should I process this?").
+
+   **The three features:** *planning* (assistant + planning tools + priorities →
+   a plan, exported via the plan-file phase); *image analysis* (vision + the
+   object's render/stack + processing metadata → a critique saved to the journal);
+   *coaching* (grounded Q&A over the playbooks + the object's current state).
+
+   **MCP angle (design toward it).** Expose the engine's tools+data as an **MCP
+   server**: the in-app assistant becomes an MCP client, and the *same* server
+   lets a user point their own external Claude / Claude Code at M110's data and
+   tools. Standards-based, future-proof, keeps the assistant thin.
+
+   **Cross-cutting.** BYO-key (user's account, user pays); model picker (Haiku for
+   cheap coaching, Sonnet/Opus for planning/analysis); prompt caching for cheap
+   repeat calls; clear disclosure that data/images go to the chosen API, with a
+   **local-model option** for privacy/offline; prefer tool-computed facts over
+   model guesses; needs a network entitlement (fine for Developer-ID).
+
+   **Phasing:** A0 contextualised chat (BYO Claude key, cached context, no tools)
+   → A1 tool use (real planning + grounded answers) → A2 vision (image critique)
+   → A3 provider abstraction + cost controls + local models → A4 (optional) MCP
+   server / agentic multi-step (Claude Agent SDK).
+
+   **Dependencies / risk.** Builds on the planning module + data model, so it
+   comes *after* those. Risks: provider-API churn; user cost surprises (mitigate:
+   caching + model choice + a token/cost readout); hallucination (mitigate: ground
+   in tools/data, cite sources); and scope — keep it "an LLM over the existing
+   engine," not a bespoke agent framework.
+
 ---
 
 ## Decisions & open items
