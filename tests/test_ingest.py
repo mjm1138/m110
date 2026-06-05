@@ -81,3 +81,26 @@ def test_no_staging_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")  # no "From the scope"
     assert ingest.staging_available() is False
     assert ingest.scan_staging_plan() == []
+
+
+def test_seestar_plan_uses_copy_and_leaves_device(tmp_path, monkeypatch):
+    images = tmp_path / "Images"
+    images.mkdir(parents=True)
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+    # fake mounted device MyWorks with the staging layout
+    myworks = tmp_path / "Volumes" / "EMMC Images" / "MyWorks"
+    sub = myworks / "M 13_sub"
+    sub.mkdir(parents=True)
+    (sub / "Light_M13_a.fit").write_text("data")
+    monkeypatch.setattr(config, "find_seestar_myworks", lambda: myworks)
+
+    ops = ingest.scan_seestar_plan()
+    assert len(ops) == 1
+    assert ops[0].action == "copy"
+    assert "FITS/M13/lights/" in ops[0].dest_rel
+
+    result = ingest.apply_ops(ops)
+    assert result == {"moved": 1, "skipped": 0}
+    # copied into collection AND still present on the "device"
+    assert (images / "FITS" / "M13" / "lights" / "Light_M13_a.fit").is_file()
+    assert (sub / "Light_M13_a.fit").is_file()

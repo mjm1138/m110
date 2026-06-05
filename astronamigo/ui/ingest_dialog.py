@@ -11,7 +11,7 @@ from collections import Counter
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QMessageBox, QHeaderView,
+    QTableWidgetItem, QMessageBox, QHeaderView, QComboBox,
 )
 
 from astronamigo import config, ingest
@@ -45,7 +45,20 @@ class IngestDialog(QDialog):
         self._worker = None
 
         lay = QVBoxLayout(self)
-        self._path_lbl = QLabel(f"Staging: {config.IMAGES_DIR / 'From the scope'}")
+
+        # Source selector: staging folder (move) or mounted Seestar (copy).
+        src_row = QHBoxLayout()
+        src_row.addWidget(QLabel("Source:"))
+        self._source = QComboBox()
+        self._source.addItem("Staging — From the scope", "staging")
+        mw = config.find_seestar_myworks()
+        if mw is not None:
+            self._source.addItem(f"Seestar device — {mw.parent.name}", "seestar")
+        self._source.currentIndexChanged.connect(self.scan)
+        src_row.addWidget(self._source, 1)
+        lay.addLayout(src_row)
+
+        self._path_lbl = QLabel()
         self._path_lbl.setStyleSheet("color:#8b949e")
         lay.addWidget(self._path_lbl)
 
@@ -75,15 +88,27 @@ class IngestDialog(QDialog):
 
     # ---- scan (read-only) ----
     def scan(self):
-        if not ingest.staging_available():
-            self._ops = []
-            self._summary.setText(
-                f"Staging folder not found:\n{config.IMAGES_DIR / 'From the scope'}")
-            self.table.setRowCount(0)
-            self._ingest_btn.setEnabled(False)
-            return
-
-        self._ops = ingest.scan_staging_plan()
+        source = self._source.currentData()
+        if source == "seestar":
+            mw = config.find_seestar_myworks()
+            self._path_lbl.setText(f"Seestar: {mw}  (files are copied; device left intact)")
+            if mw is None:
+                self._ops = []
+                self._summary.setText("No Seestar device mounted.")
+                self.table.setRowCount(0)
+                self._ingest_btn.setEnabled(False)
+                return
+            self._ops = ingest.scan_seestar_plan()
+        else:
+            staging = config.IMAGES_DIR / "From the scope"
+            self._path_lbl.setText(f"Staging: {staging}  (files are moved)")
+            if not ingest.staging_available():
+                self._ops = []
+                self._summary.setText(f"Staging folder not found:\n{staging}")
+                self.table.setRowCount(0)
+                self._ingest_btn.setEnabled(False)
+                return
+            self._ops = ingest.scan_staging_plan()
         self.table.setRowCount(len(self._ops))
         for r, op in enumerate(self._ops):
             label = KIND_LABEL.get(op.kind, op.kind)
@@ -114,9 +139,12 @@ class IngestDialog(QDialog):
         if not self._ops:
             return
         n = len(self._ops)
+        verb = "Copy" if any(op.action == "copy" for op in self._ops) else "Move"
         new_objs = sorted({op.group for op in self._ops if op.new_object})
-        msg = (f"Move {n} file(s) into the collection?\n\n"
+        msg = (f"{verb} {n} file(s) into the collection?\n\n"
                f"This writes into Images/ and cannot be undone from the app.")
+        if verb == "Copy":
+            msg += "\nFiles are copied; the Seestar device is left untouched."
         if new_objs:
             msg += f"\n\nNew object folder(s) will be created for: {', '.join(new_objs)}."
         if QMessageBox.question(self, "Confirm ingest", msg,

@@ -31,9 +31,10 @@ class IngestOp:
     src: str         # absolute source file
     dest: str        # absolute destination file
     kind: str        # 'light' | 'stack' | 'media'
-    group: str       # staging directory name
+    group: str       # source directory name
     dest_rel: str    # destination relative to Images/ (for display)
     new_object: bool = False  # FITS object dir will be created
+    action: str = "move"      # 'move' (staging) | 'copy' (device)
 
 
 # ── classification helpers (ported verbatim) ───────────────────────────────────
@@ -73,13 +74,18 @@ def staging_available() -> bool:
     return _staging().is_dir()
 
 
-def scan_staging_plan(fits_only: bool = False, stacks_only: bool = False) -> list[IngestOp]:
-    """Dry-run: return the list of moves that ingest *would* perform. Reads only."""
-    staging = _staging()
-    if not staging.is_dir():
+def seestar_available() -> bool:
+    return config.find_seestar_myworks() is not None
+
+
+def _scan_base(base, action: str) -> list[IngestOp]:
+    """Classify a base dir laid out like the Seestar staging/MyWorks structure
+    and return the operations to bring NEW files into the collection. Reads only.
+    `action` is 'move' (staging) or 'copy' (device — leaves originals in place)."""
+    if base is None or not base.is_dir():
         return []
 
-    entries = sorted(e.name for e in staging.iterdir()
+    entries = sorted(e.name for e in base.iterdir()
                      if e.is_dir() and not e.name.startswith("."))
     sub_dirs = [e for e in entries if e.endswith("_sub")]
     media_dirs = [e for e in entries if is_media_dir(e)]
@@ -90,44 +96,53 @@ def scan_staging_plan(fits_only: bool = False, stacks_only: bool = False) -> lis
     stacks_base = imgs / "Seestar_stacks"
     ops: list[IngestOp] = []
 
-    if not stacks_only:
-        for sub in sub_dirs:
-            obj = fits_object_name(sub[:-4])  # strip "_sub"
-            src_dir = staging / sub
-            dst_dir = fits_base / obj / "lights"
-            existing = set(_fit_files(dst_dir))
-            new_object = not (fits_base / obj).is_dir()
-            for f in _fit_files(src_dir):
-                if f in existing:
-                    continue
-                dest = dst_dir / f
-                ops.append(IngestOp(str(src_dir / f), str(dest), "light", sub,
-                                    str(dest.relative_to(imgs)), new_object))
+    for sub in sub_dirs:
+        obj = fits_object_name(sub[:-4])  # strip "_sub"
+        src_dir = base / sub
+        dst_dir = fits_base / obj / "lights"
+        existing = set(_fit_files(dst_dir))
+        new_object = not (fits_base / obj).is_dir()
+        for f in _fit_files(src_dir):
+            if f in existing:
+                continue
+            dest = dst_dir / f
+            ops.append(IngestOp(str(src_dir / f), str(dest), "light", sub,
+                                str(dest.relative_to(imgs)), new_object, action))
 
-    if not fits_only:
-        for sd in stack_dirs:
-            obj = fits_object_name(sd)
-            src_dir = staging / sd
-            dst_dir = stacks_base / obj
-            existing = set(_fit_files(dst_dir))
-            for f in _fit_files(src_dir):
-                if not is_stacked_fit(f) or f in existing:
-                    continue
-                dest = dst_dir / f
-                ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                    str(dest.relative_to(imgs))))
+    for sd in stack_dirs:
+        obj = fits_object_name(sd)
+        src_dir = base / sd
+        dst_dir = stacks_base / obj
+        existing = set(_fit_files(dst_dir))
+        for f in _fit_files(src_dir):
+            if not is_stacked_fit(f) or f in existing:
+                continue
+            dest = dst_dir / f
+            ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
+                                str(dest.relative_to(imgs)), False, action))
 
-        for md in media_dirs:
-            src_dir = staging / md
-            dst_dir = imgs / md
-            existing = set(_all_files(dst_dir))
-            for f in _all_files(src_dir):
-                if f in existing:
-                    continue
-                dest = dst_dir / f
-                ops.append(IngestOp(str(src_dir / f), str(dest), "media", md,
-                                    str(dest.relative_to(imgs))))
+    for md in media_dirs:
+        src_dir = base / md
+        dst_dir = imgs / md
+        existing = set(_all_files(dst_dir))
+        for f in _all_files(src_dir):
+            if f in existing:
+                continue
+            dest = dst_dir / f
+            ops.append(IngestOp(str(src_dir / f), str(dest), "media", md,
+                                str(dest.relative_to(imgs)), False, action))
     return ops
+
+
+def scan_staging_plan(fits_only: bool = False, stacks_only: bool = False) -> list[IngestOp]:
+    """Dry-run plan for the 'From the scope' staging area (moves). Reads only."""
+    return _scan_base(_staging(), "move")
+
+
+def scan_seestar_plan() -> list[IngestOp]:
+    """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
+    untouched). Empty if no Seestar is mounted. Reads only."""
+    return _scan_base(config.find_seestar_myworks(), "copy")
 
 
 def apply_ops(ops: list[IngestOp], progress=None) -> dict:
@@ -143,7 +158,10 @@ def apply_ops(ops: list[IngestOp], progress=None) -> dict:
         if os.path.exists(op.dest):
             skipped += 1
         else:
-            shutil.move(op.src, op.dest)
+            if op.action == "copy":
+                shutil.copy2(op.src, op.dest)   # device → leave original in place
+            else:
+                shutil.move(op.src, op.dest)
             moved += 1
         if progress:
             progress(i, total)
