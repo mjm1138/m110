@@ -1,15 +1,18 @@
 """M110 — PySide6 desktop shell.
 
-v0.1 Library (read-only browse + in-app Refresh). Left: the catalog joined with
-derived totals (capture status). Right: detail pane for the selected object.
-Refresh re-runs the ported scan+derive computation against the live data store
-(the engine's own code — no shelling out to Astronomy/scripts).
+v0.1 Library. Left: the catalog joined with derived totals (capture status).
+Right: detail pane for the selected object. The Library keeps itself in sync with
+disk automatically — it refreshes on launch, after every ingest, and whenever the
+window regains focus (so external changes, e.g. a Siril stack, show up too).
+Refresh re-runs the ported scan+derive+render computation; there's a manual
+Refresh (View menu / Ctrl+R) but you shouldn't normally need it.
 """
 from __future__ import annotations
 
 import sys
+import time
 
-from PySide6.QtCore import Qt, QSize, QThread, Signal
+from PySide6.QtCore import Qt, QSize, QThread, Signal, QTimer, QEvent
 from PySide6.QtGui import QColor, QPixmap, QIcon, QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QLabel,
@@ -156,11 +159,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("M110 — Library")
         self._worker = None
+        self._ready = False        # guards auto-refresh until init completes
+        self._refreshing = False
+        self._last_refresh = 0.0
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
                 f"No catalog found at:\n{config.CATALOG_TOML}\n\n"
-                f"Set M110_DATA_ROOT to your Astronomy folder."))
+                f"Set M110_DATA_ROOT to your data folder."))
             self.resize(560, 160)
             return
 
@@ -181,19 +187,23 @@ class MainWindow(QMainWindow):
         self.ingest_action.setShortcut("Ctrl+I")
         self.ingest_action.triggered.connect(self._open_ingest)
         toolbar.addAction(self.ingest_action)
+
+        # The Library auto-syncs (launch / focus / after ingest), so manual
+        # Refresh lives in the menu as an override rather than a primary button.
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut("Ctrl+R")
         self.refresh_action.triggered.connect(self._do_refresh)
-        toolbar.addAction(self.refresh_action)
-
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)  # Cmd+, on macOS
         prefs_action.triggered.connect(self._open_prefs)
         menu = self.menuBar().addMenu("M110")
+        menu.addAction(self.refresh_action)
         menu.addAction(prefs_action)
 
         self._update_status()
         self.resize(1080, 700)
+        self._ready = True
+        QTimer.singleShot(0, self._do_refresh)  # auto-refresh on launch
 
     def _open_prefs(self):
         from m110.ui.preferences import PreferencesDialog
@@ -245,10 +255,10 @@ class MainWindow(QMainWindow):
         table.sortByColumn(0, Qt.AscendingOrder)  # default: natural M1,M2,…
         return table
 
-    def reload(self):
-        """Re-read the data store and rebuild the table in place."""
-        self._cat = load_catalog()
-        self._totals = derived.totals_by_slug()
+    def _rebuild_table(self):
+        """Rebuild the table widget from current self._cat/_totals, preserving
+        the user's selected object across the swap."""
+        prev = self._selected_slug()
         new_table = self._build_table()
         new_table.itemSelectionChanged.connect(self._on_select)
         old = self.splitter.replaceWidget(0, new_table)
@@ -256,8 +266,20 @@ class MainWindow(QMainWindow):
         if old is not None:
             old.deleteLater()
         self.splitter.setSizes([520, 440])
-        self.detail.placeholder()
+        if not (prev and self._select_slug(prev)):
+            self.detail.placeholder()
         self._update_status()
+
+    def _selected_slug(self):
+        items = self.table.selectedItems()
+        return self.table.item(items[0].row(), 0).data(Qt.UserRole) if items else None
+
+    def _select_slug(self, slug) -> bool:
+        for r in range(self.table.rowCount()):
+            if self.table.item(r, 0).data(Qt.UserRole) == slug:
+                self.table.selectRow(r)
+                return True
+        return False
 
     def _update_status(self, extra: str = ""):
         captured = sum(1 for s in self._cat if s in self._totals)
@@ -281,27 +303,57 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_ingested(self, moved: int):
-        # new lights landed → recompute the tracker so they appear
+        # new files landed → recompute so they appear (guarded; no-op if already
+        # refreshing). Runs even if moved==0 is harmless.
         if moved:
             self._do_refresh()
 
-    # ---- refresh ----
+    # ---- auto-refresh (launch / focus / mutation) ----
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        # Window regained focus → sync with disk (catches external changes like a
+        # Siril stack or a dropped Finished Image). Debounced so it doesn't fire
+        # right after the launch refresh or on rapid window switches.
+        if (event.type() == QEvent.ActivationChange and self.isActiveWindow()
+                and self._ready and not self._refreshing
+                and time.monotonic() - self._last_refresh > 2.0):
+            self._do_refresh()
+
     def _do_refresh(self):
+        if not self._ready or self._refreshing:
+            return
+        self._refreshing = True
         self.refresh_action.setEnabled(False)
-        self._update_status(extra="  ·  Refreshing…")
+        self._update_status(extra="  ·  Syncing…")
         self._worker = RefreshWorker(self)
         self._worker.done.connect(self._on_refresh_done)
         self._worker.failed.connect(self._on_refresh_failed)
         self._worker.start()
 
     def _on_refresh_done(self, summary: dict):
+        self._refreshing = False
+        self._last_refresh = time.monotonic()
         self.refresh_action.setEnabled(True)
-        self.reload()
-        self._update_status(extra=f"  ·  Refreshed ({summary.get('sessions', '?')} sessions)")
+        new_cat = load_catalog()
+        new_totals = derived.totals_by_slug()
+        changed = (new_totals != self._totals) or (new_cat != self._cat)
+        self._cat, self._totals = new_cat, new_totals
+        if changed:
+            self._rebuild_table()          # preserves selection
+        else:
+            self._refresh_open_detail()    # cheap: pick up image-only changes
+            self._update_status()
 
     def _on_refresh_failed(self, msg: str):
+        self._refreshing = False
+        self._last_refresh = time.monotonic()
         self.refresh_action.setEnabled(True)
-        self._update_status(extra=f"  ·  Refresh failed: {msg}")
+        self._update_status(extra=f"  ·  Sync failed: {msg}")
+
+    def _refresh_open_detail(self):
+        slug = self._selected_slug()
+        if slug and slug in self._cat:
+            self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
 
 
 def main() -> None:

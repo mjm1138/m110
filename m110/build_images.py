@@ -191,6 +191,13 @@ def _hero_source(slug: str, folders: list[str], imgs: list[dict]) -> Path | None
 
 
 def _render_hero(src: Path, dst: Path) -> bool:
+    # Cache: skip if the hero is already up-to-date w.r.t. its source. Keeps
+    # auto-refresh (launch / focus) cheap when nothing changed.
+    try:
+        if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
+            return True
+    except OSError:
+        pass
     img = _open_image(src)   # handles raster / TIF / FITS
     if img is None:
         return False
