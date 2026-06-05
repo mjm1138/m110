@@ -15,7 +15,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-# Ported into the Astronamigo engine.
+# Ported into the M110 engine.
 from .display_names import display_name_for_name  # noqa: E402
 from . import config  # noqa: E402
 

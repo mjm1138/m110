@@ -1,4 +1,4 @@
-"""Preferences dialog — choose where Astronamigo stores its data."""
+"""Preferences dialog — choose where M110 stores its data."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox,
 )
 
-from astronamigo import config
+from m110 import config
 
 
 class PreferencesDialog(QDialog):
@@ -16,7 +16,7 @@ class PreferencesDialog(QDialog):
         self.resize(620, 160)
 
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Data folder — where Astronamigo stores its catalog, "
+        lay.addWidget(QLabel("Data folder — where M110 stores its catalog, "
                              "captures, and renders:"))
 
         row = QHBoxLayout()
@@ -29,7 +29,7 @@ class PreferencesDialog(QDialog):
 
         hint = QLabel(f"Default: {config.DEFAULT_DATA_ROOT}\n"
                       "The folder is created (with a starter catalog) if it doesn't exist. "
-                      "Changing it takes effect after you restart Astronamigo.")
+                      "Changing it takes effect after you restart M110.")
         hint.setStyleSheet("color:#8b949e; font-size:11px")
         lay.addWidget(hint)
 
@@ -56,5 +56,5 @@ class PreferencesDialog(QDialog):
         config.ensure_data_root(path)  # create + seed now so it's ready on restart
         QMessageBox.information(
             self, "Preferences saved",
-            f"Data folder set to:\n{path}\n\nRestart Astronamigo to use it.")
+            f"Data folder set to:\n{path}\n\nRestart M110 to use it.")
         self.accept()

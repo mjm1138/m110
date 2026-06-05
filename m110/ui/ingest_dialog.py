@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QMessageBox, QHeaderView, QComboBox, QProgressDialog,
 )
 
-from astronamigo import config, ingest
+from m110 import config, ingest
 
 KIND_LABEL = {"light": "light frame", "stack": "Seestar stack", "media": "media"}
 

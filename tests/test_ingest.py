@@ -1,5 +1,5 @@
 """Tests for the staging ingest planner + apply (temp fixtures, never live data)."""
-from astronamigo import config, ingest
+from m110 import config, ingest
 
 
 def _make_staging(tmp_path, monkeypatch):

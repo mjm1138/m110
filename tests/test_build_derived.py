@@ -6,7 +6,7 @@
 """
 import pytest
 
-from astronamigo.build_derived import (
+from m110.build_derived import (
     parse_size_arcmin,
     default_star_removal_recommended,
     recommend_star_removal_for_folder,

@@ -1,12 +1,13 @@
-# Astronamigo — Claude Code / contributor context
+# M110 — Claude Code / contributor context
 
-**Astronamigo** is a cross-platform desktop app for managing a smart-telescope
+**M110** is a cross-platform desktop app for managing a smart-telescope
 deep-sky imaging collection: catalog/library, capture tracking, ingest from the
 telescope/staging, and Siril processing-prep. North star: **"Lightroom for
 smart telescopes."**
 
-- **Name:** "Astronamigo" is a **provisional working title** — final public name
-  TBD before release (deliberately avoids the ZWO "Seestar" trademark).
+- **Name:** **M110** (decided) — the completion number of the Messier catalog
+  (and, fittingly, a row in the app's own catalog). Package import id `m110`;
+  deliberately avoids the ZWO "Seestar" trademark. Tagline: *Complete the catalog.*
 - **License:** Apache-2.0 (see `LICENSE` / `NOTICE`).
 
 This file is the entry point for working in this repo productively. Read it
@@ -17,15 +18,15 @@ first.
 ## TL;DR for a new session
 
 ```bash
-cd ~/Documents/Code/astronamigo
+cd ~/Documents/Code/m110
 source .venv/bin/activate          # or: python3 -m venv .venv && pip install -e ".[dev]"
-astronamigo                        # run the app  (== python -m astronamigo.ui.main)
+m110                        # run the app  (== python -m m110.ui.main)
 pytest -q                          # run tests
 ```
 
 - **Python 3.11+** required (dev/CI on 3.14). Engine is **Qt-free**; the UI is
   **PySide6**, importing the engine **in-process** (no API server in the MVP).
-- The app **owns its data store** (default `~/Documents/Astronamigo`), created
+- The app **owns its data store** (default `~/Documents/M110`), created
   and seeded on first launch. It does **not** require any other project to run.
 - Offscreen smoke (no display): `QT_QPA_PLATFORM=offscreen python -c "..."`.
 
@@ -33,10 +34,10 @@ pytest -q                          # run tests
 
 ## What this is, and where it came from
 
-Astronamigo grew out of a mature text-based astrophotography workflow (the
+M110 grew out of a mature text-based astrophotography workflow (the
 sibling **Astronomy** project: TOML/JSONL/Markdown data + Python scripts + a
 generated static site). That workflow proved out the data model, the positional
-math, the tracker rollups, and the image pipeline. Astronamigo **ports that
+math, the tracker rollups, and the image pipeline. M110 **ports that
 proven logic into an installable engine** and puts a native-feeling GUI on top.
 
 - The **canonical roadmap & rationale** lives in the Astronomy repo at
@@ -46,7 +47,7 @@ proven logic into an installable engine** and puts a native-feeling GUI on top.
   (`scan_sessions`, `build_derived`, `display_names`, the image pipeline). They
   were validated to reproduce the original output byte-for-byte. **When changing
   these, preserve behavior compatibility** — the data store schema is shared.
-- Astronamigo is standalone: it carries its own seed catalog and generates its
+- M110 is standalone: it carries its own seed catalog and generates its
   own derived data and image renders. It does not read the Astronomy repo.
 
 ---
@@ -54,7 +55,7 @@ proven logic into an installable engine** and puts a native-feeling GUI on top.
 ## Architecture
 
 ```
-PySide6 UI  (astronamigo/ui/)   ── imports in-process ──▶   headless engine (astronamigo/)
+PySide6 UI  (m110/ui/)   ── imports in-process ──▶   headless engine (m110/)
    main.py        Library window (table + detail/gallery), Refresh, Ingest, Preferences
    ingest_dialog  preview-then-confirm ingest (threaded, progress/cancel)
    preferences    choose the data folder
@@ -73,7 +74,7 @@ The app reads/writes a single **data root** with this layout (same conventions
 as the Astronomy workflow):
 
 ```
-<data_root>/                         (default ~/Documents/Astronamigo)
+<data_root>/                         (default ~/Documents/M110)
   data/
     catalog.toml        static object catalog {slug: {id,name,type,magnitude,size,season,filter,...}}
     priorities.toml     priority targets (optional `track=false` for campaign entries)
@@ -88,11 +89,11 @@ as the Astronomy workflow):
   site/img/             generated thumbnails + hero/<slug>.jpg (gallery assets)
 ```
 
-**Data-root resolution** (in `config.py`, Qt-free): `ASTRONAMIGO_DATA_ROOT` env
-→ saved preference (`~/.astronamigo/settings.json`) → default
-`~/Documents/Astronamigo`. `config.ensure_data_root()` (called on launch)
+**Data-root resolution** (in `config.py`, Qt-free): `M110_DATA_ROOT` env
+→ saved preference (`~/.m110/settings.json`) → default
+`~/Documents/M110`. `config.ensure_data_root()` (called on launch)
 creates the skeleton and seeds `catalog.toml`/`priorities.toml` from
-`astronamigo/seed/` if missing — **idempotent, never overwrites**. Changing the
+`m110/seed/` if missing — **idempotent, never overwrites**. Changing the
 root in Preferences takes effect on **restart** (a few ported modules bind paths
 at import).
 
@@ -100,7 +101,7 @@ at import).
 
 ## Module map
 
-**Engine (`astronamigo/`)** — Qt-free:
+**Engine (`m110/`)** — Qt-free:
 
 | Module | Role |
 |---|---|
@@ -116,7 +117,7 @@ at import).
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images |
 | `seed/` | bundled starter `catalog.toml` / `priorities.toml` (package-data) |
 
-**UI (`astronamigo/ui/`)** — PySide6:
+**UI (`m110/ui/`)** — PySide6:
 
 | Module | Role |
 |---|---|
@@ -132,8 +133,8 @@ at import).
   strictly **preview-then-confirm**: `scan_*_plan()` is read-only and returns a
   plan; `apply_ops()` (the only writer) runs only after the dialog's confirm.
   Mirror this for any future write feature.
-- **Engine stays Qt-free.** No `PySide6` imports in `astronamigo/*.py` (only in
-  `astronamigo/ui/`). Keeps the engine headless/testable.
+- **Engine stays Qt-free.** No `PySide6` imports in `m110/*.py` (only in
+  `m110/ui/`). Keeps the engine headless/testable.
 - **Slow ops run off the UI thread** on a `QThread` worker behind a modal
   `QProgressDialog` with a working Cancel (see Refresh and Ingest). A
   synchronous scan/copy will freeze the window — don't.
@@ -154,7 +155,7 @@ at import).
 ```bash
 pytest -q                 # all
 pytest -q tests/test_ingest.py
-QT_QPA_PLATFORM=offscreen python -m astronamigo.ui.main   # (won't render, but imports/constructs)
+QT_QPA_PLATFORM=offscreen python -m m110.ui.main   # (won't render, but imports/constructs)
 ```
 
 ~80 tests, all fixture-based. UI is smoke-tested offscreen (construct windows,
@@ -202,9 +203,9 @@ processing is prepare-and-guide, not direct Siril control.
 ## Repo layout
 
 ```
-astronamigo/            engine package (+ ui/ subpackage, seed/ data)
+m110/            engine package (+ ui/ subpackage, seed/ data)
 tests/                  pytest suite (fixture-based)
-pyproject.toml          deps + entry point (gui-script: astronamigo)
+pyproject.toml          deps + entry point (gui-script: m110)
 README.md               user-facing quickstart
 CLAUDE.md               this file
 ROADMAP.md              canonical roadmap

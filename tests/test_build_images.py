@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from astronamigo import config, build_images
+from m110 import config, build_images
 
 PIL = pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402
@@ -15,7 +15,7 @@ def _png(path, size=(200, 120), color=(40, 80, 160)):
 
 
 def _setup(tmp_path, monkeypatch):
-    root = tmp_path / "Astronamigo"
+    root = tmp_path / "M110"
     monkeypatch.setattr(config, "DATA_ROOT", root)
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "DERIVED_DIR", root / "data" / "derived")

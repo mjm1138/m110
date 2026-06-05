@@ -1,6 +1,6 @@
 # tests/test_display_names.py
 import pytest
-from astronamigo.display_names import (
+from m110.display_names import (
     _filename_object_name,
     _filename_date_from_name_and_mtime,
     display_name_for_name,

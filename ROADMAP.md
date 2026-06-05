@@ -1,6 +1,6 @@
-# Astronamigo — Roadmap
+# M110 — Roadmap
 
-Canonical roadmap for Astronamigo: the north star, the foundational decisions,
+Canonical roadmap for M110: the north star, the foundational decisions,
 the MVP build order, and what comes after. (Long-form rationale for the
 decisions lives in the sibling Astronomy project's `workflow_app_plan.md`; this
 file is the standalone, authoritative status.)
@@ -23,7 +23,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
   files into Siril's expected layout and emits Siril-ready configs + guidance;
   it does **not** drive Siril/StarNet directly (avoids the maintenance tax of
   wrapping volatile CLIs).
-- **Data:** the app **owns its own data store** (default `~/Documents/Astronamigo`),
+- **Data:** the app **owns its own data store** (default `~/Documents/M110`),
   decoupled from any other project; it seeds a starter catalog and generates its
   own derived data and image renders.
 
@@ -36,7 +36,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 0.1a | ✅ | engine package + read functions (config, catalog, derived, objects) |
 | 0.1b | ✅ | read-only Library: capture-status table (natural M/NGC sort) + object detail/gallery |
 | 0.1c | ✅ | in-app **Refresh** (threaded) — ported scan_sessions + build_derived |
-| —    | ✅ | **Own data root** (`~/Documents/Astronamigo`) + bootstrap/seed + Preferences + Seestar mount detection |
+| —    | ✅ | **Own data root** (`~/Documents/M110`) + bootstrap/seed + Preferences + Seestar mount detection |
 | —    | ✅ | **Image rendering** port (build_images: thumbnails / heroes / images.json, cached) |
 | 0.1d | ✅ | **Ingest** — preview-then-confirm; sources: staging (move) + mounted Seestar `MyWorks` (copy); threaded + cancellable |
 | 0.1e | ⬜ | **inline journal editing** — edit `data/objects/<slug>.md` in-app |
@@ -63,7 +63,8 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | Item | Status |
 |---|---|
 | License | ✅ **Apache-2.0** (decided 2026-06-04; see `LICENSE` / `NOTICE`) |
-| Public name | "**Astronamigo**" is a **provisional working title** — final public name to be decided before release (the Python package id can stay `astronamigo` regardless) |
+| Public name | ✅ **M110** (decided 2026-06-04). Tagline: *Complete the catalog.* Package import id `m110`. |
+| External presence (pre-release) | Follow-ups: domain (`m110.app` — verify at registrar), GitHub org (`m110` username taken → `m110app` / `messier110`), and an explicit "smart telescope / deep-sky catalog tracker" subtitle for discoverability. Per the name writeup. |
 | Native SwiftUI Mac wrapper on the same engine | deferred option |
 | Port `build_site`'s Jinja static-site rendering | intentionally **not** ported (the app is the UI; only the image pipeline was ported) |
 | Cross-platform packaging (notarize / Homebrew cask / Windows / Linux) | future |

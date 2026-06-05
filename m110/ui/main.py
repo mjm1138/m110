@@ -1,4 +1,4 @@
-"""Astronamigo — PySide6 desktop shell.
+"""M110 — PySide6 desktop shell.
 
 v0.1 Library (read-only browse + in-app Refresh). Left: the catalog joined with
 derived totals (capture status). Right: detail pane for the selected object.
@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 
-from astronamigo import config, derived, objects
-from astronamigo.catalog import load_catalog, catalog_sort_key
+from m110 import config, derived, objects
+from m110.catalog import load_catalog, catalog_sort_key
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
 STATUS_COLOR = {"deep_stack": QColor("#3fb950"), "initial": QColor("#d29922")}
@@ -51,7 +51,7 @@ class RefreshWorker(QThread):
 
     def run(self):
         try:
-            from astronamigo.refresh import run_refresh
+            from m110.refresh import run_refresh
             self.done.emit(run_refresh())
         except Exception as exc:  # surface to the UI rather than crash
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -154,13 +154,13 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Astronamigo — Library")
+        self.setWindowTitle("M110 — Library")
         self._worker = None
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
                 f"No catalog found at:\n{config.CATALOG_TOML}\n\n"
-                f"Set ASTRONAMIGO_DATA_ROOT to your Astronomy folder."))
+                f"Set M110_DATA_ROOT to your Astronomy folder."))
             self.resize(560, 160)
             return
 
@@ -189,14 +189,14 @@ class MainWindow(QMainWindow):
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)  # Cmd+, on macOS
         prefs_action.triggered.connect(self._open_prefs)
-        menu = self.menuBar().addMenu("Astronamigo")
+        menu = self.menuBar().addMenu("M110")
         menu.addAction(prefs_action)
 
         self._update_status()
         self.resize(1080, 700)
 
     def _open_prefs(self):
-        from astronamigo.ui.preferences import PreferencesDialog
+        from m110.ui.preferences import PreferencesDialog
         PreferencesDialog(self).exec()
 
     # ---- data / table ----
@@ -275,7 +275,7 @@ class MainWindow(QMainWindow):
 
     # ---- ingest ----
     def _open_ingest(self):
-        from astronamigo.ui.ingest_dialog import IngestDialog
+        from m110.ui.ingest_dialog import IngestDialog
         dlg = IngestDialog(self)
         dlg.ingested.connect(self._on_ingested)
         dlg.exec()
@@ -306,7 +306,7 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
-    app.setApplicationName("Astronamigo")
+    app.setApplicationName("M110")
     config.ensure_data_root()  # create + seed the data folder if needed
     win = MainWindow()
     win.show()

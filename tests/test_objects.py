@@ -1,5 +1,5 @@
 """Tests for the journal reader."""
-from astronamigo import config, objects
+from m110 import config, objects
 
 
 def test_read_journal_frontmatter_and_body(tmp_path, monkeypatch):

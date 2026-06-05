@@ -1,7 +1,7 @@
 """Tests for the derived-rollup reader (config-path overridable / testable)."""
 import json
 
-from astronamigo import config, derived
+from m110 import config, derived
 
 
 def _write_derived(tmp_path, monkeypatch, totals):

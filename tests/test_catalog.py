@@ -1,5 +1,5 @@
 """Tests for catalog ordering (mirrors the site's _catalog_sort_key)."""
-from astronamigo.catalog import catalog_sort_key
+from m110.catalog import catalog_sort_key
 
 
 def test_messier_numeric_not_lexical():

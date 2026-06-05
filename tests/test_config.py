@@ -1,22 +1,22 @@
 """Tests for data-root resolution, bootstrap/seed, and Seestar detection."""
 import json
 
-from astronamigo import config
+from m110 import config
 
 
 def test_resolve_env_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("ASTRONAMIGO_DATA_ROOT", str(tmp_path / "x"))
+    monkeypatch.setenv("M110_DATA_ROOT", str(tmp_path / "x"))
     assert config._resolve_data_root() == (tmp_path / "x")
 
 
 def test_resolve_default_when_unset(monkeypatch, tmp_path):
-    monkeypatch.delenv("ASTRONAMIGO_DATA_ROOT", raising=False)
+    monkeypatch.delenv("M110_DATA_ROOT", raising=False)
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "absent.json")
     assert config._resolve_data_root() == config.DEFAULT_DATA_ROOT
 
 
 def test_resolve_saved_setting(monkeypatch, tmp_path):
-    monkeypatch.delenv("ASTRONAMIGO_DATA_ROOT", raising=False)
+    monkeypatch.delenv("M110_DATA_ROOT", raising=False)
     sf = tmp_path / "settings.json"
     sf.write_text(json.dumps({"data_root": str(tmp_path / "saved")}))
     monkeypatch.setattr(config, "SETTINGS_FILE", sf)
@@ -24,7 +24,7 @@ def test_resolve_saved_setting(monkeypatch, tmp_path):
 
 
 def test_ensure_data_root_creates_and_seeds(tmp_path):
-    root = tmp_path / "Astronamigo"
+    root = tmp_path / "M110"
     config.ensure_data_root(root)
     # seeded static files
     assert (root / "data" / "catalog.toml").is_file()
@@ -37,7 +37,7 @@ def test_ensure_data_root_creates_and_seeds(tmp_path):
 
 
 def test_ensure_is_idempotent_and_preserves_edits(tmp_path):
-    root = tmp_path / "Astronamigo"
+    root = tmp_path / "M110"
     config.ensure_data_root(root)
     (root / "data" / "catalog.toml").write_text("# user-edited\n")
     config.ensure_data_root(root)  # must NOT overwrite an existing catalog

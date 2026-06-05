@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "astronamigo"  # working title (provisional) — final public name TBD before release
+name = "m110"
 version = "0.0.1"
 description = "Library / tracker / processing-prep desktop app for smart-telescope deep-sky workflows (PySide6 GUI over a headless Python engine)."
 readme = "README.md"
@@ -28,10 +28,10 @@ dependencies = [
 dev = ["pytest>=8"]
 
 [project.gui-scripts]
-astronamigo = "astronamigo.ui.main:main"
+m110 = "m110.ui.main:main"
 
 [tool.setuptools]
-packages = ["astronamigo", "astronamigo.ui"]
+packages = ["m110", "m110.ui"]
 
 [tool.setuptools.package-data]
-astronamigo = ["seed/*.toml"]
+m110 = ["seed/*.toml"]

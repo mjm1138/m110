@@ -1,8 +1,8 @@
-"""Runtime configuration for Astronamigo.
+"""Runtime configuration for M110.
 
-The app owns its own data store (default ``~/Documents/Astronamigo``), resolved
-in order from: the ``ASTRONAMIGO_DATA_ROOT`` env var, the saved preference
-(``~/.astronamigo/settings.json``), then the default. Qt-free so the engine
+The app owns its own data store (default ``~/Documents/M110``), resolved
+in order from: the ``M110_DATA_ROOT`` env var, the saved preference
+(``~/.m110/settings.json``), then the default. Qt-free so the engine
 stays headless — the UI Preferences dialog calls ``save_data_root()`` and
 prompts a restart.
 """
@@ -13,9 +13,9 @@ import os
 import shutil
 from pathlib import Path
 
-APP_CONFIG_DIR = Path.home() / ".astronamigo"
+APP_CONFIG_DIR = Path.home() / ".m110"
 SETTINGS_FILE = APP_CONFIG_DIR / "settings.json"
-DEFAULT_DATA_ROOT = Path.home() / "Documents" / "Astronamigo"
+DEFAULT_DATA_ROOT = Path.home() / "Documents" / "M110"
 SEED_DIR = Path(__file__).resolve().parent / "seed"
 
 # Directory skeleton created under a data root.
@@ -45,7 +45,7 @@ def save_data_root(path) -> None:
 
 
 def _resolve_data_root() -> Path:
-    env = os.environ.get("ASTRONAMIGO_DATA_ROOT")
+    env = os.environ.get("M110_DATA_ROOT")
     if env:
         return Path(env).expanduser()
     saved = _read_settings().get("data_root")

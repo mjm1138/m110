@@ -27,7 +27,7 @@ from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
-# Ported into the Astronamigo engine: paths resolve from config.DATA_ROOT
+# Ported into the M110 engine: paths resolve from config.DATA_ROOT
 # (the live Astronomy data store during parallel-run) instead of __file__.
 from . import config  # noqa: E402
 REPO = config.DATA_ROOT

@@ -1,28 +1,32 @@
-# Astronamigo
+# M110
 
-*(working title)* — a cross-platform desktop app (PySide6) over a headless
-Python engine for managing a smart-telescope deep-sky imaging collection:
-catalog/library, capture tracking, ingest, and Siril processing-prep.
-"Lightroom for smart telescopes."
+**Complete the catalog.**
 
-Standalone sibling to the text-based workflow in `~/Astronomy`. See that
-project's `workflow_app_plan.md` for the full plan, scope decisions, and
-phasing.
+M110 is a cross-platform desktop app (PySide6, over a headless Python engine)
+for managing a smart-telescope deep-sky imaging collection: a catalog/library,
+capture tracking, ingest from the telescope or staging, and Siril
+processing-prep. North star: **"Lightroom for smart telescopes."**
+
+> Named for Messier 110 — the dwarf elliptical in Andromeda that Charles
+> Messier observed in 1773 but never added to his catalog; it was retroactively
+> designated the 110th and final entry. The whole point of the app is to get
+> there. (It's also, fittingly, a row in the app's own catalog.)
 
 ## Status
 
-**v0.1 skeleton (Phase 0 / step 0.1b):** a read-only Library window over the
-live data store. Mutating features (Refresh, Ingest, journal editing,
-processing-prep) land in later 0.1 steps.
+v0.1 ("the Library") in progress. See [`ROADMAP.md`](ROADMAP.md) for status and
+[`CLAUDE.md`](CLAUDE.md) for full developer context.
 
-## Parallel-run model
+## Data store
 
-The engine reads the **live** Astronomy data store via a config path, so it
-runs alongside the existing `scripts/` + `rebuild.sh` workflow without
-disturbing it. Read-only until trusted enough to adopt as "user 0."
+M110 owns its own data folder (catalog, captures, derived rollups, renders),
+created and seeded on first launch. Resolution order:
 
-- Default data root: `~/Astronomy`
-- Override: `export ASTRONAMIGO_DATA_ROOT=/path/to/your/astronomy`
+- `M110_DATA_ROOT` env var
+- the saved preference (`~/.m110/settings.json`, set via Preferences)
+- default: `~/Documents/M110`
+
+It does not require any other project to run.
 
 ## Develop / run
 
@@ -30,28 +34,27 @@ disturbing it. Read-only until trusted enough to adopt as "user 0."
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-astronamigo            # or: python -m astronamigo.ui.main
+m110                # run the app  (== python -m m110.ui.main)
 pytest
 ```
 
+Requires Python 3.11+.
+
 ## Layout
 
-- `astronamigo/` — headless engine (data model, calculations, ingest,
-  processing-prep) + `ui/` (PySide6 front end).
-- `tests/` — engine tests.
+- `m110/` — headless engine (data model, positional/rollup logic, ingest,
+  image rendering, processing-prep) + `ui/` (PySide6 front end).
+- `tests/` — fixture-based engine tests.
 
-Engine modules are ported incrementally from `~/Astronomy/scripts/` (Phase 0);
-`display_names` is the first across.
-
-## Roadmap
-
-See [`ROADMAP.md`](ROADMAP.md) for the canonical roadmap, and
-[`CLAUDE.md`](CLAUDE.md) for full developer context.
+Several engine modules are faithful ports of a mature text-based reference
+workflow; see `CLAUDE.md`.
 
 ## Name
 
-**"Astronamigo" is a provisional working title** — the final public name is TBD
-before release.
+The app is **M110**. The Python package import id is `m110`. (Deliberately
+avoids the ZWO "Seestar" trademark.) For discoverability, lead external copy
+with an explicit subtitle, e.g. *"M110 — smart-telescope image management and
+deep-sky catalog tracker."*
 
 ## License
 
