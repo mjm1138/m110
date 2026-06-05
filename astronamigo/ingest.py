@@ -22,6 +22,10 @@ from pathlib import Path
 from . import config
 
 
+class IngestCancelled(Exception):
+    """Raised inside a scan when the caller's should_cancel() turns true."""
+
+
 def _staging() -> Path:
     return config.IMAGES_DIR / "From the scope"
 
@@ -78,12 +82,18 @@ def seestar_available() -> bool:
     return config.find_seestar_myworks() is not None
 
 
-def _scan_base(base, action: str) -> list[IngestOp]:
+def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
     """Classify a base dir laid out like the Seestar staging/MyWorks structure
     and return the operations to bring NEW files into the collection. Reads only.
-    `action` is 'move' (staging) or 'copy' (device — leaves originals in place)."""
+    `action` is 'move' (staging) or 'copy' (device — leaves originals in place).
+    `should_cancel` is an optional callable checked at directory boundaries;
+    if it returns true, IngestCancelled is raised (for a responsive Cancel)."""
     if base is None or not base.is_dir():
         return []
+
+    def _ck():
+        if should_cancel and should_cancel():
+            raise IngestCancelled()
 
     entries = sorted(e.name for e in base.iterdir()
                      if e.is_dir() and not e.name.startswith("."))
@@ -97,6 +107,7 @@ def _scan_base(base, action: str) -> list[IngestOp]:
     ops: list[IngestOp] = []
 
     for sub in sub_dirs:
+        _ck()
         obj = fits_object_name(sub[:-4])  # strip "_sub"
         src_dir = base / sub
         dst_dir = fits_base / obj / "lights"
@@ -110,6 +121,7 @@ def _scan_base(base, action: str) -> list[IngestOp]:
                                 str(dest.relative_to(imgs)), new_object, action))
 
     for sd in stack_dirs:
+        _ck()
         obj = fits_object_name(sd)
         src_dir = base / sd
         dst_dir = stacks_base / obj
@@ -122,6 +134,7 @@ def _scan_base(base, action: str) -> list[IngestOp]:
                                 str(dest.relative_to(imgs)), False, action))
 
     for md in media_dirs:
+        _ck()
         src_dir = base / md
         dst_dir = imgs / md
         existing = set(_all_files(dst_dir))
@@ -134,26 +147,32 @@ def _scan_base(base, action: str) -> list[IngestOp]:
     return ops
 
 
-def scan_staging_plan(fits_only: bool = False, stacks_only: bool = False) -> list[IngestOp]:
+def scan_staging_plan(should_cancel=None) -> list[IngestOp]:
     """Dry-run plan for the 'From the scope' staging area (moves). Reads only."""
-    return _scan_base(_staging(), "move")
+    return _scan_base(_staging(), "move", should_cancel)
 
 
-def scan_seestar_plan() -> list[IngestOp]:
+def scan_seestar_plan(should_cancel=None) -> list[IngestOp]:
     """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
     untouched). Empty if no Seestar is mounted. Reads only."""
-    return _scan_base(config.find_seestar_myworks(), "copy")
+    return _scan_base(config.find_seestar_myworks(), "copy", should_cancel)
 
 
-def apply_ops(ops: list[IngestOp], progress=None) -> dict:
-    """Perform the moves. THIS WRITES INTO Images/ — callers must confirm first.
+def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
+    """Perform the moves/copies. THIS WRITES INTO Images/ — callers must confirm.
 
     Creates destination dirs, skips files that already exist at the destination.
-    `progress(i, total)` is called after each op if given.
+    `progress(i, total)` is called after each op. `should_cancel()` is checked
+    before each op; cancelling stops cleanly (files already done stay done — safe,
+    since a re-scan simply lists whatever's still missing).
     """
     moved = skipped = 0
     total = len(ops)
+    cancelled = False
     for i, op in enumerate(ops, 1):
+        if should_cancel and should_cancel():
+            cancelled = True
+            break
         os.makedirs(os.path.dirname(op.dest), exist_ok=True)
         if os.path.exists(op.dest):
             skipped += 1
@@ -165,4 +184,4 @@ def apply_ops(ops: list[IngestOp], progress=None) -> dict:
             moved += 1
         if progress:
             progress(i, total)
-    return {"moved": moved, "skipped": skipped}
+    return {"moved": moved, "skipped": skipped, "cancelled": cancelled}

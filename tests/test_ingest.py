@@ -67,7 +67,7 @@ def test_apply_moves_and_creates_dirs(tmp_path, monkeypatch):
 
     ops = ingest.scan_staging_plan()
     result = ingest.apply_ops(ops)
-    assert result == {"moved": 1, "skipped": 0}
+    assert result == {"moved": 1, "skipped": 0, "cancelled": False}
 
     moved_to = images / "FITS" / "M81 M82" / "lights" / "Light_x.fit"
     assert moved_to.is_file()
@@ -75,6 +75,29 @@ def test_apply_moves_and_creates_dirs(tmp_path, monkeypatch):
     assert not (sub / "Light_x.fit").exists()   # moved, not copied
     # re-scan now shows nothing new
     assert ingest.scan_staging_plan() == []
+
+
+def test_scan_cancellation_raises(tmp_path, monkeypatch):
+    images, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M5_sub"
+    sub.mkdir()
+    (sub / "Light_a.fit").touch()
+    import pytest
+    with pytest.raises(ingest.IngestCancelled):
+        ingest.scan_staging_plan(should_cancel=lambda: True)
+
+
+def test_apply_cancellation_stops_cleanly(tmp_path, monkeypatch):
+    images, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M5_sub"
+    sub.mkdir()
+    (sub / "a.fit").write_text("1")
+    (sub / "b.fit").write_text("2")
+    ops = ingest.scan_staging_plan()
+    # cancel before any op runs
+    result = ingest.apply_ops(ops, should_cancel=lambda: True)
+    assert result["cancelled"] is True
+    assert result["moved"] == 0
 
 
 def test_no_staging_returns_empty(tmp_path, monkeypatch):
@@ -100,7 +123,7 @@ def test_seestar_plan_uses_copy_and_leaves_device(tmp_path, monkeypatch):
     assert "FITS/M13/lights/" in ops[0].dest_rel
 
     result = ingest.apply_ops(ops)
-    assert result == {"moved": 1, "skipped": 0}
+    assert result == {"moved": 1, "skipped": 0, "cancelled": False}
     # copied into collection AND still present on the "device"
     assert (images / "FITS" / "M13" / "lights" / "Light_M13_a.fit").is_file()
     assert (sub / "Light_M13_a.fit").is_file()
