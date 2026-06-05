@@ -70,11 +70,17 @@ Mark each pass. Re-run a section whenever its area changes.
       whose only images are `.fit` Seestar stacks. *(Bug #3 regression.)*
 - [ ] Uncaptured object shows "not captured", no broken images.
 
-### D. Refresh (Ctrl+R)
-- [ ] After adding light frames to an object, Refresh updates its capture status
-      and integration.
-- [ ] Refresh generates thumbnails/heroes (gallery populates for new captures).
-- [ ] UI stays responsive during Refresh (threaded).
+### D. Auto-sync (no manual Refresh needed)
+- [ ] **On launch** the Library syncs with disk (capture status reflects current
+      `Images/`), without pressing anything.
+- [ ] **On window focus**: change something on disk (e.g. drop a render into
+      `Finished Images/<obj>/` or process a stack), switch away and back to M110 →
+      the change appears. (Debounced; runs silently.)
+- [ ] An auto-refresh that finds **no change** does **not** disturb the view
+      (selected object + scroll preserved; no flicker).
+- [ ] An auto-refresh that **does** find changes preserves the selected object.
+- [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
+- [ ] Manual override still works: View menu → Refresh (Ctrl+R).
 
 ### E. Ingest — staging  (`Images/From the scope/`)
 - [ ] With a `<obj>_sub/` of `.fit` files present, Ingest preview lists them as

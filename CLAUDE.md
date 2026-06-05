@@ -122,7 +122,7 @@ at import).
 
 | Module | Role |
 |---|---|
-| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, Refresh (Ctrl+R), Ingest (Ctrl+I), Preferences (Cmd+,) menu, startup bootstrap |
+| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change); manual Refresh (Ctrl+R) is a menu override |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), preview table, threaded scan & apply behind modal progress+Cancel |
 | `preferences.py` | choose data folder (save + restart) |
 
