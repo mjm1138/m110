@@ -178,7 +178,22 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
             skipped += 1
         else:
             if op.action == "copy":
-                shutil.copy2(op.src, op.dest)   # device → leave original in place
+                # Bytes only (no copystat): copying from an SMB-mounted Seestar,
+                # copying the source's flags/xattrs onto the destination raises
+                # EPERM on macOS. Write to a temp then atomically rename so an
+                # interrupted copy never leaves a partial file that a re-scan
+                # would treat as "already present".
+                tmp = op.dest + ".part"
+                try:
+                    shutil.copyfile(op.src, tmp)
+                    os.replace(tmp, op.dest)
+                except BaseException:
+                    if os.path.exists(tmp):
+                        try:
+                            os.remove(tmp)
+                        except OSError:
+                            pass
+                    raise
             else:
                 shutil.move(op.src, op.dest)
             moved += 1
