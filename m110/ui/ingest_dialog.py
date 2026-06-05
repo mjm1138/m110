@@ -137,12 +137,7 @@ class IngestDialog(QDialog):
 
     def _start_scan(self, plan_fn, label: str):
         self._set_busy(True)
-        self._cancel_event = threading.Event()
-        self._progress = QProgressDialog(label, "Cancel", 0, 0, self)  # 0,0 = busy
-        self._progress.setWindowTitle("Scanning")
-        self._progress.setWindowModality(Qt.WindowModal)
-        self._progress.setMinimumDuration(0)
-        self._progress.canceled.connect(self._cancel_event.set)
+        self._make_progress(label, 0, "Scanning")  # 0 max = busy/indeterminate
         self._worker = _ScanWorker(plan_fn, self._cancel_event, self)
         self._worker.done.connect(self._on_scan_done)
         self._worker.cancelled.connect(self._on_scan_cancelled)
@@ -151,17 +146,20 @@ class IngestDialog(QDialog):
         self._progress.show()
 
     def _on_scan_done(self, ops):
+        self._finish_worker()
         self._close_progress()
         self._set_busy(False)
         self._ops = ops
         self._populate()
 
     def _on_scan_cancelled(self):
+        self._finish_worker()
         self._close_progress()
         self._set_busy(False)
         self._set_empty("Scan cancelled.")
 
     def _on_scan_failed(self, msg):
+        self._finish_worker()
         self._close_progress()
         self._set_busy(False)
         self._set_empty(f"Scan failed: {msg}")
@@ -225,13 +223,8 @@ class IngestDialog(QDialog):
             return
 
         self._set_busy(True)
-        n = len(self._ops)
-        self._cancel_event = threading.Event()
-        self._progress = QProgressDialog(f"{verb}ing {n} file(s)…", "Cancel", 0, n, self)
-        self._progress.setWindowTitle("Ingesting")
-        self._progress.setWindowModality(Qt.WindowModal)
-        self._progress.setMinimumDuration(0)
-        self._progress.canceled.connect(self._cancel_event.set)
+        label = "Copying files…" if verb == "Copy" else "Moving files…"
+        self._make_progress(label, len(self._ops), "Ingesting")
         self._worker = _ApplyWorker(list(self._ops), self._cancel_event, self)
         self._worker.progressed.connect(self._on_apply_progress)
         self._worker.done.connect(self._on_apply_done)
@@ -240,30 +233,79 @@ class IngestDialog(QDialog):
         self._progress.show()
 
     def _on_apply_progress(self, i, total):
-        if self._progress:
+        if self._progress is not None:
             self._progress.setValue(i)
 
     def _on_apply_done(self, result: dict):
+        self._finish_worker()
         self._close_progress()
         self._set_busy(False)
         moved = result.get("moved", 0)
         skipped = result.get("skipped", 0)
         cancelled = result.get("cancelled", False)
         self.ingested.emit(moved)
-        bits = [f"{moved} file(s)"]
+        # Do NOT auto-rescan: a fresh device scan here is slow and pops another
+        # modal (the "modal won't close" report). Clear the consumed plan; the
+        # user can Rescan to look for more.
+        self._ops = []
+        self.table.setRowCount(0)
+        self._ingest_btn.setEnabled(False)
+        bits = [f"{moved} file(s) ingested"]
         if skipped:
             bits.append(f"{skipped} already present")
-        note = "Ingest cancelled — " if cancelled else ""
-        QMessageBox.information(self, "Ingest", f"{note}{', '.join(bits)}.")
-        self.scan()  # re-scan (now-smaller) plan
+        prefix = "Ingest cancelled — " if cancelled else ""
+        self._summary.setText(prefix + ", ".join(bits)
+                              + ".   Rescan to check for more, or Close.")
 
     def _on_apply_failed(self, msg):
+        self._finish_worker()
         self._close_progress()
         self._set_busy(False)
         QMessageBox.warning(self, "Ingest failed", msg)
         self._summary.setText(f"Ingest failed: {msg}")
 
+    # ---- progress + worker lifecycle ----
+    def _make_progress(self, label, maximum, title):
+        self._cancel_event = threading.Event()
+        pd = QProgressDialog(label, "Cancel", 0, maximum, self)
+        pd.setWindowTitle(title)
+        pd.setWindowModality(Qt.WindowModal)
+        pd.setMinimumDuration(0)
+        pd.setAutoClose(False)   # we close it explicitly in the done handler
+        pd.setAutoReset(False)
+        pd.canceled.connect(self._cancel_event.set)
+        self._progress = pd
+        return pd
+
     def _close_progress(self):
-        if self._progress:
+        if self._progress is not None:
             self._progress.close()
+            self._progress.deleteLater()
             self._progress = None
+
+    def _finish_worker(self):
+        """Detach a finished worker (called from its own terminal slot)."""
+        if self._worker is not None:
+            self._worker.deleteLater()
+            self._worker = None
+
+    def _stop_worker(self):
+        """Cancel and wait for a still-running worker before we close — never
+        destroy a running QThread (that crashes the app)."""
+        if self._worker is not None:
+            if self._cancel_event is not None:
+                self._cancel_event.set()
+            if self._worker.isRunning():
+                self._worker.wait()
+            self._worker.deleteLater()
+            self._worker = None
+
+    def reject(self):
+        self._stop_worker()
+        self._close_progress()
+        super().reject()
+
+    def closeEvent(self, event):
+        self._stop_worker()
+        self._close_progress()
+        super().closeEvent(event)
