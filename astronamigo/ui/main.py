@@ -177,6 +177,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.splitter)
 
         toolbar = self.addToolBar("Main")
+        self.ingest_action = QAction("Ingest…", self)
+        self.ingest_action.setShortcut("Ctrl+I")
+        self.ingest_action.triggered.connect(self._open_ingest)
+        toolbar.addAction(self.ingest_action)
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut("Ctrl+R")
         self.refresh_action.triggered.connect(self._do_refresh)
@@ -258,6 +262,18 @@ class MainWindow(QMainWindow):
             return
         slug = self.table.item(items[0].row(), 0).data(Qt.UserRole)
         self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
+
+    # ---- ingest ----
+    def _open_ingest(self):
+        from astronamigo.ui.ingest_dialog import IngestDialog
+        dlg = IngestDialog(self)
+        dlg.ingested.connect(self._on_ingested)
+        dlg.exec()
+
+    def _on_ingested(self, moved: int):
+        # new lights landed → recompute the tracker so they appear
+        if moved:
+            self._do_refresh()
 
     # ---- refresh ----
     def _do_refresh(self):
