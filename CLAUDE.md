@@ -40,9 +40,10 @@ generated static site). That workflow proved out the data model, the positional
 math, the tracker rollups, and the image pipeline. M110 **ports that
 proven logic into an installable engine** and puts a native-feeling GUI on top.
 
-- The **canonical roadmap & rationale** lives in the Astronomy repo at
-  `workflow_app_plan.md` (distribution, framework, phasing decisions). The
-  roadmap is also summarized below so this repo stands alone.
+- The **canonical roadmap** is [`ROADMAP.md`](ROADMAP.md) in this repo (status,
+  build order, decisions). The long-form *rationale and history* behind the big
+  decisions lives in the sibling Astronomy project's `workflow_app_plan.md`
+  (optional background; this repo stands alone without it).
 - Several engine modules are **faithful ports** of Astronomy `scripts/`
   (`scan_sessions`, `build_derived`, `display_names`, the image pipeline). They
   were validated to reproduce the original output byte-for-byte. **When changing
@@ -158,7 +159,7 @@ pytest -q tests/test_ingest.py
 QT_QPA_PLATFORM=offscreen python -m m110.ui.main   # (won't render, but imports/constructs)
 ```
 
-~80 tests, all fixture-based. UI is smoke-tested offscreen (construct windows,
+79 tests, all fixture-based. UI is smoke-tested offscreen (construct windows,
 drive workers via `app.processEvents()`), not pixel-tested. Add tests alongside
 any engine change; for UI, prefer extracting logic into the engine and testing
 that.
