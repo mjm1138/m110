@@ -159,10 +159,15 @@ pytest -q tests/test_ingest.py
 QT_QPA_PLATFORM=offscreen python -m m110.ui.main   # (won't render, but imports/constructs)
 ```
 
-79 tests, all fixture-based. UI is smoke-tested offscreen (construct windows,
+81 tests, all fixture-based. UI is smoke-tested offscreen (construct windows,
 drive workers via `app.processEvents()`), not pixel-tested. Add tests alongside
 any engine change; for UI, prefer extracting logic into the engine and testing
 that.
+
+**Manual / regression testing:** see [`TESTING.md`](TESTING.md) — a runbook for
+the GUI flows that aren't unit-tested (ingest, rendering, data-root), including a
+safe-temp-root protocol and explicit regression checks for the fixed bugs. Open
+issues / improvement backlog live in [`BUGS.md`](BUGS.md).
 
 ---
 
@@ -210,6 +215,8 @@ pyproject.toml          deps + entry point (gui-script: m110)
 README.md               user-facing quickstart
 CLAUDE.md               this file
 ROADMAP.md              canonical roadmap
+TESTING.md              manual / regression test runbook
+BUGS.md                 open issues + improvement backlog
 LICENSE / NOTICE        Apache-2.0
 .venv/                  local virtualenv (gitignored)
 ```
