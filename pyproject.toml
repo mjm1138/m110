@@ -9,12 +9,13 @@ description = "Library / tracker / processing-prep desktop app for smart-telesco
 requires-python = ">=3.11"
 dependencies = [
     "PySide6>=6.6",
-    "astropy>=6.0",   # build_derived reads FITS stack-metadata headers
+    "astropy>=6.0",     # build_derived reads FITS stack-metadata headers
+    "numpy>=1.26",      # image stretching
+    "pillow>=10",       # thumbnails + heroes
+    "tifffile>=2024.1", # Siril 32-bit float TIF thumbnails
 ]
 
 [project.optional-dependencies]
-# Extras pulled in as later Phase-0 modules (build_site / rendering) are ported.
-render = ["jinja2>=3.1", "markdown>=3.5", "pillow>=10", "numpy>=1.26"]
 dev = ["pytest>=8"]
 
 [project.gui-scripts]
