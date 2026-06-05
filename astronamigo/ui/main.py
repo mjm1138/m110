@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import Qt, QSize, QThread, Signal
-from PySide6.QtGui import QColor, QPixmap, QIcon, QAction
+from PySide6.QtGui import QColor, QPixmap, QIcon, QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QLabel,
     QSplitter, QWidget, QVBoxLayout, QTextBrowser, QListWidget, QListWidgetItem,
@@ -186,8 +186,18 @@ class MainWindow(QMainWindow):
         self.refresh_action.triggered.connect(self._do_refresh)
         toolbar.addAction(self.refresh_action)
 
+        prefs_action = QAction("Preferences…", self)
+        prefs_action.setShortcut(QKeySequence.Preferences)  # Cmd+, on macOS
+        prefs_action.triggered.connect(self._open_prefs)
+        menu = self.menuBar().addMenu("Astronamigo")
+        menu.addAction(prefs_action)
+
         self._update_status()
         self.resize(1080, 700)
+
+    def _open_prefs(self):
+        from astronamigo.ui.preferences import PreferencesDialog
+        PreferencesDialog(self).exec()
 
     # ---- data / table ----
     def _build_table(self) -> QTableWidget:
@@ -297,6 +307,7 @@ class MainWindow(QMainWindow):
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Astronamigo")
+    config.ensure_data_root()  # create + seed the data folder if needed
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

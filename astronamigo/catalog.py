@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 import tomllib
 
-from .config import CATALOG_TOML
+from . import config
 
 _M = re.compile(r"^M\s*(\d+)$")
 _NGC = re.compile(r"^NGC\s*(\d+)$", re.IGNORECASE)
@@ -16,7 +16,7 @@ _NGC = re.compile(r"^NGC\s*(\d+)$", re.IGNORECASE)
 
 def load_catalog() -> dict[str, dict]:
     """Return the catalog as {slug: entry}."""
-    with open(CATALOG_TOML, "rb") as f:
+    with open(config.CATALOG_TOML, "rb") as f:
         return tomllib.load(f)["catalog"]
 
 

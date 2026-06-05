@@ -1,0 +1,1026 @@
+[catalog.m31]
+id = "M31"
+name = "Andromeda Galaxy"
+type = "galaxy"
+magnitude = 3.4
+size = "3°×1°"
+season = "Sep–Nov"
+filter = "OFF"
+notes = "Mosaic required"
+
+[catalog.m32]
+id = "M32"
+name = "Andromeda companion"
+type = "galaxy"
+magnitude = 8.7
+size = "8'×6'"
+season = "Sep–Nov"
+filter = "OFF"
+notes = "Image with M31"
+
+[catalog.m33]
+id = "M33"
+name = "Triangulum Galaxy"
+type = "galaxy"
+magnitude = 5.7
+size = "73'×45'"
+season = "Oct–Dec"
+filter = "OFF"
+notes = "Very low SB; mosaic"
+
+[catalog.m49]
+id = "M49"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 8.4
+size = "9'×7'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m51]
+id = "M51"
+name = "Whirlpool Galaxy"
+type = "galaxy"
+magnitude = 8.4
+size = "11'×7'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m58]
+id = "M58"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 9.7
+size = "6'×5'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m59]
+id = "M59"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 9.8
+size = "5'×3'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m60]
+id = "M60"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 8.8
+size = "7'×6'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m61]
+id = "M61"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 9.7
+size = "6'×6'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m63]
+id = "M63"
+name = "Sunflower Galaxy"
+type = "galaxy"
+magnitude = 8.6
+size = "12'×7'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m64]
+id = "M64"
+name = "Black Eye Galaxy"
+type = "galaxy"
+magnitude = 8.5
+size = "10'×5'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m65]
+id = "M65"
+name = "Leo Triplet"
+type = "galaxy"
+magnitude = 9.3
+size = "8'×2'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m66]
+id = "M66"
+name = "Leo Triplet"
+type = "galaxy"
+magnitude = 8.9
+size = "9'×4'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m74]
+id = "M74"
+name = "Phantom Galaxy"
+type = "galaxy"
+magnitude = 9.4
+size = "10'×10'"
+season = "Oct–Dec"
+filter = "OFF"
+notes = "Very low SB"
+
+[catalog.m77]
+id = "M77"
+name = "Cetus Galaxy"
+type = "galaxy"
+magnitude = 8.9
+size = "7'×6'"
+season = "Oct–Dec"
+filter = "OFF"
+
+[catalog.m81]
+id = "M81"
+name = "Bode's Galaxy"
+type = "galaxy"
+magnitude = 6.9
+size = "27'×14'"
+season = "Feb–Apr"
+filter = "OFF"
+
+[catalog.m82]
+id = "M82"
+name = "Cigar Galaxy"
+type = "galaxy"
+magnitude = 8.4
+size = "11'×4'"
+season = "Feb–Apr"
+filter = "OFF"
+
+[catalog.m83]
+id = "M83"
+name = "Southern Pinwheel"
+type = "galaxy"
+magnitude = 7.5
+size = "13'×12'"
+season = "Apr–Jun"
+filter = "OFF"
+notes = "~20° altitude from Boulder"
+
+[catalog.m84]
+id = "M84"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 9.1
+size = "6'×5'"
+season = "Mar–May"
+filter = "OFF"
+notes = "Markarian's Chain"
+
+[catalog.m85]
+id = "M85"
+name = "Coma Galaxy"
+type = "galaxy"
+magnitude = 9.1
+size = "7'×5'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m86]
+id = "M86"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 8.9
+size = "8'×6'"
+season = "Mar–May"
+filter = "OFF"
+notes = "Markarian's Chain"
+
+[catalog.m87]
+id = "M87"
+name = "Virgo A"
+type = "galaxy"
+magnitude = 8.6
+size = "7'×6'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m88]
+id = "M88"
+name = "Coma Galaxy"
+type = "galaxy"
+magnitude = 9.6
+size = "7'×4'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m89]
+id = "M89"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 9.8
+size = "4'×4'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m90]
+id = "M90"
+name = "Virgo Galaxy"
+type = "galaxy"
+magnitude = 9.5
+size = "10'×5'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m91]
+id = "M91"
+name = "Coma Galaxy"
+type = "galaxy"
+magnitude = 10.2
+size = "5'×4'"
+season = "Mar–May"
+filter = "OFF"
+notes = "Faint"
+
+[catalog.m94]
+id = "M94"
+name = "Croc's Eye Galaxy"
+type = "galaxy"
+magnitude = 8.2
+size = "11'×9'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m95]
+id = "M95"
+name = "Leo Galaxy"
+type = "galaxy"
+magnitude = 9.7
+size = "7'×5'"
+season = "Feb–Apr"
+filter = "OFF"
+
+[catalog.m96]
+id = "M96"
+name = "Leo Galaxy"
+type = "galaxy"
+magnitude = 9.2
+size = "7'×5'"
+season = "Feb–Apr"
+filter = "OFF"
+
+[catalog.m98]
+id = "M98"
+name = "Coma Galaxy"
+type = "galaxy"
+magnitude = 10.1
+size = "10'×3'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m99]
+id = "M99"
+name = "Coma Galaxy"
+type = "galaxy"
+magnitude = 9.9
+size = "5'×5'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m100]
+id = "M100"
+name = "Coma Galaxy"
+type = "galaxy"
+magnitude = 9.3
+size = "7'×6'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m101]
+id = "M101"
+name = "Pinwheel Galaxy"
+type = "galaxy"
+magnitude = 7.9
+size = "29'×27'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m102]
+id = "M102"
+name = "Spindle Galaxy"
+type = "galaxy"
+magnitude = 9.9
+size = "5'×2'"
+season = "May–Jul"
+filter = "OFF"
+
+[catalog.m104]
+id = "M104"
+name = "Sombrero Galaxy"
+type = "galaxy"
+magnitude = 8.0
+size = "9'×4'"
+season = "Mar–May"
+filter = "OFF"
+notes = "⚠ WSW tree — field site only"
+obstructed = true
+
+[catalog.m105]
+id = "M105"
+name = "Leo Galaxy"
+type = "galaxy"
+magnitude = 9.3
+size = "4'×4'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m106]
+id = "M106"
+name = "NGC 4258"
+type = "galaxy"
+magnitude = 8.4
+size = "19'×8'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m108]
+id = "M108"
+name = "Surfboard Galaxy"
+type = "galaxy"
+magnitude = 10.0
+size = "8'×2'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m109]
+id = "M109"
+name = "Barred Spiral"
+type = "galaxy"
+magnitude = 9.8
+size = "7'×5'"
+season = "Mar–May"
+filter = "OFF"
+
+[catalog.m110]
+id = "M110"
+name = "M31 companion"
+type = "galaxy"
+magnitude = 8.5
+size = "22'×11'"
+season = "Sep–Nov"
+filter = "OFF"
+notes = "Image with M31"
+
+[catalog.ngc-2903]
+id = "NGC 2903"
+name = "NGC 2903"
+type = "galaxy"
+magnitude = 8.9
+size = "13'×6'"
+season = "Feb–Apr"
+filter = "OFF"
+
+[catalog.ngc-3628]
+id = "NGC 3628"
+type = "galaxy"
+season = "Mar–May"
+
+[catalog.m1]
+id = "M1"
+name = "Crab Nebula (SNR)"
+type = "emission_snr"
+magnitude = 8.4
+size = "7'×5'"
+season = "Dec–Feb"
+filter = "ON"
+
+[catalog.m8]
+id = "M8"
+name = "Lagoon Nebula"
+type = "emission"
+magnitude = 5.0
+size = "90'×40'"
+season = "Jun–Aug"
+filter = "ON"
+
+[catalog.m16]
+id = "M16"
+name = "Eagle Nebula"
+type = "emission"
+magnitude = 6.4
+size = "35'×28'"
+season = "Jun–Aug"
+filter = "ON"
+
+[catalog.m17]
+id = "M17"
+name = "Omega/Swan Nebula"
+type = "emission"
+magnitude = 7.0
+size = "46'×37'"
+season = "Jun–Aug"
+filter = "ON"
+
+[catalog.m20]
+id = "M20"
+name = "Trifid Nebula"
+type = "emission"
+magnitude = 9.0
+size = "28'"
+season = "Jun–Aug"
+filter = "ON"
+
+[catalog.m27]
+id = "M27"
+name = "Dumbbell Nebula"
+type = "planetary"
+magnitude = 7.4
+size = "8'×6'"
+season = "Jul–Sep"
+filter = "ON"
+
+[catalog.m42]
+id = "M42"
+name = "Orion Nebula"
+type = "emission"
+magnitude = 4.0
+size = "85'×60'"
+season = "Dec–Feb"
+filter = "OFF"
+
+[catalog.m43]
+id = "M43"
+name = "De Mairan's Nebula"
+type = "emission"
+magnitude = 9.0
+size = "20'×15'"
+season = "Dec–Feb"
+filter = "ON"
+
+[catalog.m57]
+id = "M57"
+name = "Ring Nebula"
+type = "planetary"
+magnitude = 8.8
+size = "4'×3'"
+season = "Jul–Sep"
+filter = "ON"
+
+[catalog.m76]
+id = "M76"
+name = "Little Dumbbell"
+type = "planetary"
+magnitude = 10.1
+size = "3'×2'"
+season = "Oct–Dec"
+filter = "ON"
+
+[catalog.m97]
+id = "M97"
+type = "planetary"
+name = "Owl Nebula"
+magnitude = 9.9
+size = "3'"
+season = "Year-round"
+filter = "ON"
+
+[catalog.m78]
+id = "M78"
+type = "reflection"
+name = "Reflection Neb"
+magnitude = 8.3
+size = "8'×6'"
+season = "Dec–Feb"
+filter = "OFF"
+
+[catalog.m2]
+id = "M2"
+name = "Aquarius Globular"
+type = "globular"
+magnitude = 6.5
+size = "16'"
+season = "Aug–Oct"
+filter = "OFF"
+
+[catalog.m3]
+id = "M3"
+name = "CVn Globular"
+type = "globular"
+magnitude = 6.2
+size = "18'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m4]
+id = "M4"
+name = "Scorpius Globular"
+type = "globular"
+magnitude = 5.9
+size = "26'"
+season = "May–Jul"
+filter = "OFF"
+notes = "Low from Boulder"
+
+[catalog.m5]
+id = "M5"
+name = "Serpens Globular"
+type = "globular"
+magnitude = 5.7
+size = "17'"
+season = "May–Jul"
+filter = "OFF"
+
+[catalog.m9]
+id = "M9"
+name = "Ophiuchus Globular"
+type = "globular"
+magnitude = 7.7
+size = "9'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m10]
+id = "M10"
+name = "Ophiuchus Globular"
+type = "globular"
+magnitude = 6.6
+size = "15'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m12]
+id = "M12"
+name = "Ophiuchus Globular"
+type = "globular"
+magnitude = 6.7
+size = "14'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m13]
+id = "M13"
+name = "Hercules Globular"
+type = "globular"
+magnitude = 5.9
+size = "20'"
+season = "May–Jul"
+filter = "OFF"
+
+[catalog.m14]
+id = "M14"
+name = "Ophiuchus Globular"
+type = "globular"
+magnitude = 7.6
+size = "11'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m15]
+id = "M15"
+name = "Pegasus Globular"
+type = "globular"
+magnitude = 6.2
+size = "18'"
+season = "Aug–Oct"
+filter = "OFF"
+
+[catalog.m19]
+id = "M19"
+name = "Ophiuchus Globular"
+type = "globular"
+magnitude = 6.8
+size = "14'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m22]
+id = "M22"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 5.1
+size = "24'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m28]
+id = "M28"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 6.8
+size = "11'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m30]
+id = "M30"
+name = "Capricornus Globular"
+type = "globular"
+magnitude = 7.2
+size = "11'"
+season = "Aug–Oct"
+filter = "OFF"
+
+[catalog.m53]
+id = "M53"
+name = "Coma Globular"
+type = "globular"
+magnitude = 7.6
+size = "12'"
+season = "Apr–Jun"
+filter = "OFF"
+
+[catalog.m54]
+id = "M54"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 7.6
+size = "9'"
+season = "Jul–Sep"
+filter = "OFF"
+
+[catalog.m55]
+id = "M55"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 6.3
+size = "19'"
+season = "Jul–Sep"
+filter = "OFF"
+notes = "Low from Boulder"
+
+[catalog.m56]
+id = "M56"
+name = "Lyra Globular"
+type = "globular"
+magnitude = 8.3
+size = "7'"
+season = "Jul–Sep"
+filter = "OFF"
+
+[catalog.m62]
+id = "M62"
+name = "Scorpius Globular"
+type = "globular"
+magnitude = 6.5
+size = "14'"
+season = "Jun–Aug"
+filter = "OFF"
+notes = "Low"
+
+[catalog.m68]
+id = "M68"
+name = "Hydra Globular"
+type = "globular"
+magnitude = 7.8
+size = "12'"
+season = "Mar–May"
+filter = "OFF"
+notes = "Very low from Boulder"
+
+[catalog.m69]
+id = "M69"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 7.6
+size = "9'"
+season = "Jun–Aug"
+filter = "OFF"
+notes = "Very low"
+
+[catalog.m70]
+id = "M70"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 7.9
+size = "8'"
+season = "Jun–Aug"
+filter = "OFF"
+notes = "Very low"
+
+[catalog.m71]
+id = "M71"
+name = "Sagitta Globular"
+type = "globular"
+magnitude = 8.3
+size = "7'"
+season = "Jul–Sep"
+filter = "OFF"
+
+[catalog.m72]
+id = "M72"
+name = "Aquarius Globular"
+type = "globular"
+magnitude = 9.3
+size = "6'"
+season = "Aug–Oct"
+filter = "OFF"
+notes = "Faint"
+
+[catalog.m75]
+id = "M75"
+name = "Sagittarius Globular"
+type = "globular"
+magnitude = 8.5
+size = "6'"
+season = "Jul–Sep"
+filter = "OFF"
+
+[catalog.m79]
+id = "M79"
+name = "Lepus Globular"
+type = "globular"
+magnitude = 7.7
+size = "9'"
+season = "Dec–Feb"
+filter = "OFF"
+notes = "Season ending"
+
+[catalog.m80]
+id = "M80"
+name = "Scorpius Globular"
+type = "globular"
+magnitude = 7.3
+size = "10'"
+season = "May–Jul"
+filter = "OFF"
+notes = "Low"
+
+[catalog.m92]
+id = "M92"
+name = "Hercules Globular"
+type = "globular"
+magnitude = 6.5
+size = "14'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m107]
+id = "M107"
+type = "globular"
+name = "Ophiuchus Globular"
+magnitude = 7.8
+size = "10'"
+season = "May–Jul"
+filter = "OFF"
+
+[catalog.m6]
+id = "M6"
+name = "Butterfly Cluster"
+type = "open_cluster"
+magnitude = 4.2
+size = "25'"
+season = "Jun–Aug"
+filter = "OFF"
+notes = "Low from Boulder"
+
+[catalog.m7]
+id = "M7"
+name = "Ptolemy's Cluster"
+type = "open_cluster"
+magnitude = 3.3
+size = "80'"
+season = "Jun–Aug"
+filter = "OFF"
+notes = "Very low"
+
+[catalog.m11]
+id = "M11"
+name = "Wild Duck Cluster"
+type = "open_cluster"
+magnitude = 5.8
+size = "14'"
+season = "Jul–Sep"
+filter = "OFF"
+
+[catalog.m18]
+id = "M18"
+name = "Open Cluster"
+type = "open_cluster"
+magnitude = 7.5
+size = "9'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m21]
+id = "M21"
+name = "Open Cluster"
+type = "open_cluster"
+magnitude = 6.5
+size = "13'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m23]
+id = "M23"
+name = "Open Cluster"
+type = "open_cluster"
+magnitude = 6.9
+size = "27'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m24]
+id = "M24"
+name = "Sagittarius Star Cloud"
+type = "open_cluster"
+magnitude = 4.5
+size = "90'"
+season = "Jun–Aug"
+filter = "OFF"
+notes = "Mosaic mode; Arches target"
+
+[catalog.m25]
+id = "M25"
+name = "Open Cluster"
+type = "open_cluster"
+magnitude = 6.5
+size = "32'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m26]
+id = "M26"
+name = "Open Cluster"
+type = "open_cluster"
+magnitude = 8.0
+size = "15'"
+season = "Jun–Aug"
+filter = "OFF"
+
+[catalog.m29]
+id = "M29"
+name = "Cygnus Cluster"
+type = "open_cluster"
+magnitude = 7.1
+size = "7'"
+season = "Jul–Sep"
+filter = "OFF"
+
+[catalog.m34]
+id = "M34"
+name = "Perseus Cluster"
+type = "open_cluster"
+magnitude = 5.2
+size = "35'"
+season = "Oct–Dec"
+filter = "OFF"
+
+[catalog.m35]
+id = "M35"
+name = "Gemini Cluster"
+type = "open_cluster"
+magnitude = 5.1
+size = "28'"
+season = "Dec–Feb"
+filter = "OFF"
+notes = "Season ending"
+
+[catalog.m36]
+id = "M36"
+name = "Auriga Cluster"
+type = "open_cluster"
+magnitude = 6.0
+size = "12'"
+season = "Dec–Feb"
+filter = "OFF"
+notes = "Season ending"
+
+[catalog.m37]
+id = "M37"
+name = "Auriga Cluster"
+type = "open_cluster"
+magnitude = 5.6
+size = "24'"
+season = "Dec–Feb"
+filter = "OFF"
+
+[catalog.m38]
+id = "M38"
+name = "Auriga Cluster"
+type = "open_cluster"
+magnitude = 6.4
+size = "21'"
+season = "Dec–Feb"
+filter = "OFF"
+notes = "Season ending"
+
+[catalog.m39]
+id = "M39"
+name = "Cygnus Cluster"
+type = "open_cluster"
+magnitude = 4.6
+size = "32'"
+season = "Aug–Oct"
+filter = "OFF"
+
+[catalog.m41]
+id = "M41"
+name = "Canis Major Cluster"
+type = "open_cluster"
+magnitude = 4.5
+size = "38'"
+season = "Dec–Feb"
+filter = "OFF"
+notes = "Low from Boulder"
+
+[catalog.m44]
+id = "M44"
+name = "Beehive Cluster"
+type = "open_cluster"
+magnitude = 3.1
+size = "95'"
+season = "Jan–Mar"
+filter = "OFF"
+
+[catalog.m45]
+id = "M45"
+name = "Pleiades"
+type = "open_cluster"
+magnitude = 1.2
+size = "110'"
+season = "Nov–Jan"
+filter = "OFF"
+notes = "Very large; mosaic"
+
+[catalog.m46]
+id = "M46"
+name = "Puppis Cluster"
+type = "open_cluster"
+magnitude = 6.1
+size = "27'"
+season = "Jan–Mar"
+filter = "OFF"
+notes = "Low"
+
+[catalog.m47]
+id = "M47"
+name = "Puppis Cluster"
+type = "open_cluster"
+magnitude = 4.4
+size = "30'"
+season = "Jan–Mar"
+filter = "OFF"
+notes = "Low"
+
+[catalog.m48]
+id = "M48"
+name = "Hydra Cluster"
+type = "open_cluster"
+magnitude = 5.8
+size = "54'"
+season = "Jan–Mar"
+filter = "OFF"
+
+[catalog.m50]
+id = "M50"
+name = "Monoceros Cluster"
+type = "open_cluster"
+magnitude = 5.9
+size = "16'"
+season = "Jan–Mar"
+filter = "OFF"
+notes = "Season ending"
+
+[catalog.m52]
+id = "M52"
+name = "Cassiopeia Cluster"
+type = "open_cluster"
+magnitude = 6.9
+size = "13'"
+season = "Sep–Nov"
+filter = "OFF"
+
+[catalog.m67]
+id = "M67"
+name = "Cancer Cluster"
+type = "open_cluster"
+magnitude = 6.1
+size = "25'"
+season = "Feb–Apr"
+filter = "OFF"
+
+[catalog.m93]
+id = "M93"
+name = "Puppis Cluster"
+type = "open_cluster"
+magnitude = 6.2
+size = "22'"
+season = "Jan–Mar"
+filter = "OFF"
+notes = "Low"
+
+[catalog.m103]
+id = "M103"
+name = "Cassiopeia Cluster"
+type = "open_cluster"
+magnitude = 7.4
+size = "6'"
+season = "Oct–Dec"
+filter = "OFF"
+
+[catalog.markarians-chain]
+id = "Markarian's Chain"
+name = "Markarian's Chain"
+type = "galaxy_group"
+size = "1.5°"
+season = "Mar–May"
+filter = "OFF"
+notes = "Mosaic — chain of galaxies in Virgo Cluster"

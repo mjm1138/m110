@@ -22,3 +22,6 @@ astronamigo = "astronamigo.ui.main:main"
 
 [tool.setuptools]
 packages = ["astronamigo", "astronamigo.ui"]
+
+[tool.setuptools.package-data]
+astronamigo = ["seed/*.toml"]

@@ -1,0 +1,389 @@
+# Priority targets for the Seestar S50 collection.
+# Edited by hand. Joined with totals in build_derived.py to compute progress.
+#
+# Fields:
+#   id                       — display name; matches FITS folder or catalog id
+#   type_hint                — short type label for the table
+#   season                   — calendar window when the target is workable
+#   priority                 — high / medium / low
+#   filter                   — ON / OFF / IRCUT / LP per S50 setting
+#   strategy                 — per-target intent (one line)
+#   target / target_integration_min — the goal; demote when met
+#   track                    — optional bool (default true). Set false for a
+#                              campaign / reminder entry (multi-object or
+#                              multi-filter) whose id doesn't map to one capture
+#                              folder; it then renders without a progress bar
+#                              instead of a misleading auto-rollup.
+
+# ---- Active spring galaxies (window closes late June) ----
+
+[[priority]]
+id = "M94"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "high"
+filter = "IRCUT"
+strategy = "Biggest remaining spring-galaxy gap; needs 2–3 more sessions before late June"
+target = "12:00"
+target_integration_min = 720
+
+[[priority]]
+id = "M63"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "high"
+filter = "OFF"
+strategy = "Add integration time to make up for lights with bad backgrounds; 10:50 PM is the sweet spot (post-transit, ~77°)"
+target = "6:00"
+target_integration_min = 240
+
+[[priority]]
+id = "M106"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "high"
+filter = "IRCUT"
+strategy = "One more session closes deep stack; descending-side starts only (transits before astro dark)"
+target = "6:00"
+target_integration_min = 360
+
+# ---- Summer-long globulars (Hercules / Serpens) ----
+
+[[priority]]
+id = "M5"
+type_hint = "Globular"
+season = "May–Aug"
+priority = "high"
+filter = "OFF"
+strategy = "Bright Serpens globular — close to first deep-stack target; one more session finishes"
+target = "2:30"
+target_integration_min = 150
+
+[[priority]]
+id = "M92"
+type_hint = "Globular"
+season = "May–Aug"
+priority = "high"
+filter = "OFF"
+strategy = "Hercules secondary — descending-side window opens ~2:50 AM all summer"
+target = "2:00"
+target_integration_min = 120
+
+[[priority]]
+id = "M13"
+type_hint = "Globular"
+season = "May–Aug"
+priority = "high"
+filter = "OFF"
+strategy = "Skipped on May 14 plan — needs ~40 min usable data to close. Start before midnight (rising side) or after 2:10 AM (descending side)"
+target = "2:30"
+target_integration_min = 150
+
+# ---- Summer set (coming into prime season from June) ----
+
+[[priority]]
+id = "M57"
+type_hint = "Planetary Neb"
+season = "Jun–Sep"
+priority = "high"
+filter = "ON"
+strategy = "Ring Nebula — Lyra; transits late evening from mid-June onward, prime summer showcase"
+target = "4:30"
+target_integration_min = 270
+
+[[priority]]
+id = "M27"
+type_hint = "Planetary Neb"
+season = "Jun–Sep"
+priority = "high"
+filter = "ON"
+strategy = "Dumbbell — Vulpecula; pairs naturally with M57 in a single summer plan"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "M11"
+type_hint = "Open Cluster"
+season = "Jun–Sep"
+priority = "medium"
+filter = "OFF"
+strategy = "Wild Duck Cluster — Scutum, transits ~30° from Boulder; short-exposure plan candidate (10s subs)"
+target = "1:00"
+target_integration_min = 60
+
+[[priority]]
+id = "M71"
+type_hint = "Globular"
+season = "Jun–Sep"
+priority = "medium"
+filter = "OFF"
+strategy = "Loose open-globular in Sagitta; fits naturally with M27/M57 summer plans"
+target = "1:30"
+target_integration_min = 90
+
+# ---- Cygnus deep-sky (summer-fall) ----
+
+[[priority]]
+id = "Veil Nebula (E)"
+type_hint = "SNR"
+season = "Jun–Oct"
+priority = "high"
+filter = "ON"
+strategy = "Eastern Veil (NGC 6992/6995) — bright filaments fit S50 FOV well; primary Veil target"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "Veil Nebula (W)"
+type_hint = "SNR"
+season = "Jun–Oct"
+priority = "high"
+filter = "ON"
+strategy = "Western Veil / Witch's Broom (NGC 6960) — companion to eastern Veil; framed near 52 Cyg"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "North America Nebula (mosaic)"
+type_hint = "Emission"
+season = "Jul–Oct"
+priority = "medium"
+filter = "ON"
+strategy = "NGC 7000 — full extent ~2°×1.7° requires S50 mosaic mode; primary version of this target"
+target = "4:00"
+target_integration_min = 240
+
+[[priority]]
+id = "North America Nebula (Cygnus Wall)"
+type_hint = "Emission"
+season = "Jul–Oct"
+priority = "medium"
+filter = "ON"
+strategy = "NGC 7000 east edge — single FOV fallback if mosaic doesn't work out"
+target = "2:30"
+target_integration_min = 150
+
+# ---- Messier completion (opportunistic but tracked) ----
+
+[[priority]]
+id = "M44"
+type_hint = "Open Cluster"
+season = "Jan–May"
+priority = "medium"
+filter = "OFF"
+strategy = "Beehive Cluster — short-exposure plan candidate; small existing data is truncated"
+target = "1:00"
+target_integration_min = 60
+
+[[priority]]
+id = "M64"
+type_hint = "Galaxy"
+season = "Apr–Jun"
+priority = "medium"
+filter = "IRCUT"
+strategy = "Black Eye Galaxy — CVn; opportunistic adds while still in spring window"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "NGC 2903"
+type_hint = "Galaxy"
+season = "Mar–May"
+priority = "medium"
+filter = "IRCUT"
+strategy = "Leo galaxy; ~0:43 captured already — opportunistic top-up while window closing"
+target = "2:00"
+target_integration_min = 120
+
+# ---- Spring frontier — under-explored (surfaced 2026-06-04 catalog review) ----
+
+[[priority]]
+id = "M109"
+type_hint = "Galaxy"
+season = "Mar–Jun"
+priority = "medium"
+filter = "IRCUT"
+strategy = "Barred spiral in UMa near Phecda (mag 9.8) — the clear omission alongside M106/M108/M94. Transits ~77° in the north, no eastern obstruction; reachable well into summer evenings. Near-transit start-ceiling window applies (start on the rising side below ~75° or after it descends through 75°)."
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "M53"
+type_hint = "Globular"
+season = "Mar–Jun"
+priority = "medium"
+filter = "OFF"
+strategy = "Coma Berenices globular (mag 7.6) — reachable in the post-transit S/SW window (transits ~68°, east wall blocks the rising side). Bright and moon-tolerant; natural companion to M3/M5. 2026 window closing — opportunistic now, otherwise spring 2027."
+target = "2:00"
+target_integration_min = 120
+
+[[priority]]
+id = "M67"
+type_hint = "Open Cluster"
+season = "Jan–Apr"
+priority = "low"
+filter = "OFF"
+strategy = "Bright Cancer open cluster (mag 6.1) — short-exposure (10s) candidate. Cancer sets early by June so the 2026 window is effectively closed; queue for a dedicated short-exposure plan in winter/spring 2027."
+target = "1:00"
+target_integration_min = 60
+
+[[priority]]
+id = "Virgo–Coma galaxies (cluster)"
+type_hint = "Galaxy cluster"
+season = "Mar–May"
+priority = "medium"
+filter = "OFF"
+track = false
+strategy = "Large under-explored frontier — ~19 Messier galaxies across Virgo/Coma/Leo-I (M49, M58–61, M84–91, M95/96/98/99/100, M105); only Markarian's Chain (M84/86 region) and M64 captured so far. All transit 58–68° in the south, so the east wall blocks the rising side — workable only in the post-meridian S→SW window before the WNW tree. Marquee/brightest to prioritize: M49, M60, M87 (Virgo A), M85, M100, M88. Each is a separate 1.5° FOV. 2026 window closing — primary push is spring 2027; grab the brightest opportunistically in the SW until then. Progress not auto-tracked (multi-object campaign)."
+target = "6:00"
+target_integration_min = 360
+
+# ---- Obstructed / difficult from Boulder — target if conditions allow ----
+
+[[priority]]
+id = "M104"
+type_hint = "Galaxy"
+season = "Apr–May"
+priority = "medium"
+filter = "OFF"
+strategy = "Sombrero Galaxy — WNW tree blocks setting path. Attempt from Boulder if a clear post-transit window opens; otherwise carry to a future dark-site trip (next viable window: late winter/spring 2027)"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "Leo Triplet"
+type_hint = "Galaxy group"
+season = "Apr–May"
+priority = "medium"
+filter = "OFF"
+strategy = "M65 + M66 + NGC 3628 — eastern obstruction blocks rising side; possible from Boulder post-transit (descending SW). Otherwise future dark-site trip in 2027 spring"
+target = "4:00"
+target_integration_min = 240
+
+# ---- Arches trip targets (May 28–29 under bright moon) ----
+# Trip is moonlit (94–98% illumination at near-transit altitude). LP narrowband
+# filter still delivers usable data on these targets; expect partial integration
+# only, with a follow-up dark-site trip required for completion.
+
+[[priority]]
+id = "M8"
+type_hint = "Emission"
+season = "May–Aug (dark site)"
+priority = "high"
+filter = "ON"
+strategy = "Lagoon Nebula — Arches trip with LP filter under moonlight; partial data, expect to revisit at future dark-site opportunity"
+target = "2:30"
+target_integration_min = 150
+
+[[priority]]
+id = "M16"
+type_hint = "Emission"
+season = "May–Aug (dark site)"
+priority = "high"
+filter = "ON"
+strategy = "Eagle Nebula — Pillars at S50 scale; Arches with LP filter, dark-site follow-up needed"
+target = "2:30"
+target_integration_min = 150
+
+[[priority]]
+id = "M17"
+type_hint = "Emission"
+season = "May–Aug (dark site)"
+priority = "high"
+filter = "ON"
+strategy = "Swan/Omega Nebula — bright, compact; Arches trip with LP filter under moonlight"
+target = "2:30"
+target_integration_min = 150
+
+[[priority]]
+id = "M20"
+type_hint = "Emission"
+season = "May–Aug (dark site)"
+priority = "high"
+filter = "ON"
+strategy = "Trifid Nebula — small, complex; Arches with LP filter under moonlight, dark-site follow-up needed"
+target = "2:00"
+target_integration_min = 120
+
+# ---- Demoted (target met or past target — opportunistic only) ----
+
+[[priority]]
+id = "M3"
+type_hint = "Globular"
+season = "May–Jun"
+priority = "low"
+filter = "OFF"
+strategy = "Target met May 14 — opportunistic only"
+target = "2:00"
+target_integration_min = 120
+
+[[priority]]
+id = "M51"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "low"
+filter = "IRCUT"
+strategy = "Target met May 15 — opportunistic only"
+target = "10:00"
+target_integration_min = 600
+
+[[priority]]
+id = "M101"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "low"
+filter = "IRCUT"
+strategy = "Target met May 15 — opportunistic only; circumpolar so always available"
+target = "8:00"
+target_integration_min = 480
+
+[[priority]]
+id = "M81/M82"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "low"
+filter = "IRCUT"
+strategy = "Broadband past 20h target — opportunistic only unless bumped"
+target = "20:00"
+target_integration_min = 1200
+
+[[priority]]
+id = "M81/M82 (LP Hα)"
+type_hint = "Galaxy (Hα)"
+season = "Nov–Jun"
+priority = "medium"
+filter = "LP"
+track = false
+strategy = "Narrowband Hα on M82's starburst outflow. First pass Jun 4 2026 (90 min) gave a usable red core accent but not the bold bipolar filaments — want ~4h+ total LP to resolve the extended outflow, then re-blend into the broadband RGB (R−G continuum-subtraction → red). Season window closing for 2026; primary target is the autumn/winter 2026–27 return. Progress not auto-tracked (LP subs live in the shared M81 M82 folder)."
+target = "4:00"
+target_integration_min = 240
+
+[[priority]]
+id = "M97"
+type_hint = "Planetary Neb"
+season = "May–Jun"
+priority = "low"
+filter = "LP"
+strategy = "Past 3h target — keeps growing via M108 framed-pair sessions"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "M108"
+type_hint = "Galaxy"
+season = "May–Jun"
+priority = "low"
+filter = "IRCUT"
+strategy = "Past 3h target — pairs naturally with M97 in framed FOV; opportunistic only"
+target = "3:00"
+target_integration_min = 180
+
+[[priority]]
+id = "Markarian's Chain (mosaic)"
+type_hint = "Galaxy mosaic"
+season = "Apr–May"
+priority = "low"
+filter = "IRCUT"
+strategy = "Challenging mosaic target from this site — opportunistic only"
+target = "6:00"
+target_integration_min = 360
