@@ -128,8 +128,8 @@ class DetailPane(QScrollArea):
             tb.setMinimumHeight(220)
             self._lay.addWidget(tb)
 
-        imgs = [im for im in derived.images_for(slug)
-                if im.get("viewable") and im.get("thumb")]
+        # show anything we managed to thumbnail — including FITS stacks
+        imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
             self._lay.addWidget(QLabel(f"<b>Gallery</b> ({len(imgs)})"))
             gallery = QListWidget()

@@ -46,17 +46,14 @@ def img_hash(path: Path) -> str:
     return h.hexdigest()[:12]
 
 
-def make_thumb(src: Path, dest_dir: Path) -> Path | None:
-    """JPG thumbnail for src into dest_dir (cached). Handles png/jpg, float TIF,
-    and FITS (1–99.5% percentile stretch). Returns the output path or None."""
+def _open_image(src: Path):
+    """Open a raster / float-TIF / FITS source as a full-res RGB PIL image, or
+    None. FITS and float TIF are percentile-stretched so a preview is visible."""
     try:
         from PIL import Image
     except ImportError:
         return None
     suffix = src.suffix.lower()
-    out = dest_dir / f"{img_hash(src)}.jpg"
-    if out.exists():
-        return out
     try:
         if suffix in (".fit", ".fits"):
             from astropy.io import fits
@@ -72,9 +69,9 @@ def make_thumb(src: Path, dest_dir: Path) -> Path | None:
                 if hi <= lo:
                     return None
                 arr = (np.clip((arr - lo) / (hi - lo), 0, 1) * 255).astype("uint8")
-                img = (Image.fromarray(arr, "L").convert("RGB")
-                       if arr.ndim == 2 else Image.fromarray(arr, "RGB"))
-        elif suffix in (".tif", ".tiff"):
+                return (Image.fromarray(arr, "L").convert("RGB")
+                        if arr.ndim == 2 else Image.fromarray(arr, "RGB"))
+        if suffix in (".tif", ".tiff"):
             import tifffile
             import numpy as np
             arr = tifffile.imread(src)
@@ -87,20 +84,34 @@ def make_thumb(src: Path, dest_dir: Path) -> Path | None:
             elif arr.dtype == np.uint16:
                 arr = (arr / 256).astype("uint8")
             if arr.ndim == 2:
-                img = Image.fromarray(arr, "L").convert("RGB")
-            elif arr.ndim == 3 and arr.shape[2] >= 3:
-                img = Image.fromarray(arr[..., :3], "RGB")
-            else:
-                return None
-        else:
-            img = Image.open(src)
-            if img.mode not in ("RGB", "L"):
-                img = img.convert("RGB")
+                return Image.fromarray(arr, "L").convert("RGB")
+            if arr.ndim == 3 and arr.shape[2] >= 3:
+                return Image.fromarray(arr[..., :3], "RGB")
+            return None
+        img = Image.open(src)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        return img
+    except Exception as e:
+        print(f"  image open failed for {src.name}: {e}")
+        return None
+
+
+def make_thumb(src: Path, dest_dir: Path) -> Path | None:
+    """JPG thumbnail for src into dest_dir (cached, content-hashed). Handles
+    png/jpg, float TIF, and FITS. Returns the output path or None."""
+    out = dest_dir / f"{img_hash(src)}.jpg"
+    if out.exists():
+        return out
+    img = _open_image(src)
+    if img is None:
+        return None
+    try:
         img.thumbnail((THUMB_W, THUMB_W * 4))
         img.save(out, "JPEG", quality=85, optimize=True)
         return out
     except Exception as e:
-        print(f"  thumb failed for {src.name}: {e}")
+        print(f"  thumb save failed for {src.name}: {e}")
         return None
 
 
@@ -171,24 +182,25 @@ def _hero_source(slug: str, folders: list[str], imgs: list[dict]) -> Path | None
         p = config.DATA_ROOT / hp
         if p.is_file():
             return p
-    return find_hero_source(folders)
+    # Prefer a raster (jpg/png) photo via the tier order; otherwise fall back to
+    # the newest discovered image — which may be a FITS stack (rendered below).
+    photo = find_hero_source(folders)
+    if photo:
+        return photo
+    return imgs[0]["path"] if imgs else None
 
 
 def _render_hero(src: Path, dst: Path) -> bool:
-    try:
-        from PIL import Image
-    except ImportError:
+    img = _open_image(src)   # handles raster / TIF / FITS
+    if img is None:
         return False
     try:
-        img = Image.open(src)
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        img.thumbnail((HERO_SIZE, HERO_SIZE), Image.LANCZOS)
+        img.thumbnail((HERO_SIZE, HERO_SIZE))
         dst.parent.mkdir(parents=True, exist_ok=True)
         img.save(dst, "JPEG", quality=90, optimize=True)
         return True
     except Exception as e:
-        print(f"  hero failed for {src.name}: {e}")
+        print(f"  hero save failed for {src.name}: {e}")
         return False
 
 
@@ -211,15 +223,13 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
             continue
         entries = []
         for im in imgs:
-            thumb = None
-            if im["viewable"]:
-                tp = make_thumb(im["path"], site_img)
-                if tp:
-                    thumb = f"img/{tp.name}"
+            # Thumbnail every discovered image, including FITS stacks (rendered
+            # via a percentile stretch) — so even .fit-only objects show a preview.
+            tp = make_thumb(im["path"], site_img)
             entries.append({"name": im["name"], "display_name": im["display_name"],
                             "label": im["label"], "size_mb": im["size_mb"],
                             "mtime": im["mtime"], "viewable": im["viewable"],
-                            "thumb": thumb, "full": None})
+                            "thumb": f"img/{tp.name}" if tp else None, "full": None})
         manifest[slug] = entries
         src = _hero_source(slug, folders, imgs)
         if src:

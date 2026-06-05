@@ -132,6 +132,17 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
                                 str(dest.relative_to(imgs)), False, action))
+        # Also pull the device's preview renders (.jpg/.png) into the same stack
+        # folder so the gallery has ready-made images; skip the Seestar's
+        # *_thn.* sidecar thumbnails.
+        existing_all = set(_all_files(dst_dir))
+        for f in _all_files(src_dir):
+            if "_thn." in f or f in existing_all:
+                continue
+            if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png"):
+                dest = dst_dir / f
+                ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
+                                    str(dest.relative_to(imgs)), False, action))
 
     for md in media_dirs:
         _ck()

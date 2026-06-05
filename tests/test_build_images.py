@@ -63,3 +63,24 @@ def test_uncaptured_slug_skipped(tmp_path, monkeypatch):
     totals = {"by_folder": {}, "by_slug": {}}   # no folders → nothing to render
     result = build_images.render_images(catalog, totals)
     assert result["slugs"] == 0
+
+
+def test_fit_stack_gets_thumbnail_and_hero(tmp_path, monkeypatch):
+    """A FITS-only Seestar stack must still produce a gallery thumbnail + hero
+    (bug: nothing displayed for objects with only .fit stacks)."""
+    import numpy as np
+    from astropy.io import fits
+    root = _setup(tmp_path, monkeypatch)
+    p = root / "Images" / "Seestar_stacks" / "M99" / "Stacked_10_M99.fit"
+    p.parent.mkdir(parents=True)
+    fits.PrimaryHDU((np.random.rand(40, 40) * 1000).astype("float32")).writeto(p)
+
+    catalog = {"m99": {"id": "M99", "name": "Test"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}
+    res = build_images.render_images(catalog, totals)
+    assert res["slugs"] == 1
+
+    entry = json.loads((root / "data" / "derived" / "images.json").read_text())["m99"][0]
+    assert entry["viewable"] is False                 # it's a .fit
+    assert entry["thumb"] and (root / "site" / entry["thumb"]).is_file()  # thumbnailed anyway
+    assert (root / "site" / "img" / "hero" / "m99.jpg").is_file()         # hero from the .fit

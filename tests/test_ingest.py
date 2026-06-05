@@ -127,3 +127,23 @@ def test_seestar_plan_uses_copy_and_leaves_device(tmp_path, monkeypatch):
     # copied into collection AND still present on the "device"
     assert (images / "FITS" / "M13" / "lights" / "Light_M13_a.fit").is_file()
     assert (sub / "Light_M13_a.fit").is_file()
+
+
+def test_seestar_copies_stack_previews(tmp_path, monkeypatch):
+    """Stack folders' preview .jpg/.png are copied too (so the gallery has
+    ready-made images); the device's *_thn.* sidecars are skipped."""
+    images = tmp_path / "Images"
+    images.mkdir(parents=True)
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+    myworks = tmp_path / "Volumes" / "EMMC Images" / "MyWorks"
+    stk = myworks / "M13"
+    stk.mkdir(parents=True)
+    (stk / "Stacked_10_M13.fit").write_text("f")
+    (stk / "M13.jpg").write_text("j")          # device preview render
+    (stk / "M13_thn.jpg").write_text("t")      # device thumbnail sidecar (skip)
+    monkeypatch.setattr(config, "find_seestar_myworks", lambda: myworks)
+
+    names = sorted(op.src.rsplit("/", 1)[-1] for op in ingest.scan_seestar_plan())
+    assert "Stacked_10_M13.fit" in names
+    assert "M13.jpg" in names
+    assert "M13_thn.jpg" not in names
