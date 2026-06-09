@@ -49,6 +49,13 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
    build a planning surface; emit the session-plan document.
+   *Head start (June 2026):* the Astronomy repo now has the tested, config-driven
+   engine to port — `scripts/{sky,horizon,make_ssc,planning_config}.py` +
+   `tests/test_planning.py` (site/device TOML profiles, zoneinfo DST, moon model,
+   horizon-mask obstruction). **Decision: horizon input is Stellarium/NINA-style
+   `.hrz` files** (whitespace az/alt pairs; our CSV also accepted) — **theo.rocks**
+   (mobile web app: pan the phone around the skyline, export `.hrz`) is the
+   recommended capture tool for M110 users; the parser already consumes its output.
 2. **Plan-file generation** — SSC schedule JSON (port the existing generator),
    NINA Advanced Sequences (schema capture pending), possibly INDI/Ekos.
 3. **Alpaca equipment control** — a monitor/author *companion* to a headless Pi
