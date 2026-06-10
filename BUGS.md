@@ -37,6 +37,18 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 - [~] **#11**: Import & display *everything* off the Seestar (stacks, planetary,
   scenery, …). *Ingest* of stacks (+previews) and media (`*_photo`/`*_video`)
   already works; the gap is a **display surface** for non-catalog media.
+- [ ] **#12**: **Smart-ingest name normalization + pointing verification.** Field
+  evidence (June 2026) shows device folder names can't be trusted: a Seestar
+  firmware regression saves the custom object "M81 M82" into an `M81` directory
+  (same pointing, wrong name — silently mis-credits the data), and SSC creates
+  case-variant dirs (`m82`), forking an object across folders. At ingest preview:
+  (a) case-fold incoming names against existing folders + catalog and propose the
+  canonical destination; (b) read `RA`/`DEC` from a sample frame and compare to
+  the catalog position — >0.15° mismatch gets a "pointing ≠ name" badge and a
+  remap dropdown so the user fixes it *before* confirm; (c) support a per-store
+  alias table for known quirks. Pairs naturally with #9/#10 (grouped, selectable
+  preview rows). This is exactly the kind of correctness work a GUI ingest can do
+  that raw device copying can't.
 
 ---
 
