@@ -142,7 +142,9 @@ class DetailPane(QScrollArea):
             gallery.setMovement(QListWidget.Static)
             gallery.setMaximumHeight(190)
             for im in imgs:
-                tp = config.SITE_DIR / im["thumb"]
+                if not im.get("thumb"):
+                    continue
+                tp = config.RENDERS_DIR / im["thumb"]
                 if tp.is_file():
                     gallery.addItem(QListWidgetItem(
                         QIcon(str(tp)), im.get("display_name") or im.get("name") or ""))

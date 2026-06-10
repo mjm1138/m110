@@ -39,7 +39,8 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | —    | ✅ | **Own data root** (`~/Documents/M110`) + bootstrap/seed + Preferences + Seestar mount detection |
 | —    | ✅ | **Image rendering** port (build_images: thumbnails / heroes / images.json, cached) |
 | 0.1d | ✅ | **Ingest** — preview-then-confirm; sources: staging (move) + mounted Seestar `MyWorks` (copy); threaded + cancellable |
-| 0.1e | ⬜ | **inline journal editing** — edit `data/objects/<slug>.md` in-app |
+| —    | ✅ | **Two-axis data store** (BUGS #13) — `Objects/` (catalog axis) + `Images/` (capture-target axis), hidden `.m110_internal_data/`, in-place idempotent migration. Landed *before* 0.1e/0.1f so both build on the final layout |
+| 0.1e | ⬜ | **inline journal editing** — edit `Objects/<id>/journal.md` in-app |
 | 0.1f | ⬜ | **processing-prep** — arrange Siril folder layout (incl. per-filter split), emit Naztronomy preset JSON, surface workflow guidance |
 
 ---

@@ -18,15 +18,33 @@ SETTINGS_FILE = APP_CONFIG_DIR / "settings.json"
 DEFAULT_DATA_ROOT = Path.home() / "Documents" / "M110"
 SEED_DIR = Path(__file__).resolve().parent / "seed"
 
-# Directory skeleton created under a data root.
+INTERNAL_DIRNAME = ".m110_internal_data"
+
+# Directory skeleton created under a data root. Two visible axes — Objects/
+# (catalog-object journals + future per-object artifacts) and Images/ (per
+# capture-target content) — plus Media/, the ingest Inbox/, and the hidden
+# .m110_internal_data/ holding all machine state.
 _SUBDIRS = [
-    "data", "data/objects", "data/derived",
-    "Images/FITS", "Images/Seestar_stacks", "Images/From the scope",
-    "Images/Finished Images",
-    "site/img/hero",
+    "Objects", "Images", "Media", "Inbox",
+    INTERNAL_DIRNAME,
+    f"{INTERNAL_DIRNAME}/derived",
+    f"{INTERNAL_DIRNAME}/renders/hero",
 ]
 # Static files seeded from the bundled templates if missing.
 _SEED_FILES = ["catalog.toml", "priorities.toml"]
+
+_README_TEXT = """\
+M110 — internal application data
+================================
+
+This folder holds M110's machine-managed state: the object catalog, capture
+session index, generated rollups, and rendered thumbnails/heroes. M110 reads
+and rewrites these files automatically.
+
+Don't edit anything in here unless you know what you're doing — hand edits can
+be silently overwritten or leave the Library in an inconsistent state. Your
+actual images live under Images/, and your notes under Objects/.
+"""
 
 
 def _read_settings() -> dict:
@@ -55,17 +73,48 @@ def _resolve_data_root() -> Path:
 
 
 def _apply(root: Path) -> None:
-    global DATA_ROOT, DATA_DIR, IMAGES_DIR, CATALOG_TOML, PRIORITIES_TOML
-    global SESSIONS_JSONL, DERIVED_DIR, OBJECTS_DIR, SITE_DIR
+    global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
+    global INTERNAL_DIR, CATALOG_TOML, PRIORITIES_TOML, SESSIONS_JSONL
+    global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR
     DATA_ROOT = root
-    DATA_DIR = root / "data"
-    IMAGES_DIR = root / "Images"
-    CATALOG_TOML = DATA_DIR / "catalog.toml"
-    PRIORITIES_TOML = DATA_DIR / "priorities.toml"
-    SESSIONS_JSONL = DATA_DIR / "sessions.jsonl"
-    DERIVED_DIR = DATA_DIR / "derived"
-    OBJECTS_DIR = DATA_DIR / "objects"
-    SITE_DIR = root / "site"
+    # Visible content axes
+    OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
+    IMAGES_DIR = root / "Images"            # Images/<target>/{lights,stacks,…}
+    MEDIA_DIR = root / "Media"              # Media/<Category>_photo|_video
+    STAGING_DIR = root / "Inbox"            # ingest staging
+    # Hidden machine state
+    INTERNAL_DIR = root / INTERNAL_DIRNAME
+    CATALOG_TOML = INTERNAL_DIR / "catalog.toml"
+    PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
+    SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
+    OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
+    DERIVED_DIR = INTERNAL_DIR / "derived"
+    RENDERS_DIR = INTERNAL_DIR / "renders"  # thumbnails (+ hero/<slug>.jpg)
+    HERO_DIR = RENDERS_DIR / "hero"
+
+
+# ── per-target content paths (Images/<target>/<sub>) ────────────────────────
+
+def target_dir(name: str) -> Path:
+    return IMAGES_DIR / name
+
+
+def lights_dir(name: str) -> Path:
+    return IMAGES_DIR / name / "lights"
+
+
+def stacks_dir(name: str) -> Path:
+    """Siril stacks for a capture target."""
+    return IMAGES_DIR / name / "stacks"
+
+
+def seestar_stacks_dir(name: str) -> Path:
+    """Seestar in-app stacks for a capture target."""
+    return IMAGES_DIR / name / "seestar-stacks"
+
+
+def finished_dir(name: str) -> Path:
+    return IMAGES_DIR / name / "finished"
 
 
 _apply(_resolve_data_root())
@@ -87,16 +136,26 @@ def data_root_ok() -> bool:
 def ensure_data_root(root=None) -> Path:
     """Create the directory skeleton and seed catalog/priorities if missing.
 
+    Migrates an older-layout store in place first, then ensures the skeleton.
     Idempotent — safe to call on every launch.
     """
     r = Path(root).expanduser() if root else DATA_ROOT
+
+    # Bring a pre-two-axis store up to the current layout before seeding.
+    from . import migrate
+    migrate.migrate_store(r)
+
     for sub in _SUBDIRS:
         (r / sub).mkdir(parents=True, exist_ok=True)
+    internal = r / INTERNAL_DIRNAME
     for name in _SEED_FILES:
-        dst = r / "data" / name
+        dst = internal / name
         src = SEED_DIR / name
         if not dst.exists() and src.is_file():
             shutil.copy(src, dst)
+    readme = internal / "README.txt"
+    if not readme.exists():
+        readme.write_text(_README_TEXT)
     return r
 
 

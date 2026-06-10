@@ -1,15 +1,15 @@
-"""Ingest new captures from the 'From the scope' staging area into the collection.
+"""Ingest new captures from the 'Inbox' staging area into the collection.
 
-Faithful port of `scan_staging.py`'s classification + path conventions, but
-returns a structured **plan** (list of IngestOp) the GUI previews *before* any
-move. The actual move (`apply_ops`) is the only thing that writes into Images/,
-and the UI gates it behind an explicit confirmation — honouring the hard rule
-"never modify Images/ without explicit confirmation."
+Faithful port of `scan_staging.py`'s classification, but returns a structured
+**plan** (list of IngestOp) the GUI previews *before* any move. The actual move
+(`apply_ops`) is the only thing that writes into the content tree, and the UI
+gates it behind an explicit confirmation — honouring the hard rule "never modify
+the content tree without explicit confirmation."
 
 Staging layout recognised:
-  <object>_sub/      raw Light_*.fit    → Images/FITS/<object>/lights/
-  <object>/          in-app stacks      → Images/Seestar_stacks/<object>/
-  <Category>_photo|_video/  media       → Images/<Category>_photo|_video/
+  <object>_sub/      raw Light_*.fit    → Images/<object>/lights/
+  <object>/          in-app stacks      → Images/<object>/seestar-stacks/
+  <Category>_photo|_video/  media       → Media/<Category>_photo|_video/
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class IngestCancelled(Exception):
 
 
 def _staging() -> Path:
-    return config.IMAGES_DIR / "From the scope"
+    return config.STAGING_DIR
 
 
 @dataclass
@@ -36,8 +36,8 @@ class IngestOp:
     dest: str        # absolute destination file
     kind: str        # 'light' | 'stack' | 'media'
     group: str       # source directory name
-    dest_rel: str    # destination relative to Images/ (for display)
-    new_object: bool = False  # FITS object dir will be created
+    dest_rel: str    # destination relative to the data root (for display)
+    new_object: bool = False  # a new capture-target dir will be created
     action: str = "move"      # 'move' (staging) | 'copy' (device)
 
 
@@ -101,37 +101,35 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
     media_dirs = [e for e in entries if is_media_dir(e)]
     stack_dirs = [e for e in entries if not e.endswith("_sub") and not is_media_dir(e)]
 
-    imgs = config.IMAGES_DIR
-    fits_base = imgs / "FITS"
-    stacks_base = imgs / "Seestar_stacks"
+    root = config.DATA_ROOT
     ops: list[IngestOp] = []
 
     for sub in sub_dirs:
         _ck()
         obj = fits_object_name(sub[:-4])  # strip "_sub"
         src_dir = base / sub
-        dst_dir = fits_base / obj / "lights"
+        dst_dir = config.lights_dir(obj)
         existing = set(_fit_files(dst_dir))
-        new_object = not (fits_base / obj).is_dir()
+        new_object = not config.target_dir(obj).is_dir()
         for f in _fit_files(src_dir):
             if f in existing:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "light", sub,
-                                str(dest.relative_to(imgs)), new_object, action))
+                                str(dest.relative_to(root)), new_object, action))
 
     for sd in stack_dirs:
         _ck()
         obj = fits_object_name(sd)
         src_dir = base / sd
-        dst_dir = stacks_base / obj
+        dst_dir = config.seestar_stacks_dir(obj)
         existing = set(_fit_files(dst_dir))
         for f in _fit_files(src_dir):
             if not is_stacked_fit(f) or f in existing:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                str(dest.relative_to(imgs)), False, action))
+                                str(dest.relative_to(root)), False, action))
         # Also pull the device's preview renders (.jpg/.png) into the same stack
         # folder so the gallery has ready-made images; skip the Seestar's
         # *_thn.* sidecar thumbnails.
@@ -142,24 +140,24 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
             if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png"):
                 dest = dst_dir / f
                 ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                    str(dest.relative_to(imgs)), False, action))
+                                    str(dest.relative_to(root)), False, action))
 
     for md in media_dirs:
         _ck()
         src_dir = base / md
-        dst_dir = imgs / md
+        dst_dir = config.MEDIA_DIR / md
         existing = set(_all_files(dst_dir))
         for f in _all_files(src_dir):
             if f in existing:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "media", md,
-                                str(dest.relative_to(imgs)), False, action))
+                                str(dest.relative_to(root)), False, action))
     return ops
 
 
 def scan_staging_plan(should_cancel=None) -> list[IngestOp]:
-    """Dry-run plan for the 'From the scope' staging area (moves). Reads only."""
+    """Dry-run plan for the Inbox staging area (moves). Reads only."""
     return _scan_base(_staging(), "move", should_cancel)
 
 

@@ -22,10 +22,17 @@ rm -rf /tmp/m110-test                     # reset between runs
 - Ingest from a **Seestar device is copy-only** (the device is never modified), so
   it's safe to ingest into a temp root repeatedly.
 - Ingest from **staging *moves*** files — only put throwaway files in a temp
-  root's `Images/From the scope/`.
+  root's `Inbox/`.
 - To test capture status / rendering without a device, copy a few real objects'
-  folders into the temp root's `Images/FITS/<obj>/lights/` and
-  `Images/Seestar_stacks/<obj>/`, then Refresh.
+  folders into the temp root's `Images/<target>/lights/` and
+  `Images/<target>/seestar-stacks/`, then Refresh.
+
+**Migration check (#13).** To exercise the in-place migration, **copy** (never
+move) an old-shaped root — one with `data/`, `Images/FITS/…`, `site/img/` — to a
+temp dir, point `M110_DATA_ROOT` at the copy, and launch. The store should
+reshape into `Objects/ Images/ Media/ Inbox/ .m110_internal_data/`; verify
+`Objects/<id>/journal.md` populated, renders under `.m110_internal_data/renders/`,
+and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 
 ---
 
@@ -34,12 +41,13 @@ rm -rf /tmp/m110-test                     # reset between runs
 ```bash
 cd ~/Documents/Code/m110
 source .venv/bin/activate
-pytest -q                 # all (~81); must be green before manual testing
+pytest -q                 # all (~85); must be green before manual testing
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
 reader, ingest plan/apply (incl. cancel + Seestar copy), config/bootstrap,
-image rendering (incl. FITS thumbnail + hero). UI is smoke-tested offscreen:
+store migration (old → two-axis, idempotent), image rendering (incl. FITS
+thumbnail + hero). UI is smoke-tested offscreen:
 
 ```bash
 QT_QPA_PLATFORM=offscreen python -m m110.ui.main   # constructs/imports cleanly
@@ -53,7 +61,11 @@ Mark each pass. Re-run a section whenever its area changes.
 
 ### A. First launch / data root
 - [ ] Fresh `M110_DATA_ROOT` (empty/nonexistent) → launches, creates the folder,
-      seeds the catalog; Library shows **111 objects, 0 captured**.
+      seeds the catalog; Library shows **111 objects, 0 captured**. Top level is
+      `Objects/ Images/ Media/ Inbox/ .m110_internal_data/` (seed catalog +
+      README inside the hidden internals).
+- [ ] **Old-layout root migrates** (see §0 Migration check): a copied pre-#13
+      root reshapes in place on launch; relaunch makes no further change.
 - [ ] Preferences (Cmd+,) → change data folder → Save → prompts restart →
       relaunch reads the new folder.
 - [ ] `M110_DATA_ROOT` env var overrides the saved preference.
@@ -74,17 +86,17 @@ Mark each pass. Re-run a section whenever its area changes.
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.
 - [ ] **On window focus**: change something on disk (e.g. drop a render into
-      `Finished Images/<obj>/` or process a stack), switch away and back to M110 →
-      the change appears. (Debounced; runs silently.)
+      `Images/<target>/finished/` or process a stack), switch away and back to
+      M110 → the change appears. (Debounced; runs silently.)
 - [ ] An auto-refresh that finds **no change** does **not** disturb the view
       (selected object + scroll preserved; no flicker).
 - [ ] An auto-refresh that **does** find changes preserves the selected object.
 - [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
 - [ ] Manual override still works: View menu → Refresh (Ctrl+R).
 
-### E. Ingest — staging  (`Images/From the scope/`)
+### E. Ingest — staging  (`Inbox/`)
 - [ ] With a `<obj>_sub/` of `.fit` files present, Ingest preview lists them as
-      **moves** to `FITS/<obj>/lights/`.
+      **moves** to `Images/<obj>/lights/`.
 - [ ] Confirm → progress modal ("Moving files…") → completes → **modal closes**.
 - [ ] Files are *moved* (gone from staging); Library refreshes to show them.
 
@@ -125,7 +137,8 @@ Mark each pass. Re-run a section whenever its area changes.
 
 - **`processing.json` changes every Refresh** — it stamps a `generated_at`
   timestamp; the rest of `derived/` is deterministic.
-- **Changing the data root needs a restart** — by design (some modules bind paths
-  at import); Preferences prompts for it.
+- **Changing the data root prompts a restart** — by design (simplest UX);
+  Preferences saves + prompts. (Engine modules read paths dynamically now, so the
+  restart is no longer a hard requirement.)
 - **Qt font warning** ("Populating font family aliases…") on offscreen runs is
   harmless.

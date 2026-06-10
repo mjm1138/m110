@@ -89,3 +89,62 @@ Library MVP. (Planetary from the ETX/ASI662 would also land here eventually.)
   a hint like "Ingest from your Seestar to get started" would orient new users.
 - **First-launch.** Consider a one-time "choose your data folder" prompt rather
   than silently defaulting to `~/Documents/M110`.
+
+---
+
+## Data Store / File Organization
+
+### Improvements (proposed)
+
+- [x] **#13**: **Human-friendly data-store layout (architectural).** *Done
+  (2026-06-10; tests green, pending commit).* The old data root mixed concerns
+  and exposed app internals, so a human browsing `~/Documents/M110` couldn't tell
+  content from machine state — and could break it. The old top level was three
+  dirs that didn't map to how a user thinks: `data/` (catalog/sessions/derived
+  **plus** the human-authored journals), `Images/` (content, but with jargon
+  subfolder names — `FITS`, `Seestar_stacks`, `From the scope`, `Finished
+  Images` — and the ingest staging area among real content), and `site/` (an
+  opaque leftover name from the old static-site generator). The fix was
+  architectural, not cosmetic.
+
+  **What shipped — a two-axis store (version 2):**
+  - **`Objects/` (catalog-object axis) and `Images/` (capture-target axis) kept
+    distinct.** Objects and capture targets are **many-to-many** (one `M81 M82`
+    capture feeds two catalog objects), so conflating them into one
+    "per-object folder" can't work cleanly — splitting the axes resolves it and
+    leaves room for future top-level siblings (e.g. `Session Plans/`).
+  - **Internals hidden.** All machine state moved into a hidden
+    **`.m110_internal_data/`** (with a "don't touch" README anyway).
+
+    ```
+    ~/Documents/M110/
+      Objects/<catalog id>/          (Objects/M101/, named by catalog id; slug→id)
+        journal.md                   per-object notes (+ future per-object artifacts)
+      Images/<target>/               (= the old object_dir)
+        lights/  stacks/  seestar-stacks/  finished/
+      Media/<Category>_photo|_video/ non-catalog media
+      Inbox/                         ingest staging (was "From the scope")
+      .m110_internal_data/           hidden app internals + README
+        catalog.toml  priorities.toml  sessions.jsonl  processing_overrides.toml
+        derived/                     generated rollups
+        renders/                     thumbnails + hero/<slug>.jpg (was site/img)
+        .store_version               = 2
+    ```
+
+  - **Siril vs Seestar stacks stay distinct** (`stacks/` + `seestar-stacks/`) to
+    preserve gallery labels and hero-tier order.
+  - **Journals keyed by catalog id** (`Objects/M101/journal.md`), resolved via
+    the catalog (fallback: slug). Folder names are **relocated as-is, not
+    normalized** — case/space cleanup remains **#12**.
+
+  **How it landed:**
+  - New `m110/migrate.py` (`migrate_store`): in-place, **idempotent**,
+    version-stamped, same-fs renames, resume-safe, never destructive; called from
+    `config.ensure_data_root()`. Covered by `tests/test_migrate.py`.
+  - `scan_sessions`/`build_derived` now read `config.*` **dynamically** (retired
+    import-time path binding). Behavior-compat with the Astronomy byte-for-byte
+    goldens was **consciously retired** for this store; re-validated against the
+    repo's own fixtures. Per-target paths via
+    `config.{target,lights,stacks,seestar_stacks,finished}_dir()`.
+  - Done **before 0.1e/0.1f** so journal editing + processing-prep build against
+    the final layout (no double migration).
