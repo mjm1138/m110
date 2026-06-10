@@ -123,6 +123,18 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    in tools/data, cite sources); and scope — keep it "an LLM over the existing
    engine," not a bespoke agent framework.
 
+5. **Goal / catalog selection — multi-list tracking.** Today the catalog and
+   priorities are built around a single implicit goal: the Messier list. Once
+   that's well underway, generalize so a "goal" is a named catalog (Messier,
+   Caldwell, RASC Finest NGC, Herschel 400, Sharpless subset, Arp Peculiar
+   Galaxies, Lunar 100, Double Star Club, ...) with its own object list,
+   progress tracking, and dashboard/list view. Objects can belong to multiple
+   catalogs (e.g. the Veil Nebula is both a non-Messier addition *and* Caldwell
+   C33/C34), so this is membership/tagging, not a strict partition. Default goal
+   ships as Messier; users add other goals from a built-in library of catalog
+   definitions (or import their own). See the sibling Astronomy project's
+   `next_catalog_lists.md` for the candidate lists and rationale behind each.
+
 ---
 
 ## Decisions & open items
