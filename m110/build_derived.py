@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Join catalog + sessions + priorities into derived rollups.
 
-Outputs:
-  data/derived/totals.json     — per-object integration totals & status
-  data/derived/priorities.json — priority list with current progress
-  data/derived/summary.json    — category roll-ups for the dashboard
+Outputs (under the hidden internal store, config.DERIVED_DIR):
+  totals.json     — per-object integration totals & status
+  priorities.json — priority list with current progress
+  summary.json    — category roll-ups for the dashboard
+  processing.json — per-target processing status / queue
 """
 from __future__ import annotations
 
@@ -24,13 +25,8 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore
 
-REPO = config.DATA_ROOT  # live Astronomy data store (parallel-run)
-CATALOG = REPO / "data" / "catalog.toml"
-PRIORITIES = REPO / "data" / "priorities.toml"
-SESSIONS = REPO / "data" / "sessions.jsonl"
-OVERRIDES = REPO / "data" / "processing_overrides.toml"
-FITS_DIR = REPO / "Images" / "FITS"
-OUT_DIR = REPO / "data" / "derived"
+# Paths resolve dynamically from config (so a changed data root / test
+# monkeypatch takes effect without re-import).
 
 DEEP_STACK_MIN = 60  # threshold per CLAUDE.md
 PROCESSED_EXTS = (".fit", ".tif", ".tiff")
@@ -43,10 +39,11 @@ def load_toml(path: Path) -> dict:
 
 
 def load_sessions() -> list[dict]:
-    if not SESSIONS.exists():
+    sessions = config.SESSIONS_JSONL
+    if not sessions.exists():
         return []
     rows = []
-    with SESSIONS.open() as f:
+    with sessions.open() as f:
         for line in f:
             line = line.strip()
             if line:
@@ -398,11 +395,11 @@ def build_processing(totals: dict, overrides: dict | None,
     now_iso = datetime.now().isoformat(timespec="seconds")
     out: dict[str, dict] = {}
 
-    if not FITS_DIR.is_dir():
+    if not config.IMAGES_DIR.is_dir():
         return {"folders": {}, "queue": [], "generated_at": now_iso}
 
     for fname, t in by_folder.items():
-        folder = FITS_DIR / fname
+        folder = config.target_dir(fname)
         if not folder.is_dir():
             continue
 
@@ -557,24 +554,26 @@ def build_summary(catalog: dict, totals: dict) -> dict:
 
 
 def main():
-    catalog = load_toml(CATALOG)["catalog"]
-    priorities = load_toml(PRIORITIES).get("priority", [])
+    overrides_path = config.OVERRIDES_TOML
+    catalog = load_toml(config.CATALOG_TOML)["catalog"]
+    priorities = load_toml(config.PRIORITIES_TOML).get("priority", [])
     sessions = load_sessions()
-    overrides = load_toml(OVERRIDES) if OVERRIDES.exists() else None
+    overrides = load_toml(overrides_path) if overrides_path.exists() else None
 
     totals = build_totals(catalog, sessions)
     priority_progress = build_priorities(priorities, totals, catalog)
     summary = build_summary(catalog, totals)
     processing = build_processing(totals, overrides, catalog)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_DIR / "totals.json").write_text(
+    out_dir = config.DERIVED_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "totals.json").write_text(
         json.dumps(totals, indent=2, ensure_ascii=False, default=str))
-    (OUT_DIR / "priorities.json").write_text(
+    (out_dir / "priorities.json").write_text(
         json.dumps(priority_progress, indent=2, ensure_ascii=False))
-    (OUT_DIR / "summary.json").write_text(
+    (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False))
-    (OUT_DIR / "processing.json").write_text(
+    (out_dir / "processing.json").write_text(
         json.dumps(processing, indent=2, ensure_ascii=False))
 
     print(f"  totals:     {len(totals['by_slug'])} slugs, "

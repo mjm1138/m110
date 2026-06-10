@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan Images/FITS/<object>/lights/ and emit data/sessions.jsonl.
+"""Scan Images/<target>/lights/ and emit the session index (sessions.jsonl).
 
 Each line is one (date, object, exposure, filter) tuple from the FITS
 filenames — the canonical session record. The scan is idempotent: re-running
@@ -27,12 +27,9 @@ from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
-# Ported into the M110 engine: paths resolve from config.DATA_ROOT
-# (the live Astronomy data store during parallel-run) instead of __file__.
+# Ported into the M110 engine: paths resolve dynamically from config (so a
+# changed data root / test monkeypatch takes effect without re-import).
 from . import config  # noqa: E402
-REPO = config.DATA_ROOT
-FITS = REPO / "Images" / "FITS"
-OUT = REPO / "data" / "sessions.jsonl"
 
 SKIP_DIRS = {"M42 copy", "M81 M82 orig", "Template"}
 NEW_START = date(2026, 4, 4)
@@ -83,9 +80,9 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
 
 
 def load_catalog_slugs() -> set[str]:
-    cat_path = REPO / "data" / "catalog.toml"
+    cat_path = config.CATALOG_TOML
     if not cat_path.exists():
-        print("warning: data/catalog.toml not found; slug mapping skipped",
+        print(f"warning: {cat_path} not found; slug mapping skipped",
               file=sys.stderr)
         return set()
     try:
@@ -98,14 +95,15 @@ def load_catalog_slugs() -> set[str]:
 
 
 def scan() -> list[dict]:
-    if not FITS.is_dir():
-        print(f"FITS dir not found: {FITS}", file=sys.stderr)
+    images = config.IMAGES_DIR
+    if not images.is_dir():
+        print(f"Images dir not found: {images}", file=sys.stderr)
         sys.exit(1)
 
     catalog_slugs = load_catalog_slugs()
     rows: list[dict] = []
 
-    for obj_dir in sorted(FITS.iterdir()):
+    for obj_dir in sorted(images.iterdir()):
         if not obj_dir.is_dir() or obj_dir.name in SKIP_DIRS:
             continue
         lights = obj_dir / "lights"
@@ -147,8 +145,9 @@ def scan() -> list[dict]:
 
 
 def write_jsonl(rows: list[dict]):
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with OUT.open("w") as f:
+    out = config.SESSIONS_JSONL
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
@@ -163,7 +162,7 @@ def main():
         d["frames"] += r["frames"]
         d["min"] += r["integration_min"]
         d["sessions"].add(r["date"])
-    print(f"Wrote {len(rows)} session rows to {OUT}")
+    print(f"Wrote {len(rows)} session rows to {config.SESSIONS_JSONL}")
     print(f"  {len(by_dir)} object folders, "
           f"{sum(d['frames'] for d in by_dir.values())} total frames")
 

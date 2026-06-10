@@ -1,18 +1,28 @@
 """Per-object journal + image lookups for the detail view.
 
-Reads the per-object Markdown journal (`data/objects/<slug>.md`) and resolves
-the generated hero image. Config paths are referenced dynamically (via the
-`config` module) so they're overridable and testable.
+Reads the per-object Markdown journal (`Objects/<catalog id>/journal.md`) and
+resolves the generated hero image. Config paths are referenced dynamically (via
+the `config` module) so they're overridable and testable.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from . import config
+from . import catalog, config
+
+
+def object_folder_name(slug: str) -> str:
+    """Human-friendly folder name for a catalog slug — the catalog `id`
+    (e.g. 'm101' → 'M101'), falling back to the slug if unknown."""
+    try:
+        obj_id = catalog.load_catalog().get(slug, {}).get("id") or slug
+    except Exception:
+        obj_id = slug
+    return obj_id.replace("/", "-").strip()
 
 
 def journal_path(slug: str) -> Path:
-    return config.OBJECTS_DIR / f"{slug}.md"
+    return config.OBJECTS_DIR / object_folder_name(slug) / "journal.md"
 
 
 def read_journal(slug: str) -> tuple[dict, str]:
@@ -41,5 +51,5 @@ def read_journal(slug: str) -> tuple[dict, str]:
 
 def hero_path(slug: str) -> Path | None:
     """Path to the generated hero JPG, or None if it doesn't exist."""
-    p = config.SITE_DIR / "img" / "hero" / f"{slug}.jpg"
+    p = config.HERO_DIR / f"{slug}.jpg"
     return p if p.is_file() else None

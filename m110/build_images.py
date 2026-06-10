@@ -1,9 +1,10 @@
 """Generate gallery thumbnails, hero images, and the images.json manifest.
 
 Focused port of build_site.py's image pipeline + generate_hero.py. Writes into
-<data_root>/site/img/ (thumbnails), site/img/hero/<slug>.jpg (heroes), and
-data/derived/images.json (the manifest the UI reads). Thumbnails are cached by
-content hash (mtime+size), so re-runs are cheap.
+the hidden internal store: thumbnails to config.RENDERS_DIR, heroes to
+config.HERO_DIR (hero/<slug>.jpg), and the images.json manifest (the UI reads)
+to config.DERIVED_DIR. Manifest `thumb` paths are relative to RENDERS_DIR.
+Thumbnails are cached by content hash (mtime+size), so re-runs are cheap.
 """
 from __future__ import annotations
 
@@ -23,7 +24,9 @@ HERO_SIZE = 1200
 _IMG_CACHE_VER = b"v5"
 
 _INTERMEDIATE_FIT_RE = re.compile(r"_(og|crop|stretch|stretched|spcc)(_|\.)", re.IGNORECASE)
-HERO_TIERS = ["Finished Images", "FITS", "Seestar_stacks"]
+# Hero source preference, best → fallback. Each entry maps to a per-target
+# subfolder via the matching config helper in `_tier_dir`.
+HERO_TIERS = ["finished", "stacks", "seestar-stacks"]
 
 
 def _is_intermediate_fit(path: Path) -> bool:
@@ -116,15 +119,13 @@ def make_thumb(src: Path, dest_dir: Path) -> Path | None:
 
 
 def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict]:
-    imgs = config.IMAGES_DIR
     out = []
     for fname in folders:
         n_slugs = (len(by_folder.get(fname, {}).get("slugs", [])) or 1) if by_folder else 1
         for src_dir, label in [
-            (imgs / "Finished Images" / fname, "Finished render"),
-            (imgs / "FITS" / fname, "Siril stack"),
-            (imgs / "FITS" / fname / "stacks", "Siril stack"),
-            (imgs / "Seestar_stacks" / fname, "Seestar in-app stack"),
+            (config.finished_dir(fname), "Finished render"),
+            (config.stacks_dir(fname), "Siril stack"),
+            (config.seestar_stacks_dir(fname), "Seestar in-app stack"),
         ]:
             if not src_dir.is_dir():
                 continue
@@ -157,11 +158,19 @@ def _hero_sort_key(p: Path):
     return (0 if p.suffix.lower() == ".png" else 1, -p.stat().st_mtime)
 
 
+_TIER_DIR = {
+    "finished": config.finished_dir,
+    "stacks": config.stacks_dir,
+    "seestar-stacks": config.seestar_stacks_dir,
+}
+
+
 def find_hero_source(folders: list[str]) -> Path | None:
     for tier in HERO_TIERS:
+        tier_dir = _TIER_DIR[tier]
         cands = []
         for fname in folders:
-            cands += _photos_in(config.IMAGES_DIR / tier / fname)
+            cands += _photos_in(tier_dir(fname))
         if cands:
             cands.sort(key=_hero_sort_key)
             return cands[0]
@@ -214,9 +223,9 @@ def _render_hero(src: Path, dst: Path) -> bool:
 def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dict:
     """Generate thumbnails + heroes for captured objects and write images.json."""
     by_folder = totals.get("by_folder", {})
-    site_img = config.SITE_DIR / "img"
-    hero_dir = site_img / "hero"
-    site_img.mkdir(parents=True, exist_ok=True)
+    renders = config.RENDERS_DIR
+    hero_dir = config.HERO_DIR
+    renders.mkdir(parents=True, exist_ok=True)
     hero_dir.mkdir(parents=True, exist_ok=True)
 
     manifest: dict[str, list] = {}
@@ -232,11 +241,11 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
         for im in imgs:
             # Thumbnail every discovered image, including FITS stacks (rendered
             # via a percentile stretch) — so even .fit-only objects show a preview.
-            tp = make_thumb(im["path"], site_img)
+            tp = make_thumb(im["path"], renders)
             entries.append({"name": im["name"], "display_name": im["display_name"],
                             "label": im["label"], "size_mb": im["size_mb"],
                             "mtime": im["mtime"], "viewable": im["viewable"],
-                            "thumb": f"img/{tp.name}" if tp else None, "full": None})
+                            "thumb": tp.name if tp else None, "full": None})
         manifest[slug] = entries
         src = _hero_source(slug, folders, imgs)
         if src:

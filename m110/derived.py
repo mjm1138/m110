@@ -49,7 +49,7 @@ def load_processing() -> dict:
 def load_images() -> dict:
     """{slug: [ {name, display_name, label, viewable, thumb, full, ...} ]}.
 
-    `thumb`/`full` are paths relative to `config.SITE_DIR`.
+    `thumb`/`full` are filenames relative to `config.RENDERS_DIR`.
     """
     return _load("images.json") or {}
 

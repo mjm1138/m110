@@ -79,7 +79,7 @@ class IngestDialog(QDialog):
         src_row = QHBoxLayout()
         src_row.addWidget(QLabel("Source:"))
         self._source = QComboBox()
-        self._source.addItem("Staging — From the scope", "staging")
+        self._source.addItem("Staging — Inbox", "staging")
         mw = config.find_seestar_myworks()
         if mw is not None:
             self._source.addItem(f"Seestar device — {mw.parent.name}", "seestar")
@@ -128,7 +128,7 @@ class IngestDialog(QDialog):
                 return
             self._start_scan(ingest.scan_seestar_plan, "Scanning Seestar…")
         else:
-            staging = config.IMAGES_DIR / "From the scope"
+            staging = config.STAGING_DIR
             self._path_lbl.setText(f"Staging: {staging}  (files are moved)")
             if not ingest.staging_available():
                 self._set_empty(f"Staging folder not found:\n{staging}")
