@@ -29,6 +29,11 @@ def _build_old_layout(root):
     (root / "site" / "img" / "abc123.jpg").write_text("thumb")
     (site / "m101.jpg").write_text("hero")
 
+    # OS junk that must not keep legacy containers alive after migration
+    (root / "Images" / "FITS").mkdir(parents=True)
+    (root / "Images" / "FITS" / ".DS_Store").write_text("")
+    (root / "data" / ".DS_Store").write_text("")
+
     fits = root / "Images" / "FITS" / "M101"
     (fits / "lights").mkdir(parents=True)
     (fits / "lights" / "Light_x.fit").write_text("light")

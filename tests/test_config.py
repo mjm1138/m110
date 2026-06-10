@@ -1,7 +1,7 @@
 """Tests for data-root resolution, bootstrap/seed, and Seestar detection."""
 import json
 
-from m110 import config
+from m110 import config, objects
 
 
 def test_resolve_env_override(monkeypatch, tmp_path):
@@ -47,6 +47,46 @@ def test_ensure_is_idempotent_and_preserves_edits(tmp_path):
     cat.write_text("# user-edited\n")
     config.ensure_data_root(root)  # must NOT overwrite an existing catalog
     assert cat.read_text() == "# user-edited\n"
+
+
+def test_ensure_creates_journal_template_and_stubs(tmp_path):
+    root = tmp_path / "M110"
+    config.ensure_data_root(root)
+    internal = root / config.INTERNAL_DIRNAME
+    # reference template lives in the internals
+    assert (internal / "journal_template.md").is_file()
+    # every seeded catalog object gets an Objects/<id>/journal.md stub
+    import tomllib
+    with (internal / "catalog.toml").open("rb") as f:
+        catalog = tomllib.load(f)["catalog"]
+    assert len(catalog) > 100
+    sample_slug, sample = next(iter(catalog.items()))
+    obj_id = (sample.get("id") or sample_slug).replace("/", "-").strip()
+    stub = root / "Objects" / obj_id / "journal.md"
+    assert stub.is_file()
+    text = stub.read_text()
+    assert text.startswith("---") and "name:" in text  # has the template frontmatter
+    # objects.read_journal parses it when OBJECTS_DIR/CATALOG_TOML point here
+    monkey_cat = root / config.INTERNAL_DIRNAME / "catalog.toml"
+    import pytest
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(config, "OBJECTS_DIR", root / "Objects")
+        mp.setattr(config, "CATALOG_TOML", monkey_cat)
+        fm, _ = objects.read_journal(sample_slug)
+    assert fm.get("name")
+
+
+def test_ensure_stub_never_overwrites_existing_journal(tmp_path):
+    root = tmp_path / "M110"
+    config.ensure_data_root(root)
+    import tomllib
+    with (root / config.INTERNAL_DIRNAME / "catalog.toml").open("rb") as f:
+        slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
+    obj_id = (entry.get("id") or slug).replace("/", "-").strip()
+    journal = root / "Objects" / obj_id / "journal.md"
+    journal.write_text("# my own notes\n")
+    config.ensure_data_root(root)  # must not clobber
+    assert journal.read_text() == "# my own notes\n"
 
 
 def test_find_seestar_no_crash():

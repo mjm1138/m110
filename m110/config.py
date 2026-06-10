@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tomllib
 from pathlib import Path
 
 APP_CONFIG_DIR = Path.home() / ".m110"
@@ -45,6 +46,29 @@ Don't edit anything in here unless you know what you're doing — hand edits can
 be silently overwritten or leave the Library in an inconsistent state. Your
 actual images live under Images/, and your notes under Objects/.
 """
+
+# Canonical journal format. The reference copy is written to
+# `.m110_internal_data/journal_template.md`; each object's stub is this template
+# with {id}/{name} filled in. `{` braces are escaped for str.format below.
+JOURNAL_TEMPLATE = """\
+---
+name: "{name}"
+hero_caption: ""
+# hero: "<display name of a gallery image to pin as the hero>"   # optional
+---
+
+# {id} — {name}
+
+<!--
+Your observing & processing notes for this object. This file is yours to edit;
+M110 reads the frontmatter above (name / hero_caption / hero) for the gallery.
+Everything below the frontmatter is free-form Markdown.
+-->
+"""
+
+
+def _object_stub(obj_id: str, name: str) -> str:
+    return JOURNAL_TEMPLATE.format(id=obj_id, name=name or obj_id)
 
 
 def _read_settings() -> dict:
@@ -156,7 +180,38 @@ def ensure_data_root(root=None) -> Path:
     readme = internal / "README.txt"
     if not readme.exists():
         readme.write_text(_README_TEXT)
+
+    # Reference journal template + a per-object stub for every catalog object
+    # (idempotent — never overwrites an existing journal).
+    template = internal / "journal_template.md"
+    if not template.exists():
+        template.write_text(JOURNAL_TEMPLATE)
+    _ensure_object_stubs(r, internal)
     return r
+
+
+def _ensure_object_stubs(root: Path, internal: Path) -> None:
+    """Create Objects/<catalog id>/journal.md (from the template) for every
+    catalog object, if missing. Reads the seeded catalog directly from `internal`
+    so it's correct even when `root` differs from the global DATA_ROOT."""
+    cat_path = internal / "catalog.toml"
+    if not cat_path.is_file():
+        return
+    try:
+        with cat_path.open("rb") as f:
+            catalog = tomllib.load(f).get("catalog", {})
+    except (OSError, tomllib.TOMLDecodeError):
+        return
+    objects_dir = root / "Objects"
+    for slug, entry in catalog.items():
+        obj_id = (entry.get("id") or slug).replace("/", "-").strip()
+        if not obj_id:
+            continue
+        journal = objects_dir / obj_id / "journal.md"
+        if journal.exists():
+            continue
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        journal.write_text(_object_stub(obj_id, entry.get("name", "")))
 
 
 # ── Seestar device detection ────────────────────────────────────────────────

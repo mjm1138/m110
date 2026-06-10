@@ -72,6 +72,32 @@ def _rmdir_if_empty(d: Path) -> None:
         pass
 
 
+# OS-generated junk that shouldn't keep a legacy container "alive" after its
+# real contents have been migrated out.
+_JUNK_FILES = {".DS_Store", ".localized", "Thumbs.db"}
+
+
+def _drop_legacy(d: Path) -> None:
+    """Remove a legacy directory tree if it holds nothing but OS junk files.
+
+    Recurses depth-first; a directory is removed only once it contains solely
+    junk files (which are deleted) — never a dir with real content left in it.
+    """
+    if not d.is_dir():
+        return
+    for child in list(d.iterdir()):
+        if child.is_dir():
+            _drop_legacy(child)
+    remaining = list(d.iterdir())
+    if remaining and all(c.is_file() and c.name in _JUNK_FILES for c in remaining):
+        for c in remaining:
+            try:
+                c.unlink()
+            except OSError:
+                pass
+    _rmdir_if_empty(d)
+
+
 def _load_slug_to_id(catalog_toml: Path) -> dict[str, str]:
     """Map catalog slug → display id (e.g. 'm101' → 'M101') for journal folders."""
     if not catalog_toml.is_file():
@@ -153,22 +179,22 @@ def migrate_store(root) -> bool:
             # stray files at the target root.
             for f in list(t_dir.iterdir()):
                 _relocate(f, dest / f.name)
-            _rmdir_if_empty(t_dir)
-        _rmdir_if_empty(fits)
+            _drop_legacy(t_dir)
+        _drop_legacy(fits)
 
     # 5. Seestar in-app stacks → Images/<t>/seestar-stacks/
     seestar = images / "Seestar_stacks"
     if seestar.is_dir():
         for t_dir in sorted(p for p in seestar.iterdir() if p.is_dir()):
             _relocate(t_dir, images / t_dir.name / "seestar-stacks")
-        _rmdir_if_empty(seestar)
+        _drop_legacy(seestar)
 
     # 6. Hand-finished renders → Images/<t>/finished/
     finished = images / "Finished Images"
     if finished.is_dir():
         for t_dir in sorted(p for p in finished.iterdir() if p.is_dir()):
             _relocate(t_dir, images / t_dir.name / "finished")
-        _rmdir_if_empty(finished)
+        _drop_legacy(finished)
 
     # 7. Non-catalog media → Media/<Category>_photo|_video/
     if images.is_dir():
@@ -179,10 +205,11 @@ def migrate_store(root) -> bool:
     # 8. Ingest staging → Inbox/
     _relocate(images / "From the scope", root / "Inbox")
 
-    # 9. Drop now-empty legacy containers.
-    _rmdir_if_empty(data)
-    _rmdir_if_empty(site / "img")
-    _rmdir_if_empty(site)
+    # 9. Drop legacy containers (also clears OS-junk-only leftovers like .DS_Store
+    #    that would otherwise keep an emptied dir alive).
+    _drop_legacy(data)
+    _drop_legacy(site)
+    _drop_legacy(images / "From the scope")
 
     (internal / VERSION_FILE).write_text(str(STORE_VERSION))
     return True
