@@ -14,8 +14,9 @@ processing-prep. North star: **"Lightroom for smart telescopes."**
 
 ## Status
 
-v0.1 ("the Library") in progress. See [`ROADMAP.md`](ROADMAP.md) for status and
-[`CLAUDE.md`](CLAUDE.md) for full developer context.
+v0.1 ("the Library") feature-complete — catalog/library, capture tracking,
+ingest, inline journals, and Siril processing-prep. See [`ROADMAP.md`](ROADMAP.md)
+for status and [`CLAUDE.md`](CLAUDE.md) for full developer context.
 
 ## Data store
 

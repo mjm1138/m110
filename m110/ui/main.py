@@ -19,7 +19,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QLabel,
     QSplitter, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
-    QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton,
+    QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QMessageBox,
+    QInputDialog,
 )
 
 from m110 import config, derived, objects
@@ -67,6 +68,9 @@ class DetailPane(QScrollArea):
     # table + actions (prevents losing in-progress edits to a selection change
     # or an auto-refresh).
     editing_changed = Signal(bool)
+    # Emitted when the user asks to prepare a captured object for processing;
+    # the window resolves the capture target(s) and opens the dialog.
+    prepare_requested = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -121,6 +125,11 @@ class DetailPane(QScrollArea):
                 f"{t.get('integration_hms', '')} · "
                 f"{t.get('session_count', '')} sessions · "
                 f"{t.get('frames', '')} frames"))
+            prep_btn = QPushButton("Prepare for processing…")
+            prep_btn.setToolTip("Arrange a Siril working folder (per-filter split "
+                                "+ Naztronomy preset) for this object")
+            prep_btn.clicked.connect(lambda: self.prepare_requested.emit(slug))
+            self._lay.addWidget(prep_btn, alignment=Qt.AlignLeft)
         else:
             self._lay.addWidget(QLabel("<i>not captured</i>"))
 
@@ -263,6 +272,7 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self._on_select)
         self.detail = DetailPane()
         self.detail.editing_changed.connect(self._on_editing_changed)
+        self.detail.prepare_requested.connect(self._on_prepare)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.table)
         self.splitter.addWidget(self.detail)
@@ -412,6 +422,43 @@ class MainWindow(QMainWindow):
         self.table.setEnabled(not editing)
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
+
+    # ---- processing-prep ----
+    def _on_prepare(self, slug: str):
+        totals = derived.load_totals()
+        by_folder = totals.get("by_folder", {})
+        targets = [f for f, info in by_folder.items()
+                   if slug in info.get("slugs", [])]
+
+        def _has_lights(t: str) -> bool:
+            d = config.lights_dir(t)
+            return d.is_dir() and any(p.suffix.lower() == ".fit" for p in d.iterdir())
+
+        targets = [t for t in targets if _has_lights(t)]
+        if not targets:
+            QMessageBox.information(
+                self, "Nothing to prepare",
+                "This object has no raw light frames to arrange for Siril.\n"
+                "(Targets with only Seestar in-app stacks can't be Siril-prepped.)")
+            return
+        if len(targets) == 1:
+            target = targets[0]
+        else:
+            target, ok = QInputDialog.getItem(
+                self, "Choose capture target",
+                "This object maps to multiple capture targets:",
+                sorted(targets), 0, False)
+            if not ok:
+                return
+
+        proc = derived.load_processing().get("folders", {}).get(target, {})
+        stack_meta = proc.get("stack_meta") or {}
+        usable = stack_meta.get("stack_frames")
+        star = bool(proc.get("star_removal"))
+
+        from m110.ui.processing_dialog import ProcessingDialog
+        ProcessingDialog(target, usable_frames=usable, star_removal=star,
+                         parent=self).exec()
 
     def _do_refresh(self):
         if not self._ready or self._refreshing or self.detail.is_editing():

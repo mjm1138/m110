@@ -130,9 +130,30 @@ Mark each pass. Re-run a section whenever its area changes.
       ingested…"; re-running Ingest copies only the remainder (skip-if-present,
       partial-safe).
 
+### G2. Processing-prep (0.1f)
+- [ ] A **captured** object's detail pane shows **"Prepare for processing…"**; an
+      uncaptured object (or one with only Seestar stacks) does not prep (the
+      handler explains there are no raw lights).
+- [ ] Prepare → preview shows **per-filter light counts**, usable frames → the
+      chosen **drizzle** setting, the preset destination, and a **guidance** list.
+      Double-clicking a guidance item opens the playbook (rendered Markdown).
+- [ ] Confirm → "Arranging lights…" progress (Cancel works) → completes. On disk:
+      `Images/<target>/process/lights_<FILTER>/` holds the subs as **hardlinks**
+      (`ls -li` shows the same inode / link count > 1 as `../lights/`), and
+      `process/presets/naztronomy_smart_scope_presets.json` is valid JSON with
+      drizzle matching the frame count. `process/next-steps.md` is present.
+- [ ] **Idempotent re-run**: Prepare again → "0 arranged, N already present".
+- [ ] **Reversible**: deleting `process/` removes the prep with no effect on
+      `lights/` (hardlinks, not moves).
+- [ ] A target with **mixed filters** (LP + IRCUT subs) splits into both
+      `lights_LP/` and `lights_IRCUT/`, and the LP-blend playbook appears in
+      guidance.
+
 ### H. Cross-check with the source workflow (optional)
 - [ ] Refresh output (sessions/derived) for a shared object matches the reference
       Astronomy `rebuild.sh` (aside from `processing.json`'s `generated_at`).
+- [ ] An emitted preset matches the schema/shape of the reference
+      `~/Astronomy/Images/FITS/<obj>/presets/naztronomy_smart_scope_presets.json`.
 
 ---
 

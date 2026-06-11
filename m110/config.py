@@ -18,6 +18,7 @@ APP_CONFIG_DIR = Path.home() / ".m110"
 SETTINGS_FILE = APP_CONFIG_DIR / "settings.json"
 DEFAULT_DATA_ROOT = Path.home() / "Documents" / "M110"
 SEED_DIR = Path(__file__).resolve().parent / "seed"
+GUIDANCE_DIR = Path(__file__).resolve().parent / "guidance"   # bundled playbooks
 
 INTERNAL_DIRNAME = ".m110_internal_data"
 
@@ -139,6 +140,11 @@ def seestar_stacks_dir(name: str) -> Path:
 
 def finished_dir(name: str) -> Path:
     return IMAGES_DIR / name / "finished"
+
+
+def process_dir(name: str) -> Path:
+    """Siril working dir for a capture target (processing-prep output)."""
+    return IMAGES_DIR / name / "process"
 
 
 _apply(_resolve_data_root())

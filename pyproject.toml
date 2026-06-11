@@ -34,4 +34,4 @@ m110 = "m110.ui.main:main"
 packages = ["m110", "m110.ui"]
 
 [tool.setuptools.package-data]
-m110 = ["seed/*.toml"]
+m110 = ["seed/*.toml", "guidance/*.md"]
