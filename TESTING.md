@@ -82,6 +82,18 @@ Mark each pass. Re-run a section whenever its area changes.
       whose only images are `.fit` Seestar stacks. *(Bug #3 regression.)*
 - [ ] Uncaptured object shows "not captured", no broken images.
 
+### C2. Inline journal editing (0.1e)
+- [ ] Detail pane shows a **Journal** header with an **Edit** button; an object
+      with no notes shows "No notes yet — click Edit to start."
+- [ ] Edit → raw `journal.md` (frontmatter + Markdown) opens in a monospace
+      editor; **the table and Ingest/Refresh lock** while editing.
+- [ ] **Save** writes the file and re-renders (body Markdown + frontmatter
+      `hero_caption` reflected); the lock releases. Confirm on disk:
+      `Objects/<id>/journal.md` changed.
+- [ ] **Cancel** discards edits, re-renders the prior content, releases the lock.
+- [ ] Editing a frontmatter `hero` / `hero_caption` then Save → after the next
+      sync, the gallery hero / caption updates accordingly.
+
 ### D. Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.

@@ -25,6 +25,23 @@ def journal_path(slug: str) -> Path:
     return config.OBJECTS_DIR / object_folder_name(slug) / "journal.md"
 
 
+def read_journal_text(slug: str) -> str:
+    """Raw `journal.md` text for editing (frontmatter + body), or "" if absent."""
+    p = journal_path(slug)
+    return p.read_text() if p.is_file() else ""
+
+
+def write_journal(slug: str, text: str) -> Path:
+    """Write the raw `journal.md` for an object, creating its folder if needed.
+
+    The only writer of a journal file. Returns the path written.
+    """
+    p = journal_path(slug)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text)
+    return p
+
+
 def read_journal(slug: str) -> tuple[dict, str]:
     """Return (frontmatter, body_markdown).
 

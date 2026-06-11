@@ -136,7 +136,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `build_derived.py` | compute totals/priorities/summary/processing → `.m110_internal_data/derived/*.json` (ported) |
 | `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached |
 | `ingest.py` | staging/Seestar scan **plan** (read-only) + gated `apply_ops` (the only writer into the content tree); cancellable |
-| `objects.py` | per-object journal read (`Objects/<id>/journal.md`, frontmatter+body); hero path |
+| `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images |
 | `seed/` | bundled starter `catalog.toml` / `priorities.toml` (package-data) |
 
@@ -144,7 +144,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 | Module | Role |
 |---|---|
-| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change); manual Refresh (Ctrl+R) is a menu override |
+| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), preview table, threaded scan & apply behind modal progress+Cancel |
 | `preferences.py` | choose data folder (save + restart) |
 
@@ -204,9 +204,9 @@ decisions (distribution, tech, processing model, data), the v0.1 build order
 with status, later phases, and open decisions. Keep `ROADMAP.md` current as work
 lands.
 
-Current status at a glance: **0.1a–0.1d done**, plus the split to an own data
-root and the image-rendering port. **Next: 0.1e (inline journal editing)**, then
-0.1f (processing-prep). Foundational decisions in brief: open-source /
+Current status at a glance: **0.1a–0.1e done**, plus the split to an own data
+root, the two-axis store reshape (#13), and the image-rendering port. **Next:
+0.1f (processing-prep).** Foundational decisions in brief: open-source /
 Developer-ID distribution (not App Store); PySide6 over a headless engine;
 processing is prepare-and-guide, not direct Siril control.
 

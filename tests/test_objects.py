@@ -50,3 +50,30 @@ def test_no_frontmatter_returns_whole_body(tmp_path, monkeypatch):
     fm, body = objects.read_journal("x")
     assert fm == {}
     assert "Just body" in body
+
+
+def test_write_journal_creates_folder_and_round_trips(tmp_path, monkeypatch):
+    od = tmp_path / "Objects"
+    monkeypatch.setattr(config, "OBJECTS_DIR", od)
+    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    # no folder yet → read is empty
+    assert objects.read_journal_text("m42") == ""
+
+    text = '---\nname: "Orion"\nhero_caption: "the sword"\n---\n\n# Notes\n\nbody\n'
+    path = objects.write_journal("m42", text)
+    assert path == od / "m42" / "journal.md"      # slug fallback (no catalog)
+    assert path.is_file()
+    # raw round-trip + parsed view both reflect the edit
+    assert objects.read_journal_text("m42") == text
+    fm, body = objects.read_journal("m42")
+    assert fm["name"] == "Orion" and fm["hero_caption"] == "the sword"
+    assert "body" in body
+
+
+def test_write_journal_overwrites_existing(tmp_path, monkeypatch):
+    od = tmp_path / "Objects"
+    monkeypatch.setattr(config, "OBJECTS_DIR", od)
+    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    objects.write_journal("m42", "first\n")
+    objects.write_journal("m42", "second\n")   # edit replaces prior content
+    assert objects.read_journal_text("m42") == "second\n"

@@ -13,11 +13,13 @@ import sys
 import time
 
 from PySide6.QtCore import Qt, QSize, QThread, Signal, QTimer, QEvent
-from PySide6.QtGui import QColor, QPixmap, QIcon, QAction, QKeySequence
+from PySide6.QtGui import (
+    QColor, QPixmap, QIcon, QAction, QKeySequence, QFontDatabase,
+)
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QLabel,
-    QSplitter, QWidget, QVBoxLayout, QTextBrowser, QListWidget, QListWidgetItem,
-    QScrollArea,
+    QSplitter, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
+    QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton,
 )
 
 from m110 import config, derived, objects
@@ -61,6 +63,11 @@ class RefreshWorker(QThread):
 
 
 class DetailPane(QScrollArea):
+    # Emitted when the journal editor opens/closes so the window can lock the
+    # table + actions (prevents losing in-progress edits to a selection change
+    # or an auto-refresh).
+    editing_changed = Signal(bool)
+
     def __init__(self):
         super().__init__()
         self.setWidgetResizable(True)
@@ -68,7 +75,12 @@ class DetailPane(QScrollArea):
         self._lay = QVBoxLayout(self._content)
         self._lay.setAlignment(Qt.AlignTop)
         self.setWidget(self._content)
+        self._current = None        # (slug, e, t) of the shown object
+        self._editing = False
         self.placeholder()
+
+    def is_editing(self) -> bool:
+        return self._editing
 
     def _clear(self):
         while self._lay.count():
@@ -78,10 +90,13 @@ class DetailPane(QScrollArea):
                 w.deleteLater()
 
     def placeholder(self):
+        self._current = None
         self._clear()
         self._lay.addWidget(QLabel("Select an object to see details."))
 
     def show_object(self, slug: str, e: dict, t: dict):
+        self._current = (slug, e, t)
+        self._editing = False
         self._clear()
         captured = bool(t)
 
@@ -124,12 +139,25 @@ class DetailPane(QScrollArea):
             cap.setWordWrap(True)
             cap.setStyleSheet("color:#8b949e; font-size:11px")
             self._lay.addWidget(cap)
+
+        header = QHBoxLayout()
+        header.addWidget(QLabel("<b>Journal</b>"))
+        header.addStretch(1)
+        edit_btn = QPushButton("Edit")
+        edit_btn.setToolTip("Edit this object's journal (Objects/<id>/journal.md)")
+        edit_btn.clicked.connect(self._enter_edit)
+        header.addWidget(edit_btn)
+        self._lay.addLayout(header)
         if body.strip():
             tb = QTextBrowser()
             tb.setMarkdown(body)
             tb.setOpenExternalLinks(True)
             tb.setMinimumHeight(220)
             self._lay.addWidget(tb)
+        else:
+            empty = QLabel("<i>No notes yet — click Edit to start.</i>")
+            empty.setStyleSheet("color:#8b949e")
+            self._lay.addWidget(empty)
 
         # show anything we managed to thumbnail — including FITS stacks
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
@@ -151,6 +179,62 @@ class DetailPane(QScrollArea):
             self._lay.addWidget(gallery)
 
         self._lay.addStretch(1)
+
+    # ---- journal editing ----
+    def _enter_edit(self):
+        if not self._current:
+            return
+        slug, e, t = self._current
+        self._editing = True
+        self.editing_changed.emit(True)
+        self._clear()
+
+        self._lay.addWidget(QLabel(
+            f"<b>Editing journal</b> &mdash; {e.get('id', '')} "
+            f"&middot; <code>Objects/{objects.object_folder_name(slug)}/journal.md</code>"))
+
+        self._editor = QPlainTextEdit()
+        self._editor.setPlainText(objects.read_journal_text(slug))
+        self._editor.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self._editor.setMinimumHeight(360)
+        self._editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._lay.addWidget(self._editor)
+
+        hint = QLabel("Frontmatter between the <code>---</code> fences feeds the "
+                      "gallery (name / hero_caption / hero); everything below is Markdown.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#8b949e; font-size:11px")
+        self._lay.addWidget(hint)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self._cancel_edit)
+        save = QPushButton("Save")
+        save.setDefault(True)
+        save.clicked.connect(self._save_edit)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        self._lay.addLayout(buttons)
+        self._lay.addStretch(1)
+        self._editor.setFocus()
+
+    def _save_edit(self):
+        if not self._current:
+            return
+        slug, e, t = self._current
+        objects.write_journal(slug, self._editor.toPlainText())
+        self._editing = False
+        self.editing_changed.emit(False)
+        self.show_object(slug, e, t)   # re-render with the saved notes
+
+    def _cancel_edit(self):
+        if not self._current:
+            return
+        slug, e, t = self._current
+        self._editing = False
+        self.editing_changed.emit(False)
+        self.show_object(slug, e, t)
 
 
 class MainWindow(QMainWindow):
@@ -178,6 +262,7 @@ class MainWindow(QMainWindow):
         self.table = self._build_table()
         self.table.itemSelectionChanged.connect(self._on_select)
         self.detail = DetailPane()
+        self.detail.editing_changed.connect(self._on_editing_changed)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.table)
         self.splitter.addWidget(self.detail)
@@ -321,8 +406,15 @@ class MainWindow(QMainWindow):
                 and time.monotonic() - self._last_refresh > 2.0):
             self._do_refresh()
 
+    def _on_editing_changed(self, editing: bool):
+        # Lock the table + actions while a journal edit is open, so a selection
+        # change or auto-refresh can't discard in-progress edits.
+        self.table.setEnabled(not editing)
+        self.ingest_action.setEnabled(not editing)
+        self.refresh_action.setEnabled(not editing)
+
     def _do_refresh(self):
-        if not self._ready or self._refreshing:
+        if not self._ready or self._refreshing or self.detail.is_editing():
             return
         self._refreshing = True
         self.refresh_action.setEnabled(False)
@@ -335,6 +427,11 @@ class MainWindow(QMainWindow):
     def _on_refresh_done(self, summary: dict):
         self._refreshing = False
         self._last_refresh = time.monotonic()
+        if self.detail.is_editing():
+            # A refresh that finished while the journal editor is open must not
+            # rebuild the table / re-render the detail (it would discard edits).
+            # Leave actions locked; the next sync after editing picks up changes.
+            return
         self.refresh_action.setEnabled(True)
         new_cat = load_catalog()
         new_totals = derived.totals_by_slug()
