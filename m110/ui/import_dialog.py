@@ -10,6 +10,7 @@ worker thread behind modal progress with Cancel. Destructive cleanup is scoped t
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -18,7 +19,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
 )
 
-from m110 import siril
+from m110 import objects, siril
 
 
 def _fmt_size(n: int) -> str:
@@ -73,8 +74,7 @@ class ImportDialog(QDialog):
     imported = Signal(str)   # target (main window refreshes)
 
     _CLEANUP = [
-        ("Remove the hardlinked lights/ only (safe — originals kept)", "lights"),
-        ("Remove the whole siril/ sandbox", "all"),
+        ("Archive this run; keep lights/ + preset ready for another run", "archive"),
         ("Leave the sandbox as-is", "none"),
     ]
 
@@ -159,9 +159,11 @@ class ImportDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
 
         self._hero.clear()
-        self._hero.addItem("(none)", None)
+        fm, _ = objects.read_journal(self._slug)
+        current = fm.get("hero")
+        # None data → no change ("keep current" if one is set, else leave unset).
+        self._hero.addItem(f"Keep current ({current})" if current else "(none)", None)
         for src in plan.hero_candidates:
-            from pathlib import Path
             self._hero.addItem(Path(src).name, src)
 
         n_new = sum(1 for it in plan.items if not it.already)
@@ -198,12 +200,10 @@ class ImportDialog(QDialog):
             return
         hero_src = self._hero.currentData()
         msg = f"Import {len(srcs)} output(s) into the Library?"
-        if cleanup == "all":
-            msg += ("\n\nThis will then DELETE the entire siril/ sandbox, including "
-                    "any un-imported intermediates. This can't be undone.")
-        elif cleanup == "lights":
-            msg += ("\n\nThe hardlinked lights/ will be removed afterward "
-                    "(your originals in lights/ are untouched).")
+        if cleanup == "archive":
+            msg += ("\n\nThis run's output + intermediates will then be moved into "
+                    "siril/archive/; lights/ and the preset stay ready for another "
+                    "run. Nothing is deleted.")
         if QMessageBox.question(self, "Confirm import", msg,
                                 QMessageBox.Yes | QMessageBox.Cancel,
                                 QMessageBox.Cancel) != QMessageBox.Yes:
@@ -226,7 +226,7 @@ class ImportDialog(QDialog):
         bits = [f"{res.get('imported', 0)} imported"]
         if res.get("skipped"):
             bits.append(f"{res['skipped']} already present")
-        clean = {"lights": "lights/ removed", "all": "sandbox removed",
+        clean = {"archive": "run archived; sandbox ready for another run",
                  "none": "sandbox kept"}.get(res.get("cleaned"), "")
         self._info.setText(", ".join(bits) + (f"; {clean}." if clean else "."))
         # refresh the view (re-scan what remains)

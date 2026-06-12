@@ -91,8 +91,9 @@ All machine state lives in a single **hidden** `.m110_internal_data/`.
     finished/           hand-finished renders
     siril/              contained Siril sandbox (processing-prep): literal lights/ (hardlinks;
                         per-filter siril/<FILTER>/ for mixed filters), presets/<naztronomy preset>,
-                        next-steps.md. Siril runs *here* (keeps the tiers clean); M110 imports
-                        finished work back into finished/ + stacks/, then cleans the sandbox up.
+                        next-steps.md, archive/<ts>/ (past runs). Siril runs *here* (keeps the
+                        tiers clean); M110 imports finished work → finished/ + stacks/, then
+                        archives the run (keeps lights/ + preset ready for the next run; never deletes).
     (darks/ flats/ biases/ preserved if present)
   Media/<Category>_photo|_video/     lunar/planetary/scenery media
   Inbox/                             staging area for ingest
@@ -140,7 +141,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `build_derived.py` | compute totals/priorities/summary/processing → `.m110_internal_data/derived/*.json` (ported) |
 | `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached |
 | `ingest.py` | staging/Seestar scan **plan** (read-only) + gated `apply_ops` (the only writer into the content tree); cancellable |
-| `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset by drizzle-frame-count, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, set hero, gated sandbox cleanup (scoped to `siril/`). Bundled-guidance access |
+| `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset by drizzle-frame-count, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs; never deletes, never escapes `siril/`). Bundled-guidance access |
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images |
 | `seed/` | bundled starter `catalog.toml` / `priorities.toml` (package-data) |

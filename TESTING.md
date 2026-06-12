@@ -153,11 +153,14 @@ Mark each pass. Re-run a section whenever its area changes.
 - [ ] Reopen the object → **"Import finished work…"** appears. Preview lists the
       render (→ `finished/`) and stack (→ `stacks/`) checked, intermediates absent;
       a **hero** picker lists the raster(s); a **cleanup** choice is offered.
-- [ ] Import (cleanup = *lights only*) → render shows in the gallery, the chosen
-      hero becomes the hero, `siril/**/lights/` is gone but the rest of the
-      sandbox stays, and `Images/<target>/lights/` (originals) is **untouched**.
-- [ ] Import with cleanup = *whole sandbox* → `siril/` removed; `lights/`,
-      `stacks/`, `finished/` all intact. (Blast radius never leaves `siril/`.)
+- [ ] Import (cleanup = *archive*) → render shows in the gallery, the chosen hero
+      becomes the hero; the run's output + intermediates (incl. Siril's `process/`)
+      are **moved** into a visible `siril/[<FILTER>/]archive/<timestamp>/`
+      (nothing deleted), while `lights/` + `presets/` stay so the sandbox is ready
+      for another run. `Images/<target>/lights/` originals are untouched.
+- [ ] **Re-import keeps the hero:** process again, import again → the hero picker
+      defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
+      alongside the first.
 
 ### H. Cross-check with the source workflow (optional)
 - [ ] Refresh output (sessions/derived) for a shared object matches the reference

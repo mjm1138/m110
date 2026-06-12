@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from . import config, objects
@@ -353,17 +354,21 @@ def _classify(path: Path, target: str):
     return None
 
 
+# Sandbox subdirs that never hold fresh, importable output: the hardlinked
+# inputs, Siril's scratch, the preset, and prior archived runs.
+_SKIP_DIRS = {"lights", "process", "presets", "archive"}
+
+
 def _sandbox_outputs(target: str):
     """Yield (path, kind, dest) for finished outputs in the sandbox, skipping
-    anything under a `lights/` or Siril's own `process/` working dirs."""
+    inputs, Siril scratch, presets, and archived prior runs."""
     base = config.siril_dir(target)
     if not base.is_dir():
         return
     for p in base.rglob("*"):
         if not p.is_file():
             continue
-        rel_parts = set(p.relative_to(base).parts[:-1])
-        if "lights" in rel_parts or "process" in rel_parts:
+        if _SKIP_DIRS & set(p.relative_to(base).parts[:-1]):
             continue
         c = _classify(p, target)
         if c:
@@ -400,24 +405,21 @@ def scan_finished(target: str, should_cancel=None) -> ImportPlan:
 
 # ── import: apply (writes finished/ + stacks/, gated cleanup) ─────────────────
 
-def _under(path: Path, root: Path) -> bool:
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
+# Kept in each job dir on cleanup, so the sandbox is ready for another run.
+_ARCHIVE_KEEP = {"lights", "presets", "archive", "next-steps.md"}
 
 
 def apply_import(target: str, selected_srcs, hero_src: str | None = None,
-                 hero_slug: str | None = None, cleanup: str = "lights",
+                 hero_slug: str | None = None, cleanup: str = "archive",
                  progress=None, should_cancel=None) -> dict:
     """Copy the selected finished outputs into the content tiers, optionally set
-    a hero, and clean up the sandbox. THE WRITER — callers confirm.
+    a hero, and tidy the sandbox. THE WRITER — callers confirm.
 
-    cleanup: "lights" (default; remove only the hardlinked lights/ — safe, the
-    originals live in Images/<target>/lights/), "all" (remove the whole sandbox),
-    or "none". Destructive removals are **scoped to Images/<target>/siril/**.
-    """
+    cleanup: "archive" (default) sweeps each job's intermediates/output/scratch
+    into `siril/[<FILTER>/]archive/<timestamp>/`, keeping `lights/` + `presets/`
+    so the sandbox is ready for another run; "none" leaves it. **Never deletes**
+    and never escapes `Images/<target>/siril/`. `hero_src=None` keeps the
+    object's current hero (the dialog's "keep current" choice)."""
     selected = set(selected_srcs)
     plan = scan_finished(target)
     chosen = [it for it in plan.items if it.src in selected]
@@ -443,27 +445,41 @@ def apply_import(target: str, selected_srcs, hero_src: str | None = None,
 
     # Hero: the chosen render now lives in finished/ — pin it by filename
     # (build_images._hero_source matches frontmatter `hero` to the image name).
+    # hero_src=None → leave the current hero as-is ("keep current").
     if hero_src and hero_slug:
         objects.set_frontmatter_key(hero_slug, "hero", Path(hero_src).name)
 
-    cleaned = _cleanup_sandbox(target, cleanup)
+    cleaned = _archive_run(target) if cleanup == "archive" else "none"
     return {"imported": imported, "skipped": skipped,
             "cleaned": cleaned, "cancelled": False}
 
 
-def _cleanup_sandbox(target: str, mode: str) -> str:
-    """Remove sandbox files per `mode`, never escaping Images/<target>/siril/."""
+def _job_dirs(base: Path) -> list[Path]:
+    """The working dirs to tidy: per-filter subdirs (each has lights/) if mixed,
+    else the sandbox root."""
+    filt = [p for p in base.iterdir() if p.is_dir() and (p / "lights").is_dir()]
+    return filt if filt else [base]
+
+
+def _archive_run(target: str) -> str:
+    """Move each job's run output/intermediates/scratch into
+    `<job>/archive/<timestamp>/`, keeping lights/ + presets/ for the next run.
+    Never deletes; only moves within `Images/<target>/siril/`."""
     base = config.siril_dir(target)
-    if mode == "none" or not base.is_dir():
+    if not base.is_dir():
         return "none"
-    if mode == "all":
-        if _under(base, config.IMAGES_DIR):
-            shutil.rmtree(base)
-        return "all"
-    if mode == "lights":
-        # every literal lights/ under the sandbox (single job or per-filter)
-        for d in list(base.rglob("lights")):
-            if d.is_dir() and _under(d, base):
-                shutil.rmtree(d)
-        return "lights"
-    return "none"
+    job_dirs = _job_dirs(base)
+    ts0 = datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts, n = ts0, 2
+    while any((jd / "archive" / ts).exists() for jd in job_dirs):
+        ts, n = f"{ts0}-{n}", n + 1
+    moved = 0
+    for jd in job_dirs:
+        dest = jd / "archive" / ts
+        for child in list(jd.iterdir()):
+            if child.name in _ARCHIVE_KEEP:
+                continue
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(child), str(dest / child.name))
+            moved += 1
+    return "archive" if moved else "none"

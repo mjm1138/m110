@@ -129,7 +129,7 @@ def test_scan_finished_classifies_and_excludes_intermediates(tmp_path, monkeypat
     assert plan.hero_candidates == [str(sb / f"{target}_2026_processed.png")]
 
 
-def test_apply_import_routes_sets_hero_and_cleans(tmp_path, monkeypatch):
+def test_apply_import_routes_sets_hero_and_archives(tmp_path, monkeypatch):
     target = _make_target(tmp_path, monkeypatch, ircut=120)
     siril.apply_prep(siril.plan_prep(target))
     sb = config.siril_dir(target)
@@ -139,36 +139,50 @@ def test_apply_import_routes_sets_hero_and_cleans(tmp_path, monkeypatch):
     srcs = [it.src for it in plan.items]
     hero = plan.hero_candidates[0]
     res = siril.apply_import(target, srcs, hero_src=hero, hero_slug="m101",
-                             cleanup="all")
-    assert res["imported"] == 2 and res["cleaned"] == "all"
+                             cleanup="archive")
+    assert res["imported"] == 2 and res["cleaned"] == "archive"
     assert (config.finished_dir(target) / f"{target}_2026_processed.png").is_file()
     assert (config.stacks_dir(target) / f"{target}_2026_processed.fit").is_file()
     fm, _ = objects.read_journal("m101")
     assert fm.get("hero") == f"{target}_2026_processed.png"
-    # cleanup removed the sandbox but NOT the originals
-    assert not sb.exists()
-    assert config.lights_dir(target).is_dir()
+
+    # sandbox is tidied + ready for another run: lights/ + presets/ kept…
+    assert (sb / "lights").is_dir() and (sb / "presets" / siril.PRESET_NAME).is_file()
+    # …outputs (incl. intermediates) moved into a visible archive/<ts>/…
+    archived = list((sb / "archive").rglob("*"))
+    names = {p.name for p in archived}
+    assert f"{target}_2026_processed.png" in names      # imported original archived
+    assert f"{target}_og.fit" in names                  # intermediate archived (not deleted)
+    assert f"starless_{target}.fit" in names
+    # …and the run's output is gone from the working root (ready to re-run)…
+    assert not (sb / f"{target}_og.fit").exists()
+    assert siril.has_unimported_output(target) is False
+    # originals untouched
     assert len(list(config.lights_dir(target).glob("*.fit"))) == 120
 
 
-def test_cleanup_lights_only_keeps_outputs_and_originals(tmp_path, monkeypatch):
-    target = _make_target(tmp_path, monkeypatch, ircut=10)
+def test_archive_per_filter_jobs(tmp_path, monkeypatch):
+    target = _make_target(tmp_path, monkeypatch, ircut=120, lp=40)
     siril.apply_prep(siril.plan_prep(target))
     sb = config.siril_dir(target)
-    (sb / f"{target}_processed.fit").write_text("s")
-    siril.apply_import(target, [], cleanup="lights")
-    assert not (sb / "lights").exists()          # hardlinks removed
-    assert (sb / f"{target}_processed.fit").is_file()   # rest of sandbox kept
-    assert config.lights_dir(target).is_dir()    # originals safe
+    (sb / "IRCUT" / f"{target}_processed.png").write_text("p")
+    siril.apply_import(target, [], cleanup="archive")
+    # archived within the IRCUT job, lights kept
+    assert any((sb / "IRCUT" / "archive").rglob("*_processed.png"))
+    assert (sb / "IRCUT" / "lights").is_dir()
 
 
-def test_cleanup_never_escapes_siril(tmp_path, monkeypatch):
-    target = _make_target(tmp_path, monkeypatch, ircut=5)
+def test_keep_current_hero_on_reimport(tmp_path, monkeypatch):
+    target = _make_target(tmp_path, monkeypatch, ircut=10)
     siril.apply_prep(siril.plan_prep(target))
-    sentinel = config.lights_dir(target) / "Light_M101_20s_IRCUT_20260101-000000.fit"
-    siril.apply_import(target, [], cleanup="all")
-    assert not config.siril_dir(target).exists()
-    assert sentinel.is_file()   # original lights untouched by cleanup="all"
+    objects.set_frontmatter_key("m101", "hero", "chosen.png")
+    sb = config.siril_dir(target)
+    (sb / f"{target}_processed.png").write_text("p")
+    # hero_src=None → keep the current hero unchanged
+    siril.apply_import(target, [str(sb / f"{target}_processed.png")],
+                       hero_src=None, hero_slug="m101", cleanup="none")
+    fm, _ = objects.read_journal("m101")
+    assert fm.get("hero") == "chosen.png"
 
 
 # ── frontmatter upsert ───────────────────────────────────────────────────────
