@@ -142,9 +142,16 @@ def finished_dir(name: str) -> Path:
     return IMAGES_DIR / name / "finished"
 
 
-def process_dir(name: str) -> Path:
-    """Siril working dir for a capture target (processing-prep output)."""
-    return IMAGES_DIR / name / "process"
+def siril_dir(name: str) -> Path:
+    """Contained Siril sandbox for a capture target (processing-prep)."""
+    return IMAGES_DIR / name / "siril"
+
+
+def siril_job_dir(name: str, filt: str | None = None) -> Path:
+    """Working dir for a Siril job. Single-filter targets use the sandbox root;
+    mixed-filter targets get one job per filter under it."""
+    base = siril_dir(name)
+    return base if filt is None else base / filt
 
 
 _apply(_resolve_data_root())

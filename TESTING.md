@@ -130,24 +130,34 @@ Mark each pass. Re-run a section whenever its area changes.
       ingested…"; re-running Ingest copies only the remainder (skip-if-present,
       partial-safe).
 
-### G2. Processing-prep (0.1f)
-- [ ] A **captured** object's detail pane shows **"Prepare for processing…"**; an
-      uncaptured object (or one with only Seestar stacks) does not prep (the
-      handler explains there are no raw lights).
-- [ ] Prepare → preview shows **per-filter light counts**, usable frames → the
-      chosen **drizzle** setting, the preset destination, and a **guidance** list.
-      Double-clicking a guidance item opens the playbook (rendered Markdown).
-- [ ] Confirm → "Arranging lights…" progress (Cancel works) → completes. On disk:
-      `Images/<target>/process/lights_<FILTER>/` holds the subs as **hardlinks**
-      (`ls -li` shows the same inode / link count > 1 as `../lights/`), and
-      `process/presets/naztronomy_smart_scope_presets.json` is valid JSON with
-      drizzle matching the frame count. `process/next-steps.md` is present.
-- [ ] **Idempotent re-run**: Prepare again → "0 arranged, N already present".
-- [ ] **Reversible**: deleting `process/` removes the prep with no effect on
-      `lights/` (hardlinks, not moves).
-- [ ] A target with **mixed filters** (LP + IRCUT subs) splits into both
-      `lights_LP/` and `lights_IRCUT/`, and the LP-blend playbook appears in
-      guidance.
+### G2. Processing-prep round-trip (0.1f)
+**Auto-setup on ingest**
+- [ ] After ingesting a new object's lights, a Siril sandbox appears at
+      `Images/<target>/siril/` **without any manual action**: a **literal**
+      `lights/` (Siril needs that exact name) holding the subs as **hardlinks**
+      (`ls -li` → same inode / link count > 1 as `../lights/`), plus
+      `presets/naztronomy_smart_scope_presets.json` (valid JSON, drizzle matching
+      the frame count) and `next-steps.md`. M110 does **not** create a `process/`
+      (Siril makes its own inside the sandbox).
+- [ ] A target with **mixed filters** (LP + IRCUT) gets per-filter jobs
+      `siril/IRCUT/` and `siril/LP/`, each a self-contained working dir.
+
+**Manual Prepare (secondary)**
+- [ ] A captured object's detail pane shows **"Prepare for processing…"**; it
+      re-arranges/refreshes the sandbox (idempotent: "0 arranged, N already
+      present"). Guidance list opens playbooks (double-click).
+
+**Import finished work**
+- [ ] Simulate Siril: drop a `*_processed.png` and a `*_processed.fit` into
+      `siril/` (and a `*_og.fit` / `starless_*.fit` — these must be **ignored**).
+- [ ] Reopen the object → **"Import finished work…"** appears. Preview lists the
+      render (→ `finished/`) and stack (→ `stacks/`) checked, intermediates absent;
+      a **hero** picker lists the raster(s); a **cleanup** choice is offered.
+- [ ] Import (cleanup = *lights only*) → render shows in the gallery, the chosen
+      hero becomes the hero, `siril/**/lights/` is gone but the rest of the
+      sandbox stays, and `Images/<target>/lights/` (originals) is **untouched**.
+- [ ] Import with cleanup = *whole sandbox* → `siril/` removed; `lights/`,
+      `stacks/`, `finished/` all intact. (Blast radius never leaves `siril/`.)
 
 ### H. Cross-check with the source workflow (optional)
 - [ ] Refresh output (sessions/derived) for a shared object matches the reference

@@ -57,6 +57,16 @@ class _ApplyWorker(QThread):
                 self._ops,
                 progress=lambda i, t: self.progressed.emit(i, t),
                 should_cancel=self._cancel.is_set)
+            # Auto-set up a Siril sandbox for any target that gained lights
+            # (idempotent; skips targets with pending finished output).
+            if not res.get("cancelled"):
+                from pathlib import Path
+                from m110 import siril
+                targets = sorted({Path(op.dest_rel).parts[1]
+                                  for op in self._ops if op.kind == "light"
+                                  and len(Path(op.dest_rel).parts) > 1})
+                if targets:
+                    siril.autoprep(targets, should_cancel=self._cancel.is_set)
             self.done.emit(res)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")

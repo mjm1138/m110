@@ -23,8 +23,14 @@ from PySide6.QtWidgets import (
     QInputDialog,
 )
 
-from m110 import config, derived, objects
+from m110 import config, derived, objects, siril
 from m110.catalog import load_catalog, catalog_sort_key
+
+
+def _targets_for_slug(slug: str) -> list[str]:
+    """Capture targets (Images/<target>/) that feed this catalog object."""
+    by_folder = derived.load_totals().get("by_folder", {})
+    return [f for f, info in by_folder.items() if slug in info.get("slugs", [])]
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
 STATUS_COLOR = {"deep_stack": QColor("#3fb950"), "initial": QColor("#d29922")}
@@ -71,6 +77,8 @@ class DetailPane(QScrollArea):
     # Emitted when the user asks to prepare a captured object for processing;
     # the window resolves the capture target(s) and opens the dialog.
     prepare_requested = Signal(str)
+    # Emitted when the user asks to import finished Siril work for an object.
+    import_requested = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -85,6 +93,10 @@ class DetailPane(QScrollArea):
 
     def is_editing(self) -> bool:
         return self._editing
+
+    @staticmethod
+    def _has_finished_work(slug: str) -> bool:
+        return any(siril.has_unimported_output(t) for t in _targets_for_slug(slug))
 
     def _clear(self):
         while self._lay.count():
@@ -125,11 +137,21 @@ class DetailPane(QScrollArea):
                 f"{t.get('integration_hms', '')} · "
                 f"{t.get('session_count', '')} sessions · "
                 f"{t.get('frames', '')} frames"))
+            btn_row = QHBoxLayout()
             prep_btn = QPushButton("Prepare for processing…")
-            prep_btn.setToolTip("Arrange a Siril working folder (per-filter split "
-                                "+ Naztronomy preset) for this object")
+            prep_btn.setToolTip("Arrange a Siril sandbox (literal lights/ + "
+                                "Naztronomy preset) for this object")
             prep_btn.clicked.connect(lambda: self.prepare_requested.emit(slug))
-            self._lay.addWidget(prep_btn, alignment=Qt.AlignLeft)
+            btn_row.addWidget(prep_btn)
+            # Offer import only when a sandbox has finished output to bring back.
+            if self._has_finished_work(slug):
+                imp_btn = QPushButton("Import finished work…")
+                imp_btn.setToolTip("Bring your Siril renders/stack into the "
+                                   "Library and clean up the sandbox")
+                imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
+                btn_row.addWidget(imp_btn)
+            btn_row.addStretch(1)
+            self._lay.addLayout(btn_row)
         else:
             self._lay.addWidget(QLabel("<i>not captured</i>"))
 
@@ -273,6 +295,7 @@ class MainWindow(QMainWindow):
         self.detail = DetailPane()
         self.detail.editing_changed.connect(self._on_editing_changed)
         self.detail.prepare_requested.connect(self._on_prepare)
+        self.detail.import_requested.connect(self._on_import)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.table)
         self.splitter.addWidget(self.detail)
@@ -424,32 +447,29 @@ class MainWindow(QMainWindow):
         self.refresh_action.setEnabled(not editing)
 
     # ---- processing-prep ----
-    def _on_prepare(self, slug: str):
-        totals = derived.load_totals()
-        by_folder = totals.get("by_folder", {})
-        targets = [f for f, info in by_folder.items()
-                   if slug in info.get("slugs", [])]
+    def _pick_target(self, targets: list[str], title: str) -> str | None:
+        if len(targets) == 1:
+            return targets[0]
+        target, ok = QInputDialog.getItem(
+            self, title, "This object maps to multiple capture targets:",
+            sorted(targets), 0, False)
+        return target if ok else None
 
+    def _on_prepare(self, slug: str):
         def _has_lights(t: str) -> bool:
             d = config.lights_dir(t)
             return d.is_dir() and any(p.suffix.lower() == ".fit" for p in d.iterdir())
 
-        targets = [t for t in targets if _has_lights(t)]
+        targets = [t for t in _targets_for_slug(slug) if _has_lights(t)]
         if not targets:
             QMessageBox.information(
                 self, "Nothing to prepare",
                 "This object has no raw light frames to arrange for Siril.\n"
                 "(Targets with only Seestar in-app stacks can't be Siril-prepped.)")
             return
-        if len(targets) == 1:
-            target = targets[0]
-        else:
-            target, ok = QInputDialog.getItem(
-                self, "Choose capture target",
-                "This object maps to multiple capture targets:",
-                sorted(targets), 0, False)
-            if not ok:
-                return
+        target = self._pick_target(targets, "Choose capture target")
+        if target is None:
+            return
 
         proc = derived.load_processing().get("folders", {}).get(target, {})
         stack_meta = proc.get("stack_meta") or {}
@@ -459,6 +479,21 @@ class MainWindow(QMainWindow):
         from m110.ui.processing_dialog import ProcessingDialog
         ProcessingDialog(target, usable_frames=usable, star_removal=star,
                          parent=self).exec()
+
+    def _on_import(self, slug: str):
+        targets = [t for t in _targets_for_slug(slug)
+                   if siril.has_unimported_output(t)]
+        if not targets:
+            QMessageBox.information(self, "Nothing to import",
+                                    "No finished Siril output found for this object.")
+            return
+        target = self._pick_target(targets, "Choose capture target")
+        if target is None:
+            return
+        from m110.ui.import_dialog import ImportDialog
+        dlg = ImportDialog(target, slug, parent=self)
+        dlg.imported.connect(lambda _t: self._do_refresh())
+        dlg.exec()
 
     def _do_refresh(self):
         if not self._ready or self._refreshing or self.detail.is_editing():

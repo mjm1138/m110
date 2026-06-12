@@ -66,6 +66,38 @@ def read_journal(slug: str) -> tuple[dict, str]:
     return fm, body
 
 
+def set_frontmatter_key(slug: str, key: str, value: str) -> Path:
+    """Upsert a single `key: "value"` into the journal's YAML-ish frontmatter,
+    preserving the other frontmatter lines and the Markdown body. Creates the
+    journal (with a frontmatter block) if it doesn't exist yet."""
+    import re as _re
+    text = read_journal_text(slug)
+    new_line = f'{key}: "{value}"'
+
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            fm_lines = parts[1].strip("\n").splitlines()
+            body = parts[2].lstrip("\n")
+        else:
+            fm_lines, body = [], text
+    else:
+        fm_lines, body = [], text
+
+    out, found = [], False
+    for line in fm_lines:
+        if _re.match(rf"\s*{_re.escape(key)}\s*:", line):
+            out.append(new_line)
+            found = True
+        else:
+            out.append(line)
+    if not found:
+        out.append(new_line)
+
+    new_text = "---\n" + "\n".join(out) + "\n---\n\n" + body
+    return write_journal(slug, new_text)
+
+
 def hero_path(slug: str) -> Path | None:
     """Path to the generated hero JPG, or None if it doesn't exist."""
     p = config.HERO_DIR / f"{slug}.jpg"

@@ -41,7 +41,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 0.1d | ✅ | **Ingest** — preview-then-confirm; sources: staging (move) + mounted Seestar `MyWorks` (copy); threaded + cancellable |
 | —    | ✅ | **Two-axis data store** (BUGS #13) — `Objects/` (catalog axis) + `Images/` (capture-target axis), hidden `.m110_internal_data/`, in-place idempotent migration. Landed *before* 0.1e/0.1f so both build on the final layout |
 | 0.1e | ✅ | **inline journal editing** — Edit/Save/Cancel the raw `Objects/<id>/journal.md` in the detail pane (table + actions lock while editing) |
-| 0.1f | ✅ | **processing-prep** — `siril.plan_prep`/`apply_prep` arrange `Images/<target>/process/` (per-filter light split via hardlinks), emit the Naztronomy preset (drizzle by frame count) into `process/presets/`, surface bundled workflow guidance; "Prepare for processing…" in the detail pane |
+| 0.1f | ✅ | **processing-prep round-trip** — prepare a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks + Naztronomy preset by frame count + guidance), set up **automatically on ingest**; then **import finished work** (renders→`finished/`, stack→`stacks/`, hero pick) and clean the sandbox up. Detail-pane entry points |
 
 ---
 

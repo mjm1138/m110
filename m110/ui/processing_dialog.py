@@ -144,12 +144,8 @@ class ProcessingDialog(QDialog):
         self._finish_worker()
         self._close_progress()
         self._plan = plan
-        p = plan.preset
-        drizz = (f"drizzle <b>{p['drizzle_amount']}×</b> / pixel "
-                 f"<b>{p['pixel_fraction']}</b>" if p["drizzle"]
-                 else "<b>no drizzle</b> (1.0×)")
         star = "recommended" if plan.star_removal else "not needed"
-        self._path_lbl.setText(f"Working dir: {plan.process_dir}")
+        self._path_lbl.setText(f"Siril sandbox: {plan.siril_dir}")
         if plan.total_lights == 0:
             self._summary.setText(
                 "<b>No raw light frames</b> in this target's <code>lights/</code> "
@@ -157,15 +153,23 @@ class ProcessingDialog(QDialog):
                 "Siril-prepped.)")
             self._prepare_btn.setEnabled(False)
         else:
-            filt_bits = " · ".join(f"{f}: {len(plan.groups[f])}" for f in plan.filters)
+            job_lines = []
+            for job in plan.jobs:
+                p = job.preset
+                drizz = (f"drizzle {p['drizzle_amount']}× / pixel {p['pixel_fraction']}"
+                         if p["drizzle"] else "no drizzle (1.0×)")
+                where = job.filt or "all frames"
+                job_lines.append(
+                    f"• <b>{where}</b>: {len(job.links)} subs → "
+                    f"<code>{job.job_dir}</code> ({drizz})")
+            split = ("split into one Siril job per filter" if plan.multi_filter
+                     else "one Siril job")
             self._summary.setText(
                 f"<b>{plan.total_lights}</b> light frame(s) · {_fmt_gb(plan.total_bytes)} "
-                f"→ hardlinked, split per filter ({filt_bits}).<br>"
-                f"Usable frames: <b>{plan.usable_frames}</b> ({plan.frame_basis}) "
-                f"→ {drizz}.<br>"
-                f"Naztronomy preset → <code>presets/{siril.PRESET_NAME}</code> "
-                f"(auto-loaded by the script).<br>"
-                f"Star removal: <b>{star}</b> for this target.")
+                f"→ hardlinked into a literal <code>lights/</code>, {split}.<br>"
+                + "<br>".join(job_lines) + "<br>"
+                f"Naztronomy preset → each job's <code>presets/{siril.PRESET_NAME}</code> "
+                f"(auto-loaded by the script). Star removal: <b>{star}</b>.")
             self._prepare_btn.setEnabled(True)
         self._guidance.clear()
         for doc_id in plan.guidance:
@@ -193,9 +197,9 @@ class ProcessingDialog(QDialog):
         n = self._plan.total_lights
         if QMessageBox.question(
                 self, "Confirm prepare",
-                f"Arrange {n} light frame(s) into a Siril working folder?\n\n"
-                f"This hardlinks lights into Images/{self._target}/process/ and "
-                f"writes a Naztronomy preset there. Reversible — delete process/.",
+                f"Arrange {n} light frame(s) into a Siril sandbox?\n\n"
+                f"This hardlinks lights into Images/{self._target}/siril/ and "
+                f"writes a Naztronomy preset there. Reversible — delete siril/.",
                 QMessageBox.Yes | QMessageBox.Cancel,
                 QMessageBox.Cancel) != QMessageBox.Yes:
             return
@@ -224,8 +228,8 @@ class ProcessingDialog(QDialog):
             bits.append(f"{skipped} already present")
         prefix = "Cancelled — " if cancelled else ""
         suffix = ("" if cancelled else
-                  "  Open Siril in the process/ folder and run the Naztronomy "
-                  "script (Load preset). See next-steps.md.")
+                  "  Open Siril in a job folder under siril/ and run the Naztronomy "
+                  "script (Load preset). See next-steps.md, then Import finished work.")
         self._summary.setText(prefix + ", ".join(bits) + "." + suffix)
 
     def _on_apply_failed(self, msg):

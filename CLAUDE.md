@@ -89,8 +89,10 @@ All machine state lives in a single **hidden** `.m110_internal_data/`.
     stacks/             Siril stacks (.fit/.tif)
     seestar-stacks/     Seestar in-app stacks
     finished/           hand-finished renders
-    process/            Siril working dir (processing-prep): lights_<FILTER>/ (hardlinks),
-                        presets/naztronomy_smart_scope_presets.json, next-steps.md
+    siril/              contained Siril sandbox (processing-prep): literal lights/ (hardlinks;
+                        per-filter siril/<FILTER>/ for mixed filters), presets/<naztronomy preset>,
+                        next-steps.md. Siril runs *here* (keeps the tiers clean); M110 imports
+                        finished work back into finished/ + stacks/, then cleans the sandbox up.
     (darks/ flats/ biases/ preserved if present)
   Media/<Category>_photo|_video/     lunar/planetary/scenery media
   Inbox/                             staging area for ingest
@@ -138,8 +140,8 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `build_derived.py` | compute totals/priorities/summary/processing → `.m110_internal_data/derived/*.json` (ported) |
 | `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached |
 | `ingest.py` | staging/Seestar scan **plan** (read-only) + gated `apply_ops` (the only writer into the content tree); cancellable |
-| `siril.py` | processing-prep (prepare-and-guide): `plan_prep` (read-only) + gated `apply_prep` arranges `Images/<target>/process/` — per-filter light split (hardlinks), Naztronomy preset (drizzle-by-frame-count) into `process/presets/`, `next-steps.md`; bundled-guidance access |
-| `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw); slug→id folder name; hero path |
+| `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset by drizzle-frame-count, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, set hero, gated sandbox cleanup (scoped to `siril/`). Bundled-guidance access |
+| `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images |
 | `seed/` | bundled starter `catalog.toml` / `priorities.toml` (package-data) |
 | `guidance/` | bundled Siril/Seestar workflow playbooks (`*.md`, package-data) surfaced in processing-prep |
@@ -148,9 +150,10 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 | Module | Role |
 |---|---|
-| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
+| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), per-object **Prepare for processing** / **Import finished work** (shown when the sandbox has finished output), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), preview table, threaded scan & apply behind modal progress+Cancel |
-| `processing_dialog.py` | processing-prep preview (per-filter counts, drizzle, preset, guidance) → threaded `apply_prep` behind modal progress+Cancel; inline guidance viewer |
+| `processing_dialog.py` | **Prepare** preview (per-job filter counts, drizzle, preset, guidance) → threaded `apply_prep` behind modal progress+Cancel; inline guidance viewer |
+| `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
 | `preferences.py` | choose data folder (save + restart) |
 
 ---
