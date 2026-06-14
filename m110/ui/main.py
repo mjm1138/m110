@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import config, derived, objects, siril
-from m110.catalog import load_catalog, catalog_sort_key
+from m110.catalog import load_catalog, catalog_sort_key, season_sort_key
+from m110.ui.image_viewer import ScalableImage, ImageViewer
 
 
 def _targets_for_slug(slug: str) -> list[str]:
@@ -159,10 +160,9 @@ class DetailPane(QScrollArea):
         if hp:
             pm = QPixmap(str(hp))
             if not pm.isNull():
-                lbl = QLabel()
-                lbl.setPixmap(pm.scaledToWidth(min(pm.width(), 520),
-                                               Qt.SmoothTransformation))
-                self._lay.addWidget(lbl)
+                # Scales to the pane width (and rescales on resize), capped so a
+                # tall hero stays viewable.
+                self._lay.addWidget(ScalableImage(pm, max_height=460))
 
         fm, body = objects.read_journal(slug)
         if fm.get("hero_caption"):
@@ -181,7 +181,7 @@ class DetailPane(QScrollArea):
         self._lay.addLayout(header)
         if body.strip():
             tb = QTextBrowser()
-            tb.setMarkdown(body)
+            tb.setMarkdown(objects.journal_to_markdown(body))
             tb.setOpenExternalLinks(True)
             tb.setMinimumHeight(220)
             self._lay.addWidget(tb)
@@ -193,23 +193,37 @@ class DetailPane(QScrollArea):
         # show anything we managed to thumbnail — including FITS stacks
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
-            self._lay.addWidget(QLabel(f"<b>Gallery</b> ({len(imgs)})"))
+            self._lay.addWidget(QLabel(f"<b>Gallery</b> ({len(imgs)}) — "
+                                       "<span style='color:#8b949e'>double-click to view</span>"))
             gallery = QListWidget()
             gallery.setViewMode(QListWidget.IconMode)
-            gallery.setIconSize(QSize(140, 140))
+            gallery.setIconSize(QSize(160, 160))
             gallery.setResizeMode(QListWidget.Adjust)
             gallery.setMovement(QListWidget.Static)
-            gallery.setMaximumHeight(190)
+            gallery.setMinimumHeight(360)
+            gallery.setSpacing(6)
             for im in imgs:
-                if not im.get("thumb"):
-                    continue
                 tp = config.RENDERS_DIR / im["thumb"]
-                if tp.is_file():
-                    gallery.addItem(QListWidgetItem(
-                        QIcon(str(tp)), im.get("display_name") or im.get("name") or ""))
+                if not tp.is_file():
+                    continue
+                name = im.get("display_name") or im.get("name") or ""
+                item = QListWidgetItem(QIcon(str(tp)), name)
+                # Prefer the full-res source for viewing; fall back to the thumb
+                # (FITS has no displayable `full`).
+                full = im.get("full")
+                view = str(config.DATA_ROOT / full) if full else str(tp)
+                item.setData(Qt.UserRole, (name, view))
+                gallery.addItem(item)
+            gallery.itemDoubleClicked.connect(self._open_gallery_item)
+            self._gallery = gallery
             self._lay.addWidget(gallery)
 
         self._lay.addStretch(1)
+
+    def _open_gallery_item(self, item):
+        gallery = self._gallery
+        items = [gallery.item(r).data(Qt.UserRole) for r in range(gallery.count())]
+        ImageViewer(items, gallery.row(item), parent=self).exec()
 
     # ---- journal editing ----
     def _enter_edit(self):
@@ -350,7 +364,8 @@ class MainWindow(QMainWindow):
             table.setItem(row, 0, obj)
             table.setItem(row, 1, QTableWidgetItem(str(e.get("name") or "")))
             table.setItem(row, 2, QTableWidgetItem(str(e.get("type") or "").replace("_", " ")))
-            table.setItem(row, 3, QTableWidgetItem(str(e.get("season") or "")))
+            season = str(e.get("season") or "")
+            table.setItem(row, 3, _NumItem(season, season_sort_key(season)))
 
             mag = e.get("magnitude")
             table.setItem(row, 4, _NumItem("" if mag is None else f"{mag}",

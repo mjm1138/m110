@@ -41,7 +41,7 @@ and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 ```bash
 cd ~/Documents/Code/m110
 source .venv/bin/activate
-pytest -q                 # all (~85); must be green before manual testing
+pytest -q                 # all (~106); must be green before manual testing
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
@@ -81,6 +81,16 @@ Mark each pass. Re-run a section whenever its area changes.
 - [ ] **Captured object shows gallery thumbnails + a hero** — including an object
       whose only images are `.fit` Seestar stacks. *(Bug #3 regression.)*
 - [ ] Uncaptured object shows "not captured", no broken images.
+- [ ] **Hero scales to the pane** and rescales when you resize the window / drag
+      the splitter (doesn't overflow on a tall image).
+- [ ] **Season column** sorts Jan→Dec by first month, **Year-round last**.
+- [ ] **Gallery** shows full thumbnails (not clipped to one strip);
+      **double-click** a thumbnail → image viewer opens; **←/→** (and Prev/Next)
+      cycle through the gallery; **Esc** closes. Raster renders show full-res; a
+      `.fit`-only stack shows its thumbnail. (Re-Refresh once so `full` paths
+      populate for data rendered before this change.)
+- [ ] **Journal** renders Markdown with the author's line breaks preserved and no
+      stray `<!-- -->` / `-->`; text wraps to the pane width.
 
 ### C2. Inline journal editing (0.1e)
 - [ ] Detail pane shows a **Journal** header with an **Edit** button; an object

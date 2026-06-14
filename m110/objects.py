@@ -6,9 +6,42 @@ the `config` module) so they're overridable and testable.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from . import catalog, config
+
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_ORDERED_RE = re.compile(r"\d+\.\s")
+
+
+def _is_block_start(line: str) -> bool:
+    s = line.lstrip()
+    return (s.startswith(("#", ">", "-", "*", "+", "|", "```"))
+            or bool(_ORDERED_RE.match(s)))
+
+
+def journal_to_markdown(body: str) -> str:
+    """Prepare a journal body for display: drop editor-only HTML comments and
+    preserve the author's single line breaks (Markdown otherwise folds them into
+    spaces), without disturbing paragraphs, lists, headings, or fenced code."""
+    body = _HTML_COMMENT_RE.sub("", body)
+    lines = body.split("\n")
+    out: list[str] = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if (not in_fence and line.strip() and nxt.strip()
+                and not _is_block_start(line) and not _is_block_start(nxt)
+                and not line.endswith("  ")):
+            out.append(line + "  ")        # Markdown hard break
+        else:
+            out.append(line)
+    return "\n".join(out).strip("\n")
 
 
 def object_folder_name(slug: str) -> str:

@@ -151,10 +151,11 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 | Module | Role |
 |---|---|
-| `main.py` | Library window: catalog+status table (sortable), object detail/gallery, **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), per-object **Prepare for processing** / **Import finished work** (shown when the sandbox has finished output), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
+| `main.py` | Library window: catalog+status table (sortable), object detail/gallery (hero scales to the pane; double-click a thumbnail → image viewer; Season column sorts by first month), **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), per-object **Prepare for processing** / **Import finished work** (shown when the sandbox has finished output), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), preview table, threaded scan & apply behind modal progress+Cancel |
 | `processing_dialog.py` | **Prepare** preview (per-job filter counts, drizzle, preset, guidance) → threaded `apply_prep` behind modal progress+Cancel; inline guidance viewer |
 | `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
+| `image_viewer.py` | `ScalableImage` (pixmap that refits on resize — used for the hero) + `ImageViewer` (full-frame gallery viewer: Prev/Next, ←/→, Esc) |
 | `preferences.py` | choose data folder (save + restart) |
 
 ---

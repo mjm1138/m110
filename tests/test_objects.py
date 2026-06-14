@@ -70,6 +70,21 @@ def test_write_journal_creates_folder_and_round_trips(tmp_path, monkeypatch):
     assert "body" in body
 
 
+def test_journal_to_markdown_strips_comments_and_keeps_breaks():
+    body = "# Heading\n\n<!--\neditor guidance\n-->\nrough night.\nbetter night.\n"
+    md = objects.journal_to_markdown(body)
+    assert "editor guidance" not in md and "-->" not in md     # comment dropped
+    assert "rough night.  \nbetter night." in md               # hard line break
+    assert md.startswith("# Heading")
+
+
+def test_journal_to_markdown_preserves_lists_and_code():
+    body = "- a\n- b\n\n```\ncode one\ncode two\n```\n"
+    md = objects.journal_to_markdown(body)
+    assert "- a\n- b" in md                 # list items get no trailing hard break
+    assert "code one\ncode two" in md       # fenced code left untouched
+
+
 def test_write_journal_overwrites_existing(tmp_path, monkeypatch):
     od = tmp_path / "Objects"
     monkeypatch.setattr(config, "OBJECTS_DIR", od)

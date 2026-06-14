@@ -13,6 +13,10 @@ from . import config
 _M = re.compile(r"^M\s*(\d+)$")
 _NGC = re.compile(r"^NGC\s*(\d+)$", re.IGNORECASE)
 
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
 
 def load_catalog() -> dict[str, dict]:
     """Return the catalog as {slug: entry}."""
@@ -38,3 +42,15 @@ def catalog_sort_key(obj_id: str):
     if n:
         return (1, int(n.group(1)), "")
     return (2, 0, s.lower())
+
+
+def season_sort_key(season: str):
+    """Sort a season ("Mar–May", "Dec–Feb", "Year-round") by its **first month**,
+    January→December; "Year-round", empty, or unparseable sort last.
+
+    Returns (month_index, original) — the string tiebreak keeps it stable.
+    """
+    s = (season or "").strip()
+    # First token before an en-dash / hyphen / space (e.g. "Mar–May" → "Mar").
+    first = re.split(r"[–\-\s]+", s, maxsplit=1)[0].lower()[:3]
+    return (_MONTHS.get(first, 99), s.lower())

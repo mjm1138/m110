@@ -242,10 +242,19 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
             # Thumbnail every discovered image, including FITS stacks (rendered
             # via a percentile stretch) — so even .fit-only objects show a preview.
             tp = make_thumb(im["path"], renders)
+            # `full` = the original raster, data-root-relative, for the in-app
+            # viewer; FITS isn't directly displayable, so leave it None (the
+            # viewer falls back to the thumbnail).
+            full = None
+            if im["viewable"]:
+                try:
+                    full = str(im["path"].relative_to(config.DATA_ROOT))
+                except ValueError:
+                    full = None
             entries.append({"name": im["name"], "display_name": im["display_name"],
                             "label": im["label"], "size_mb": im["size_mb"],
                             "mtime": im["mtime"], "viewable": im["viewable"],
-                            "thumb": tp.name if tp else None, "full": None})
+                            "thumb": tp.name if tp else None, "full": full})
         manifest[slug] = entries
         src = _hero_source(slug, folders, imgs)
         if src:

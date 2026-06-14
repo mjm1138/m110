@@ -29,6 +29,11 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
   *Done (cf1ebd0).* Now "Copying files…" / "Moving files…" with a determinate bar.
+  - [x] **UI** Catalog view: Sorting on the season column should sort by date month starting with January. Year-round goes at the bottom. *Done — `catalog.season_sort_key` (first month Jan→Dec; Year-round/empty last), via `_NumItem`.*
+  - [x] Detail view: Gallery is truncated; can’t see a full frame. *Done — dropped the 190px cap (taller, scrolls); full frames via the viewer below.*
+  - [x] Detail view: Clicking on a thumbnail doesn’t do anything, should launch an image viewer view with nav buttons to view other images in the gallery of the detail view. *Done — double-click opens `ui/image_viewer.ImageViewer` (full-res for rasters via a new `images.json` `full` field; FITS falls back to the thumb) with Prev/Next + ←/→ + Esc.*
+  - [x] Detail view: Hero image should scale to be viewable in the current view *Done — `ui/image_viewer.ScalableImage` fits the pane width and rescales on resize (capped height).*
+  - [x] Detail view: Journal entry renders as poorly formatted text. It should render the markdown correctly including line breaks, and limit width to the view width *Done — `objects.journal_to_markdown` strips editor-only HTML comments and preserves single line breaks; `QTextBrowser` wraps to the pane width.*
 
 ### Improvements (proposed — see Feedback below)
 - [ ] **#9**: Group the preview by object (object · #frames · MB) instead of one

@@ -49,6 +49,8 @@ def test_render_generates_thumb_hero_manifest(tmp_path, monkeypatch):
     entry = manifest["m99"][0]
     assert entry["viewable"] is True
     assert entry["thumb"] and (internal / "renders" / entry["thumb"]).is_file()
+    # viewable raster → `full` points at the source (data-root-relative) for the viewer
+    assert entry["full"] and (root / entry["full"]).is_file()
 
     # hero rendered
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()
@@ -90,5 +92,6 @@ def test_fit_stack_gets_thumbnail_and_hero(tmp_path, monkeypatch):
 
     entry = json.loads((internal / "derived" / "images.json").read_text())["m99"][0]
     assert entry["viewable"] is False                 # it's a .fit
+    assert entry["full"] is None                      # FITS isn't directly viewable
     assert entry["thumb"] and (internal / "renders" / entry["thumb"]).is_file()
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()    # hero from the .fit
