@@ -8,23 +8,36 @@ over a list of images (the detail gallery), driven by buttons or ←/→ keys.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
 )
 
 
 class ScalableImage(QLabel):
-    """A QLabel that keeps `source` scaled to its current width (aspect kept,
-    capped at the image's native size and an optional max height)."""
+    """A QLabel that rescales `source` to its current size, aspect preserved,
+    never upscaled past native.
 
-    def __init__(self, pixmap: QPixmap, max_height: int | None = None, parent=None):
+    `fit="width"` (the detail hero): height follows the width; the label claims
+    that height (min-height), so a vertical layout shows it fully. An optional
+    `max_height` caps a tall image.
+    `fit="both"` (the viewer): scales into the available box in *both* dimensions
+    and claims no minimum size — so the window can be resized smaller in either
+    direction (and never forces the dialog larger than the screen)."""
+
+    def __init__(self, pixmap: QPixmap, max_height: int | None = None,
+                 fit: str = "width", parent=None):
         super().__init__(parent)
         self._src = pixmap
         self._max_h = max_height
+        self._fit = fit
         self.setAlignment(Qt.AlignCenter)
-        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
-        self.setMinimumHeight(1)
+        if fit == "both":
+            self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+            self.setMinimumSize(1, 1)
+        else:
+            self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
+            self.setMinimumHeight(1)
         self._rescale()
 
     def setSource(self, pixmap: QPixmap):
@@ -33,9 +46,16 @@ class ScalableImage(QLabel):
 
     def _rescale(self):
         if self._src is None or self._src.isNull():
+            self.clear()
             return
-        avail_w = max(1, self.width())
-        w = min(avail_w, self._src.width())
+        if self._fit == "both":
+            w = max(1, min(self.width(), self._src.width()))
+            h = max(1, min(self.height(), self._src.height()))
+            scaled = self._src.scaled(w, h, Qt.KeepAspectRatio,
+                                      Qt.SmoothTransformation)
+            self.setPixmap(scaled)
+            return
+        w = min(max(1, self.width()), self._src.width())
         scaled = self._src.scaledToWidth(w, Qt.SmoothTransformation)
         if self._max_h and scaled.height() > self._max_h:
             scaled = self._src.scaledToHeight(
@@ -56,11 +76,14 @@ class ImageViewer(QDialog):
         self._items = items
         self._i = max(0, min(index, len(items) - 1))
         self.setWindowTitle("Image viewer")
-        self.resize(900, 700)
+        # Open at a sensible size that always fits the screen; freely resizable.
+        avail = QGuiApplication.primaryScreen().availableGeometry()
+        self.setMinimumSize(320, 240)
+        self.resize(min(1000, int(avail.width() * 0.8)),
+                    min(780, int(avail.height() * 0.8)))
 
         lay = QVBoxLayout(self)
-        self._image = ScalableImage(QPixmap())
-        self._image.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        self._image = ScalableImage(QPixmap(), fit="both")
         lay.addWidget(self._image, 1)
 
         row = QHBoxLayout()

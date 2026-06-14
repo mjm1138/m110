@@ -90,6 +90,8 @@ class DetailPane(QScrollArea):
         self.setWidget(self._content)
         self._current = None        # (slug, e, t) of the shown object
         self._editing = False
+        self._gallery = None
+        self._gallery_items = []    # parallel [(name, view_path)] for the viewer
         self.placeholder()
 
     def is_editing(self) -> bool:
@@ -100,11 +102,26 @@ class DetailPane(QScrollArea):
         return any(siril.has_unimported_output(t) for t in _targets_for_slug(slug))
 
     def _clear(self):
-        while self._lay.count():
-            item = self._lay.takeAt(0)
+        self._gallery = None
+        self._clear_layout(self._lay)
+
+    @staticmethod
+    def _clear_layout(layout):
+        # Recurse: takeAt on a nested layout (addLayout) returns a layout item
+        # whose child widgets must be deleted too — otherwise buttons added via
+        # sub-layouts (Edit / Prepare / Save+Cancel) leak and pile up on every
+        # re-render (and clicking a stale one can crash on teardown).
+        while layout.count():
+            item = layout.takeAt(0)
             w = item.widget()
-            if w:
+            if w is not None:
+                w.setParent(None)
                 w.deleteLater()
+                continue
+            sub = item.layout()
+            if sub is not None:
+                DetailPane._clear_layout(sub)
+                sub.deleteLater()
 
     def placeholder(self):
         self._current = None
@@ -202,18 +219,20 @@ class DetailPane(QScrollArea):
             gallery.setMovement(QListWidget.Static)
             gallery.setMinimumHeight(360)
             gallery.setSpacing(6)
+            self._gallery_items = []
             for im in imgs:
                 tp = config.RENDERS_DIR / im["thumb"]
                 if not tp.is_file():
                     continue
                 name = im.get("display_name") or im.get("name") or ""
-                item = QListWidgetItem(QIcon(str(tp)), name)
+                gallery.addItem(QListWidgetItem(QIcon(str(tp)), name))
                 # Prefer the full-res source for viewing; fall back to the thumb
-                # (FITS has no displayable `full`).
+                # (FITS has no displayable `full`). Kept in a parallel Python list
+                # rather than item data (storing Python objects on C++ items can
+                # crash on teardown).
                 full = im.get("full")
                 view = str(config.DATA_ROOT / full) if full else str(tp)
-                item.setData(Qt.UserRole, (name, view))
-                gallery.addItem(item)
+                self._gallery_items.append((name, view))
             gallery.itemDoubleClicked.connect(self._open_gallery_item)
             self._gallery = gallery
             self._lay.addWidget(gallery)
@@ -221,9 +240,11 @@ class DetailPane(QScrollArea):
         self._lay.addStretch(1)
 
     def _open_gallery_item(self, item):
-        gallery = self._gallery
-        items = [gallery.item(r).data(Qt.UserRole) for r in range(gallery.count())]
-        ImageViewer(items, gallery.row(item), parent=self).exec()
+        if not self._gallery:
+            return
+        row = self._gallery.row(item)
+        if 0 <= row < len(self._gallery_items):
+            ImageViewer(list(self._gallery_items), row, parent=self).exec()
 
     # ---- journal editing ----
     def _enter_edit(self):

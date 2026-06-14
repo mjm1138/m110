@@ -35,6 +35,21 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   - [x] Detail view: Hero image should scale to be viewable in the current view *Done — `ui/image_viewer.ScalableImage` fits the pane width and rescales on resize (capped height).*
   - [x] Detail view: Journal entry renders as poorly formatted text. It should render the markdown correctly including line breaks, and limit width to the view width *Done — `objects.journal_to_markdown` strips editor-only HTML comments and preserves single line breaks; `QTextBrowser` wraps to the pane width.*
 
+#### Follow-up fixes (detail view)
+- [x] **Crash / duplicate buttons / persistent Save+Cancel.** Re-rendering the
+  detail pane (selection, **or auto-refresh on window resize/focus**) piled up
+  stale **Edit / Prepare / Save+Cancel** buttons, and clicking a stale one
+  **segfaulted** on teardown (PySide `QListWidgetItem` double-free). *Fixed:*
+  `DetailPane._clear` now **recurses into sub-layouts** (`addLayout` items were
+  detached but their child widgets never deleted); the gallery no longer stores
+  Python objects on `QListWidgetItem`s (parallel list instead — avoids the
+  teardown double-free). Regression test: `tests/test_ui_detail.py`.
+- [x] **Image viewer opened too large / couldn't resize vertically / no corner
+  grab.** The scalable image pinned the dialog's min-height to the (huge) scaled
+  image height. *Fixed:* `ScalableImage` gains a `fit="both"` mode (viewer scales
+  into the available box in both dimensions, claims no min size); the viewer opens
+  at ≤80% of screen and is freely resizable.
+
 ### Improvements (proposed — see Feedback below)
 - [ ] **#9**: Group the preview by object (object · #frames · MB) instead of one
   row per frame.
