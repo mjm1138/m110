@@ -28,6 +28,29 @@ def object_count() -> int:
     return len(load_catalog())
 
 
+def load_coords() -> dict[str, tuple[float, float]]:
+    """Bundled J2000 reference coordinates {slug: (ra_deg, dec_deg)}.
+
+    Shipped with the app (seed/coords.csv) so the ingest pointing check works
+    offline and regardless of the store's age. A few asterisms have no single
+    coordinate and are simply absent.
+    """
+    path = config.SEED_DIR / "coords.csv"
+    out: dict[str, tuple[float, float]] = {}
+    if not path.is_file():
+        return out
+    with path.open() as f:
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) != 3 or parts[0] == "slug":
+                continue
+            try:
+                out[parts[0]] = (float(parts[1]), float(parts[2]))
+            except ValueError:
+                continue
+    return out
+
+
 def catalog_sort_key(obj_id: str):
     """Natural catalog order: Messier-numeric, then NGC-numeric, then
     alphabetical. Mirrors the site's `_catalog_sort_key` so the GUI Object

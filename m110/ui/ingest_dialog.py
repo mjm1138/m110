@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QMessageBox, QHeaderView, QComboBox, QProgressDialog,
 )
 
-from m110 import config, ingest
+from m110 import catalog, config, ingest
 
 KIND_LABEL = {"light": "lights", "stack": "Seestar stack", "media": "media"}
 
@@ -41,7 +41,10 @@ class _ScanWorker(QThread):
     def run(self):
         try:
             ops = self._plan_fn(should_cancel=self._cancel.is_set)
-            self.done.emit(ops)
+            groups = ingest.group_ops(ops)
+            # Pointing reads one FITS frame per group — keep it on the worker.
+            ingest.annotate_pointing(groups, should_cancel=self._cancel.is_set)
+            self.done.emit(groups)
         except ingest.IngestCancelled:
             self.cancelled.emit()
         except Exception as exc:
@@ -88,6 +91,7 @@ class IngestDialog(QDialog):
         self.resize(780, 480)
         self._ops = []
         self._groups = []
+        self._cat = {}               # catalog cache for the remap dropdown
         self._loading = False        # guards itemChanged while (re)populating
         self._worker = None
         self._progress = None
@@ -111,12 +115,12 @@ class IngestDialog(QDialog):
         lay.addWidget(self._path_lbl)
 
         # One row per object/source folder, each selectable via a checkbox.
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
-            ["", "Object", "Kind", "Files", "Size", "→ Destination"])
+            ["", "Object", "Kind", "Files", "Size", "Pointing", "→ Destination"])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
         self.table.itemChanged.connect(self._on_item_changed)
         lay.addWidget(self.table)
 
@@ -174,11 +178,11 @@ class IngestDialog(QDialog):
         self._worker.start()
         self._progress.show()
 
-    def _on_scan_done(self, ops):
+    def _on_scan_done(self, groups):
         self._finish_worker()
         self._close_progress()
         self._set_busy(False)
-        self._ops = ops
+        self._groups = groups
         self._populate()
 
     def _on_scan_cancelled(self):
@@ -195,7 +199,6 @@ class IngestDialog(QDialog):
 
     # ---- table / summary ----
     def _populate(self):
-        self._groups = ingest.group_ops(self._ops)
         self._loading = True
         self.table.setRowCount(len(self._groups))
         for r, g in enumerate(self._groups):
@@ -204,16 +207,63 @@ class IngestDialog(QDialog):
             chk.setCheckState(Qt.Checked)
             chk.setData(Qt.UserRole, r)
             self.table.setItem(r, 0, chk)
-            obj = g.object + ("  (new)" if g.new_object else "")
-            self.table.setItem(r, 1, QTableWidgetItem(obj))
+            self._set_object_cell(r, g)
             self.table.setItem(r, 2, QTableWidgetItem(KIND_LABEL.get(g.kind, g.kind)))
             self.table.setItem(r, 3, QTableWidgetItem(str(g.frames)))
             self.table.setItem(r, 4, QTableWidgetItem(_fmt_size(g.size_bytes)))
-            self.table.setItem(r, 5, QTableWidgetItem(g.dest_dir))
+            point = g.pointing or ("—" if g.kind == "media" else "✓")
+            self.table.setItem(r, 5, QTableWidgetItem(point))
+            self.table.setItem(r, 6, QTableWidgetItem(g.dest_dir))
         self._loading = False
         self.table.resizeColumnsToContents()
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
         self._update_summary()
+
+    def _catalog_ids(self):
+        if not self._cat:
+            try:
+                self._cat = catalog.load_catalog()
+            except Exception:
+                self._cat = {}
+        return sorted((e.get("id") or s) for s, e in self._cat.items())
+
+    def _set_object_cell(self, r, g):
+        """Plain label, or a remap dropdown when the frame's pointing disagrees."""
+        if g.pointing and g.kind != "media":
+            combo = QComboBox()
+            order = [g.object]
+            self._catalog_ids()   # ensure self._cat is loaded
+            if g.suggested:
+                sid = self._cat.get(g.suggested, {}).get("id") or g.suggested
+                if sid not in order:
+                    order.append(sid)
+            for cid in self._catalog_ids():
+                if cid not in order:
+                    order.append(cid)
+            combo.addItems(order)
+            combo.currentTextChanged.connect(
+                lambda txt, idx=r: self._on_remap(idx, txt))
+            self.table.setCellWidget(r, 1, combo)
+        else:
+            obj = g.object + ("  (new)" if g.new_object else "")
+            self.table.setItem(r, 1, QTableWidgetItem(obj))
+
+    def _on_remap(self, idx, new_id):
+        if self._loading:
+            return
+        g = self._groups[idx]
+        if not new_id or new_id == g.object:
+            return
+        ng = ingest.retarget(g, new_id)
+        self._groups[idx] = ng
+        self.table.item(idx, 6).setText(ng.dest_dir)
+        self.table.item(idx, 5).setText(f"→ {new_id}")
+        self._update_summary()
+        if QMessageBox.question(
+                self, "Remember alias?",
+                f"Always route “{g.group}” to {new_id} on future ingests?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
+            ingest.add_alias(g.group, new_id)
 
     def _selected_groups(self):
         out = []

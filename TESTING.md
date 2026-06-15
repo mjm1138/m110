@@ -41,7 +41,7 @@ and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 ```bash
 cd ~/Documents/Code/m110
 source .venv/bin/activate
-pytest -q                 # all (~106); must be green before manual testing
+pytest -q                 # all (~122); must be green before manual testing
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
@@ -125,6 +125,16 @@ Mark each pass. Re-run a section whenever its area changes.
 - [ ] Confirm → progress modal ("Moving files…") → completes → **modal closes**.
 - [ ] Only the **checked** objects are *moved* (gone from staging); unchecked ones
       stay; Library refreshes to show the imported ones.
+- [ ] **Canonicalization (#12a):** a lowercase/variant folder (`m82_sub/`) shows a
+      destination of `Images/M82/…` (folded onto the catalog/existing casing).
+- [ ] **Pointing (#12b):** an `M81_sub/` whose frames actually point at M82 shows
+      a **`⚠ … → M82?`** in the Pointing column with a **remap dropdown**; choosing
+      M82 updates the destination, and confirming routes the frames to
+      `Images/M82/…`. A correctly-named object shows **✓**; a non-FITS / no-coord
+      object shows **—** (unverified, no false alarm).
+- [ ] **Alias (#12c):** when prompted after a remap, "remember" writes
+      `.m110_internal_data/ingest_aliases.toml`; a later ingest of that source
+      folder auto-routes to the remembered object.
 
 ### F. Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.

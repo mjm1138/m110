@@ -134,7 +134,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 |---|---|
 | `config.py` | data-root resolution, dir bootstrap/seed, per-target path helpers, settings persistence, Seestar mount detection (`find_seestar_myworks`) |
 | `migrate.py` | in-place, idempotent, version-stamped migration of an older store to the two-axis layout (`migrate_store`) |
-| `catalog.py` | load `catalog.toml`; `catalog_sort_key` (natural M/NGC order) |
+| `catalog.py` | load `catalog.toml`; `catalog_sort_key` (natural M/NGC order); `season_sort_key`; `load_coords` (bundled `seed/coords.csv` for the ingest pointing check) |
 | `derived.py` | **read** generated rollups (totals/priorities/summary/processing/images.json) |
 | `display_names.py` | standardized gallery display filenames (ported) |
 | `scan_sessions.py` | scan `Images/<target>/lights/` → `sessions.jsonl` (ported) |
@@ -144,7 +144,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset by drizzle-frame-count, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs; never deletes, never escapes `siril/`). Bundled-guidance access |
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images |
-| `seed/` | bundled starter `catalog.toml` / `priorities.toml` (package-data) |
+| `seed/` | bundled starter `catalog.toml` / `priorities.toml` + `coords.csv` (J2000 ref coords for the pointing check) (package-data) |
 | `guidance/` | bundled Siril/Seestar workflow playbooks (`*.md`, package-data) surfaced in processing-prep |
 
 **UI (`m110/ui/`)** — PySide6:
@@ -152,7 +152,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | Module | Role |
 |---|---|
 | `main.py` | Library window: catalog+status table (sortable), object detail/gallery (hero scales to the pane; double-click a thumbnail → image viewer; Season column sorts by first month), **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), per-object **Prepare for processing** / **Import finished work** (shown when the sandbox has finished output), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
-| `ingest_dialog.py` | source selector (staging=move / Seestar=copy), **per-object grouped + checkbox-selectable** preview (Object · Kind · Files · Size · → dest; select all/none; live size total), threaded scan & apply behind modal progress+Cancel (applies only checked groups) |
+| `ingest_dialog.py` | source selector (staging=move / Seestar=copy), **per-object grouped + checkbox-selectable** preview (Object · Kind · Files · Size · Pointing · → dest; select all/none; live size total), **name canonicalization + RA/DEC pointing check with a remap dropdown** (#12), threaded scan→group→annotate & apply behind modal progress+Cancel (applies only checked/retargeted groups) |
 | `processing_dialog.py` | **Prepare** preview (per-job filter counts, drizzle, preset, guidance) → threaded `apply_prep` behind modal progress+Cancel; inline guidance viewer |
 | `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
 | `image_viewer.py` | `ScalableImage` (pixmap that refits on resize — used for the hero) + `ImageViewer` (full-frame gallery viewer: Prev/Next, ←/→, Esc) |

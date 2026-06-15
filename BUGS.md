@@ -61,18 +61,18 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 - [~] **#11**: Import & display *everything* off the Seestar (stacks, planetary,
   scenery, …). *Ingest* of stacks (+previews) and media (`*_photo`/`*_video`)
   already works; the gap is a **display surface** for non-catalog media.
-- [ ] **#12**: **Smart-ingest name normalization + pointing verification.** Field
-  evidence (June 2026) shows device folder names can't be trusted: a Seestar
-  firmware regression saves the custom object "M81 M82" into an `M81` directory
-  (same pointing, wrong name — silently mis-credits the data), and SSC creates
-  case-variant dirs (`m82`), forking an object across folders. At ingest preview:
-  (a) case-fold incoming names against existing folders + catalog and propose the
-  canonical destination; (b) read `RA`/`DEC` from a sample frame and compare to
-  the catalog position — >0.15° mismatch gets a "pointing ≠ name" badge and a
-  remap dropdown so the user fixes it *before* confirm; (c) support a per-store
-  alias table for known quirks. Pairs naturally with #9/#10 (grouped, selectable
-  preview rows). This is exactly the kind of correctness work a GUI ingest can do
-  that raw device copying can't.
+- [x] **#12**: **Smart-ingest name normalization + pointing verification.** *Done.*
+  Device folder names can't be trusted (firmware saved "M81 M82" into an `M81`
+  dir; SSC makes case-variant `m82` dirs). Built on the #9/#10 grouped preview:
+  (a) **canonicalization** — `ingest.canonical_target` folds a source name onto a
+  single destination via alias → existing-folder casing → catalog id (so
+  `m82`→`M82` at scan time); (b) **pointing check** — `annotate_pointing` reads
+  `RA`/`DEC` from one sample frame per group and compares to the catalog position
+  (bundled `seed/coords.csv`, generated via Simbad → offline at runtime); >0.15°
+  shows a **`⚠ … → M82?`** badge + a **remap dropdown** that `retarget`s the
+  group before confirm; (c) a per-store **alias table**
+  (`.m110_internal_data/ingest_aliases.toml`) that the remap can write via
+  "remember". Degrades to "unverified" where coords/frames are missing.
 
 ---
 

@@ -13,13 +13,22 @@ Staging layout recognised:
 """
 from __future__ import annotations
 
+import json
+import math
 import os
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import config
+from . import catalog, config
+
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - py<3.11
+    import tomli as tomllib  # type: ignore
+
+POINTING_TOL_DEG = 0.15   # frame-vs-catalog separation that flags a name mismatch
 
 
 class IngestCancelled(Exception):
@@ -54,6 +63,8 @@ class IngestGroup:
     new_object: bool
     action: str
     ops: list                # the underlying IngestOps
+    pointing: str | None = None    # warning text if the frame's RA/DEC ≠ the name
+    suggested: str | None = None   # slug of a better-matching catalog object
 
 
 # ── classification helpers (ported verbatim) ───────────────────────────────────
@@ -94,6 +105,178 @@ def _size(p: Path) -> int:
         return 0
 
 
+# ── name canonicalization + alias table (#12a, #12c) ──────────────────────────
+
+def _alias_path() -> Path:
+    return config.INTERNAL_DIR / "ingest_aliases.toml"
+
+
+def load_aliases() -> dict[str, str]:
+    """Per-store known-quirk remaps {source name: canonical target}."""
+    p = _alias_path()
+    if not p.is_file():
+        return {}
+    try:
+        with p.open("rb") as f:
+            return dict(tomllib.load(f).get("alias", {}))
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def add_alias(src: str, dst: str) -> None:
+    """Remember a remap so future ingests of `src` route to `dst`. Only writer."""
+    aliases = load_aliases()
+    aliases[src] = dst
+    p = _alias_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["[alias]"]
+    for k, v in sorted(aliases.items()):
+        lines.append(f"{json.dumps(k)} = {json.dumps(v)}")   # TOML strings ≈ JSON
+    p.write_text("\n".join(lines) + "\n")
+
+
+def canonical_target(name: str) -> str:
+    """Resolve a device folder name to a canonical destination object: alias →
+    existing Images/<dir> casing → catalog id casing → normalized name. Folds
+    case variants (`m82`→`M82`) and known quirks onto one folder."""
+    aliases = load_aliases()
+    low = name.lower()
+    for k, v in aliases.items():
+        if k.lower() == low:
+            return v
+
+    norm = fits_object_name(name)
+    nlow = norm.lower()
+
+    images = config.IMAGES_DIR
+    if images.is_dir():
+        for d in images.iterdir():
+            if d.is_dir() and d.name.lower() == nlow:
+                return d.name              # reuse the existing folder's casing
+
+    try:
+        cat = catalog.load_catalog()
+    except Exception:
+        cat = {}
+    for slug, e in cat.items():
+        if (e.get("id") or "").lower() == nlow or slug.lower() == nlow:
+            return e.get("id") or norm
+    return norm
+
+
+# ── pointing verification (#12b) ──────────────────────────────────────────────
+
+def _parse_sexagesimal(ra: str, dec: str):
+    def _val(s):
+        parts = [float(x) for x in str(s).replace(":", " ").split()]
+        v = parts[0] + (parts[1] / 60 if len(parts) > 1 else 0) + \
+            (parts[2] / 3600 if len(parts) > 2 else 0)
+        return v, parts[0]
+    try:
+        ra_h, _ = _val(ra)
+        dec_v, dec_first = _val(dec)
+        sign = -1 if str(dec).strip().startswith("-") else 1
+        return ra_h * 15.0, sign * abs(dec_v)
+    except (ValueError, IndexError):
+        return None
+
+
+def frame_radec(path: str):
+    """(ra_deg, dec_deg) from a frame header, or None. Seestar uses RA/DEC in
+    degrees; falls back to sexagesimal OBJCTRA/OBJCTDEC."""
+    try:
+        from astropy.io import fits
+    except ImportError:
+        return None
+    try:
+        with fits.open(path) as h:
+            hdr = h[0].header
+            if hdr.get("RA") is not None and hdr.get("DEC") is not None:
+                return float(hdr["RA"]), float(hdr["DEC"])
+            ra, dec = hdr.get("OBJCTRA"), hdr.get("OBJCTDEC")
+            if ra and dec:
+                return _parse_sexagesimal(ra, dec)
+    except Exception:
+        return None
+    return None
+
+
+def _separation_deg(ra1, dec1, ra2, dec2) -> float:
+    r1, d1, r2, d2 = map(math.radians, (ra1, dec1, ra2, dec2))
+    h = (math.sin((d2 - d1) / 2) ** 2
+         + math.cos(d1) * math.cos(d2) * math.sin((r2 - r1) / 2) ** 2)
+    return math.degrees(2 * math.asin(min(1.0, math.sqrt(h))))
+
+
+def _slug_for_object(obj: str, cat: dict) -> str | None:
+    for slug, e in cat.items():
+        if (e.get("id") or "") == obj:
+            return slug
+    return obj if obj in cat else None
+
+
+def _nearest(coords: dict, ra: float, dec: float):
+    best, best_sep = None, 999.0
+    for slug, (cra, cdec) in coords.items():
+        s = _separation_deg(ra, dec, cra, cdec)
+        if s < best_sep:
+            best, best_sep = slug, s
+    return best, best_sep
+
+
+def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[IngestGroup]:
+    """Flag groups whose sample frame points >0.15° from the named object, and
+    suggest the nearest catalog object. Reads ONE frame per group (worker I/O).
+    Degrades to no-op where coords/frames are unavailable."""
+    coords = catalog.load_coords()
+    if not coords:
+        return groups
+    try:
+        cat = catalog.load_catalog()
+    except Exception:
+        cat = {}
+    for g in groups:
+        if should_cancel and should_cancel():
+            break
+        if g.kind == "media" or not g.ops:
+            continue
+        radec = frame_radec(g.ops[0].src)
+        if radec is None:
+            continue
+        slug = _slug_for_object(g.object, cat)
+        proposed = coords.get(slug) if slug else None
+        if proposed is None:
+            continue                          # unknown object → unverified
+        sep = _separation_deg(radec[0], radec[1], proposed[0], proposed[1])
+        if sep <= POINTING_TOL_DEG:
+            continue                          # pointing matches the name ✓
+        near, near_sep = _nearest(coords, *radec)
+        if near and near != slug and near_sep <= POINTING_TOL_DEG:
+            near_id = cat.get(near, {}).get("id") or near
+            g.pointing = f"⚠ {sep:.2f}° off — looks like {near_id}"
+            g.suggested = near
+        else:
+            g.pointing = f"⚠ points {sep:.2f}° from {g.object}"
+    return groups
+
+
+def retarget(group: IngestGroup, new_object: str) -> IngestGroup:
+    """Rebuild a group's ops to land under a different destination object (used by
+    the remap dropdown). Only light/stack groups are retargetable."""
+    root = config.DATA_ROOT
+    dst_dir = (config.lights_dir(new_object) if group.kind == "light"
+               else config.seestar_stacks_dir(new_object))
+    new_flag = not config.target_dir(new_object).is_dir()
+    new_ops = []
+    for op in group.ops:
+        dest = dst_dir / Path(op.src).name
+        new_ops.append(replace(op, dest=str(dest),
+                               dest_rel=str(dest.relative_to(root)),
+                               new_object=new_flag))
+    return replace(group, object=new_object, dest_dir=str(dst_dir.relative_to(root)),
+                   new_object=new_flag, ops=new_ops, pointing=None, suggested=None)
+
+
 # ── planning ────────────────────────────────────────────────────────────────
 
 def staging_available() -> bool:
@@ -128,7 +311,7 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
 
     for sub in sub_dirs:
         _ck()
-        obj = fits_object_name(sub[:-4])  # strip "_sub"
+        obj = canonical_target(sub[:-4])  # strip "_sub"; fold case/aliases
         src_dir = base / sub
         dst_dir = config.lights_dir(obj)
         existing = set(_fit_files(dst_dir))
@@ -143,7 +326,7 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
 
     for sd in stack_dirs:
         _ck()
-        obj = fits_object_name(sd)
+        obj = canonical_target(sd)
         src_dir = base / sd
         dst_dir = config.seestar_stacks_dir(obj)
         existing = set(_fit_files(dst_dir))
