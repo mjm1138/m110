@@ -39,6 +39,21 @@ class IngestOp:
     dest_rel: str    # destination relative to the data root (for display)
     new_object: bool = False  # a new capture-target dir will be created
     action: str = "move"      # 'move' (staging) | 'copy' (device)
+    size_bytes: int = 0       # source file size (stat'd on the scan worker)
+
+
+@dataclass
+class IngestGroup:
+    """One source folder's worth of ops, aggregated for a per-object preview."""
+    group: str               # source directory name (the selectable unit)
+    object: str              # friendly object/category label
+    kind: str                # 'light' | 'stack' | 'media'
+    frames: int              # number of new files
+    size_bytes: int          # total size of the new files
+    dest_dir: str            # destination dir, relative to the data root
+    new_object: bool
+    action: str
+    ops: list                # the underlying IngestOps
 
 
 # ── classification helpers (ported verbatim) ───────────────────────────────────
@@ -70,6 +85,13 @@ def _all_files(d: Path) -> list[str]:
         return []
     return sorted(f.name for f in d.iterdir()
                   if f.is_file() and not f.name.startswith("."))
+
+
+def _size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
 
 
 # ── planning ────────────────────────────────────────────────────────────────
@@ -116,7 +138,8 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "light", sub,
-                                str(dest.relative_to(root)), new_object, action))
+                                str(dest.relative_to(root)), new_object, action,
+                                _size(src_dir / f)))
 
     for sd in stack_dirs:
         _ck()
@@ -129,7 +152,8 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                str(dest.relative_to(root)), False, action))
+                                str(dest.relative_to(root)), False, action,
+                                _size(src_dir / f)))
         # Also pull the device's preview renders (.jpg/.png) into the same stack
         # folder so the gallery has ready-made images; skip the Seestar's
         # *_thn.* sidecar thumbnails.
@@ -140,7 +164,8 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
             if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png"):
                 dest = dst_dir / f
                 ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                    str(dest.relative_to(root)), False, action))
+                                    str(dest.relative_to(root)), False, action,
+                                    _size(src_dir / f)))
 
     for md in media_dirs:
         _ck()
@@ -152,8 +177,45 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "media", md,
-                                str(dest.relative_to(root)), False, action))
+                                str(dest.relative_to(root)), False, action,
+                                _size(src_dir / f)))
     return ops
+
+
+def _object_label(group: str, kind: str) -> str:
+    """Friendly object/category name for a source folder."""
+    if kind == "media":
+        return group
+    base = group[:-4] if group.endswith("_sub") else group   # strip "_sub"
+    return fits_object_name(base)
+
+
+def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
+    """Aggregate a flat op list into one IngestGroup per source folder — the unit
+    the preview shows and the user selects. Order: objects A→Z, media last."""
+    by_group: dict[str, list[IngestOp]] = {}
+    for op in ops:
+        by_group.setdefault(op.group, []).append(op)
+
+    groups: list[IngestGroup] = []
+    for name, gops in by_group.items():
+        kind = gops[0].kind
+        # destination dir = parent of the first op's destination
+        dest_dir = str(Path(gops[0].dest_rel).parent)
+        groups.append(IngestGroup(
+            group=name,
+            object=_object_label(name, kind),
+            kind=kind,
+            frames=len(gops),
+            size_bytes=sum(o.size_bytes for o in gops),
+            dest_dir=dest_dir,
+            new_object=any(o.new_object for o in gops),
+            action=gops[0].action,
+            ops=gops,
+        ))
+    # media rows after catalog objects, then by object name
+    groups.sort(key=lambda g: (g.kind == "media", g.object.lower()))
+    return groups
 
 
 def scan_staging_plan(should_cancel=None) -> list[IngestOp]:

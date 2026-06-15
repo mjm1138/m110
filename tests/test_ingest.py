@@ -17,6 +17,55 @@ def _make_staging(tmp_path, monkeypatch):
     return root, staging
 
 
+def test_ops_carry_source_size(tmp_path, monkeypatch):
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M13_sub"
+    sub.mkdir()
+    (sub / "Light_a.fit").write_text("x" * 123)
+    ops = ingest.scan_staging_plan()
+    assert ops and ops[0].size_bytes == 123
+
+
+def test_group_ops_aggregates_by_source_folder(tmp_path, monkeypatch):
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    for obj, n in [("M101", 3), ("M51", 2)]:
+        d = staging / f"{obj}_sub"
+        d.mkdir()
+        for i in range(n):
+            (d / f"Light_{obj}_{i}.fit").write_text("x" * 100)
+    stk = staging / "M101"
+    stk.mkdir()
+    (stk / "Stacked_10_M101.fit").write_text("s" * 50)
+    med = staging / "Lunar_photo"
+    med.mkdir()
+    (med / "moon.jpg").write_text("j" * 10)
+
+    groups = ingest.group_ops(ingest.scan_staging_plan())
+    by_key = {(g.object, g.kind): g for g in groups}
+    assert (by_key[("M101", "light")].frames, by_key[("M101", "light")].size_bytes) == (3, 300)
+    assert by_key[("M101", "light")].dest_dir == "Images/M101/lights"
+    assert by_key[("M101", "light")].new_object is True
+    assert by_key[("M101", "stack")].frames == 1            # lights vs stack split
+    assert by_key[("Lunar_photo", "media")].kind == "media"
+    assert groups[-1].kind == "media"                       # media sorts last
+
+
+def test_apply_selected_subset_only(tmp_path, monkeypatch):
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    for obj in ("M101", "M51"):
+        d = staging / f"{obj}_sub"
+        d.mkdir()
+        (d / f"Light_{obj}.fit").write_text("x")
+    groups = ingest.group_ops(ingest.scan_staging_plan())
+    keep = [g for g in groups if g.object == "M101"]
+    ops = [o for g in keep for o in g.ops]
+
+    ingest.apply_ops(ops)
+    assert config.lights_dir("M101").is_dir()              # selected → imported
+    assert not config.target_dir("M51").exists()          # unselected → untouched
+    assert (staging / "M51_sub" / "Light_M51.fit").exists()
+
+
 def test_plan_classifies_subs_stacks_media(tmp_path, monkeypatch):
     root, staging = _make_staging(tmp_path, monkeypatch)
 

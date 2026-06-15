@@ -117,10 +117,14 @@ Mark each pass. Re-run a section whenever its area changes.
 - [ ] Manual override still works: View menu → Refresh (Ctrl+R).
 
 ### E. Ingest — staging  (`Inbox/`)
-- [ ] With a `<obj>_sub/` of `.fit` files present, Ingest preview lists them as
-      **moves** to `Images/<obj>/lights/`.
+- [ ] With a `<obj>_sub/` of `.fit` files present, the preview shows **one row per
+      object** (Object · Kind · Files · Size · → `Images/<obj>/lights/`) — *not*
+      one row per frame — with a running total size in the summary. *(#9)*
+- [ ] **Checkboxes** default to all-checked; **Select all/none** works; unchecking
+      an object updates the summary and **excludes it** from the ingest. *(#10)*
 - [ ] Confirm → progress modal ("Moving files…") → completes → **modal closes**.
-- [ ] Files are *moved* (gone from staging); Library refreshes to show them.
+- [ ] Only the **checked** objects are *moved* (gone from staging); unchecked ones
+      stay; Library refreshes to show the imported ones.
 
 ### F. Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.

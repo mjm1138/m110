@@ -51,9 +51,13 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   at ≤80% of screen and is freely resizable.
 
 ### Improvements (proposed — see Feedback below)
-- [ ] **#9**: Group the preview by object (object · #frames · MB) instead of one
-  row per frame.
-- [ ] **#10**: Allow selecting which objects to import (default: all).
+- [x] **#9**: Group the preview by object (object · #frames · MB) instead of one
+  row per frame. *Done — `ingest.group_ops` aggregates by source folder; ops carry
+  `size_bytes` (stat'd on the scan worker). Preview shows Object · Kind · Files ·
+  Size · → Destination, with a running total size in the summary.*
+- [x] **#10**: Allow selecting which objects to import (default: all). *Done —
+  per-row checkboxes (default all) + Select all/none; the summary updates live and
+  ingest applies only the checked groups (autoprep then runs for those targets).*
 - [~] **#11**: Import & display *everything* off the Seestar (stacks, planetary,
   scenery, …). *Ingest* of stacks (+previews) and media (`*_photo`/`*_video`)
   already works; the gap is a **display surface** for non-catalog media.

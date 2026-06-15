@@ -18,7 +18,14 @@ from PySide6.QtWidgets import (
 
 from m110 import config, ingest
 
-KIND_LABEL = {"light": "light frame", "stack": "Seestar stack", "media": "media"}
+KIND_LABEL = {"light": "lights", "stack": "Seestar stack", "media": "media"}
+
+
+def _fmt_size(n: int) -> str:
+    mb = n / (1024 ** 2)
+    if mb >= 1024:
+        return f"{mb / 1024:.1f} GB"
+    return f"{mb:.0f} MB" if mb >= 1 else f"{n} B"
 
 
 class _ScanWorker(QThread):
@@ -80,6 +87,8 @@ class IngestDialog(QDialog):
         self.setWindowTitle("Ingest")
         self.resize(780, 480)
         self._ops = []
+        self._groups = []
+        self._loading = False        # guards itemChanged while (re)populating
         self._worker = None
         self._progress = None
         self._cancel_event = None
@@ -101,10 +110,14 @@ class IngestDialog(QDialog):
         self._path_lbl.setStyleSheet("color:#8b949e")
         lay.addWidget(self._path_lbl)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Kind", "From", "File", "→ Destination"])
+        # One row per object/source folder, each selectable via a checkbox.
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(
+            ["", "Object", "Kind", "Files", "Size", "→ Destination"])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.table.itemChanged.connect(self._on_item_changed)
         lay.addWidget(self.table)
 
         self._summary = QLabel()
@@ -113,11 +126,17 @@ class IngestDialog(QDialog):
         row = QHBoxLayout()
         self._rescan_btn = QPushButton("Rescan")
         self._rescan_btn.clicked.connect(self.scan)
+        self._all_btn = QPushButton("Select all")
+        self._all_btn.clicked.connect(lambda: self._set_all_checked(True))
+        self._none_btn = QPushButton("Select none")
+        self._none_btn.clicked.connect(lambda: self._set_all_checked(False))
         self._ingest_btn = QPushButton("Ingest")
         self._ingest_btn.clicked.connect(self._do_ingest)
         self._close_btn = QPushButton("Close")
         self._close_btn.clicked.connect(self.reject)
         row.addWidget(self._rescan_btn)
+        row.addWidget(self._all_btn)
+        row.addWidget(self._none_btn)
         row.addStretch(1)
         row.addWidget(self._ingest_btn)
         row.addWidget(self._close_btn)
@@ -176,34 +195,71 @@ class IngestDialog(QDialog):
 
     # ---- table / summary ----
     def _populate(self):
-        self.table.setRowCount(len(self._ops))
-        for r, op in enumerate(self._ops):
-            label = KIND_LABEL.get(op.kind, op.kind)
-            if op.new_object:
-                label += "  (new object)"
-            self.table.setItem(r, 0, QTableWidgetItem(label))
-            self.table.setItem(r, 1, QTableWidgetItem(op.group))
-            self.table.setItem(r, 2, QTableWidgetItem(op.src.rsplit("/", 1)[-1]))
-            self.table.setItem(r, 3, QTableWidgetItem(op.dest_rel))
+        self._groups = ingest.group_ops(self._ops)
+        self._loading = True
+        self.table.setRowCount(len(self._groups))
+        for r, g in enumerate(self._groups):
+            chk = QTableWidgetItem()
+            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
+            chk.setCheckState(Qt.Checked)
+            chk.setData(Qt.UserRole, r)
+            self.table.setItem(r, 0, chk)
+            obj = g.object + ("  (new)" if g.new_object else "")
+            self.table.setItem(r, 1, QTableWidgetItem(obj))
+            self.table.setItem(r, 2, QTableWidgetItem(KIND_LABEL.get(g.kind, g.kind)))
+            self.table.setItem(r, 3, QTableWidgetItem(str(g.frames)))
+            self.table.setItem(r, 4, QTableWidgetItem(_fmt_size(g.size_bytes)))
+            self.table.setItem(r, 5, QTableWidgetItem(g.dest_dir))
+        self._loading = False
         self.table.resizeColumnsToContents()
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self._update_summary()
 
-        if self._ops:
-            counts = Counter(op.kind for op in self._ops)
-            parts = [f"{counts[k]} {KIND_LABEL[k]}{'s' if counts[k] != 1 else ''}"
-                     for k in ("light", "stack", "media") if counts.get(k)]
-            new_objs = sorted({op.group for op in self._ops if op.new_object})
-            extra = f"  ·  new objects: {', '.join(new_objs)}" if new_objs else ""
-            verb = "copy" if any(o.action == "copy" for o in self._ops) else "move"
-            self._summary.setText(f"{len(self._ops)} new file(s) to {verb} — "
-                                  f"{', '.join(parts)}{extra}")
-            self._ingest_btn.setEnabled(True)
-        else:
+    def _selected_groups(self):
+        out = []
+        for r in range(self.table.rowCount()):
+            it = self.table.item(r, 0)
+            if it is not None and it.checkState() == Qt.Checked:
+                out.append(self._groups[it.data(Qt.UserRole)])
+        return out
+
+    def _on_item_changed(self, item):
+        if not self._loading and item.column() == 0:
+            self._update_summary()
+
+    def _set_all_checked(self, checked: bool):
+        self._loading = True
+        state = Qt.Checked if checked else Qt.Unchecked
+        for r in range(self.table.rowCount()):
+            self.table.item(r, 0).setCheckState(state)
+        self._loading = False
+        self._update_summary()
+
+    def _update_summary(self):
+        if not self._groups:
             self._summary.setText("Nothing new to ingest.")
             self._ingest_btn.setEnabled(False)
+            return
+        groups = self._selected_groups()
+        ops = [o for g in groups for o in g.ops]
+        if not ops:
+            self._summary.setText(f"0 of {len(self._groups)} object(s) selected.")
+            self._ingest_btn.setEnabled(False)
+            return
+        counts = Counter(o.kind for o in ops)
+        parts = [f"{counts[k]} {KIND_LABEL[k]}" for k in ("light", "stack", "media")
+                 if counts.get(k)]
+        size = _fmt_size(sum(o.size_bytes for o in ops))
+        verb = "copy" if any(o.action == "copy" for o in ops) else "move"
+        new_objs = sorted({g.object for g in groups if g.new_object})
+        extra = f"  ·  new: {', '.join(new_objs)}" if new_objs else ""
+        self._summary.setText(f"{len(ops)} file(s) · {size} to {verb} "
+                              f"({', '.join(parts)}){extra}")
+        self._ingest_btn.setEnabled(True)
 
     def _set_empty(self, msg):
         self._ops = []
+        self._groups = []
         self.table.setRowCount(0)
         self._summary.setText(msg)
         self._ingest_btn.setEnabled(False)
@@ -211,17 +267,23 @@ class IngestDialog(QDialog):
     def _set_busy(self, busy: bool):
         self._source.setEnabled(not busy)
         self._rescan_btn.setEnabled(not busy)
+        self._all_btn.setEnabled(not busy)
+        self._none_btn.setEnabled(not busy)
+        self.table.setEnabled(not busy)
         if busy:
             self._ingest_btn.setEnabled(False)
 
     # ---- apply (threaded, writes Images/, gated) ----
     def _do_ingest(self):
-        if not self._ops:
+        groups = self._selected_groups()
+        ops = [o for g in groups for o in g.ops]
+        if not ops:
             return
-        n = len(self._ops)
-        verb = "Copy" if any(op.action == "copy" for op in self._ops) else "Move"
-        new_objs = sorted({op.group for op in self._ops if op.new_object})
-        msg = (f"{verb} {n} file(s) into the collection?\n\n"
+        n = len(ops)
+        verb = "Copy" if any(op.action == "copy" for op in ops) else "Move"
+        size = _fmt_size(sum(o.size_bytes for o in ops))
+        new_objs = sorted({g.object for g in groups if g.new_object})
+        msg = (f"{verb} {n} file(s) ({size}) into the collection?\n\n"
                f"This writes into Images/ and cannot be undone from the app.")
         if verb == "Copy":
             msg += "\nFiles are copied; the Seestar device is left untouched."
@@ -234,8 +296,8 @@ class IngestDialog(QDialog):
 
         self._set_busy(True)
         label = "Copying files…" if verb == "Copy" else "Moving files…"
-        self._make_progress(label, len(self._ops), "Ingesting")
-        self._worker = _ApplyWorker(list(self._ops), self._cancel_event, self)
+        self._make_progress(label, len(ops), "Ingesting")
+        self._worker = _ApplyWorker(ops, self._cancel_event, self)
         self._worker.progressed.connect(self._on_apply_progress)
         self._worker.done.connect(self._on_apply_done)
         self._worker.failed.connect(self._on_apply_failed)
@@ -258,6 +320,7 @@ class IngestDialog(QDialog):
         # modal (the "modal won't close" report). Clear the consumed plan; the
         # user can Rescan to look for more.
         self._ops = []
+        self._groups = []
         self.table.setRowCount(0)
         self._ingest_btn.setEnabled(False)
         bits = [f"{moved} file(s) ingested"]
