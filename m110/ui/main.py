@@ -65,7 +65,14 @@ class RefreshWorker(QThread):
     def run(self):
         try:
             from m110.refresh import run_refresh
-            self.done.emit(run_refresh())
+            from m110 import processing
+            summary = run_refresh()
+            # Heal any object that's missing its working folder(s) (missing-only;
+            # never rewrites an existing sandbox). Cheap no-op once all exist.
+            prep = processing.prepare_missing()
+            summary["prepared"] = sum(len(r.get("prepared", []))
+                                      for r in prep.values())
+            self.done.emit(summary)
         except Exception as exc:  # surface to the UI rather than crash
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -308,6 +315,7 @@ class MainWindow(QMainWindow):
         self._ready = False        # guards auto-refresh until init completes
         self._refreshing = False
         self._last_refresh = 0.0
+        self._prep_feedback = False  # show a summary after an explicit prepare
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
@@ -341,11 +349,16 @@ class MainWindow(QMainWindow):
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut("Ctrl+R")
         self.refresh_action.triggered.connect(self._do_refresh)
+        self.prep_action = QAction("Prepare working folders", self)
+        self.prep_action.setToolTip("Create any missing processing working folders "
+                                    "(for the workflows set in Preferences)")
+        self.prep_action.triggered.connect(self._prepare_working_folders)
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)  # Cmd+, on macOS
         prefs_action.triggered.connect(self._open_prefs)
         menu = self.menuBar().addMenu("M110")
         menu.addAction(self.refresh_action)
+        menu.addAction(self.prep_action)
         menu.addAction(prefs_action)
 
         self._update_status()
@@ -474,6 +487,15 @@ class MainWindow(QMainWindow):
         self.table.setEnabled(not editing)
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
+        self.prep_action.setEnabled(not editing)
+
+    def _prepare_working_folders(self):
+        # Explicit backfill — reuses the refresh worker (which runs
+        # processing.prepare_missing) and pops a summary when it finishes.
+        if self.detail.is_editing() or self._refreshing:
+            return
+        self._prep_feedback = True
+        self._do_refresh()
 
     # ---- processing import (prep is automatic on ingest) ----
     def _pick_target(self, targets: list[str], title: str) -> str | None:
@@ -528,6 +550,13 @@ class MainWindow(QMainWindow):
         else:
             self._refresh_open_detail()    # cheap: pick up image-only changes
             self._update_status()
+        if self._prep_feedback:
+            self._prep_feedback = False
+            n = summary.get("prepared", 0)
+            QMessageBox.information(
+                self, "Prepare working folders",
+                f"{n} working folder(s) prepared." if n else
+                "All objects already have their working folders.")
 
     def _on_refresh_failed(self, msg: str):
         self._refreshing = False

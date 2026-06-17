@@ -299,15 +299,23 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
     return {"linked": linked, "skipped": skipped, "cancelled": cancelled}
 
 
-def autoprep(targets, should_cancel=None) -> dict:
-    """Set up sandboxes for the given targets after ingest — idempotent, and
-    **skips** any target whose sandbox already holds un-imported finished output
-    (so it never disturbs in-progress/finished processing). Qt-free."""
+def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
+    """Set up sandboxes for the given targets — idempotent, and **skips** any
+    target whose sandbox already holds un-imported finished output (never
+    disturbs in-progress/finished processing). Qt-free.
+
+    `only_missing=True` additionally skips any target that already has a `siril/`
+    sandbox — so a refresh-time backfill creates only the absent ones and never
+    rewrites an existing (possibly hand-edited) preset. The default (ingest) path
+    re-runs the full prep so new lights get linked and the preset tracks the
+    current frame count."""
     prepared, skipped = [], []
     for target in targets:
         if should_cancel and should_cancel():
             break
         if not _lights(target):
+            continue
+        if only_missing and config.siril_dir(target).exists():
             continue
         if has_unimported_output(target):
             skipped.append(target)

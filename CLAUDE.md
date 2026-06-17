@@ -136,14 +136,14 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `migrate.py` | in-place, idempotent, version-stamped migration of an older store to the two-axis layout (`migrate_store`) |
 | `catalog.py` | load `catalog.toml`; `catalog_sort_key` (natural M/NGC order); `season_sort_key`; `load_coords` (bundled `seed/coords.csv` for the ingest pointing check) |
 | `derived.py` | **read** generated rollups (totals/priorities/summary/processing/images.json) |
-| `processing.py` | workflow registry (Siril active; PixInsight/others disabled "soon") + `run_autoprep` (preference-driven, runs after ingest) |
+| `processing.py` | workflow registry (Siril active; PixInsight/others disabled "soon") + `run_autoprep` (preference-driven, runs after ingest) + `prepare_missing` (refresh-time/on-demand backfill — creates only *absent* sandboxes, never rewrites existing) |
 | `scan_sessions.py` | scan `Images/<target>/lights/` → `sessions.jsonl` (ported) |
 | `build_derived.py` | compute totals/priorities/summary/processing → `.m110_internal_data/derived/*.json` (ported) |
 | `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached |
 | `ingest.py` | staging/Seestar scan **plan** (read-only) + gated `apply_ops` (the only writer into the content tree); cancellable |
 | `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset by drizzle-frame-count, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs; never deletes, never escapes `siril/`). Bundled-guidance access |
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
-| `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images |
+| `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync) |
 | `seed/` | bundled starter `catalog.toml` / `priorities.toml` + `coords.csv` (J2000 ref coords for the pointing check) (package-data) |
 | `guidance/` | bundled Siril/Seestar workflow playbooks (`*.md`, package-data) surfaced in processing-prep |
 

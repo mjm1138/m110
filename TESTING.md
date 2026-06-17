@@ -173,6 +173,11 @@ Mark each pass. Re-run a section whenever its area changes.
       `siril/IRCUT/` and `siril/LP/`, each a self-contained working dir.
 - [ ] **Uncheck all workflows** in Preferences → a subsequent ingest creates **no**
       `siril/` sandbox.
+- [ ] **Self-heal on refresh:** delete an object's `siril/` folder, then Refresh
+      (Ctrl+R) or refocus the window → the sandbox is recreated automatically;
+      objects that already have one are untouched (edited presets preserved). The
+      **M110 → Prepare working folders** menu action does the same on demand and
+      reports how many were created.
 
 **Import finished work**
 - [ ] Simulate Siril: drop a `*_processed.png` and a `*_processed.fit` into

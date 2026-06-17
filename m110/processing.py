@@ -42,11 +42,37 @@ def enabled_workflow_ids() -> list[str]:
     return list(val) if isinstance(val, list) else list(DEFAULT_WORKFLOWS)
 
 
-def run_autoprep(targets, should_cancel=None) -> dict:
-    """Run auto-prep for every enabled + available workflow. No-op if none."""
+def run_autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
+    """Run auto-prep for every enabled + available workflow. No-op if none.
+
+    `only_missing=True` creates only sandboxes that don't exist yet (used by the
+    refresh-time backfill — never rewrites an existing working folder)."""
     results = {}
     for wid in enabled_workflow_ids():
         w = WORKFLOWS_BY_ID.get(wid)
         if w and w.available and w.autoprep:
-            results[wid] = w.autoprep(targets, should_cancel=should_cancel)
+            results[wid] = w.autoprep(targets, should_cancel=should_cancel,
+                                      only_missing=only_missing)
     return results
+
+
+def _store_targets() -> list[str]:
+    """Capture targets in the store that have raw light frames."""
+    images = config.IMAGES_DIR
+    if not images.is_dir():
+        return []
+    out = []
+    for d in sorted(images.iterdir()):
+        lights = d / "lights"
+        if d.is_dir() and lights.is_dir() and any(
+                f.suffix.lower() == ".fit" for f in lights.iterdir() if f.is_file()):
+            out.append(d.name)
+    return out
+
+
+def prepare_missing(should_cancel=None) -> dict:
+    """Create working folders for store targets that lack one (per the enabled
+    workflows) — the refresh-time / on-demand backfill. Missing-only, so it never
+    touches an existing sandbox. Returns the per-workflow autoprep summary."""
+    return run_autoprep(_store_targets(), should_cancel=should_cancel,
+                        only_missing=True)

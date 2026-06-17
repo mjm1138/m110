@@ -73,6 +73,28 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   group before confirm; (c) a per-store **alias table**
   (`.m110_internal_data/ingest_aliases.toml`) that the remap can write via
   "remember". Degrades to "unverified" where coords/frames are missing.
+- [x] **#15**: **Working folders self-heal on refresh.** Processing-prep used to
+  fire only on ingest, so objects that arrived another way (migrated/copied,
+  not via the device) never got a `siril/` sandbox — and there was no way to
+  trigger prep for what's already in the store (the temptation was to fake it via
+  Inbox). *Done:* `processing.prepare_missing()` runs on every refresh (and via a
+  **"Prepare working folders"** menu action) — it creates only the **absent**
+  sandboxes for the enabled workflow(s) and never rewrites an existing one
+  (protects hand-edited presets + in-progress runs). Ingest still does the full
+  prep (links new lights + refreshes the preset) for freshly-ingested targets.
+- [ ] **#16**: **Robust, layout-flexible ingest (multi-telescope).** Inbox today
+  recognizes exactly one shape — the Seestar export (`<obj>_sub/` of `Light_*.fit`,
+  `<obj>/` of `Stacked_*`, `*_photo`/`*_video`). It silently finds nothing for any
+  other structure (e.g. dropping M110 *store* folders in, or another telescope's
+  layout, or a flat pile of FITS). As M110 grows past the Seestar it should:
+  (a) **recognize multiple known layouts** (Seestar, ZWO ASIAIR, raw FITS trees,
+  already-M110-store folders → "these belong in Images/, not Inbox") and say which
+  it detected; (b) **classify by FITS header** (`OBJECT`/`IMAGETYP`/`FILTER`/
+  `RA`/`DEC`) rather than folder-name conventions, so unstructured dumps still
+  sort correctly (pairs with #12's pointing logic); (c) when it can't classify,
+  **show the unrecognized items with a manual assign** rather than ignoring them;
+  (d) a device/format **registry** mirroring the processing-workflow registry.
+  Big; scope after the current ingest/processing UX settles.
 
 ---
 
