@@ -47,9 +47,10 @@ def load_processing() -> dict:
 
 
 def load_images() -> dict:
-    """{slug: [ {name, display_name, label, viewable, thumb, full, ...} ]}.
+    """{slug: [ {name, label, viewable, thumb, full, ...} ]}.
 
-    `thumb`/`full` are filenames relative to `config.RENDERS_DIR`.
+    `name` is the actual filename. `thumb` is relative to `config.RENDERS_DIR`;
+    `full` (viewable rasters only) is relative to `config.DATA_ROOT`.
     """
     return _load("images.json") or {}
 

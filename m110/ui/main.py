@@ -75,10 +75,7 @@ class DetailPane(QScrollArea):
     # table + actions (prevents losing in-progress edits to a selection change
     # or an auto-refresh).
     editing_changed = Signal(bool)
-    # Emitted when the user asks to prepare a captured object for processing;
-    # the window resolves the capture target(s) and opens the dialog.
-    prepare_requested = Signal(str)
-    # Emitted when the user asks to import finished Siril work for an object.
+    # Emitted when the user asks to import finished processing output for an object.
     import_requested = Signal(str)
 
     def __init__(self):
@@ -155,21 +152,18 @@ class DetailPane(QScrollArea):
                 f"{t.get('integration_hms', '')} · "
                 f"{t.get('session_count', '')} sessions · "
                 f"{t.get('frames', '')} frames"))
-            btn_row = QHBoxLayout()
-            prep_btn = QPushButton("Prepare for processing…")
-            prep_btn.setToolTip("Arrange a Siril sandbox (literal lights/ + "
-                                "Naztronomy preset) for this object")
-            prep_btn.clicked.connect(lambda: self.prepare_requested.emit(slug))
-            btn_row.addWidget(prep_btn)
+            # Processing-prep happens automatically on ingest (per the
+            # Preferences workflow setting) — so no manual "Prepare" button here.
             # Offer import only when a sandbox has finished output to bring back.
             if self._has_finished_work(slug):
+                btn_row = QHBoxLayout()
                 imp_btn = QPushButton("Import finished work…")
-                imp_btn.setToolTip("Bring your Siril renders/stack into the "
-                                   "Library and clean up the sandbox")
+                imp_btn.setToolTip("Bring your processed renders/stack into the "
+                                   "Library and tidy the working folder")
                 imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
                 btn_row.addWidget(imp_btn)
-            btn_row.addStretch(1)
-            self._lay.addLayout(btn_row)
+                btn_row.addStretch(1)
+                self._lay.addLayout(btn_row)
         else:
             self._lay.addWidget(QLabel("<i>not captured</i>"))
 
@@ -224,7 +218,7 @@ class DetailPane(QScrollArea):
                 tp = config.RENDERS_DIR / im["thumb"]
                 if not tp.is_file():
                     continue
-                name = im.get("display_name") or im.get("name") or ""
+                name = im.get("name") or ""
                 gallery.addItem(QListWidgetItem(QIcon(str(tp)), name))
                 # Prefer the full-res source for viewing; fall back to the thumb
                 # (FITS has no displayable `full`). Kept in a parallel Python list
@@ -329,7 +323,6 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self._on_select)
         self.detail = DetailPane()
         self.detail.editing_changed.connect(self._on_editing_changed)
-        self.detail.prepare_requested.connect(self._on_prepare)
         self.detail.import_requested.connect(self._on_import)
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.table)
@@ -482,7 +475,7 @@ class MainWindow(QMainWindow):
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
 
-    # ---- processing-prep ----
+    # ---- processing import (prep is automatic on ingest) ----
     def _pick_target(self, targets: list[str], title: str) -> str | None:
         if len(targets) == 1:
             return targets[0]
@@ -491,37 +484,12 @@ class MainWindow(QMainWindow):
             sorted(targets), 0, False)
         return target if ok else None
 
-    def _on_prepare(self, slug: str):
-        def _has_lights(t: str) -> bool:
-            d = config.lights_dir(t)
-            return d.is_dir() and any(p.suffix.lower() == ".fit" for p in d.iterdir())
-
-        targets = [t for t in _targets_for_slug(slug) if _has_lights(t)]
-        if not targets:
-            QMessageBox.information(
-                self, "Nothing to prepare",
-                "This object has no raw light frames to arrange for Siril.\n"
-                "(Targets with only Seestar in-app stacks can't be Siril-prepped.)")
-            return
-        target = self._pick_target(targets, "Choose capture target")
-        if target is None:
-            return
-
-        proc = derived.load_processing().get("folders", {}).get(target, {})
-        stack_meta = proc.get("stack_meta") or {}
-        usable = stack_meta.get("stack_frames")
-        star = bool(proc.get("star_removal"))
-
-        from m110.ui.processing_dialog import ProcessingDialog
-        ProcessingDialog(target, usable_frames=usable, star_removal=star,
-                         parent=self).exec()
-
     def _on_import(self, slug: str):
         targets = [t for t in _targets_for_slug(slug)
                    if siril.has_unimported_output(t)]
         if not targets:
             QMessageBox.information(self, "Nothing to import",
-                                    "No finished Siril output found for this object.")
+                                    "No finished processing output found for this object.")
             return
         target = self._pick_target(targets, "Choose capture target")
         if target is None:

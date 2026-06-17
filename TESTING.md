@@ -41,7 +41,7 @@ and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 ```bash
 cd ~/Documents/Code/m110
 source .venv/bin/activate
-pytest -q                 # all (~122); must be green before manual testing
+pytest -q                 # all (~112); must be green before manual testing
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
@@ -89,6 +89,8 @@ Mark each pass. Re-run a section whenever its area changes.
       cycle through the gallery; **Esc** closes. Raster renders show full-res; a
       `.fit`-only stack shows its thumbnail. (Re-Refresh once so `full` paths
       populate for data rendered before this change.)
+- [ ] Gallery labels + processing rows show the **actual filenames** (no
+      standardized "display names").
 - [ ] **Journal** renders Markdown with the author's line breaks preserved and no
       stray `<!-- -->` / `-->`; text wraps to the pane width.
 
@@ -155,21 +157,22 @@ Mark each pass. Re-run a section whenever its area changes.
       partial-safe).
 
 ### G2. Processing-prep round-trip (0.1f)
-**Auto-setup on ingest**
-- [ ] After ingesting a new object's lights, a Siril sandbox appears at
-      `Images/<target>/siril/` **without any manual action**: a **literal**
-      `lights/` (Siril needs that exact name) holding the subs as **hardlinks**
-      (`ls -li` → same inode / link count > 1 as `../lights/`), plus
-      `presets/naztronomy_smart_scope_presets.json` (valid JSON, drizzle matching
-      the frame count) and `next-steps.md`. M110 does **not** create a `process/`
-      (Siril makes its own inside the sandbox).
+**Preference**
+- [ ] Preferences (Cmd+,) shows **"Prepare objects for processing in:"** with
+      **Siril** checked (default) and PixInsight / DeepSkyStacker / Astro Pixel
+      Processor **disabled ("soon")**. Saving persists the choice (no restart).
+
+**Auto-setup on ingest (no manual action — there is no "Prepare" button)**
+- [ ] With Siril enabled, ingesting a new object's lights makes a sandbox at
+      `Images/<target>/siril/` automatically: a **literal** `lights/` holding the
+      subs as **hardlinks** (`ls -li` → same inode / link count > 1 as
+      `../lights/`), plus `presets/naztronomy_smart_scope_presets.json` (valid
+      JSON, drizzle matching the frame count) and `next-steps.md`. M110 does
+      **not** create a `process/` (Siril makes its own inside the sandbox).
 - [ ] A target with **mixed filters** (LP + IRCUT) gets per-filter jobs
       `siril/IRCUT/` and `siril/LP/`, each a self-contained working dir.
-
-**Manual Prepare (secondary)**
-- [ ] A captured object's detail pane shows **"Prepare for processing…"**; it
-      re-arranges/refreshes the sandbox (idempotent: "0 arranged, N already
-      present"). Guidance list opens playbooks (double-click).
+- [ ] **Uncheck all workflows** in Preferences → a subsequent ingest creates **no**
+      `siril/` sandbox.
 
 **Import finished work**
 - [ ] Simulate Siril: drop a `*_processed.png` and a `*_processed.fit` into

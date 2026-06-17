@@ -45,7 +45,7 @@ proven logic into an installable engine** and puts a native-feeling GUI on top.
   decisions lives in the sibling Astronomy project's `workflow_app_plan.md`
   (optional background; this repo stands alone without it).
 - Several engine modules are **faithful ports** of Astronomy `scripts/`
-  (`scan_sessions`, `build_derived`, `display_names`, the image pipeline). They
+  (`scan_sessions`, `build_derived`, the image pipeline). They
   were validated to reproduce the original output byte-for-byte. **When changing
   these, preserve behavior compatibility** — the data store schema is shared.
 - M110 is standalone: it carries its own seed catalog and generates its
@@ -136,7 +136,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `migrate.py` | in-place, idempotent, version-stamped migration of an older store to the two-axis layout (`migrate_store`) |
 | `catalog.py` | load `catalog.toml`; `catalog_sort_key` (natural M/NGC order); `season_sort_key`; `load_coords` (bundled `seed/coords.csv` for the ingest pointing check) |
 | `derived.py` | **read** generated rollups (totals/priorities/summary/processing/images.json) |
-| `display_names.py` | standardized gallery display filenames (ported) |
+| `processing.py` | workflow registry (Siril active; PixInsight/others disabled "soon") + `run_autoprep` (preference-driven, runs after ingest) |
 | `scan_sessions.py` | scan `Images/<target>/lights/` → `sessions.jsonl` (ported) |
 | `build_derived.py` | compute totals/priorities/summary/processing → `.m110_internal_data/derived/*.json` (ported) |
 | `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached |
@@ -151,12 +151,12 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 | Module | Role |
 |---|---|
-| `main.py` | Library window: catalog+status table (sortable), object detail/gallery (hero scales to the pane; double-click a thumbnail → image viewer; Season column sorts by first month), **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), per-object **Prepare for processing** / **Import finished work** (shown when the sandbox has finished output), Ingest (Ctrl+I), Preferences (Cmd+,). **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
+| `main.py` | Library window: catalog+status table (sortable), object detail/gallery (hero scales to the pane; double-click a thumbnail → image viewer; Season column sorts by first month), **inline journal editor** (Edit/Save/Cancel the raw `journal.md`; table + actions lock while editing), per-object **Import finished work** (shown when the sandbox has finished output; processing-prep itself is automatic on ingest), Ingest (Ctrl+I), Preferences (Cmd+,). Image names shown are the **actual filenames**. **Auto-syncs with disk** on launch / window-focus / after ingest (debounced, non-disruptive — preserves selection, rebuilds only on real change; suppressed while editing); manual Refresh (Ctrl+R) is a menu override |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), **per-object grouped + checkbox-selectable** preview (Object · Kind · Files · Size · Pointing · → dest; select all/none; live size total), **name canonicalization + RA/DEC pointing check with a remap dropdown** (#12), threaded scan→group→annotate & apply behind modal progress+Cancel (applies only checked/retargeted groups) |
-| `processing_dialog.py` | **Prepare** preview (per-job filter counts, drizzle, preset, guidance) → threaded `apply_prep` behind modal progress+Cancel; inline guidance viewer |
+| `processing_dialog.py` | (legacy) manual **Prepare** preview — no longer launched (prep is automatic on ingest); kept pending a future processing-management view |
 | `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
 | `image_viewer.py` | `ScalableImage` (pixmap that refits on resize — used for the hero) + `ImageViewer` (full-frame gallery viewer: Prev/Next, ←/→, Esc) |
-| `preferences.py` | choose data folder (save + restart) |
+| `preferences.py` | choose data folder (save + restart) + **"Prepare objects for processing in:"** workflow checkboxes (Siril; others disabled "soon") → `processing_workflows` setting |
 
 ---
 
@@ -172,10 +172,12 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   `QProgressDialog` with a working Cancel (see Refresh and Ingest). A
   synchronous scan/copy will freeze the window — don't.
 - **Ported modules: behavior-compat was consciously retired for the two-axis
-  store** (#13). `scan_sessions` / `build_derived` / `build_images` /
-  `display_names` no longer match the Astronomy byte-for-byte goldens (new paths
-  + `scan_sessions`/`build_derived` now read `config.*` dynamically instead of
-  binding paths at import). Validate against the repo's own fixtures, not the
+  store** (#13). `scan_sessions` / `build_derived` / `build_images` no longer
+  match the Astronomy byte-for-byte goldens (new paths + `scan_sessions`/
+  `build_derived` now read `config.*` dynamically instead of binding paths at
+  import). The `display_names` port was **removed** entirely — M110 shows real
+  filenames, not standardized display names (the convention may return behind a
+  future publishing function). Validate against the repo's own fixtures, not the
   Astronomy originals.
 - **Tests run on temp fixtures, never live data.** Engine functions take
   `config.*` paths dynamically or accept injected paths so tests can

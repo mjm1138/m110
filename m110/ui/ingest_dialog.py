@@ -67,16 +67,18 @@ class _ApplyWorker(QThread):
                 self._ops,
                 progress=lambda i, t: self.progressed.emit(i, t),
                 should_cancel=self._cancel.is_set)
-            # Auto-set up a Siril sandbox for any target that gained lights
-            # (idempotent; skips targets with pending finished output).
+            # Auto-prep each target that gained lights for the enabled
+            # processing workflow(s) (idempotent; skips targets with pending
+            # finished output). Driven by the "Prepare objects for processing in:"
+            # preference — no-op if the user disabled all workflows.
             if not res.get("cancelled"):
                 from pathlib import Path
-                from m110 import siril
+                from m110 import processing
                 targets = sorted({Path(op.dest_rel).parts[1]
                                   for op in self._ops if op.kind == "light"
                                   and len(Path(op.dest_rel).parts) > 1})
                 if targets:
-                    siril.autoprep(targets, should_cancel=self._cancel.is_set)
+                    processing.run_autoprep(targets, should_cancel=self._cancel.is_set)
             self.done.emit(res)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")

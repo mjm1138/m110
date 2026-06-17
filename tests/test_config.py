@@ -89,6 +89,17 @@ def test_ensure_stub_never_overwrites_existing_journal(tmp_path):
     assert journal.read_text() == "# my own notes\n"
 
 
+def test_setting_get_save_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
+    assert config.get_setting("missing", "fallback") == "fallback"
+    config.save_setting("processing_workflows", ["siril"])
+    assert config.get_setting("processing_workflows") == ["siril"]
+    # saving one key preserves the others
+    config.save_setting("data_root", "/tmp/x")
+    assert config.get_setting("processing_workflows") == ["siril"]
+    assert config.get_setting("data_root") == "/tmp/x"
+
+
 def test_find_seestar_no_crash():
     res = config.find_seestar_myworks()
     assert res is None or res.name == "MyWorks"

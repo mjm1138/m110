@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 
 # Ported into the M110 engine.
-from .display_names import display_name_for_name  # noqa: E402
 from . import config  # noqa: E402
 
 try:
@@ -414,8 +413,6 @@ def build_processing(totals: dict, overrides: dict | None,
         # Processed files = .fit / .tif / .tiff in the folder root OR in
         # the stacks/ subdir (newer location — see migrate_to_stacks.py).
         # Excludes anything inside lights/, darks/, biases/, flats/, process/.
-        # Number of slugs the folder feeds drives display-name format.
-        n_slugs = len(t.get("slugs", [])) or 1
         processed = []
         search_dirs = [folder]
         stacks_subdir = folder / "stacks"
@@ -430,7 +427,6 @@ def build_processing(totals: dict, overrides: dict | None,
                 m = f.stat().st_mtime
                 processed.append({
                     "name": f.name,
-                    "display_name": display_name_for_name(f.name, m, fname, n_slugs),
                     "mtime": m,
                     "size_mb": round(f.stat().st_size / (1024 * 1024), 1),
                 })
@@ -485,7 +481,7 @@ def build_processing(totals: dict, overrides: dict | None,
             "frames": t["frames"],
             "session_count": t["session_count"],
             "last_capture": t.get("last_capture"),
-            "latest_processed": (processed[0]["display_name"]
+            "latest_processed": (processed[0]["name"]
                                  if processed else None),
             "latest_processed_at": fmt_mtime(newest_processed_mtime),
             "latest_light_at": fmt_mtime(newest_light_mtime),

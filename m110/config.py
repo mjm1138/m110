@@ -55,7 +55,7 @@ JOURNAL_TEMPLATE = """\
 ---
 name: "{name}"
 hero_caption: ""
-# hero: "<display name of a gallery image to pin as the hero>"   # optional
+# hero: "<filename of a gallery image to pin as the hero>"   # optional
 ---
 
 # {id} — {name}
@@ -81,9 +81,19 @@ def _read_settings() -> dict:
 
 def save_data_root(path) -> None:
     """Persist the chosen data root (takes effect on next launch)."""
+    save_setting("data_root", str(Path(path).expanduser()))
+
+
+def get_setting(key: str, default=None):
+    """Read a persisted app setting (``~/.m110/settings.json``)."""
+    return _read_settings().get(key, default)
+
+
+def save_setting(key: str, value) -> None:
+    """Persist a single app setting."""
     APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     s = _read_settings()
-    s["data_root"] = str(Path(path).expanduser())
+    s[key] = value
     SETTINGS_FILE.write_text(json.dumps(s, indent=2))
 
 

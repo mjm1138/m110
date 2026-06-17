@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 
 from . import config, objects
-from .display_names import display_name_for_image
 
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".fit", ".fits")
 VIEWABLE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -121,7 +120,6 @@ def make_thumb(src: Path, dest_dir: Path) -> Path | None:
 def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict]:
     out = []
     for fname in folders:
-        n_slugs = (len(by_folder.get(fname, {}).get("slugs", [])) or 1) if by_folder else 1
         for src_dir, label in [
             (config.finished_dir(fname), "Finished render"),
             (config.stacks_dir(fname), "Siril stack"),
@@ -137,7 +135,6 @@ def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict
                 st = f.stat()
                 out.append({
                     "path": f, "name": f.name,
-                    "display_name": display_name_for_image(f, fname, n_slugs),
                     "label": label, "size_mb": round(st.st_size / (1024 * 1024), 1),
                     "mtime": st.st_mtime, "viewable": f.suffix.lower() in VIEWABLE_EXTS,
                 })
@@ -178,13 +175,13 @@ def find_hero_source(folders: list[str]) -> Path | None:
 
 
 def _hero_source(slug: str, folders: list[str], imgs: list[dict]) -> Path | None:
-    """Honour frontmatter overrides (hero: display-name, or hero_image: path),
+    """Honour frontmatter overrides (hero: filename, or hero_image: path),
     else fall back to tier auto-discovery."""
     fm, _ = objects.read_journal(slug)
     name = fm.get("hero")
     if name:
         for im in imgs:
-            if im.get("display_name") == name or im.get("name") == name:
+            if im.get("name") == name:
                 return im["path"]
     hp = fm.get("hero_image")
     if hp:
@@ -251,7 +248,7 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
                     full = str(im["path"].relative_to(config.DATA_ROOT))
                 except ValueError:
                     full = None
-            entries.append({"name": im["name"], "display_name": im["display_name"],
+            entries.append({"name": im["name"],
                             "label": im["label"], "size_mb": im["size_mb"],
                             "mtime": im["mtime"], "viewable": im["viewable"],
                             "thumb": tp.name if tp else None, "full": full})
