@@ -217,11 +217,16 @@ with status, later phases, and open decisions. Keep `ROADMAP.md` current as work
 lands.
 
 Current status at a glance: **v0.1 ("the Library") feature-complete — 0.1a–0.1f
-done**, plus the split to an own data root, the two-axis store reshape (#13), and
-the image-rendering port. **Next: post-MVP phases** (session planning, etc.) and
-the ingest backlog (#9–#12). Foundational decisions in brief: open-source /
-Developer-ID distribution (not App Store); PySide6 over a headless engine;
-processing is prepare-and-guide, not direct Siril control.
+done**, plus the two-axis store reshape (#13), the image-rendering port, and the
+ingest backlog **#9/#10** (grouped + selectable preview) and **#12** (name
+canonicalization + RA/DEC pointing check). Processing-prep is **preference-driven
+and automatic** (runs on ingest; missing working folders self-heal on refresh —
+#15). **Still open:** **#11** (a display surface for non-catalog media — ingest
+already captures it) and **#16** (robust, layout-flexible, multi-telescope
+ingest). **Next: post-MVP phases** (session planning, etc.). Foundational
+decisions in brief: open-source / Developer-ID distribution (not App Store);
+PySide6 over a headless engine; processing is prepare-and-guide, not direct Siril
+control.
 
 ---
 
@@ -244,6 +249,21 @@ processing is prepare-and-guide, not direct Siril control.
 - **Cross-thread Qt:** workers communicate via signals; never touch widgets
   from a worker thread. Cancellation uses a `threading.Event` set by the
   progress dialog's `canceled` signal.
+- **`seed/coords.csv` is generated, not hand-maintained.** It's J2000
+  `slug,ra_deg,dec_deg` for the catalog, produced **once at build time** via
+  `astropy` `SkyCoord.from_name` (Simbad — needs network) over the catalog ids;
+  committed so runtime stays offline. Regenerate with a throwaway script when the
+  catalog changes (asterisms like "Markarian's Chain" won't resolve — they're
+  simply omitted and those targets skip the pointing check). It is **reference
+  data** (independent of the user's editable `catalog.toml`), so it works for old
+  stores without a re-seed.
+- **Processing-prep is automatic + idempotent.** It runs on ingest (full prep:
+  links new lights + rewrites the preset for the current frame count) and on
+  every refresh as a **missing-only** backfill (`processing.prepare_missing` —
+  creates only absent `siril/` sandboxes, **never** rewriting an existing one, so
+  hand-edited presets + in-progress runs are safe). There is **no manual "Prepare"
+  button**; the workflow set is the `processing_workflows` preference (Siril only,
+  for now). Don't reintroduce per-object manual prep.
 
 ---
 
