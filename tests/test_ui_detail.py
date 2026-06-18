@@ -48,6 +48,40 @@ def test_detail_buttons_do_not_accumulate(tmp_path, monkeypatch, qapp):
     assert _count(d._content, "Edit") == 1
 
 
+def test_table_sort_persists_across_rebuild(tmp_path, monkeypatch, qapp):
+    from PySide6.QtCore import Qt
+    root = tmp_path / "M110"
+    internal = root / config.INTERNAL_DIRNAME
+    monkeypatch.setattr(config, "DATA_ROOT", root)
+    monkeypatch.setattr(config, "CATALOG_TOML", internal / "catalog.toml")
+    monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
+    monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
+    monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
+    monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
+    monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
+    config.ensure_data_root(root)
+
+    from m110.ui.main import MainWindow
+    win = MainWindow()
+    win._ready = False    # neuter the deferred launch-refresh worker (test hygiene)
+    try:
+        hdr = win.table.horizontalHeader()
+        assert hdr.sortIndicatorSection() == 0      # default: Object column
+
+        win.table.sortByColumn(6, Qt.DescendingOrder)   # user sorts by Integration
+        assert (win._sort_col, win._sort_order) == (6, Qt.DescendingOrder)
+
+        win._rebuild_table()                        # e.g. after an ingest
+        hdr = win.table.horizontalHeader()
+        assert hdr.sortIndicatorSection() == 6      # sort preserved
+        assert hdr.sortIndicatorOrder() == Qt.DescendingOrder
+    finally:
+        win.close()
+        win.deleteLater()
+        qapp.processEvents()
+
+
 def test_detail_edit_buttons_clear_on_cancel(tmp_path, monkeypatch, qapp):
     _isolate(tmp_path, monkeypatch)
     from m110.ui.main import DetailPane

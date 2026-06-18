@@ -316,6 +316,10 @@ class MainWindow(QMainWindow):
         self._refreshing = False
         self._last_refresh = 0.0
         self._prep_feedback = False  # show a summary after an explicit prepare
+        # Current table sort — defaults to the Object column (resets each launch),
+        # but persists across in-session table rebuilds (e.g. after ingest).
+        self._sort_col = 0
+        self._sort_order = Qt.AscendingOrder
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
@@ -414,8 +418,14 @@ class MainWindow(QMainWindow):
 
         table.resizeColumnsToContents()
         table.setSortingEnabled(True)
-        table.sortByColumn(0, Qt.AscendingOrder)  # default: natural M1,M2,…
+        # Reapply the current sort (preserved across rebuilds), then track changes.
+        table.sortByColumn(self._sort_col, self._sort_order)
+        table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
         return table
+
+    def _on_sort_changed(self, col: int, order):
+        self._sort_col = col
+        self._sort_order = order
 
     def _rebuild_table(self):
         """Rebuild the table widget from current self._cat/_totals, preserving
