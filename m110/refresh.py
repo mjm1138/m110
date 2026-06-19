@@ -8,13 +8,18 @@ images won't appear until the Astronomy `build_site` runs.
 """
 from __future__ import annotations
 
-from . import scan_sessions, build_derived
+from . import scan_sessions, build_derived, catalog
 
 
-def run_refresh(render: bool = True) -> dict:
+def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
     """Rescan sessions, rebuild derived rollups, and (re)generate gallery/hero
     images for the data store. Returns a small summary dict for the UI.
     """
+    # Promote captured-but-uncatalogued targets to first-class catalog objects
+    # *before* scanning, so the session/derived pass picks up their new slug
+    # (otherwise they'd show only in folder-derived views, never the catalog).
+    added = catalog.add_captured_objects() if catalog_captures else []
+
     rows = scan_sessions.scan()
     scan_sessions.write_jsonl(rows)
     build_derived.main()  # loads catalog/priorities/sessions/overrides → derived/*.json
@@ -22,9 +27,9 @@ def run_refresh(render: bool = True) -> dict:
     rendered = None
     if render:
         try:
-            from . import build_images, catalog, derived
+            from . import build_images, derived
             rendered = build_images.render_images(catalog.load_catalog(),
                                                   derived.load_totals())
         except Exception as exc:  # never let rendering break a refresh
             print(f"  image render skipped: {exc}")
-    return {"sessions": len(rows), "rendered": rendered}
+    return {"sessions": len(rows), "rendered": rendered, "cataloged": added}

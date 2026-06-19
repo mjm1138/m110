@@ -134,7 +134,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 |---|---|
 | `config.py` | data-root resolution, dir bootstrap/seed, per-target path helpers, settings persistence, Seestar mount detection (`find_seestar_myworks`) |
 | `migrate.py` | in-place, idempotent, version-stamped migration of an older store to the two-axis layout (`migrate_store`) |
-| `catalog.py` | load `catalog.toml`; `catalog_sort_key` (natural M/NGC order); `season_sort_key`; `load_coords` (bundled `seed/coords.csv` for the ingest pointing check) |
+| `catalog.py` | load `catalog.toml`; `catalog_sort_key` (natural M/NGC order); `season_sort_key`; `load_coords` (bundled `seed/coords.csv` + per-store catalog `ra_deg/dec_deg`); `add_captured_objects` (promote captured-but-uncatalogued folders into the catalog) |
 | `derived.py` | **read** generated rollups (totals/priorities/summary/processing/images.json) |
 | `processing.py` | workflow registry (Siril active; PixInsight/others disabled "soon") + `run_autoprep` (preference-driven, runs after ingest) + `prepare_missing` (refresh-time/on-demand backfill — creates only *absent* sandboxes, never rewrites existing) |
 | `scan_sessions.py` | scan `Images/<target>/lights/` → `sessions.jsonl` (ported) |
@@ -262,6 +262,15 @@ control.
   simply omitted and those targets skip the pointing check). It is **reference
   data** (independent of the user's editable `catalog.toml`), so it works for old
   stores without a re-seed.
+- **Captured-but-uncatalogued objects are auto-cataloged on refresh.** A capture
+  folder whose name maps to no catalog slug (e.g. a freshly-shot `NGC 6992`) would
+  otherwise show only in folder-derived views (Processing/Sessions) and have no
+  Catalog row / object page. `catalog.add_captured_objects()` (run first in
+  `run_refresh`, before scan) adds a minimal entry (id = folder, type "unknown")
+  + best-effort Simbad coords (`astropy from_name`; offline → minimal), so it
+  becomes first-class. **Writes to the store `catalog.toml`** (additive,
+  idempotent, never overwrites). `load_coords` merges those per-store coords over
+  the bundled `seed/coords.csv`.
 - **Processing-prep is automatic + idempotent.** It runs on ingest (full prep:
   links new lights + rewrites the preset for the current frame count) and on
   every refresh as a **missing-only** backfill (`processing.prepare_missing` —

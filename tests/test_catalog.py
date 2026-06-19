@@ -1,4 +1,7 @@
 """Tests for catalog ordering (mirrors the site's _catalog_sort_key)."""
+import shutil
+
+from m110 import catalog, config
 from m110.catalog import catalog_sort_key, season_sort_key
 
 
@@ -21,6 +24,39 @@ def test_markarians_not_parsed_as_messier():
     # starts with M but must NOT sort as a Messier number
     assert catalog_sort_key("Markarian's Chain")[0] == 2
     assert catalog_sort_key("M81")[0] == 0
+
+
+def test_add_captured_objects(tmp_path, monkeypatch):
+    cat = tmp_path / "catalog.toml"
+    shutil.copy(config.SEED_DIR / "catalog.toml", cat)
+    monkeypatch.setattr(config, "CATALOG_TOML", cat)
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    monkeypatch.setattr(catalog, "_simbad_coords", lambda name: (314.08, 31.74))
+
+    (config.IMAGES_DIR / "M101" / "lights").mkdir(parents=True)       # cataloged
+    (config.IMAGES_DIR / "NGC 6992" / "lights").mkdir(parents=True)   # NEW
+    (config.IMAGES_DIR / "NoCaptures").mkdir()                        # ignored
+
+    assert catalog.add_captured_objects() == ["ngc-6992"]
+    c = catalog.load_catalog()
+    assert c["ngc-6992"]["id"] == "NGC 6992" and c["ngc-6992"]["type"] == "unknown"
+    assert "m101" in c                                   # existing entries untouched
+    # Simbad coords are written + merged into load_coords (→ pointing support)
+    assert catalog.load_coords()["ngc-6992"] == (314.08, 31.74)
+    # idempotent — second pass adds nothing
+    assert catalog.add_captured_objects() == []
+
+
+def test_add_captured_objects_minimal_when_offline(tmp_path, monkeypatch):
+    cat = tmp_path / "catalog.toml"
+    shutil.copy(config.SEED_DIR / "catalog.toml", cat)
+    monkeypatch.setattr(config, "CATALOG_TOML", cat)
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    monkeypatch.setattr(catalog, "_simbad_coords", lambda name: None)  # offline
+    (config.IMAGES_DIR / "NGC 7000" / "seestar-stacks").mkdir(parents=True)
+    assert catalog.add_captured_objects() == ["ngc-7000"]
+    assert "ngc-7000" not in catalog.load_coords()       # no coords, still added
+    assert catalog.load_catalog()["ngc-7000"]["id"] == "NGC 7000"
 
 
 def test_season_sort_by_first_month_year_round_last():
