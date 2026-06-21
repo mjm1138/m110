@@ -25,7 +25,7 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   also copies the device's preview `.jpg/.png` from stack folders.
   ⚠️ **Re-run Refresh (Ctrl+R) once** to generate thumbnails for data ingested
   before this fix.
-  - [ ] **Bug**: Processed NGC 6992 but the app has not picked up the processed images. This is the same object that wasn’t getting incorporated into the catalog at first.
+- [ ] **Bug**: Processed NGC 6992 but the app has not picked up the processed images. This is the same object that wasn’t getting incorporated into the catalog at first.
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
