@@ -95,3 +95,13 @@ def test_fit_stack_gets_thumbnail_and_hero(tmp_path, monkeypatch):
     assert entry["full"] is None                      # FITS isn't directly viewable
     assert entry["thumb"] and (internal / "renders" / entry["thumb"]).is_file()
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()    # hero from the .fit
+
+
+def test_is_intermediate_fit_honors_final_hint():
+    """A pipeline-step token doesn't make a FITS an intermediate when it's also
+    marked final — the imported deliverable bakes its steps into the name."""
+    from pathlib import Path
+    assert build_images._is_intermediate_fit(Path("M51_spcc.fit")) is True
+    assert build_images._is_intermediate_fit(Path("M51_og.fit")) is True
+    assert build_images._is_intermediate_fit(Path("M51_spcc_processed.fit")) is False
+    assert build_images._is_intermediate_fit(Path("M51_processed.png")) is False  # raster

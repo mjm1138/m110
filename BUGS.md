@@ -25,7 +25,21 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   also copies the device's preview `.jpg/.png` from stack folders.
   ⚠️ **Re-run Refresh (Ctrl+R) once** to generate thumbnails for data ingested
   before this fix.
-- [ ] **Bug**: Processed NGC 6992 but the app has not picked up the processed images. This is the same object that wasn’t getting incorporated into the catalog at first.
+- [x] **Bug**: Processed NGC 6992 but the app has not picked up the processed
+  images. (Unrelated to the earlier catalog gap — same object, different cause.)
+  *Fixed.* Root cause: **over-aggressive intermediate exclusion**, not caching.
+  The Naztronomy/Siril deliverable bakes the steps it went through into its name
+  (`NGC_6992_…_spcc_processed.png` / `.fit`), but `siril._classify` vetoed any
+  name containing a pipeline-step token (`_spcc`/`_crop`/`_stretch`/`_og`), so the
+  finished render+stack were treated as intermediates → `has_unimported_output`
+  returned False and the **Import finished work** entry never appeared. *Fix:* only
+  star **layers** (`starless`/`starmask`) are an outright veto; step tokens no
+  longer disqualify a file (a `.fit` still needs a `processed/final/finished`
+  hint to count as a stack, so bare `_spcc.fit`/`_og.fit` stay excluded). Same
+  correction applied to `build_images._is_intermediate_fit` (a final-hinted FITS
+  is no longer skipped for thumbnailing). Tests:
+  `test_siril.test_scan_finished_keeps_pipeline_step_tokens_in_final_name`,
+  `test_build_images.test_is_intermediate_fit_honors_final_hint`.
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
@@ -214,8 +228,9 @@ Library MVP. (Planetary from the ETX/ASI662 would also land here eventually.)
     `img_hash` (already the correct `mtime+size+v5` formula) and one
     `discover_images`, and no dry-run predictor. Only the cleanup gap above
     carried over.
-  - **Possibly related to the open NGC 6992 "processed images not picked up"
-    bug** (Ingest Dialog list): worth checking whether `make_thumb`/`make_full`'s
-    `dst.mtime >= src.mtime` skip-cache (build_images ~L203) or hash reuse is
-    suppressing regeneration when a reprocessed file lands — a *different*
-    mechanism than the orphan gap, but in the same code.
+  - **Re the NGC 6992 "processed images not picked up" bug (now fixed):** ruled
+    out — that turned out to be **classification** (`siril._classify` vetoing
+    step-token names like `_spcc_processed`), not the render cache. The
+    `make_thumb`/`make_full` skip-cache is content-hash keyed (`mtime+size+v5`),
+    so a reprocessed file gets a fresh hash → fresh derivative; it does not
+    suppress regeneration. #14 remains purely the orphan-cleanup disk-hygiene gap.

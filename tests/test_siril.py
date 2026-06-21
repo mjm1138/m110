@@ -129,6 +129,25 @@ def test_scan_finished_classifies_and_excludes_intermediates(tmp_path, monkeypat
     assert plan.hero_candidates == [str(sb / f"{target}_2026_processed.png")]
 
 
+def test_scan_finished_keeps_pipeline_step_tokens_in_final_name(tmp_path, monkeypatch):
+    """A deliverable bakes its steps into the name ("…_spcc_processed.png"); the
+    step tokens must NOT veto it (regression: NGC 6992 output never picked up)."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    base = f"{target}_119x20sec_drizzle-1-5x_spcc"
+    (sb / f"{base}_processed.png").write_text("PNG")   # render — has step + final
+    (sb / f"{base}_processed.fit").write_text("STACK")  # stack — has step + final
+    (sb / f"{base}.fit").write_text("i")                # bare step, no final → skip
+    (sb / f"{base}_crop.fit").write_text("i")           # intermediate → skip
+    (sb / f"starless_{base}_processed.fit").write_text("i")  # layer wins → skip
+
+    assert siril.has_unimported_output(target) is True
+    kinds = {it.name: it.kind for it in siril.scan_finished(target).items}
+    assert kinds == {f"{base}_processed.png": "render",
+                     f"{base}_processed.fit": "stack"}
+
+
 def test_apply_import_routes_sets_hero_and_archives(tmp_path, monkeypatch):
     target = _make_target(tmp_path, monkeypatch, ircut=120)
     siril.apply_prep(siril.plan_prep(target))

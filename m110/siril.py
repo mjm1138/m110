@@ -40,9 +40,13 @@ _RASTER_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
 _FIT_EXTS = (".fit", ".fits")
 # A finished output looks "final"…
 _FINAL_HINT = re.compile(r"(processed|final|finished)", re.IGNORECASE)
-# …and is not one of Siril's many intermediates (starless IS an intermediate).
-_INTERMEDIATE = re.compile(
-    r"(_og|_crop|_stretch|_spcc|_graxpert|starless|starmask)", re.IGNORECASE)
+# …and is not a star *layer* (starless/starmask are always intermediates).
+# NB: pipeline-step tokens (_og/_crop/_stretch/_spcc/_graxpert) are NOT a veto on
+# their own — the Naztronomy/Siril deliverable bakes the steps it went through
+# into its name (e.g. "…_spcc_processed.png"). A bare step file is excluded
+# anyway because a .fit must carry a _FINAL_HINT to count as a stack, and those
+# rasters are rare; over-vetoing them silently dropped real finished output (#).
+_LAYER = re.compile(r"(starless|starmask)", re.IGNORECASE)
 
 
 class PrepCancelled(Exception):
@@ -352,7 +356,7 @@ def _classify(path: Path, target: str):
     name = path.name
     if "_thn." in name or name == "lights.fit":
         return None
-    if _INTERMEDIATE.search(name):
+    if _LAYER.search(name):
         return None
     ext = path.suffix.lower()
     if ext in _RASTER_EXTS:
