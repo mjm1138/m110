@@ -25,6 +25,7 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   also copies the device's preview `.jpg/.png` from stack folders.
   ⚠️ **Re-run Refresh (Ctrl+R) once** to generate thumbnails for data ingested
   before this fix.
+  - [ ] **Bug**: Processed NGC 6992 but the app has not picked up the processed images. This is the same object that wasn’t getting incorporated into the catalog at first.
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
@@ -194,3 +195,27 @@ Library MVP. (Planetary from the ETX/ASI662 would also land here eventually.)
     `config.{target,lights,stacks,seestar_stacks,finished}_dir()`.
   - Done **before 0.1e/0.1f** so journal editing + processing-prep build against
     the final layout (no double migration).
+
+- [ ] **#14**: **`build_images.render_images` never prunes orphaned renders.**
+  *Logged 2026-06-18 from the Astronomy session (engine-parity audit).* When a
+  source image changes (reprocess, new mtime/size → new `img_hash` → new
+  thumbnail/full filename), the **old** derivative is left behind in
+  `.m110_internal_data/renders/`. `render_images` only *writes* derivatives +
+  `images.json`; there's no cleanup pass, so the renders cache grows unbounded
+  over time. Gallery correctness is unaffected (`images.json` references current
+  hashes), so this is **disk hygiene, not a display bug** — low priority.
+  - **Fix pattern:** port Astronomy's `build_site._cleanup_orphaned_images` —
+    after rendering, compute the active hash set from the rendered manifest and
+    `unlink` any `renders/*.{jpg,png}` (and hero sidecars) whose stem isn't
+    active. (Astronomy `scripts/build_site.py`.)
+  - **Note on the parent bug:** the Astronomy *dry-run* mis-reported phantom
+    thumbnail create/remove counts because it had a **second, drifting** copy of
+    `img_hash`/discovery. **M110 is not exposed to that** — it has a single
+    `img_hash` (already the correct `mtime+size+v5` formula) and one
+    `discover_images`, and no dry-run predictor. Only the cleanup gap above
+    carried over.
+  - **Possibly related to the open NGC 6992 "processed images not picked up"
+    bug** (Ingest Dialog list): worth checking whether `make_thumb`/`make_full`'s
+    `dst.mtime >= src.mtime` skip-cache (build_images ~L203) or hash reuse is
+    suppressing regeneration when a reprocessed file lands — a *different*
+    mechanism than the orphan gap, but in the same code.
