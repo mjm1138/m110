@@ -34,6 +34,35 @@ reshape into `Objects/ Images/ Media/ Inbox/ .m110_internal_data/`; verify
 `Objects/<id>/journal.md` populated, renders under `.m110_internal_data/renders/`,
 and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 
+### Synthetic test corpus (recommended starting point)
+
+Instead of hand-copying folders, generate a ready-made store that exercises the
+whole app. The generator is committed; its **output lives outside the repo**.
+
+```bash
+python tools/make_test_corpus.py        # → ~/m110-testdata/m110-test-corpus.tar.gz
+tar xzf ~/m110-testdata/m110-test-corpus.tar.gz -C ~/Documents
+M110_DATA_ROOT=~/Documents/M110-test m110     # then Refresh (Ctrl+R) first
+```
+
+What it contains (and what each fixture exercises):
+
+| Fixture | Tests |
+|---|---|
+| `M51` (lights ×2 nights + Seestar stack + real journal notes) | gallery / hero / sessions / journal feed + detail notes |
+| `M81` (lights + stack + notes), `M101` (lights only) | captured-with-stack vs captured-lights-only (no gallery) |
+| `M63` (+ `finished/` render + `stacks/` stack) | "up to date" processing status + an imported deliverable in the gallery |
+| `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) |
+| `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) |
+| `M81 M82` (multi-object folder) | many-to-many target→object rollups |
+| `Inbox/` Seestar export: `M27_sub`, `m13_sub`, `M65_sub`, `M57/`, `Nightscape_photo/` | **Ingest** (move): grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65` frames actually point at M66 → the ⚠ remap, #12); in-app stack ingest; media ingest |
+
+Regenerate any time (`python tools/make_test_corpus.py`); `--out`/`--tar` relocate
+it, `--no-tar` leaves just the directory. The data-root override is the existing
+`M110_DATA_ROOT` env var — no special flag. To exercise the Seestar **copy** path
+specifically (vs. the Inbox move path) you still need a real mounted device; the
+Inbox fixture covers the same classification/grouping/pointing logic.
+
 ---
 
 ## 1. Automated tests (the gate)

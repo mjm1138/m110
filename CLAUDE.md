@@ -299,6 +299,7 @@ control.
 ```
 m110/            engine package (+ ui/ subpackage, seed/ data)
 tests/                  pytest suite (fixture-based)
+tools/                  dev utilities (make_test_corpus.py → synthetic manual-test store)
 pyproject.toml          deps + entry point (gui-script: m110)
 README.md               user-facing quickstart
 CLAUDE.md               this file
