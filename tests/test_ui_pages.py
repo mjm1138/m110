@@ -1,6 +1,7 @@
 """Offscreen smoke for the Phase-2 pages (Sessions + Journal): they construct,
 reload against a seeded temp root, and emit open_object on row/card activation."""
 import os
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -10,7 +11,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox  # noqa: E402
 
 from m110 import config, refresh  # noqa: E402
 
@@ -18,6 +19,14 @@ from m110 import config, refresh  # noqa: E402
 @pytest.fixture(scope="module")
 def qapp():
     return QApplication.instance() or QApplication([])
+
+
+def _wait(cond, qapp, timeout=5.0):
+    end = time.time() + timeout
+    while time.time() < end and not cond():
+        qapp.processEvents()
+        time.sleep(0.01)
+    return cond()
 
 
 def _seed_root(tmp_path, monkeypatch):
@@ -111,6 +120,63 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
         assert slug in labels              # metadata shows the slug
     finally:
         d.deleteLater()
+        qapp.processEvents()
+
+
+def _seed_sandbox(target="M51"):
+    """A siril sandbox with two unimported deliverables (render + stack)."""
+    sb = config.siril_dir(target)
+    sb.mkdir(parents=True, exist_ok=True)
+    (sb / f"{target}_x_processed.png").write_text("png")
+    (sb / f"{target}_x_processed.fit").write_text("fit")
+    return sb
+
+
+def test_import_dialog_cleanup_default_follows_selection(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    _seed_sandbox("M51")
+    from m110 import siril
+    assert siril.has_unimported_output("M51")
+    from m110.ui.import_dialog import ImportDialog
+    dlg = ImportDialog("M51", "m51")
+    try:
+        assert _wait(lambda: dlg._import_btn.isEnabled(), qapp), "scan never finished"
+        assert dlg._cleanup.currentData() == "archive"      # all checked → archive
+        dlg.table.item(0, 0).setCheckState(Qt.Unchecked)     # leave one behind
+        qapp.processEvents()
+        assert dlg._cleanup.currentData() == "none"          # → leave as-is
+        dlg.table.item(0, 0).setCheckState(Qt.Checked)
+        qapp.processEvents()
+        assert dlg._cleanup.currentData() == "archive"       # back to archive
+        # once the user picks cleanup, selection no longer steers it
+        dlg._cleanup_user_set = True
+        dlg.table.item(0, 0).setCheckState(Qt.Unchecked)
+        qapp.processEvents()
+        assert dlg._cleanup.currentData() == "archive"
+    finally:
+        dlg.reject()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_import_dialog_self_closes_after_import(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    _seed_sandbox("M51")
+    # auto-confirm the "Confirm import" question box (it would otherwise block)
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QMessageBox.Yes))
+    from m110.ui.import_dialog import ImportDialog
+    dlg = ImportDialog("M51", "m51")
+    fired = []
+    dlg.imported.connect(fired.append)
+    try:
+        assert _wait(lambda: dlg._import_btn.isEnabled(), qapp)
+        dlg._do_import()
+        assert _wait(lambda: dlg.result() == QDialog.Accepted, qapp), "did not self-close"
+        assert fired == ["M51"]                              # main window got notified
+        assert (config.finished_dir("M51") / "M51_x_processed.png").is_file()
+    finally:
+        dlg.deleteLater()
         qapp.processEvents()
 
 

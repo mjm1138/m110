@@ -126,6 +126,13 @@ class ImportDialog(QDialog):
         row.addWidget(close_btn)
         lay.addLayout(row)
 
+        # Cleanup default tracks the selection (auto), until the user picks one.
+        self._loading = False
+        self._cleanup_user_set = False
+        self.table.itemChanged.connect(self._on_item_changed)
+        self._cleanup.activated.connect(
+            lambda *_: setattr(self, "_cleanup_user_set", True))
+
         QTimer.singleShot(0, self._scan)
 
     # ---- scan (threaded, read-only) ----
@@ -142,6 +149,7 @@ class ImportDialog(QDialog):
         self._finish_worker()
         self._close_progress()
         self._plan = plan
+        self._loading = True             # suppress itemChanged during population
         self.table.setRowCount(len(plan.items))
         for r, it in enumerate(plan.items):
             chk = QTableWidgetItem()
@@ -157,6 +165,8 @@ class ImportDialog(QDialog):
             self.table.setItem(r, 3, QTableWidgetItem(_fmt_size(it.size_bytes)))
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._loading = False
+        self._sync_cleanup_default()
 
         self._hero.clear()
         fm, _ = objects.read_journal(self._slug)
@@ -192,6 +202,30 @@ class ImportDialog(QDialog):
                 out.append(item.data(Qt.UserRole))
         return out
 
+    def _has_deselected_new(self) -> bool:
+        """True if any not-yet-imported output is left unchecked — archiving would
+        sweep it into archive/, so 'leave as-is' is the safer default then."""
+        if not self._plan:
+            return False
+        for r, it in enumerate(self._plan.items):
+            if not it.already and self.table.item(r, 0).checkState() != Qt.Checked:
+                return True
+        return False
+
+    def _on_item_changed(self, item):
+        if self._loading or item.column() != 0:
+            return
+        self._sync_cleanup_default()
+
+    def _sync_cleanup_default(self):
+        # Once the user explicitly picks a cleanup option, stop steering it.
+        if self._cleanup_user_set:
+            return
+        key = "none" if self._has_deselected_new() else "archive"
+        i = self._cleanup.findData(key)
+        if i >= 0:
+            self._cleanup.setCurrentIndex(i)
+
     # ---- apply (threaded, gated) ----
     def _do_import(self):
         srcs = self._checked_srcs()
@@ -222,15 +256,8 @@ class ImportDialog(QDialog):
     def _on_import_done(self, res: dict):
         self._finish_worker()
         self._close_progress()
-        self.imported.emit(self._target)
-        bits = [f"{res.get('imported', 0)} imported"]
-        if res.get("skipped"):
-            bits.append(f"{res['skipped']} already present")
-        clean = {"archive": "run archived; sandbox ready for another run",
-                 "none": "sandbox kept"}.get(res.get("cleaned"), "")
-        self._info.setText(", ".join(bits) + (f"; {clean}." if clean else "."))
-        # refresh the view (re-scan what remains)
-        QTimer.singleShot(0, self._scan)
+        self.imported.emit(self._target)   # main window refreshes the Library
+        self.accept()                      # self-close once the import is done
 
     def _on_import_failed(self, msg):
         self._finish_worker()
