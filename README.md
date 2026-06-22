@@ -29,6 +29,10 @@ created and seeded on first launch. Resolution order:
 
 It does not require any other project to run.
 
+The layout, file formats, and lifecycle of everything in the store are documented
+in **[`DATA_MODEL.md`](DATA_MODEL.md)** (canonical). Contributors: any change to the
+data model must be recorded there.
+
 ## Develop / run
 
 ```bash

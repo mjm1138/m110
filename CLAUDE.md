@@ -71,6 +71,13 @@ PySide6 UI  (m110/ui/)   ── imports in-process ──▶   headless engine (
 
 ### Data store
 
+**Canonical model: [`DATA_MODEL.md`](DATA_MODEL.md)** — the authoritative,
+human-readable data model (entity hierarchy, per-file catalog with
+mutability/lifecycle/retention, the data-flow diagram, and the designed-for-future
+seams: multi-catalog goals, device-under-target multi-telescope, planning profiles,
+the SQLite index seam). The sketch below is a quick reference; DATA_MODEL.md is the
+source of truth.
+
 The app reads/writes a single **data root** with this layout (same conventions
 as the Astronomy workflow):
 
@@ -167,6 +174,10 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 ## Conventions & rules
 
+- **Record data-model changes in [`DATA_MODEL.md`](DATA_MODEL.md).** Any change to
+  the on-disk layout, a file format, a derived-JSON shape, or `.store_version`
+  **must** be reflected there (it's canonical). On-disk changes additionally bump
+  `.store_version` and add a `migrate.py` step (idempotent, never destructive).
 - **Never write into the content tree without explicit user confirmation.**
   Ingest is strictly **preview-then-confirm**: `scan_*_plan()` is read-only and
   returns a plan; `apply_ops()` (the only writer) runs only after the dialog's

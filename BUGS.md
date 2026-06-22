@@ -122,7 +122,18 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 	
 - [ ] **#18**: **Advanced processing prep** As a user, I should be able to create Siril (and other workflows) working directories that I can populate with lights from disparate sources (see #16) and disparate objects (e.g. if I want to combine lights from m81, m82, and m81 m82 as a mosaic). It would use hard links to the original lights so the only disk space cost would be processing and intermediate files. Custom workspaces would need to be easily discoverable by name on the filesystem. I should also be able to create custom split workflow directories, similar to the splits that are automatically created for LP and no-filter lights of the same object.
 - [ ] **#19**: **Open In...** This might be hard to keep cross platform. As a user, I should be able to right click on an image and have an “Open In” option to open the image file in compatible processing/viewing apps, similar to how it works in MacOS Finder. When selecting an object (as opposed to an image) there should be a right-click option to “process in...” that would open the processing tool (Siril, Pixinsight, whatever), creating an appropriate working directory first if necessary, and setting the working directory in the app to the selected object’s appropriate working subdirectory (or optionally a custom working directory as in #18)
-- [ ] **#20**: **Data Model** This is highest priority. We need to think through and document the data model to ensure we’re not building in the wrong direction. There should be a human-readable data model document, and if it makes sense, corresponding data catalog and data flow diagram documents. Data model and data catalog might be the same document. README and CLAUDE should be updated to indicate that changes to the data model should be recorded in these documents. Claude should ask questions and make suggestions around future use cases (and examine this document and the ROADMAP document as well) to create a data model that is scalable, logical, resource efficient, extensible, and discoverable (i.e. humans looking at files on disk should be able to figure out where things are).
+- [x] **#20**: **Data Model** *(highest priority — done.)* Documented the data
+  model in **[`DATA_MODEL.md`](DATA_MODEL.md)** (canonical): principles/invariants,
+  entity hierarchy, a per-file **data catalog** (location · format · derivation ·
+  mutability+enforcement · persistence · retention), mutability & retention
+  policy, versioning/migration, an embedded **Mermaid data-flow diagram**, and
+  *designed-for-future* seams settled with the user — **Objects + list defs**
+  (many-to-many catalog/goals, item 5), **device-under-target** multi-telescope
+  (#16), planning **profiles** + a `Plans/` output axis (items 1–2), and a
+  **files + swappable SQLite-index** substrate seam. `CLAUDE.md` (Conventions) and
+  `README.md` now point at it and require data-model changes to be recorded there
+  (on-disk changes bump `.store_version` + add a `migrate.py` step). #14
+  (render-orphan prune) is the first concrete retention task it formalizes.
 
 ---
 

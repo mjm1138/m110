@@ -25,7 +25,9 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
   wrapping volatile CLIs).
 - **Data:** the app **owns its own data store** (default `~/Documents/M110`),
   decoupled from any other project; it seeds a starter catalog and generates its
-  own derived data and image renders.
+  own derived data and image renders. The data model is documented and canonical
+  in **[`DATA_MODEL.md`](DATA_MODEL.md)** — item 5 (multi-catalog goals), #16
+  (multi-telescope), and the planning phases build to the seams it defines.
 
 ---
 
