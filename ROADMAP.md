@@ -146,6 +146,48 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    definitions (or import their own). See the sibling Astronomy project's
    `next_catalog_lists.md` for the candidate lists and rationale behind each.
 
+6. **Ingest evolution — robust, layout-flexible, multi-telescope** (BUGS **#16**).
+   Today's Inbox recognizes only the Seestar export shape. Grow to: recognize
+   multiple known layouts (Seestar, ZWO ASIAIR, raw FITS trees, already-M110-store
+   folders), **classify by FITS header** (OBJECT/IMAGETYP/FILTER/RA/DEC) over
+   folder-name conventions (pairs with #12's pointing logic), manual-assign the
+   unrecognized rather than silently ignoring, and a device/format **registry**
+   mirroring the processing-workflow registry. Lands the **device-under-target**
+   layout from [`DATA_MODEL.md`](DATA_MODEL.md) so frames differentiate by source.
+   Foundational for everything multi-scope; scope after the ingest/processing UX
+   settles.
+
+7. **Processing & curation UX** (BUGS **#17/#18/#19**). Generalize processing-prep
+   past one user's habits and add curation:
+   - *Configurable finished/intermediate hinting* (#17) — a preference-driven hint
+     set (replacing today's hardcoded `_classify` patterns, the source of the
+     NGC 6992 miss) + a per-object **finished vs. unfinished** gallery with
+     right-click promote/demote/set-hero. Persists a curation designation (data-model
+     impact — see DATA_MODEL future directions).
+   - *Advanced/custom workspaces* (#18) — named, on-disk-discoverable Siril (and
+     other) working dirs that combine lights from disparate sources (#16) and
+     **multiple objects** (mosaics, e.g. M81 + M82 + "M81 M82"), via hardlinks;
+     custom split workflows. Introduces a workspace entity not bound to one target.
+   - *Open In… / Process in…* (#19) — OS-level "open this image in <app>" and
+     "process this object in <Siril/PixInsight/…>" (creating/selecting the working
+     dir first). Pure **guide**, not control — fits the processing philosophy;
+     cross-platform launch is the main risk.
+
+8. **Publishing / sharing.** Let users publish their collection to the web — the
+   generalized successor to the Astronomy `build_site` static site (which M110
+   intentionally did *not* port as its own UI). **Selective**: choose what goes
+   public — catalog, goals/lists, the Summary dashboard, processing queue, object
+   pages, journal entries, galleries/heroes — with privacy controls (e.g. exclude
+   private journals; per-object/per-list publish flags). **Pluggable targets** via
+   a publisher **registry** (mirroring the processing-workflow / device registries):
+   **GitHub Pages first** (static-site export, like today's site), then other
+   CMS/hosting platforms (Netlify, S3/CloudFront, WordPress/Ghost via API, …).
+   Qt-free `publish/` engine renders selected derived data + journals + renders into
+   the chosen artifact; the UI just picks sections + target + triggers it.
+   *Sequencing:* high personal value (it replaces the site the user relies on today)
+   and shares rendering concerns with phase 0 (same sections) — reasonable to pull
+   forward once the multi-page UI and multi-list (item 5) are in place.
+
 ---
 
 ## Decisions & open items
@@ -156,7 +198,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | Public name | ✅ **M110** (decided 2026-06-04). Tagline: *Complete the catalog.* Package import id `m110`. |
 | External presence (pre-release) | Follow-ups: domain (`m110.app` — verify at registrar), GitHub org (`m110` username taken → `m110app` / `messier110`), and an explicit "smart telescope / deep-sky catalog tracker" subtitle for discoverability. Per the name writeup. |
 | Native SwiftUI Mac wrapper on the same engine | deferred option |
-| Port `build_site`'s Jinja static-site rendering | intentionally **not** ported (the app is the UI; only the image pipeline was ported) |
+| Port `build_site`'s Jinja static-site rendering | **not** ported as the app's UI (the app *is* the UI; only the image pipeline was ported). Its capability **returns, generalized, as the Publishing phase** (item 8) — optional, selective, multi-target export |
 | Cross-platform packaging (notarize / Homebrew cask / Windows / Linux) | future |
 
 ---

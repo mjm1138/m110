@@ -279,6 +279,39 @@ the chosen direction so future work builds to it.
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.
 
+### Image curation state (BUGS #17)
+- A per-image **finished / unfinished / hero** designation, user-curatable
+  (promote/demote/set-hero), replacing today's hardcoded `siril._classify` /
+  `build_images` filename heuristics. Two seams to settle when built: the **hint
+  set** (configurable finished/intermediate filename patterns) is an *authored*
+  preference; the **per-image override** is *authored* state that must persist
+  alongside the object — proposed in `Objects/<id>/journal.md` frontmatter (hero
+  already lives there) or a small per-target manifest. Whichever wins, it's
+  authored (mutable, persistent), and the galleries are *derived* from it.
+
+### Custom processing workspaces (BUGS #18)
+- A named processing workspace **not bound to a single target** — combining lights
+  from disparate sources (#16) and **multiple objects** (mosaics, e.g. M81 + M82 +
+  "M81 M82"), via hardlinks. A new entity beside the per-target `siril/` sandbox;
+  must be **discoverable by name on disk**. Proposed home: a visible
+  `Workspaces/<name>/` axis (sibling to `Images/`), same internal shape as the
+  per-target sandbox (hardlinked `lights/`, presets, archive). Lights stay
+  hardlinks, so only intermediates cost space.
+
+### Publishing / sharing (ROADMAP item 8)
+- The generalized successor to Astronomy's `build_site`. A Qt-free `publish/`
+  engine renders **selected** sections (catalog, goals/lists, summary, processing
+  queue, object pages, journal, galleries/heroes) into a publishable artifact.
+- **Selection + privacy** are *authored* config (what's public; per-object/per-list
+  publish flags; exclude private journals) — proposed under
+  `.m110_internal_data/` (e.g. `publish.toml`).
+- The rendered **output** is a *derived* artifact (regenerable) → proposed visible
+  `Publish/` (or a configured output dir / target).
+- **Pluggable targets** via a publisher **registry** (mirrors the
+  processing-workflow + device registries): GitHub Pages first, then other
+  CMS/hosting. The registry + selection config are the stable seams; individual
+  targets are adapters.
+
 ### Storage substrate seam
 - Human-readable files (TOML/JSONL/MD) remain the **source of truth**; the
   **derived layer** is the single heavy-query path and is **swappable**. A future
