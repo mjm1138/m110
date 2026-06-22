@@ -180,6 +180,24 @@ def test_import_dialog_self_closes_after_import(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_image_viewer_close_and_quit_shortcuts(qapp):
+    from PySide6.QtGui import QShortcut, QKeySequence
+    from m110.ui.image_viewer import ImageViewer
+    v = ImageViewer([("a", "/no/such/file.png")], 0)
+    try:
+        keys = {sc.key() for sc in v.findChildren(QShortcut)}
+        assert QKeySequence(QKeySequence.StandardKey.Close) in keys   # Cmd/Ctrl+W
+        assert QKeySequence(QKeySequence.StandardKey.Quit) in keys     # Cmd/Ctrl+Q
+        v.show()
+        assert v.isVisible()
+        v.close()                                   # the Close shortcut path
+        qapp.processEvents()
+        assert not v.isVisible()
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
 def test_body_markdown_excludes_stub():
     """A fresh stub (heading + comment only) is not 'real notes'; edited prose is."""
     from m110.ui.pages.journal import _body_markdown

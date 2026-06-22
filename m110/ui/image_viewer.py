@@ -8,7 +8,7 @@ over a list of images (the detail gallery), driven by buttons or ←/→ keys.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QGuiApplication
+from PySide6.QtGui import QPixmap, QGuiApplication, QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy,
 )
@@ -99,7 +99,18 @@ class ImageViewer(QDialog):
         row.addWidget(self._next)
         lay.addLayout(row)
 
+        # Cmd+W / Ctrl+W closes the viewer; Cmd+Q / Ctrl+Q still quits the app
+        # (a modal exec() loop would otherwise swallow the quit shortcut).
+        QShortcut(QKeySequence.StandardKey.Close, self).activated.connect(self.close)
+        QShortcut(QKeySequence.StandardKey.Quit, self).activated.connect(self._quit_app)
+
         self._show_current()
+
+    def _quit_app(self):
+        self.close()
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.quit()
 
     def _show_current(self):
         label, path = self._items[self._i]
