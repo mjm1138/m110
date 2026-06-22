@@ -24,6 +24,8 @@ from m110.catalog import object_count
 from m110.ui.pages.summary import SummaryPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
+from m110.ui.pages.sessions import SessionsPage
+from m110.ui.pages.journal import JournalPage
 
 
 class RefreshWorker(QThread):
@@ -45,7 +47,7 @@ class RefreshWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Summary", "Catalog", "Processing"]
+    NAV = ["Summary", "Catalog", "Processing", "Sessions", "Journal"]
 
     def __init__(self):
         super().__init__()
@@ -67,7 +69,10 @@ class MainWindow(QMainWindow):
         self.summary = SummaryPage()
         self.catalog = CatalogPage()
         self.processing = ProcessingPage()
-        self.pages = [self.summary, self.catalog, self.processing]
+        self.sessions = SessionsPage()
+        self.journal = JournalPage()
+        self.pages = [self.summary, self.catalog, self.processing,
+                      self.sessions, self.journal]
         self._catalog_index = self.pages.index(self.catalog)
 
         self.stack = QStackedWidget()
@@ -93,6 +98,8 @@ class MainWindow(QMainWindow):
         self.catalog.dirty.connect(self._do_refresh)
         self.summary.open_object.connect(self.open_object)
         self.processing.open_object.connect(self.open_object)
+        self.sessions.open_object.connect(self.open_object)
+        self.journal.open_object.connect(self.open_object)
 
         # Toolbar + menu (global).
         toolbar = self.addToolBar("Main")

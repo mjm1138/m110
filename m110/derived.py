@@ -57,3 +57,22 @@ def load_images() -> dict:
 
 def images_for(slug: str) -> list:
     return load_images().get(slug, [])
+
+
+def load_sessions() -> list[dict]:
+    """Capture sessions from `config.SESSIONS_JSONL` (one JSON object per line).
+
+    Pure reader (mirrors `build_derived.load_sessions` without importing it);
+    `[]` if the file is absent. Each row:
+    {date, object_dir, slugs, frames, exposure_s, filter, integration_min,
+     mount_mode, pre_new_start}.
+    """
+    p = config.SESSIONS_JSONL
+    if not p.is_file():
+        return []
+    rows = []
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if line:
+            rows.append(json.loads(line))
+    return rows

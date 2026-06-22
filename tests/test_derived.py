@@ -35,3 +35,25 @@ def test_missing_files_return_empty(tmp_path, monkeypatch):
     assert derived.totals_by_slug() == {}
     assert derived.load_priorities() == []
     assert derived.derived_available() is False
+
+
+def test_load_sessions(tmp_path, monkeypatch):
+    p = tmp_path / "sessions.jsonl"
+    rows = [
+        {"date": "2026-05-29", "object_dir": "M108 M97", "slugs": ["m108", "m97"],
+         "frames": 106, "exposure_s": 30, "filter": "LP", "integration_min": 53.0,
+         "mount_mode": "EQ", "pre_new_start": False},
+        {"date": "2026-06-01", "object_dir": "M51", "slugs": ["m51"],
+         "frames": 200, "exposure_s": 10, "filter": "OFF", "integration_min": 33.3,
+         "mount_mode": "EQ", "pre_new_start": False},
+    ]
+    p.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    monkeypatch.setattr(config, "SESSIONS_JSONL", p)
+    out = derived.load_sessions()
+    assert len(out) == 2 and out[0]["object_dir"] == "M108 M97"
+    assert out[1]["slugs"] == ["m51"]
+
+
+def test_load_sessions_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "SESSIONS_JSONL", tmp_path / "nope.jsonl")
+    assert derived.load_sessions() == []

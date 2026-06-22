@@ -158,12 +158,14 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 | Module | Role |
 |---|---|
-| `main.py` | **Shell**: left nav rail (`QListWidget`) → `QStackedWidget` of pages [Summary · Catalog · Processing; Sessions/Journal next]; **Summary is the landing page**. Global Ingest (Ctrl+I) toolbar + M110 menu (Refresh Ctrl+R, Prepare working folders, Preferences Cmd+,). `RefreshWorker` (scan→derive→render + `prepare_missing`) drives `page.reload()`; **auto-syncs** on launch / window-focus / after ingest. `open_object(slug)` routes any page's object link → Catalog + selects it. Journal-edit lock disables nav + global actions |
+| `main.py` | **Shell**: left nav rail (`QListWidget`) → `QStackedWidget` of pages [Summary · Catalog · Processing · Sessions · Journal]; **Summary is the landing page**. Global Ingest (Ctrl+I) toolbar + M110 menu (Refresh Ctrl+R, Prepare working folders, Preferences Cmd+,). `RefreshWorker` (scan→derive→render + `prepare_missing`) drives `page.reload()`; **auto-syncs** on launch / window-focus / after ingest. `open_object(slug)` routes any page's object link → Catalog + selects it. Journal-edit lock disables nav + global actions |
 | `widgets.py` | shared `NumItem` (sort-key cell), `status_label`/colors, `targets_for_slug`, `make_table` |
 | `detail.py` | shared per-object `DetailPane`: header/status, hero (scales to pane), journal **view/edit** (raw `journal.md`), gallery (double-click → image viewer), **Import finished work** entry. Shows real filenames |
 | `pages/catalog.py` | catalog+status table (sortable; sort persists across rebuilds; Season sorts by month) hosting the shared `DetailPane`; `select_object`/`reload`; per-object import flow; edit-lock |
 | `pages/summary.py` | landing dashboard — category progress, processing-queue snapshot, current integrations, priority targets; object rows → `open_object` |
 | `pages/processing.py` | Siril queue grouped by status with stack-meta columns; rows → `open_object` |
+| `pages/sessions.py` | capture-session log (sortable table Date/Object/Frames/Exp/Filter/Integration/Mount, default Date-desc) + search box; from `derived.load_sessions()`; rows → `open_object` |
+| `pages/journal.py` | reverse-chron **feed** of object cards (header · hero · status/stats · rendered notes) — every captured object + any noted-but-uncaptured; ordered by latest image mtime (reprocess re-orders); search box; cards → `open_object` |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), **per-object grouped + checkbox-selectable** preview (Object · Kind · Files · Size · Pointing · → dest; select all/none; live size total), **name canonicalization + RA/DEC pointing check with a remap dropdown** (#12), threaded scan→group→annotate & apply behind modal progress+Cancel (applies only checked/retargeted groups) |
 | `processing_dialog.py` | (legacy) manual **Prepare** preview — no longer launched (prep is automatic on ingest); kept pending a future processing-management view |
 | `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
