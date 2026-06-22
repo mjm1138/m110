@@ -72,20 +72,29 @@ def test_sessions_page_lists_and_links(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_body_markdown_excludes_stub():
+    """A fresh stub (heading + comment only) is not 'real notes'; edited prose is."""
+    from m110.ui.pages.journal import _body_markdown
+    stub = "# M51 — Whirlpool Galaxy\n\n<!--\nnotes go here\n-->\n"
+    assert _body_markdown(stub) is None
+    assert _body_markdown(stub + "\nGot 4h last night.\n")  # truthy
+
+
 def test_journal_page_card_per_captured_object(tmp_path, monkeypatch, qapp):
     root = _seed_root(tmp_path, monkeypatch)
     slug, tid = _seed_capture(root, monkeypatch)
     from m110.ui.pages.journal import JournalPage
     page = JournalPage()
     try:
-        assert page.card_count() >= 1
+        # Only the captured object shows — uncaptured objects have stub-only
+        # journals (no notes, no images) and must be excluded.
+        assert page.card_count() == 1
         got = []
         page.open_object.connect(got.append)
-        # click the first card's header button → open_object
         from PySide6.QtWidgets import QPushButton
         card, _ = page._cards[0]
         card.findChild(QPushButton).click()
-        assert got and isinstance(got[0], str)
+        assert got == [slug]
     finally:
         page.deleteLater()
         qapp.processEvents()

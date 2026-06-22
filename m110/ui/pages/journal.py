@@ -20,16 +20,16 @@ from PySide6.QtWidgets import (
 from m110 import config, derived, objects, catalog
 from m110.ui.widgets import status_label
 
-_HEADING_RE = re.compile(r"^\s{0,3}#", re.MULTILINE)
+_HEADING_LINE_RE = re.compile(r"(?m)^\s{0,3}#.*$")   # a whole ATX heading line
 _THUMB_W = 220
 
 
 def _body_markdown(body: str) -> str | None:
     """Rendered journal markdown if there's content beyond headings/whitespace,
-    else None (a fresh stub has only its `# id — name` heading)."""
+    else None (a fresh stub has only its `# id — name` heading + a comment that
+    `journal_to_markdown` strips)."""
     md = objects.journal_to_markdown(body or "")
-    leftover = _HEADING_RE.sub("", md)
-    leftover = re.sub(r"^#.*$", "", leftover, flags=re.MULTILINE)  # heading text
+    leftover = _HEADING_LINE_RE.sub("", md)   # drop heading lines entirely
     return md if leftover.strip() else None
 
 
