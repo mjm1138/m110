@@ -67,12 +67,13 @@ def test_table_sort_persists_across_rebuild(tmp_path, monkeypatch, qapp):
     try:
         assert page.table.horizontalHeader().sortIndicatorSection() == 0  # Object
 
-        page.table.sortByColumn(6, Qt.DescendingOrder)   # user sorts by Integration
-        assert (page._sort_col, page._sort_order) == (6, Qt.DescendingOrder)
+        integ = page.HEADERS.index("Integration")
+        page.table.sortByColumn(integ, Qt.DescendingOrder)   # user sorts by Integration
+        assert (page._sort_col, page._sort_order) == (integ, Qt.DescendingOrder)
 
         page._rebuild_table()                            # e.g. after an ingest
         hdr = page.table.horizontalHeader()
-        assert hdr.sortIndicatorSection() == 6           # sort preserved
+        assert hdr.sortIndicatorSection() == integ       # sort preserved
         assert hdr.sortIndicatorOrder() == Qt.DescendingOrder
     finally:
         page.deleteLater()

@@ -72,6 +72,48 @@ def test_sessions_page_lists_and_links(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_catalog_parity_columns_search_and_stat(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    slug, tid = _seed_capture(root, monkeypatch)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        headers = [page.table.horizontalHeaderItem(c).text()
+                   for c in range(page.table.columnCount())]
+        assert "Size" in headers and "Filter" in headers
+        # stat row reflects captured/total
+        assert "captured" in page._stat.text() and "total" in page._stat.text()
+        # search hides non-matching rows
+        page._search.setText("zzz-nomatch")
+        assert all(page.table.isRowHidden(r) for r in range(page.table.rowCount()))
+        page._search.clear()
+        assert not all(page.table.isRowHidden(r) for r in range(page.table.rowCount()))
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    slug, tid = _seed_capture(root, monkeypatch)
+    from m110.ui.detail import DetailPane
+    from m110 import catalog, derived
+    d = DetailPane()
+    try:
+        d.show_object(slug, catalog.load_catalog()[slug],
+                      derived.totals_by_slug().get(slug, {}))
+        qapp.processEvents()
+        from PySide6.QtWidgets import QLabel
+        labels = " | ".join(l.text() for l in d._content.findChildren(QLabel))
+        assert "Processing" in labels      # per-object processing section
+        assert "Sessions" in labels        # per-object sessions section
+        assert "Catalog details" in labels  # metadata block
+        assert slug in labels              # metadata shows the slug
+    finally:
+        d.deleteLater()
+        qapp.processEvents()
+
+
 def test_body_markdown_excludes_stub():
     """A fresh stub (heading + comment only) is not 'real notes'; edited prose is."""
     from m110.ui.pages.journal import _body_markdown

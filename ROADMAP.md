@@ -49,16 +49,17 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 
 ## Later phases (post-MVP)
 
-0. **Site-parity multi-page UI** *(in progress)* — bring the app to functional
+0. **Site-parity multi-page UI** *(done)* — bring the app to functional
    parity with the published static site's pages. Left **nav rail + stacked
    pages**, Summary as the landing page, one shared Object detail reachable from
    every object link. **Phase 1 done:** shell + **Summary** + **Processing**
    (Catalog = the relocated Library). **Phase 2 done:** **Sessions** (sortable log
    + search) + **Journal** feed (reverse-chron object cards by latest image
    activity); `derived.load_sessions()` added.
-   **Phase 3:** enrich the Object view (per-object processing + sessions +
-   catalog-metadata) + Catalog parity (Size/Filter/search/stat-row). All backed
-   by existing derived data; only `derived.load_sessions()` is net-new engine.
+   **Phase 3 done:** Object view enriched (per-object Processing + Sessions tables
+   + Catalog-details block) + Catalog parity (Size/Filter columns, search box,
+   captured/deep/total stat row). **Site-parity multi-page UI complete.** All
+   backed by existing derived data; only `derived.load_sessions()` was net-new.
 
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;

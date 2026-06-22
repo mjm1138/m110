@@ -10,12 +10,24 @@ from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPixmap, QIcon, QFontDatabase
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
-    QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton,
+    QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
 )
 
 from m110 import config, derived, objects, siril
 from m110.ui.image_viewer import ScalableImage, ImageViewer
-from m110.ui.widgets import status_label, targets_for_slug
+from m110.ui.widgets import status_label, targets_for_slug, make_table
+
+
+def _section_label(text: str) -> QLabel:
+    lbl = QLabel(f"<b>{text}</b>")
+    lbl.setTextFormat(Qt.RichText)
+    lbl.setStyleSheet("margin-top:8px")
+    return lbl
+
+
+def _fmt_hm(minutes: float) -> str:
+    m = int(round(minutes or 0))
+    return f"{m // 60}:{m % 60:02d}"
 
 
 class DetailPane(QScrollArea):
@@ -171,7 +183,86 @@ class DetailPane(QScrollArea):
             self._gallery = gallery
             self._lay.addWidget(gallery)
 
+        if captured:
+            self._add_processing_section(slug)
+            self._add_sessions_section(slug)
+        self._add_metadata_section(slug, e)
+
         self._lay.addStretch(1)
+
+    # ---- enrichment sections (Phase 3) ----
+    def _section_table(self, title: str, headers: list[str], rows: list[list[str]]):
+        self._lay.addWidget(_section_label(title))
+        tbl = make_table(headers)
+        tbl.setSortingEnabled(False)
+        for r in rows:
+            i = tbl.rowCount()
+            tbl.insertRow(i)
+            for c, val in enumerate(r):
+                tbl.setItem(i, c, QTableWidgetItem(val))
+        tbl.resizeColumnsToContents()
+        tbl.setMinimumHeight(min(280, 28 * (len(rows) + 1) + 6))
+        tbl.setMaximumHeight(28 * (len(rows) + 1) + 12)
+        self._lay.addWidget(tbl)
+
+    def _add_processing_section(self, slug: str):
+        queue = [f for f in derived.load_processing().get("queue", [])
+                 if slug in f.get("slugs", [])]
+        if not queue:
+            return
+        rows = []
+        for f in queue:
+            sm = f.get("stack_meta")
+            nl = f.get("new_lights_since_stack", 0)
+            latest = f.get("latest_processed")
+            rows.append([
+                f.get("folder", ""),
+                status_label(f.get("status"), True),
+                f"{f.get('integration_hms', '')} ({f.get('frames', 0)} fr)",
+                f"{sm['stack_integration_hms']} ({sm['stack_frames']} fr)" if sm else "—",
+                f"+{nl}" if nl else "—",
+                f"{latest} · {f.get('latest_processed_at', '')}" if latest else "—",
+            ])
+        self._section_table(
+            "Processing",
+            ["Target", "Status", "Raw integ", "In stack", "+ new", "Latest stack"],
+            rows)
+
+    def _add_sessions_section(self, slug: str):
+        rows = [s for s in derived.load_sessions() if slug in s.get("slugs", [])]
+        if not rows:
+            return
+        rows.sort(key=lambda s: s.get("date", ""), reverse=True)
+        out = [[
+            s.get("date", ""),
+            str(s.get("frames", 0)),
+            str(s.get("exposure_s", "")),
+            s.get("filter", ""),
+            _fmt_hm(s.get("integration_min", 0.0)),
+            s.get("mount_mode", ""),
+        ] for s in rows]
+        self._section_table(
+            "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount"], out)
+
+    def _add_metadata_section(self, slug: str, e: dict):
+        targets = targets_for_slug(slug)
+        rows = [("Slug", slug)]
+        if e.get("filter"):
+            rows.append(("Filter rule", str(e["filter"])))
+        if e.get("ra_deg") is not None and e.get("dec_deg") is not None:
+            rows.append(("Coordinates", f"RA {e['ra_deg']}°, Dec {e['dec_deg']}°"))
+        if targets:
+            rows.append(("Capture targets", ", ".join(sorted(targets))))
+        if e.get("notes"):
+            rows.append(("Notes", str(e["notes"])))
+        self._lay.addWidget(_section_label("Catalog details"))
+        body = "<br>".join(
+            f"<b>{k}:</b> {v}" for k, v in rows)
+        lbl = QLabel(body)
+        lbl.setTextFormat(Qt.RichText)
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet("color:#8b949e")
+        self._lay.addWidget(lbl)
 
     def _open_gallery_item(self, item):
         if not self._gallery:

@@ -6,7 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
-    QMessageBox, QInputDialog,
+    QMessageBox, QInputDialog, QLineEdit, QLabel,
 )
 
 from m110 import config, derived, siril
@@ -16,7 +16,7 @@ from m110.ui.widgets import NumItem, status_label, STATUS_COLOR, MUTED, targets_
 
 
 class CatalogPage(QWidget):
-    HEADERS = ["Object", "Name", "Type", "Season", "Mag",
+    HEADERS = ["Object", "Name", "Type", "Season", "Mag", "Size", "Filter",
                "Status", "Integration", "Sessions"]
 
     editing_changed = Signal(bool)   # journal editor open/close (shell locks nav)
@@ -35,13 +35,33 @@ class CatalogPage(QWidget):
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
 
+        # Left side: search + stat row above the table.
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Filter catalog…")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._apply_filter)
+        self._stat = QLabel()
+        self._stat.setStyleSheet("color:#8b949e")
+
+        left = QWidget()
+        self._left_lay = QVBoxLayout(left)
+        self._left_lay.setContentsMargins(0, 0, 0, 0)
+        self._left_lay.addWidget(self._search)
+        self._left_lay.addWidget(self._stat)
+        self._left_lay.addWidget(self.table)
+
         self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.addWidget(self.table)
+        self.splitter.addWidget(left)
         self.splitter.addWidget(self.detail)
-        self.splitter.setSizes([520, 440])
+        self.splitter.setSizes([560, 460])
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self.splitter)
+        self._update_stat()
+
+    @property
+    def _status_col(self) -> int:
+        return self.HEADERS.index("Status")
 
     # ---- shell hooks ----
     def is_editing(self) -> bool:
@@ -51,6 +71,7 @@ class CatalogPage(QWidget):
         self.table.setEnabled(not locked)
 
     def select_object(self, slug: str):
+        self._search.clear()      # ensure the target row isn't filtered out
         self._select_slug(slug)
 
     def reload(self):
@@ -60,8 +81,25 @@ class CatalogPage(QWidget):
         self._cat, self._totals = new_cat, new_totals
         if changed:
             self._rebuild_table()          # preserves selection + sort
+            self._update_stat()
         else:
             self._refresh_open_detail()    # cheap: pick up image-only changes
+
+    def _update_stat(self):
+        captured = len(self._totals)
+        deep = sum(1 for t in self._totals.values()
+                   if t.get("status") == "deep_stack")
+        self._stat.setText(
+            f"{captured} captured · {deep} deep · {len(self._cat)} total")
+
+    def _apply_filter(self):
+        q = self._search.text().strip().lower()
+        for r in range(self.table.rowCount()):
+            if not q:
+                self.table.setRowHidden(r, False)
+                continue
+            hay = " ".join(self.table.item(r, c).text() for c in (0, 1, 2)).lower()
+            self.table.setRowHidden(r, q not in hay)
 
     # ---- table ----
     def _build_table(self) -> QTableWidget:
@@ -90,19 +128,21 @@ class CatalogPage(QWidget):
             mag = e.get("magnitude")
             table.setItem(row, 4, NumItem("" if mag is None else f"{mag}",
                                           float(mag) if mag is not None else 99.0))
+            table.setItem(row, 5, QTableWidgetItem(str(e.get("size") or "")))
+            table.setItem(row, 6, QTableWidgetItem(str(e.get("filter") or "")))
 
             status_item = QTableWidgetItem(status_label(t.get("status"), captured))
             status_item.setForeground(STATUS_COLOR.get(t.get("status"), MUTED))
-            table.setItem(row, 5, status_item)
+            table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)
-            table.setItem(row, 6, NumItem(t.get("integration_hms", "") if captured else "", integ_min))
+            table.setItem(row, 8, NumItem(t.get("integration_hms", "") if captured else "", integ_min))
             sc = int(t.get("session_count", 0) or 0)
-            table.setItem(row, 7, NumItem(str(sc) if captured else "", float(sc)))
+            table.setItem(row, 9, NumItem(str(sc) if captured else "", float(sc)))
 
             if not captured:
                 for c in range(len(self.HEADERS)):
-                    if c != 5:
+                    if c != self._status_col:
                         table.item(row, c).setForeground(MUTED)
 
         table.resizeColumnsToContents()
@@ -119,11 +159,10 @@ class CatalogPage(QWidget):
         prev = self._selected_slug()
         new_table = self._build_table()
         new_table.itemSelectionChanged.connect(self._on_select)
-        old = self.splitter.replaceWidget(0, new_table)
+        self._left_lay.replaceWidget(self.table, new_table)
+        self.table.deleteLater()
         self.table = new_table
-        if old is not None:
-            old.deleteLater()
-        self.splitter.setSizes([520, 440])
+        self._apply_filter()
         if not (prev and self._select_slug(prev)):
             self.detail.placeholder()
 
