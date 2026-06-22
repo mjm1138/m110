@@ -278,6 +278,14 @@ the chosen direction so future work builds to it.
 - **Generated plan files** (SSC schedule JSON, NINA sequences) are user-facing
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.
+- **Priorities flip from authored to computed** (auto-prioritizer, BUGS #21).
+  Today `priorities.toml` is hand-authored; with the scoring engine it becomes a
+  **derived** ranking (recomputed alongside the other rollups from goals +
+  capture state + the seasonal/positional math), leaving only a thin **authored**
+  input: a small prefs/overrides file (per-type weights, the new-vs-deep strategy
+  toggle, manual pins/excludes — the residue of today's list, incl. `track=false`
+  campaign entries). The strategy toggle + type weights are preferences alongside
+  `processing_workflows`. (Scoring rules + which knobs surface: TBD.)
 
 ### Image curation state (BUGS #17)
 - A per-image **finished / unfinished / hero** designation, user-curatable

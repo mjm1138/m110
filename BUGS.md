@@ -122,8 +122,7 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 	
 - [ ] **#18**: **Advanced processing prep** As a user, I should be able to create Siril (and other workflows) working directories that I can populate with lights from disparate sources (see #16) and disparate objects (e.g. if I want to combine lights from m81, m82, and m81 m82 as a mosaic). It would use hard links to the original lights so the only disk space cost would be processing and intermediate files. Custom workspaces would need to be easily discoverable by name on the filesystem. I should also be able to create custom split workflow directories, similar to the splits that are automatically created for LP and no-filter lights of the same object.
 - [ ] **#19**: **Open In...** This might be hard to keep cross platform. As a user, I should be able to right click on an image and have an “Open In” option to open the image file in compatible processing/viewing apps, similar to how it works in MacOS Finder. When selecting an object (as opposed to an image) there should be a right-click option to “process in...” that would open the processing tool (Siril, Pixinsight, whatever), creating an appropriate working directory first if necessary, and setting the working directory in the app to the selected object’s appropriate working subdirectory (or optionally a custom working directory as in #18)
-- [x] **#20**: **Data Model** *(highest priority — done.)* Documented the data
-  model in **[`DATA_MODEL.md`](DATA_MODEL.md)** (canonical): principles/invariants,
+- [x] **#20**: **Data Model** *(highest priority — done.)* Documented the data model in **[`DATA_MODEL.md`](DATA_MODEL.md)** (canonical): principles/invariants,
   entity hierarchy, a per-file **data catalog** (location · format · derivation ·
   mutability+enforcement · persistence · retention), mutability & retention
   policy, versioning/migration, an embedded **Mermaid data-flow diagram**, and
@@ -134,6 +133,10 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   `README.md` now point at it and require data-model changes to be recorded there
   (on-disk changes bump `.store_version` + add a `migrate.py` step). #14
   (render-orphan prune) is the first concrete retention task it formalizes.
+  - [~] **#21**: **Auto-prioritizer** *(promoted → ROADMAP item 1, "Auto-prioritizer
+    / target scoring"; dependency: multi-catalog goals, item 5.)* The vision of the priorities table in ~/Astronomy is that it’d be a hand-edited list of priorities that gets used for session planning, but the reality is I just have an LLM edit the list based on season and vaguely stated goals. We should be able to put some logic around it. User has a priorities preference pane where they rank object types (optional) to give them more weight when selecting targets. Beyond that priorities would be based on goal(s) (which catalogs/lists are being pursued) and season. An object that’s part of an active goal that is about to go out of season would be a higher priority than an object that’s just coming in to season, and so on. Some brainstorming on these rules would be good. User would also select a general preference for “capture as many new targets as possible” vs. “build deep stacks”.
+    *Scoring model sketched in ROADMAP; **scoring weights + which knobs surface in
+    the priorities preference pane are still TBD** (to refine next session).*
 
 ---
 

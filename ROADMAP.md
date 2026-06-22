@@ -53,11 +53,9 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    parity with the published static site's pages. Left **nav rail + stacked
    pages**, Summary as the landing page, one shared Object detail reachable from
    every object link. **Phase 1 done:** shell + **Summary** + **Processing**
-   (Catalog = the relocated Library). **Phase 2 done:** **Sessions** (sortable log
-   + search) + **Journal** feed (reverse-chron object cards by latest image
+   (Catalog = the relocated Library). **Phase 2 done:** **Sessions** (sortable log   + search) + **Journal** feed (reverse-chron object cards by latest image
    activity); `derived.load_sessions()` added.
-   **Phase 3 done:** Object view enriched (per-object Processing + Sessions tables
-   + Catalog-details block) + Catalog parity (Size/Filter columns, search box,
+   **Phase 3 done:** Object view enriched (per-object Processing + Sessions tables + Catalog-details block) + Catalog parity (Size/Filter columns, search box,
    captured/deep/total stat row). **Site-parity multi-page UI complete.** All
    backed by existing derived data; only `derived.load_sessions()` was net-new.
 
@@ -71,12 +69,34 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    `.hrz` files** (whitespace az/alt pairs; our CSV also accepted) — **theo.rocks**
    (mobile web app: pan the phone around the skyline, export `.hrz`) is the
    recommended capture tool for M110 users; the parser already consumes its output.
+
+   **Auto-prioritizer / target scoring** (BUGS **#21**; dependency: item 5).
+   Replace the hand-edited `priorities.toml` (today delegated to an ad-hoc LLM
+   edit) with a **deterministic, testable scoring engine** that ranks targets from
+   the data the app already holds + the planning math above. Build it as engine
+   logic (the assistant, item 4, can later *explain/tune* it — not author a TOML).
+   Score = weighted sum of:
+   (a) **active-goal membership** (which catalogs/lists are being pursued; weight
+   by goal rank); (b) **seasonal urgency** — rises as the remaining observable
+   window narrows, so *closing soon* ≫ *mid-season* ≫ *just rising*; out-of-season
+   excluded; (c) **completion vs. a strategy toggle** — *"capture many new targets"*
+   favours uncaptured/under-threshold objects, *"build deep stacks"* favours
+   started-but-shallow ones; (d) optional **per-type weights** (user pref);
+   (e) **tonight feasibility** (transit altitude in dark hours, moon
+   separation/illumination, horizon obstruction) to turn a season ranking into a
+   tonight shortlist; (f) **manual overrides** (pins/excludes + the current
+   `track=false` campaign entries). Natural output: a season-level goal backlog +
+   a tonight's-targets shortlist (which feeds the plan-file generator, item 2).
+   *Scoring weights + which knobs surface in a priorities preference pane: TBD —
+   to refine.*
 2. **Plan-file generation** — SSC schedule JSON (port the existing generator),
    NINA Advanced Sequences (schema capture pending), possibly INDI/Ekos.
 3. **Alpaca equipment control** — a monitor/author *companion* to a headless Pi
    field stack (SSC / PINS / INDI). Last and riskiest; keep it a thin companion,
    not a hardware-control reimplementation. Owning hardware control means owning
    every "it disconnected at 2am" report.
+   
+   I’m revising this vision to *maybe* just a live-view window an/or incoming frame viewer similar to a tethered camera experience in studio photography workflows. And putting a very low priority on it.
 
 4. **In-app assistant (bring-your-own LLM).** Put the LLM value that's proven out
    in this project — **session planning, image analysis, workflow coaching** —
