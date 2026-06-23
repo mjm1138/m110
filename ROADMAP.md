@@ -235,17 +235,40 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    in tools/data, cite sources); and scope — keep it "an LLM over the existing
    engine," not a bespoke agent framework.
 
-5. **Goal / catalog selection — multi-list tracking.** Today the catalog and
-   priorities are built around a single implicit goal: the Messier list. Once
-   that's well underway, generalize so a "goal" is a named catalog (Messier,
-   Caldwell, RASC Finest NGC, Herschel 400, Sharpless subset, Arp Peculiar
-   Galaxies, Lunar 100, Double Star Club, ...) with its own object list,
-   progress tracking, and dashboard/list view. Objects can belong to multiple
-   catalogs (e.g. the Veil Nebula is both a non-Messier addition *and* Caldwell
-   C33/C34), so this is membership/tagging, not a strict partition. Default goal
-   ships as Messier; users add other goals from a built-in library of catalog
-   definitions (or import their own). See the sibling Astronomy project's
-   `next_catalog_lists.md` for the candidate lists and rationale behind each.
+5. **Library, catalogs & goals — multi-list tracking + arbitrary objects.**
+   Today everything is one implicit list (Messier). Generalize into four clear
+   concepts:
+   - **Object** — an astronomical target with intrinsic reference data (coords,
+     type, magnitude, size). Season is **derived** from coords + site, not stored.
+   - **Catalog / List** — a curated, named, **app-bundled, immutable** reference
+     set (Messier, Caldwell, RASC Finest, Herschel 400, Sharpless, Arp, Lunar 100,
+     …). Ships with the app.
+   - **Goal** — a catalog the user is *actively pursuing* (selection over catalogs,
+     with progress tracking + a dashboard/list view).
+   - **Library** — the user's **personal corpus**: every object in their store —
+     catalog members they track **plus arbitrary/captured additions**. Mutable,
+     per-user. (Lightroom's "Library.") Objects are many-to-many with catalogs (the
+     Veil is a non-Messier add *and* Caldwell C33/C34) — membership, not partition.
+
+   **Naming cleanup:** today's per-store `catalog.toml` is really the **Library**
+   (misnamed); the bundled `seed/catalog.toml` is *the Messier catalog reference
+   data*. Split them: bundle an **object reference dataset** (id → coords/type/mag/
+   size) + **catalog membership lists**; the per-store file becomes the Library.
+
+   **Add arbitrary objects + auto-enrich.** A user can add any object to their
+   Library; the app fills the data fields via a cascade (generalizes
+   `catalog.add_captured_objects`):
+   1. **Bundled reference** (covers catalog objects — instant, offline, complete);
+   2. else **online lookup by name** — **astroquery** (Simbad/VizieR) for
+      type/mag/size/coords. *(c): bundled-first, astroquery as enrichment, mainly
+      for objects outside any supported catalog.* New optional dependency; network.
+   3. else **embedded coordinates** — FITS `RA`/`DEC` or the filename pointing data
+      (reuses ingest #12); type stays "unknown" for the user to complete.
+   4. **Season is always derived** from the resolved coords (no lookup).
+
+   Default goal ships as Messier; users add other goals from the bundled catalog
+   library (or import their own). See the sibling Astronomy project's
+   `next_catalog_lists.md` for candidate lists.
 
 6. **Ingest evolution — robust, layout-flexible, multi-telescope** (BUGS **#16**).
    Today's Inbox recognizes only the Seestar export shape. Grow to: recognize

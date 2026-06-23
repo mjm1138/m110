@@ -249,18 +249,33 @@ The model is shaped to accommodate the next ROADMAP phases **without a disruptiv
 migration**. These are intentionally *not* implemented yet; this section records
 the chosen direction so future work builds to it.
 
-### Multi-catalog "goals" (ROADMAP item 5)
-- `catalog.toml` becomes the **global object catalog** — *intrinsic* facts only
-  (id, name, type, magnitude, size, coords, season, filter-rule, notes). One entry
-  per object, the single source of truth.
-- **Goals/lists** (Messier, Caldwell, Herschel 400, RASC Finest, …) are **separate
-  definitions** that reference objects by id — many-to-many membership (the Veil is
-  both a non-Messier add *and* Caldwell C33/C34). Proposed home:
-  `.m110_internal_data/lists/<list>.toml` with
-  `{id, name, description, members:[object ids], optional per-member target/order}`.
-- `build_derived` computes **per-list progress**. Today's implicit "Messier" goal =
-  the seeded catalog membership until explicit list defs land. Priorities become a
-  special list or stay separate — to be decided when built.
+### Library, catalogs & goals (ROADMAP item 5)
+Four concepts (today all conflated in `catalog.toml`):
+- **Object** — intrinsic reference facts (coords, type, mag, size). Season is
+  **derived** from coords + site, not stored.
+- **Catalog / List** — a curated, named, **app-bundled, immutable** reference set
+  (Messier, Caldwell, …). *Reference data* (ships with the app), not user state.
+- **Goal** — a catalog the user is actively pursuing (progress + dashboard).
+- **Library** — the user's mutable personal corpus: catalog members they track +
+  arbitrary/captured additions. Objects ↔ catalogs are many-to-many (membership).
+
+**This reclassifies today's files:**
+- The per-store `.m110_internal_data/catalog.toml` is really the **Library**
+  (mutable, authored) — misnamed today; rename on this work (with a migration).
+- The bundled `seed/catalog.toml` + `seed/coords.csv` are *reference data*: split/
+  generalize into a bundled **object reference dataset** (id → coords/type/mag/
+  size) + **catalog membership lists** (proposed `seed/catalogs/<name>.toml` =
+  `{name, description, members:[ids]}`). Both immutable, shipped, version-with-app
+  (not the store).
+- **Goals** = which catalogs are active (a prefs selection); `build_derived`
+  computes **per-goal progress**.
+
+**Add-arbitrary-object enrichment** (generalizes `catalog.add_captured_objects`),
+writing into the Library: bundled reference → else online by name (**astroquery**
+Simbad/VizieR; optional dep, network; mainly for objects in no bundled catalog) →
+else embedded coords (FITS `RA`/`DEC` or filename pointing, reusing ingest #12;
+type "unknown"). Season always derived from coords. The Library entry is
+*authored* (mutable); enrichment never overwrites a user edit.
 
 ### Multi-telescope ingest (BUGS #16)
 - A **device path level under the target**:
