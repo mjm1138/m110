@@ -151,6 +151,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset by drizzle-frame-count, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs; never deletes, never escapes `siril/`). Bundled-guidance access |
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync) |
+| `media.py` | **read** non-catalog media — `scan()` enumerates `Media/<Category>_photo\|_video/` (Qt-free; backs the Media page) |
 | `seed/` | bundled starter `catalog.toml` / `priorities.toml` + `coords.csv` (J2000 ref coords for the pointing check) (package-data) |
 | `guidance/` | bundled Siril/Seestar workflow playbooks (`*.md`, package-data) surfaced in processing-prep |
 
@@ -158,7 +159,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 | Module | Role |
 |---|---|
-| `main.py` | **Shell**: left nav rail (`QListWidget`) → `QStackedWidget` of pages [Summary · Catalog · Processing · Sessions · Journal]; **Summary is the landing page**. Global Ingest (Ctrl+I) toolbar + M110 menu (Refresh Ctrl+R, Prepare working folders, Preferences Cmd+,). `RefreshWorker` (scan→derive→render + `prepare_missing`) drives `page.reload()`; **auto-syncs** on launch / window-focus / after ingest. `open_object(slug)` routes any page's object link → Catalog + selects it. Journal-edit lock disables nav + global actions |
+| `main.py` | **Shell**: left nav rail (`QListWidget`) → `QStackedWidget` of pages [Summary · Catalog · Processing · Sessions · Journal · Media]; **Summary is the landing page**. Global Ingest (Ctrl+I) toolbar + M110 menu (Refresh Ctrl+R, Prepare working folders, Preferences Cmd+,). `RefreshWorker` (scan→derive→render + `prepare_missing`) drives `page.reload()`; **auto-syncs** on launch / window-focus / after ingest. `open_object(slug)` routes any page's object link → Catalog + selects it. Journal-edit lock disables nav + global actions |
 | `widgets.py` | shared `NumItem` (sort-key cell), `status_label`/colors, `targets_for_slug`, `make_table` |
 | `detail.py` | shared per-object `DetailPane`: header/status, hero (scales to pane), journal **view/edit** (raw `journal.md`), gallery (double-click → image viewer), **Import finished work** entry, + per-object **Processing** + **Sessions** tables and a **Catalog details** block. Shows real filenames |
 | `pages/catalog.py` | catalog+status table (Object/Name/Type/Season/Mag/Size/Filter/Status/Integration/Sessions; sortable; sort persists across rebuilds; Season sorts by month) + **search box** + captured/deep/total **stat row**, hosting the shared `DetailPane`; `select_object`/`reload`; per-object import flow; edit-lock |
@@ -166,6 +167,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `pages/processing.py` | Siril queue grouped by status with stack-meta columns; rows → `open_object` |
 | `pages/sessions.py` | capture-session log (sortable table Date/Object/Frames/Exp/Filter/Integration/Mount, default Date-desc) + search box; from `derived.load_sessions()`; rows → `open_object` |
 | `pages/journal.py` | reverse-chron **feed** of object cards (header · hero · status/stats · rendered notes) — every captured object + any noted-but-uncaptured; ordered by latest image mtime (reprocess re-orders); search box; cards → `open_object` |
+| `pages/media.py` | **Media** browser for non-catalog `Media/<Category>_photo\|_video/` (ingest already captures it): per-category sections — photo gallery (double-click → image viewer) + video rows (Open → OS player); search box; read from `media.scan()` |
 | `ingest_dialog.py` | source selector (staging=move / Seestar=copy), **per-object grouped + checkbox-selectable** preview (Object · Kind · Files · Size · Pointing · → dest; select all/none; live size total), **name canonicalization + RA/DEC pointing check with a remap dropdown** (#12), threaded scan→group→annotate & apply behind modal progress+Cancel (applies only checked/retargeted groups) |
 | `processing_dialog.py` | (legacy) manual **Prepare** preview — no longer launched (prep is automatic on ingest); kept pending a future processing-management view |
 | `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
@@ -239,8 +241,9 @@ done**, plus the two-axis store reshape (#13), the image-rendering port, and the
 ingest backlog **#9/#10** (grouped + selectable preview) and **#12** (name
 canonicalization + RA/DEC pointing check). Processing-prep is **preference-driven
 and automatic** (runs on ingest; missing working folders self-heal on refresh —
-#15). **Still open:** **#11** (a display surface for non-catalog media — ingest
-already captures it) and **#16** (robust, layout-flexible, multi-telescope
+#15). The **Media page** (#11) now displays non-catalog media. The full
+**site-parity multi-page UI** is in (Summary · Catalog · Processing · Sessions ·
+Journal · Media). **Still open:** **#16** (robust, layout-flexible, multi-telescope
 ingest). **Next: post-MVP phases** (session planning, etc.). Foundational
 decisions in brief: open-source / Developer-ID distribution (not App Store);
 PySide6 over a headless engine; processing is prepare-and-guide, not direct Siril

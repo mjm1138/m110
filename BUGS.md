@@ -73,9 +73,11 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 - [x] **#10**: Allow selecting which objects to import (default: all). *Done —
   per-row checkboxes (default all) + Select all/none; the summary updates live and
   ingest applies only the checked groups (autoprep then runs for those targets).*
-- [~] **#11**: Import & display *everything* off the Seestar (stacks, planetary,
-  scenery, …). *Ingest* of stacks (+previews) and media (`*_photo`/`*_video`)
-  already works; the gap is a **display surface** for non-catalog media.
+- [x] **#11**: Import & display *everything* off the Seestar (stacks, planetary,
+  scenery, …). *Done.* Ingest of stacks (+previews) and media already worked; the
+  display gap is now filled by the **Media page** (`ui/pages/media.py` over
+  `media.scan()`): per-category sections of `Media/<Category>_photo|_video/` —
+  photo galleries (double-click → image viewer) + video rows (Open → OS player).
 - [x] **#12**: **Smart-ingest name normalization + pointing verification.** *Done.*
   Device folder names can't be trusted (firmware saved "M81 M82" into an `M81`
   dir; SSC makes case-variant `m82` dirs). Built on the #9/#10 grouped preview:

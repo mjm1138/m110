@@ -26,6 +26,7 @@ from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.sessions import SessionsPage
 from m110.ui.pages.journal import JournalPage
+from m110.ui.pages.media import MediaPage
 
 
 class RefreshWorker(QThread):
@@ -47,7 +48,7 @@ class RefreshWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Summary", "Catalog", "Processing", "Sessions", "Journal"]
+    NAV = ["Summary", "Catalog", "Processing", "Sessions", "Journal", "Media"]
 
     def __init__(self):
         super().__init__()
@@ -71,8 +72,9 @@ class MainWindow(QMainWindow):
         self.processing = ProcessingPage()
         self.sessions = SessionsPage()
         self.journal = JournalPage()
+        self.media = MediaPage()
         self.pages = [self.summary, self.catalog, self.processing,
-                      self.sessions, self.journal]
+                      self.sessions, self.journal, self.media]
         self._catalog_index = self.pages.index(self.catalog)
 
         self.stack = QStackedWidget()

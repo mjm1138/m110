@@ -40,6 +40,8 @@ def _seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
     monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
     monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
+    monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
+    monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
     config.ensure_data_root(root)
     return root
@@ -195,6 +197,22 @@ def test_image_viewer_close_and_quit_shortcuts(qapp):
         assert not v.isVisible()
     finally:
         v.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    from m110.ui.pages.media import MediaPage
+    page = MediaPage()
+    try:
+        assert page.section_count() == 0          # seeded root has no media yet
+        (config.MEDIA_DIR / "Moon_photo").mkdir(parents=True)
+        (config.MEDIA_DIR / "Moon_photo" / "a.png").write_text("x")
+        page.reload()
+        assert page.section_count() == 1
+        assert page._galleries and page._galleries[0][0].count() == 1   # one photo
+    finally:
+        page.deleteLater()
         qapp.processEvents()
 
 

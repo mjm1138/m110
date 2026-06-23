@@ -177,6 +177,11 @@ def build(out: Path):
         "# M81 — Bode's Galaxy\n\n"
         "IRCUT looked better than LP here. Pair with M82 next time for the mosaic.\n"))
 
+    # ---- Media: non-catalog stills already in the store (Media page) ----
+    for cat, seeds in (("Moon_photo", (1500, 1501)), ("Nightscape_photo", (1510,))):
+        for s in seeds:
+            _png(config.MEDIA_DIR / cat / f"IMG_{s}.jpg", s)
+
     # ---- Inbox: a Seestar-style export to ingest ----
     inbox = config.STAGING_DIR
     _inbox_sub(inbox, "M27", *C("m27"), 10, "LP", 30, 2000)            # new object

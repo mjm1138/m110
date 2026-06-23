@@ -90,6 +90,9 @@ def _seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
     monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
     monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
+    monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
+    monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
+    monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
     config.ensure_data_root(root)
     return root
@@ -112,7 +115,7 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Summary", "Catalog", "Processing", "Sessions", "Journal"]
+            ["Summary", "Catalog", "Processing", "Sessions", "Journal", "Media"]
         assert win.stack.currentIndex() == 0          # Summary lands first
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index

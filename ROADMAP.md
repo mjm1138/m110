@@ -58,6 +58,8 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    **Phase 3 done:** Object view enriched (per-object Processing + Sessions tables + Catalog-details block) + Catalog parity (Size/Filter columns, search box,
    captured/deep/total stat row). **Site-parity multi-page UI complete.** All
    backed by existing derived data; only `derived.load_sessions()` was net-new.
+   **Plus a Media page** (BUGS #11) — browses non-catalog `Media/` (photos →
+   viewer, videos → OS player) via a new Qt-free `media.scan()`.
 
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
