@@ -89,6 +89,39 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    a tonight's-targets shortlist (which feeds the plan-file generator, item 2).
    *Scoring weights + which knobs surface in a priorities preference pane: TBD —
    to refine.*
+
+   **Findings from the Astronomy prototype (reviewed 2026-06-22)** — the
+   `scripts/prioritize.py` prototype ran and generated a real `priorities.toml`.
+   What the review surfaced for the M110 port:
+   - **Location/dark-site awareness is the biggest gap.** With strategy=new the
+     top picks were low-southern objects (M16/M17 @34–36°, M9/M107 @32–37°) —
+     exactly the targets the hand list reserves for dark-site trips; from a
+     Bortle-5 backyard at that altitude they're poor. "Tonight feasibility" (e)
+     is deliberately *not* a ranking factor, so nothing demotes a trip-only
+     target for a home night. The port needs either a per-object/site "quality
+     altitude" floor, a site-class tag ("dark-site only"), or to let feasibility
+     feed the *ranking* (not just a shortlist filter).
+   - **The season gate hard-drops short-window targets.** `season_min_hours`
+     (1.5h above min-alt, unobstructed, minus a pre-dawn hour) gates out objects
+     that only get 30–70 min of clean time from the home horizon mask
+     (M109, M53, the Veil before late summer). Defensible, but it silently omits
+     targets the user *does* grab opportunistically. Prefer a graded "short
+     window" signal over a binary out-of-season drop; expose the threshold.
+   - **Hand metadata is fragile.** Folder→object mapping and custom
+     strategy/target live only on the generated priority entries, so an object
+     cycling out of the ranking loses them. Prototype patched this with a
+     one-time-archive fallback, but the real fix is a **stable metadata source**
+     (catalog fields or a per-object overrides file) the generator reads, never
+     the generated artifact itself.
+   - **Resolve by canonical coords, not display id.** "Veil Nebula (E)" doesn't
+     resolve; prototype now falls back to the slug ("ngc-6992" → "NGC 6992").
+     The port should resolve via the catalog object's coords directly.
+   - **Filter must be derived from type** (emission/planetary → LP, else IRCUT);
+     prototype now does this — keep it first-class in the port.
+   - **Strategy mode = the night's character.** new vs deep flips the list;
+     near-complete close-outs (M57/M12/M56) sink to the bottom under "new". The
+     toggle deserves prominence (and a deep/close-out night is a distinct mode
+     from a breadth night).
 2. **Plan-file generation** — SSC schedule JSON (port the existing generator),
    NINA Advanced Sequences (schema capture pending), possibly INDI/Ekos.
 3. **Alpaca equipment control** — a monitor/author *companion* to a headless Pi
