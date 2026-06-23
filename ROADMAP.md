@@ -122,6 +122,34 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
      near-complete close-outs (M57/M12/M56) sink to the bottom under "new". The
      toggle deserves prominence (and a deep/close-out night is a distinct mode
      from a breadth night).
+
+   **Fixed in the Astronomy prototype 2026-06-22 (re-decide on port).** These
+   are being developed in the live `~/Astronomy` workflow first because it has
+   the most complete real data; the M110 port may land the same intent
+   differently:
+   - **Urgency × completion coupling.** Deep mode kept finished targets and let
+     seasonal urgency pump their score — a done object "closing in 7d" outranked
+     a genuine close-out (M81 1834/240 above the M12 close-out). Fix: scale raw
+     window-urgency by the completion factor (`u = u_raw × c`), so finished
+     targets (c→0) get no urgency credit while under-goal close-outs (c=1) keep
+     it. Verified: M81/M82, M97, M108, M13, M5 dropped to the bottom; M57/M12/
+     M10/M56 stayed high. **Port note:** this couples two factors that the
+     weights table treats as independent — clean for now, but if the port adds
+     more factors, consider whether urgency should instead be a *gate*
+     (zeroed once complete) or a separate "finish-before-it-sets" signal
+     distinct from "new-target seasonal urgency."
+   - **Combined-frame captures (`[[combine]]`).** M81+M82 are imaged in one FOV
+     under the `M81 M82` folder; the scorer ranked the catalog slugs m81/m82
+     separately, each defaulting to 240 min (→ the 1834/240 artifact) and
+     splitting one target into two rows. Fix: a `combine` group in
+     `priority_prefs.toml` (canonical id + members + folder + shared target) is
+     ranked as ONE entry off the folder's integration; members are skipped.
+     (M108/M97 is the other framed pair — add when it next matters.) **Port
+     note:** M110's two-axis store already separates Objects from capture
+     targets (Images/<target>), so the *capture target* may be the natural
+     ranking unit there — combine grouping might fall out of the data model
+     rather than needing an explicit prefs list. Decide against the store, not
+     by copying this TOML shape.
 2. **Plan-file generation** — SSC schedule JSON (port the existing generator),
    NINA Advanced Sequences (schema capture pending), possibly INDI/Ekos.
 3. **Alpaca equipment control** — a monitor/author *companion* to a headless Pi
