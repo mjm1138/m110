@@ -274,7 +274,13 @@ the chosen direction so future work builds to it.
 ### Session planning & plan files (ROADMAP items 1–2)
 - **Profiles** — observing **site**, **equipment/device**, and **horizon mask**
   (`.hrz`) — are authored config under `.m110_internal_data/` (proposed
-  `profiles/`).
+  `profiles/`). The **site** profile also carries **light-pollution** data: a
+  Bortle/SQM scalar (site class) + a **glow mask** — an azimuth-dependent quality
+  floor layered over the physical horizon (effective floor =
+  `max(physical_obstruction, glow_floor)`), filter-aware. So each shooting
+  location (home vs. dark-site trip) has its own horizon + glow, which the
+  auto-prioritizer's season/observability gate reads. (Sources for an auto-derived
+  glow mask: World Atlas / VIIRS — bundle/cache offline like `seed/coords.csv`.)
 - **Generated plan files** (SSC schedule JSON, NINA sequences) are user-facing
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.

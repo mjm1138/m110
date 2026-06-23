@@ -98,9 +98,26 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
      exactly the targets the hand list reserves for dark-site trips; from a
      Bortle-5 backyard at that altitude they're poor. "Tonight feasibility" (e)
      is deliberately *not* a ranking factor, so nothing demotes a trip-only
-     target for a home night. The port needs either a per-object/site "quality
-     altitude" floor, a site-class tag ("dark-site only"), or to let feasibility
-     feed the *ranking* (not just a shortlist filter).
+     target for a home night.
+     - **Chosen direction: a "glow mask" — an azimuth-dependent quality floor
+       layered on the physical horizon.** The season/observability gate already
+       reads the `.hrz` horizon mask; add a parallel light-pollution layer so the
+       effective usable floor per azimuth = `max(physical_obstruction,
+       glow_floor)`. A city dome (e.g. Denver to the SE) becomes a ~30° floor in
+       that arc while the open N stays at 10° — correctly demoting low-toward-city
+       targets without touching low-away-from-city ones (a flat altitude floor
+       can't make that distinction). Lives in the **site profile**, so a dark-site
+       trip uses a different/empty glow mask and trip-only targets rank high there,
+       low at home. Should be **filter-aware** (narrowband/LP punches through light
+       pollution, so a softer floor for ON/LP targets than broadband — same
+       principle as the moon decision).
+     - *Data sources (for a v2 auto-derived mask):* the **World Atlas of Artificial
+       Night Sky Brightness** (Falchi 2016; zenith Bortle/SQM scalar for a
+       lat/lon) for the site-class tag, and **VIIRS Day/Night Band** radiance
+       (NOAA/EOG, public domain) for *where* the domes are → project nearby
+       sources to az/alt with a scattering falloff. Bundle/cache like
+       `seed/coords.csv` to stay offline. *v1:* a hand- or semi-auto `glow.hrz`
+       sibling + a stored Bortle/SQM — cheap and immediately useful.
    - **The season gate hard-drops short-window targets.** `season_min_hours`
      (1.5h above min-alt, unobstructed, minus a pre-dawn hour) gates out objects
      that only get 30–70 min of clean time from the home horizon mask
