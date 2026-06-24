@@ -31,7 +31,7 @@ class MediaPage(QWidget):
         outer.addWidget(title)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter media…")
+        self._search.setPlaceholderText("Search…")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._apply_filter)
         outer.addWidget(self._search)

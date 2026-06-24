@@ -255,7 +255,7 @@ class DetailPane(QScrollArea):
             rows.append(("Capture targets", ", ".join(sorted(targets))))
         if e.get("notes"):
             rows.append(("Notes", str(e["notes"])))
-        self._lay.addWidget(_section_label("Catalog details"))
+        self._lay.addWidget(_section_label("Object details"))
         body = "<br>".join(
             f"<b>{k}:</b> {v}" for k, v in rows)
         lbl = QLabel(body)

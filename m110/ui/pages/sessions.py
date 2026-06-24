@@ -29,7 +29,7 @@ class SessionsPage(QWidget):
         lay.addWidget(self._summary)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter sessions…")
+        self._search.setPlaceholderText("Search…")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._apply_filter)
         lay.addWidget(self._search)

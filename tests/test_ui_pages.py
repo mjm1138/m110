@@ -118,7 +118,7 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
         labels = " | ".join(l.text() for l in d._content.findChildren(QLabel))
         assert "Processing" in labels      # per-object processing section
         assert "Sessions" in labels        # per-object sessions section
-        assert "Catalog details" in labels  # metadata block
+        assert "Object details" in labels  # metadata block
         assert slug in labels              # metadata shows the slug
     finally:
         d.deleteLater()

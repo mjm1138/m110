@@ -37,7 +37,7 @@ class CatalogPage(QWidget):
 
         # Left side: search + stat row above the table.
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter catalog…")
+        self._search.setPlaceholderText("Search…")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._apply_filter)
         self._stat = QLabel()
