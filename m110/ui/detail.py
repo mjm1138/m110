@@ -30,6 +30,12 @@ def _fmt_hm(minutes: float) -> str:
     return f"{m // 60}:{m % 60:02d}"
 
 
+# The bundled season strings are hand-set for ~40°N (the reference site). Real
+# latitude-aware season derivation arrives with the planning phase (ROADMAP item 1);
+# until then we label the implied latitude rather than imply universality.
+_SEASON_LATITUDE = "40°N"
+
+
 def _ra_hms(deg: float) -> str:
     """RA decimal degrees → sexagesimal hours, e.g. 202.4696 → '13h29m52.7s'."""
     h = float(deg) / 15.0
@@ -274,7 +280,7 @@ class DetailPane(QScrollArea):
         if e.get("size"):
             rows.append(("Size", str(e["size"])))
         if e.get("season"):
-            rows.append(("Season", str(e["season"])))
+            rows.append((f"Season (at {_SEASON_LATITUDE})", str(e["season"])))
 
         # Coordinates: prefer the Library entry, else the bundled reference (so a
         # migrated store without per-entry coords still shows them). Both decimal
