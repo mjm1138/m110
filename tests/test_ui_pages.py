@@ -42,6 +42,7 @@ def _seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
     monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
     monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
+    monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
     config.ensure_data_root(root)
     return root
@@ -251,6 +252,34 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
         # back to all
         page._catalog_combo.setCurrentIndex(0)
         assert page.table.rowCount() == all_rows
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_captured_only_filter(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    slug, tid = _seed_capture(root, monkeypatch)       # exactly one captured object
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        total = page.table.rowCount()
+        assert total > 1                                # plenty of uncaptured rows
+        # off (default): everything visible
+        assert not any(page.table.isRowHidden(r) for r in range(total))
+        # "Captured only" → only rows whose slug is in totals remain visible
+        page._captured_chk.setChecked(True)
+        visible = [r for r in range(total) if not page.table.isRowHidden(r)]
+        assert visible and all(
+            page.table.item(r, 0).data(Qt.UserRole) in page._totals for r in visible)
+        assert slug in {page.table.item(r, 0).data(Qt.UserRole) for r in visible}
+        # composes with search: a non-matching query hides even the captured row
+        page._search.setText("zzz-nomatch")
+        assert all(page.table.isRowHidden(r) for r in range(total))
+        page._search.clear()
+        # back off → all visible again
+        page._captured_chk.setChecked(False)
+        assert not any(page.table.isRowHidden(r) for r in range(total))
     finally:
         page.deleteLater()
         qapp.processEvents()

@@ -93,6 +93,7 @@ def _seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
     monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
     monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
+    monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
     config.ensure_data_root(root)
     return root

@@ -6,7 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
-    QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
+    QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox, QCheckBox,
 )
 
 from m110 import config, derived, siril, catalog as catalog_mod
@@ -49,6 +49,9 @@ class CatalogPage(QWidget):
             self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
         self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
         cat_row.addWidget(self._catalog_combo, 1)
+        self._captured_chk = QCheckBox("Captured only")
+        self._captured_chk.toggled.connect(self._apply_filter)
+        cat_row.addWidget(self._captured_chk)
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search…")
@@ -122,14 +125,16 @@ class CatalogPage(QWidget):
         self._stat.setText(
             f"{prefix}{captured} captured · {deep} deep · {len(slugs)} total")
 
-    def _apply_filter(self):
+    def _apply_filter(self, *_):
         q = self._search.text().strip().lower()
+        cap_only = self._captured_chk.isChecked()
         for r in range(self.table.rowCount()):
-            if not q:
-                self.table.setRowHidden(r, False)
-                continue
-            hay = " ".join(self.table.item(r, c).text() for c in (0, 1, 2)).lower()
-            self.table.setRowHidden(r, q not in hay)
+            slug = self.table.item(r, 0).data(Qt.UserRole)
+            hide = cap_only and slug not in self._totals
+            if not hide and q:
+                hay = " ".join(self.table.item(r, c).text() for c in (0, 1, 2)).lower()
+                hide = q not in hay
+            self.table.setRowHidden(r, hide)
 
     def _filter_members(self) -> set | None:
         """Slugs of the selected catalog, or None for 'All objects'."""

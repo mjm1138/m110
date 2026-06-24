@@ -257,14 +257,18 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    (`seed/objects.toml`, id → coords/type/mag/size) + **catalog membership lists**
    (`seed/catalogs/*.toml`; Messier ships). A fresh Library seeds from the
    reference. Nav "Catalog" → "Library". No new user-facing behavior yet.
-   **Phase 5b (done):** Goals — active-catalog selection (Preferences; pref
-   `active_goals`, `goals.py`), per-goal progress on Summary (`build_goals` →
-   `goals.json`), an object **Catalogs** membership line, and a 2nd bundled
-   catalog — **Caldwell** (109 objects via `tools/gen_caldwell.py` + Simbad;
-   astroquery is build-time only). Fresh Library seeds the default goals' members
-   (Messier); activating a goal adds its members to the Library (additive).
-   Library has a **catalog-filter selector** (browse one catalog's members) and
-   shows **all of an object's identifiers** ordered by a catalog hierarchy
+   **Phase 5b (done):** Goals — active-catalog selection (Preferences), stored
+   **per-store** in `.m110_internal_data/goals.toml` (`goals.py`; default Messier).
+   Per-store, not the old global `active_goals` setting, so each store tracks its
+   own goals, a fresh store starts genuinely Messier-only, and the Library is
+   reconciled to the active goals on launch (no manual Save). Per-goal progress on
+   Summary (`build_goals` → `goals.json`), an object **Catalogs** membership line,
+   and a 2nd bundled catalog — **Caldwell** (109 objects via `tools/gen_caldwell.py`
+   + Simbad; astroquery is build-time only). Fresh Library seeds the active goals'
+   members (Messier); activating a goal adds its members to the Library (additive).
+   Library has a **catalog-filter selector** (browse one catalog's members), a
+   **"Captured only"** filter (interim collection view; default off), and shows
+   **all of an object's identifiers** ordered by a catalog hierarchy
    (Messier→Caldwell→NGC/IC; e.g. "C20 (NGC 7000)").
    **5c (next):** the add-arbitrary-object + enrich flow below.
 
@@ -282,6 +286,26 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    Default goal ships as Messier; users add other goals from the bundled catalog
    library (or import their own). See the sibling Astronomy project's
    `next_catalog_lists.md` for candidate lists.
+
+   **5d — Goals view + the Library-=-collection reframe.** A dedicated **Goals**
+   nav page (left rail) where goals are **selected, created, and edited** —
+   including **custom goals built from an arbitrary object list**, not just bundled
+   catalogs. Each active goal gets a **progress summary** + a short **"in-progress
+   captures"** list (captured but below the integration target). This is where the
+   model reframe lands: the **Library becomes the captured/annotated collection**
+   (the user's real corpus), and **uncaptured catalog members live in the Goals
+   view** as a membership checklist rather than being bulk-seeded into the Library.
+   Consequences to settle here:
+   - **Drop the bulk Library goal-seed** (5b's "activating a goal adds all members")
+     — replaced by the Goals checklist; the Library grows only by capture/annotation
+     (+ `add_captured_objects`, the 5c add-object flow).
+   - **Goal de-select removal** — deactivating a goal removes its uncaptured,
+     un-noted, not-in-another-active-goal members (deferred from 5b, which only ever
+     adds). Captured/annotated objects always stay.
+   - **Open question:** where annotated-but-uncaptured targets live (lean: Library,
+     since "annotated" = the user has engaged with it).
+   - Interim until this ships: the bulk goal-seed + the Library "Captured only"
+     toggle stand in for the collection view.
 
 6. **Ingest evolution — robust, layout-flexible, multi-telescope** (BUGS **#16**).
    Today's Inbox recognizes only the Seestar export shape. Grow to: recognize

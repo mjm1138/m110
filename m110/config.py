@@ -111,7 +111,7 @@ def _resolve_data_root() -> Path:
 def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
     global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
-    global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR
+    global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
     DATA_ROOT = root
     # Visible content axes
     OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
@@ -121,6 +121,7 @@ def _apply(root: Path) -> None:
     # Hidden machine state
     INTERNAL_DIR = root / INTERNAL_DIRNAME
     LIBRARY_TOML = INTERNAL_DIR / "library.toml"   # the user's object corpus
+    GOALS_TOML = INTERNAL_DIR / "goals.toml"       # per-store active goals
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
@@ -202,6 +203,9 @@ def ensure_data_root(root=None) -> Path:
         if not dst.exists() and src.is_file():
             shutil.copy(src, dst)
     _seed_library(internal / "library.toml")
+    if r == DATA_ROOT:                          # active store: keep Library in sync
+        from . import goals                     # with the per-store active goals
+        goals.ensure_library_has_active_goals()
     readme = internal / "README.txt"
     if not readme.exists():
         readme.write_text(_README_TEXT)
@@ -231,7 +235,7 @@ def _seed_library(dst: Path) -> None:
     if not ref:
         return
     slugs, seen = [], set()
-    for gid in goals.DEFAULT:
+    for gid in goals.active_goal_ids():
         for s in catalog.load_bundled_catalog(gid).get("members", {}):
             if s in ref and s not in seen:
                 seen.add(s); slugs.append(s)

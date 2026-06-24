@@ -42,15 +42,28 @@ def test_add_goal_members_additive_idempotent(tmp_path, monkeypatch):
 # ── goals module ──────────────────────────────────────────────────────────────
 
 def test_active_goals_default_and_set(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
+    monkeypatch.setattr(config, "GOALS_TOML", tmp_path / "goals.toml")
     lib = tmp_path / "library.toml"
     monkeypatch.setattr(config, "LIBRARY_TOML", lib)
     config._seed_library(lib)
-    assert goals.active_goal_ids() == ["messier"]            # default
+    assert goals.active_goal_ids() == ["messier"]            # default (no file)
 
     added = goals.set_active_goals(["messier", "caldwell"])
     assert len(added) == 109                                  # Caldwell added to Library
+    assert (tmp_path / "goals.toml").is_file()                # persisted per-store
     assert set(goals.active_goal_ids()) == {"messier", "caldwell"}
+
+
+def test_active_goals_are_per_store(tmp_path, monkeypatch):
+    # A fresh store defaults to Messier regardless of any other store's goals.
+    monkeypatch.setattr(config, "GOALS_TOML", tmp_path / "a" / "goals.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "a" / "library.toml")
+    config._seed_library(config.LIBRARY_TOML)
+    goals.set_active_goals(["messier", "caldwell"])
+    # switch to a different store
+    monkeypatch.setattr(config, "GOALS_TOML", tmp_path / "b" / "goals.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "b" / "library.toml")
+    assert goals.active_goal_ids() == ["messier"]            # not leaked from store a
 
 
 # ── build_goals progress ──────────────────────────────────────────────────────
