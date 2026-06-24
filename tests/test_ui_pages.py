@@ -228,6 +228,34 @@ def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    from m110 import catalog, goals
+    goals.set_active_goals(["messier", "caldwell"])   # bring Caldwell into the Library
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        all_rows = page.table.rowCount()
+        assert all_rows >= 200                         # Messier + Caldwell
+        # select Caldwell in the combo
+        idx = next(i for i in range(page._catalog_combo.count())
+                   if page._catalog_combo.itemData(i) == "caldwell")
+        page._catalog_combo.setCurrentIndex(idx)
+        assert page.table.rowCount() == 109            # only Caldwell members
+        # Object cells read by C-number, with the NGC id in parens
+        cells = [page.table.item(r, 0).text() for r in range(page.table.rowCount())]
+        joined = " ".join(cells)
+        assert "C20 (NGC 7000)" in joined
+        assert all(c.startswith("C") for c in cells)   # Caldwell designation primary
+        assert "Caldwell —" in page._stat.text()
+        # back to all
+        page._catalog_combo.setCurrentIndex(0)
+        assert page.table.rowCount() == all_rows
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_body_markdown_excludes_stub():
     """A fresh stub (heading + comment only) is not 'real notes'; edited prose is."""
     from m110.ui.pages.journal import _body_markdown

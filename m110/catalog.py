@@ -18,7 +18,14 @@ import tomllib
 from . import config
 
 _M = re.compile(r"^M\s*(\d+)$")
+_C = re.compile(r"^C\s*(\d+)$")
 _NGC = re.compile(r"^NGC\s*(\d+)$", re.IGNORECASE)
+_IC = re.compile(r"^IC\s*(\d+)$", re.IGNORECASE)
+
+# Display priority when an object carries several catalog designations (general
+# Library view). Extend as catalogs are bundled; unknown catalogs fall after these
+# (by name), and the intrinsic reference id (NGC/IC/…) sorts last.
+_CATALOG_PRIORITY = ["messier", "caldwell"]
 
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun",
@@ -139,19 +146,55 @@ def load_coords() -> dict[str, tuple[float, float]]:
 
 
 def catalog_sort_key(obj_id: str):
-    """Natural catalog order: Messier-numeric, then NGC-numeric, then
-    alphabetical. Mirrors the site's `_catalog_sort_key` so the GUI Object
-    column matches the web view (M1, M2, … M10, not M1, M10, M100).
+    """Natural catalog order: Messier-numeric, then Caldwell, NGC, IC (each
+    numeric), then alphabetical. So a Library sorted by the Object column groups
+    M1…M110, C1…C109, NGC…, then the rest (M1, M2, … M10, not M1, M10, M100).
     Care: "Markarian's Chain" starts with M but isn't a Messier number.
     """
     s = (obj_id or "").strip()
-    m = _M.match(s)
-    if m:
-        return (0, int(m.group(1)), "")
-    n = _NGC.match(s)
-    if n:
-        return (1, int(n.group(1)), "")
-    return (2, 0, s.lower())
+    for rank, pat in ((0, _M), (1, _C), (2, _NGC), (3, _IC)):
+        m = pat.match(s)
+        if m:
+            return (rank, int(m.group(1)), "")
+    return (4, 0, s.lower())
+
+
+def object_identifiers(slug: str, entry: dict | None = None,
+                       primary_catalog: str | None = None) -> list[str]:
+    """All of an object's designations, deduped + ordered for display.
+
+    Catalog designations (from membership) come first by `_CATALOG_PRIORITY`
+    (then unknown catalogs by name), and the intrinsic reference/Library id last.
+    If `primary_catalog` (a catalog id) is given, that catalog's designation is
+    forced first — the context for a filtered catalog view.
+    e.g. M31 → ["M31"]; NGC 7000 (Caldwell) → ["C20", "NGC 7000"].
+    """
+    def rank(cid: str) -> int:
+        return _CATALOG_PRIORITY.index(cid) if cid in _CATALOG_PRIORITY else 50
+
+    tagged: list[tuple[int, str]] = []
+    for c in list_bundled_catalogs():
+        desig = c["members"].get(slug)
+        if desig is None:
+            continue
+        r = -1 if c["id"] == primary_catalog else rank(c["id"])
+        tagged.append((r, str(desig)))
+    tagged.sort(key=lambda t: (t[0],))
+    out, seen = [], set()
+    for _, d in tagged:
+        if d not in seen:
+            out.append(d); seen.add(d)
+    iid = (entry or {}).get("id")
+    if iid and iid not in seen:
+        out.append(iid)
+    return out or ([iid] if iid else [slug])
+
+
+def object_label(ids: list[str]) -> str:
+    """"PRIMARY (rest, …)" for a display identifier list; "" if empty."""
+    if not ids:
+        return ""
+    return ids[0] + (f" ({', '.join(ids[1:])})" if len(ids) > 1 else "")
 
 
 def season_sort_key(season: str):

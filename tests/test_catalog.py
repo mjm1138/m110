@@ -21,9 +21,34 @@ def test_ngc_numeric():
 
 
 def test_markarians_not_parsed_as_messier():
-    # starts with M but must NOT sort as a Messier number
-    assert catalog_sort_key("Markarian's Chain")[0] == 2
+    # starts with M but must NOT sort as a Messier number ("other" bucket)
+    assert catalog_sort_key("Markarian's Chain")[0] == 4
     assert catalog_sort_key("M81")[0] == 0
+
+
+def test_catalog_sort_key_ranks_caldwell_and_ic():
+    assert catalog_sort_key("M31")[0] == 0
+    assert catalog_sort_key("C20")[0] == 1
+    assert catalog_sort_key("NGC 7000")[0] == 2
+    assert catalog_sort_key("IC 342")[0] == 3
+    assert catalog_sort_key("Markarian's Chain")[0] == 4
+    # numeric within a class
+    assert sorted(["C100", "C9", "C20"], key=catalog_sort_key) == ["C9", "C20", "C100"]
+
+
+def test_object_identifiers_hierarchy_and_context():
+    # Messier: id == designation → no dup
+    assert catalog.object_identifiers("m31", {"id": "M31"}) == ["M31"]
+    # Caldwell object: C# first by hierarchy, intrinsic NGC after
+    assert catalog.object_identifiers("ngc-7000", {"id": "NGC 7000"}) == ["C20", "NGC 7000"]
+    # primary_catalog override still puts that catalog first (same here)
+    assert catalog.object_identifiers(
+        "ngc-7000", {"id": "NGC 7000"}, primary_catalog="caldwell")[0] == "C20"
+    # not in any bundled catalog → just its id
+    assert catalog.object_identifiers("ngc-2903", {"id": "NGC 2903"}) == ["NGC 2903"]
+    # label formatting
+    assert catalog.object_label(["C20", "NGC 7000"]) == "C20 (NGC 7000)"
+    assert catalog.object_label(["M31"]) == "M31"
 
 
 def test_bundled_reference_and_catalog():

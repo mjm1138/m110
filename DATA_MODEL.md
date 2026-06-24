@@ -278,7 +278,10 @@ total/captured/deep/percent). A fresh Library now seeds the **default goals'**
 members (Messier, not all reference); **activating a goal adds its members to the
 Library** (`catalog.add_goal_members_to_library` — additive; deactivating never
 removes). Object detail shows a **Catalogs** membership line; Summary shows
-per-goal progress; Preferences selects active goals.
+per-goal progress; Preferences selects active goals. The Library has a
+**catalog-filter** view and shows **all identifiers** per object (display-only:
+intrinsic id + catalog designations, ordered by a catalog hierarchy — no stored
+change).
 
 **Still to build:**
 - **5c Add arbitrary object + enrichment** — see below.

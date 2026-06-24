@@ -5,12 +5,15 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
-    QMessageBox, QInputDialog, QLineEdit, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
+    QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
 )
 
-from m110 import config, derived, siril
-from m110.catalog import load_library, catalog_sort_key, season_sort_key
+from m110 import config, derived, siril, catalog as catalog_mod
+from m110.catalog import (
+    load_library, catalog_sort_key, season_sort_key, object_identifiers,
+    object_label, list_bundled_catalogs,
+)
 from m110.ui.detail import DetailPane
 from m110.ui.widgets import NumItem, status_label, STATUS_COLOR, MUTED, targets_for_slug
 
@@ -28,6 +31,8 @@ class CatalogPage(QWidget):
         self._totals = derived.totals_by_slug()
         self._sort_col = 0
         self._sort_order = Qt.AscendingOrder
+        self._catalog_filter = None       # None = all objects; else a catalog id
+        self._catalogs = list_bundled_catalogs()
 
         self.table = self._build_table()
         self.table.itemSelectionChanged.connect(self._on_select)
@@ -35,7 +40,16 @@ class CatalogPage(QWidget):
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
 
-        # Left side: search + stat row above the table.
+        # Left side: catalog selector + search + stat row above the table.
+        cat_row = QHBoxLayout()
+        cat_row.addWidget(QLabel("Catalog:"))
+        self._catalog_combo = QComboBox()
+        self._catalog_combo.addItem("All objects", None)
+        for c in self._catalogs:
+            self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
+        self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
+        cat_row.addWidget(self._catalog_combo, 1)
+
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search…")
         self._search.setClearButtonEnabled(True)
@@ -46,6 +60,7 @@ class CatalogPage(QWidget):
         left = QWidget()
         self._left_lay = QVBoxLayout(left)
         self._left_lay.setContentsMargins(0, 0, 0, 0)
+        self._left_lay.addLayout(cat_row)
         self._left_lay.addWidget(self._search)
         self._left_lay.addWidget(self._stat)
         self._left_lay.addWidget(self.table)
@@ -71,8 +86,16 @@ class CatalogPage(QWidget):
         self.table.setEnabled(not locked)
 
     def select_object(self, slug: str):
-        self._search.clear()      # ensure the target row isn't filtered out
+        # Ensure the target row isn't filtered out (clear search + catalog filter).
+        self._search.clear()
+        if self._catalog_filter is not None:
+            self._catalog_combo.setCurrentIndex(0)   # "All objects" → triggers rebuild
         self._select_slug(slug)
+
+    def _on_catalog_changed(self, _idx: int):
+        self._catalog_filter = self._catalog_combo.currentData()
+        self._rebuild_table()
+        self._update_stat()
 
     def reload(self):
         new_cat = load_library()
@@ -86,11 +109,18 @@ class CatalogPage(QWidget):
             self._refresh_open_detail()    # cheap: pick up image-only changes
 
     def _update_stat(self):
-        captured = len(self._totals)
-        deep = sum(1 for t in self._totals.values()
-                   if t.get("status") == "deep_stack")
+        members = self._filter_members()
+        slugs = [s for s in self._cat if members is None or s in members]
+        captured = sum(1 for s in slugs if s in self._totals)
+        deep = sum(1 for s in slugs
+                   if self._totals.get(s, {}).get("status") == "deep_stack")
+        prefix = ""
+        if self._catalog_filter:
+            name = next((c["name"] for c in self._catalogs
+                         if c["id"] == self._catalog_filter), self._catalog_filter)
+            prefix = f"{name} — "
         self._stat.setText(
-            f"{captured} captured · {deep} deep · {len(self._cat)} total")
+            f"{prefix}{captured} captured · {deep} deep · {len(slugs)} total")
 
     def _apply_filter(self):
         q = self._search.text().strip().lower()
@@ -101,10 +131,28 @@ class CatalogPage(QWidget):
             hay = " ".join(self.table.item(r, c).text() for c in (0, 1, 2)).lower()
             self.table.setRowHidden(r, q not in hay)
 
+    def _filter_members(self) -> set | None:
+        """Slugs of the selected catalog, or None for 'All objects'."""
+        if not self._catalog_filter:
+            return None
+        for c in self._catalogs:
+            if c["id"] == self._catalog_filter:
+                return set(c["members"])
+        return set()
+
     # ---- table ----
     def _build_table(self) -> QTableWidget:
         cat, totals = self._cat, self._totals
-        table = QTableWidget(len(cat), len(self.HEADERS))
+        members = self._filter_members()
+        pc = self._catalog_filter
+        items = [(slug, e) for slug, e in cat.items()
+                 if members is None or slug in members]
+        # primary identifier per row (context: the selected catalog)
+        ids = {slug: object_identifiers(slug, e, primary_catalog=pc)
+               for slug, e in items}
+        items.sort(key=lambda kv: catalog_sort_key(ids[kv[0]][0] if ids[kv[0]] else ""))
+
+        table = QTableWidget(len(items), len(self.HEADERS))
         table.setHorizontalHeaderLabels(self.HEADERS)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -112,12 +160,12 @@ class CatalogPage(QWidget):
         table.verticalHeader().setVisible(False)
         table.setSortingEnabled(False)
 
-        rows = sorted(cat.items(), key=lambda kv: catalog_sort_key(kv[1].get("id", "")))
-        for row, (slug, e) in enumerate(rows):
+        for row, (slug, e) in enumerate(items):
             t = totals.get(slug, {})
             captured = bool(t)
 
-            obj = NumItem(str(e.get("id", "")), catalog_sort_key(e.get("id", "")))
+            oid = ids[slug]
+            obj = NumItem(object_label(oid), catalog_sort_key(oid[0] if oid else ""))
             obj.setData(Qt.UserRole, slug)
             table.setItem(row, 0, obj)
             table.setItem(row, 1, QTableWidgetItem(str(e.get("name") or "")))

@@ -116,7 +116,9 @@ class DetailPane(QScrollArea):
         self._clear()
         captured = bool(t)
 
-        title = QLabel(f"<h2>{e.get('id', '')} &mdash; {e.get('name') or ''}</h2>")
+        from m110 import catalog
+        ids = catalog.object_identifiers(slug, e)
+        title = QLabel(f"<h2>{' · '.join(ids)} &mdash; {e.get('name') or ''}</h2>")
         title.setTextFormat(Qt.RichText)
         self._lay.addWidget(title)
 

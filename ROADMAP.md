@@ -263,6 +263,9 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    catalog — **Caldwell** (109 objects via `tools/gen_caldwell.py` + Simbad;
    astroquery is build-time only). Fresh Library seeds the default goals' members
    (Messier); activating a goal adds its members to the Library (additive).
+   Library has a **catalog-filter selector** (browse one catalog's members) and
+   shows **all of an object's identifiers** ordered by a catalog hierarchy
+   (Messier→Caldwell→NGC/IC; e.g. "C20 (NGC 7000)").
    **5c (next):** the add-arbitrary-object + enrich flow below.
 
    **Add arbitrary objects + auto-enrich.** A user can add any object to their
