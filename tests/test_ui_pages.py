@@ -120,9 +120,21 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
         assert "Sessions" in labels        # per-object sessions section
         assert "Object details" in labels  # metadata block
         assert slug in labels              # metadata shows the slug
+        # comprehensive details incl. RA/Dec (decimal + sexagesimal) when coords known
+        assert "Type" in labels and "Magnitude" in labels
+        if catalog.load_coords().get(slug):
+            assert "RA" in labels and "Dec" in labels and "h" in labels  # HMS form
     finally:
         d.deleteLater()
         qapp.processEvents()
+
+
+def test_radec_formatters():
+    from m110.ui.detail import _ra_hms, _dec_dms
+    assert _ra_hms(202.4696).startswith("13h29m")
+    assert _ra_hms(0.0) == "00h00m00.0s"
+    assert _dec_dms(47.1952).startswith("+47°11")
+    assert _dec_dms(-12.5) == "-12°30′00″"
 
 
 def _seed_sandbox(target="M51"):

@@ -30,6 +30,26 @@ def _fmt_hm(minutes: float) -> str:
     return f"{m // 60}:{m % 60:02d}"
 
 
+def _ra_hms(deg: float) -> str:
+    """RA decimal degrees → sexagesimal hours, e.g. 202.4696 → '13h29m52.7s'."""
+    h = float(deg) / 15.0
+    hh = int(h)
+    mm = int((h - hh) * 60)
+    ss = (h - hh - mm / 60) * 3600
+    return f"{hh:02d}h{mm:02d}m{ss:04.1f}s"
+
+
+def _dec_dms(deg: float) -> str:
+    """Dec decimal degrees → signed sexagesimal, e.g. 47.1952 → '+47°11′43″'."""
+    d = float(deg)
+    sign = "-" if d < 0 else "+"
+    d = abs(d)
+    dd = int(d)
+    mm = int((d - dd) * 60)
+    ss = (d - dd - mm / 60) * 3600
+    return f"{sign}{dd:02d}°{mm:02d}′{ss:02.0f}″"
+
+
 class DetailPane(QScrollArea):
     # Opens/closes the journal editor → the shell locks nav + actions so a
     # selection change or auto-refresh can't discard in-progress edits.
@@ -246,11 +266,32 @@ class DetailPane(QScrollArea):
 
     def _add_metadata_section(self, slug: str, e: dict):
         targets = targets_for_slug(slug)
-        rows = [("Slug", slug)]
+        rows = []
+        if e.get("type"):
+            rows.append(("Type", str(e["type"]).replace("_", " ")))
+        if e.get("magnitude") is not None:
+            rows.append(("Magnitude", str(e["magnitude"])))
+        if e.get("size"):
+            rows.append(("Size", str(e["size"])))
+        if e.get("season"):
+            rows.append(("Season", str(e["season"])))
+
+        # Coordinates: prefer the Library entry, else the bundled reference (so a
+        # migrated store without per-entry coords still shows them). Both decimal
+        # degrees and sexagesimal (HMS/DMS) — the latter for mounts that want it.
+        ra, dec = e.get("ra_deg"), e.get("dec_deg")
+        if ra is None or dec is None:
+            from m110 import catalog
+            rd = catalog.load_coords().get(slug)
+            if rd:
+                ra, dec = rd
+        if ra is not None and dec is not None:
+            rows.append(("RA", f"{_ra_hms(ra)}  ({float(ra):.4f}°)"))
+            rows.append(("Dec", f"{_dec_dms(dec)}  ({float(dec):+.4f}°)"))
+
         if e.get("filter"):
             rows.append(("Filter rule", str(e["filter"])))
-        if e.get("ra_deg") is not None and e.get("dec_deg") is not None:
-            rows.append(("Coordinates", f"RA {e['ra_deg']}°, Dec {e['dec_deg']}°"))
+        rows.append(("Slug", slug))
         if targets:
             rows.append(("Capture targets", ", ".join(sorted(targets))))
         if e.get("notes"):
