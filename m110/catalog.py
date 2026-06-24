@@ -47,12 +47,77 @@ def load_reference() -> dict[str, dict]:
 
 def load_bundled_catalog(name: str) -> dict:
     """A bundled catalog membership list (`seed/catalogs/<name>.toml`):
-    `{name, description, members:[slug]}`. `{}` if absent. (Used by goals, 5b.)"""
+    `{name, description, members: {slug: designation}}`. `{}` if absent."""
     path = config.SEED_DIR / "catalogs" / f"{name}.toml"
     if not path.is_file():
         return {}
     with path.open("rb") as f:
         return tomllib.load(f)
+
+
+def list_bundled_catalogs() -> list[dict]:
+    """All bundled catalogs, by id (filename stem): `[{id, name, description,
+    members}]`, sorted by name."""
+    d = config.SEED_DIR / "catalogs"
+    out = []
+    if d.is_dir():
+        for p in sorted(d.glob("*.toml")):
+            data = load_bundled_catalog(p.stem)
+            if data:
+                out.append({"id": p.stem, "name": data.get("name", p.stem),
+                            "description": data.get("description", ""),
+                            "members": data.get("members", {})})
+    return sorted(out, key=lambda c: c["name"].lower())
+
+
+def catalogs_for_slug(slug: str) -> list[tuple[str, str]]:
+    """Which bundled catalogs an object belongs to → [(catalog name, designation)].
+    Empty for a non-catalog Library addition."""
+    out = []
+    for c in list_bundled_catalogs():
+        members = c["members"]
+        if slug in members:
+            out.append((c["name"], str(members[slug])))
+    return out
+
+
+def add_goal_members_to_library(goal_id: str) -> list[str]:
+    """Append a bundled catalog's members to the Library (`library.toml`) that
+    aren't already there, pulling intrinsic fields from the reference. Additive +
+    idempotent; never overwrites. Returns the slugs added."""
+    cat = load_bundled_catalog(goal_id)
+    members = cat.get("members", {})
+    if not members or not config.LIBRARY_TOML.is_file():
+        return []
+    have = set(load_library())
+    ref = load_reference()
+    new = [s for s in members if s not in have and s in ref]
+    if new:
+        _append_library_entries({s: ref[s] for s in new})
+    return new
+
+
+_LIB_ORDER = ["id", "name", "type", "magnitude", "size", "season", "filter",
+              "notes", "ra_deg", "dec_deg"]
+
+
+def _append_library_entries(entries: dict[str, dict]) -> None:
+    """Append `[catalog.<slug>]` blocks to library.toml (the only writer besides
+    config seeding + add_captured_objects)."""
+    lines = []
+    for slug, e in entries.items():
+        lines.append(f"\n[catalog.{slug}]")
+        for k in _LIB_ORDER:
+            v = e.get(k)
+            if v is None:
+                continue
+            lines.append(f"{k} = {v if isinstance(v, (int, float)) else _q(v)}")
+    with config.LIBRARY_TOML.open("a") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def _q(s) -> str:
+    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def load_coords() -> dict[str, tuple[float, float]]:

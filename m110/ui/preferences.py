@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGroupBox, QCheckBox,
 )
 
-from m110 import config, processing
+from m110 import config, processing, goals, catalog
 
 
 class PreferencesDialog(QDialog):
@@ -51,6 +51,23 @@ class PreferencesDialog(QDialog):
             self._wf_checks[w.id] = cb
         lay.addWidget(box)
 
+        # ── goals (catalogs being tracked) ───────────────────────────────────
+        gbox = QGroupBox("Goals — catalogs you're tracking:")
+        gl = QVBoxLayout(gbox)
+        gl.addWidget(QLabel(
+            "Progress is tracked per goal; activating one adds its objects to "
+            "your Library."))
+        active = set(goals.active_goal_ids())
+        self._goal_checks = {}
+        for c in catalog.list_bundled_catalogs():
+            cb = QCheckBox(f"{c['name']}  ({len(c['members'])})")
+            cb.setChecked(c["id"] in active)
+            if c["description"]:
+                cb.setToolTip(c["description"])
+            gl.addWidget(cb)
+            self._goal_checks[c["id"]] = cb
+        lay.addWidget(gbox)
+
         btns = QHBoxLayout()
         btns.addStretch(1)
         save = QPushButton("Save")
@@ -75,10 +92,17 @@ class PreferencesDialog(QDialog):
                   if cb.isEnabled() and cb.isChecked()]
         config.save_setting(processing.SETTING_KEY, chosen)
 
+        # Goals: save selection + add newly-activated goals' members to the Library.
+        chosen_goals = [gid for gid, cb in self._goal_checks.items() if cb.isChecked()]
+        added = goals.set_active_goals(chosen_goals) if chosen_goals else []
+
         root_changed = path != str(config.DATA_ROOT)
         config.save_data_root(path)
         config.ensure_data_root(path)   # create + seed now so it's ready on restart
         msg = "Preferences saved."
+        if added:
+            msg += f"\n\n{len(added)} object(s) added to your Library from "
+            msg += "newly-activated goals. Refresh to see them."
         if root_changed:
             msg += f"\n\nData folder set to:\n{path}\nRestart M110 to use it."
         QMessageBox.information(self, "Preferences saved", msg)

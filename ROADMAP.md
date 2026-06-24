@@ -257,9 +257,13 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    (`seed/objects.toml`, id → coords/type/mag/size) + **catalog membership lists**
    (`seed/catalogs/*.toml`; Messier ships). A fresh Library seeds from the
    reference. Nav "Catalog" → "Library". No new user-facing behavior yet.
-   **5b (next):** Goals — active-catalog selection + per-goal progress/dashboard;
-   more bundled catalogs; the fresh-Library-=-Messier-only decision.
-   **5c:** the add-arbitrary-object + enrich flow below.
+   **Phase 5b (done):** Goals — active-catalog selection (Preferences; pref
+   `active_goals`, `goals.py`), per-goal progress on Summary (`build_goals` →
+   `goals.json`), an object **Catalogs** membership line, and a 2nd bundled
+   catalog — **Caldwell** (109 objects via `tools/gen_caldwell.py` + Simbad;
+   astroquery is build-time only). Fresh Library seeds the default goals' members
+   (Messier); activating a goal adds its members to the Library (additive).
+   **5c (next):** the add-arbitrary-object + enrich flow below.
 
    **Add arbitrary objects + auto-enrich.** A user can add any object to their
    Library; the app fills the data fields via a cascade (generalizes

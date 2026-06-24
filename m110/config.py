@@ -220,20 +220,30 @@ def ensure_data_root(root=None) -> Path:
 
 
 def _seed_library(dst: Path) -> None:
-    """Seed a fresh `library.toml` from the bundled object reference
-    (`seed/objects.toml`) — the starter Library. Idempotent; never overwrites."""
+    """Seed a fresh `library.toml` with the **default goals'** members (e.g.
+    Messier), pulled from the bundled reference — the starter Library. Other
+    catalogs (Caldwell, …) join only when activated as goals. Idempotent; never
+    overwrites. Falls back to the whole reference if no default-goal members."""
     if dst.exists():
         return
-    from . import catalog
+    from . import catalog, goals
     ref = catalog.load_reference()
     if not ref:
         return
+    slugs, seen = [], set()
+    for gid in goals.DEFAULT:
+        for s in catalog.load_bundled_catalog(gid).get("members", {}):
+            if s in ref and s not in seen:
+                seen.add(s); slugs.append(s)
+    if not slugs:                                   # safety: no default catalog
+        slugs = list(ref)
     dst.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# M110 Library — your object corpus (catalog members + additions).",
-             "# Seeded from the bundled reference; M110 reads/writes this file.\n"]
+             "# Seeded from your default goals; M110 reads/writes this file.\n"]
     _order = ["id", "name", "type", "magnitude", "size", "season", "filter",
               "notes", "ra_deg", "dec_deg"]
-    for slug, e in ref.items():
+    for slug in slugs:
+        e = ref[slug]
         lines.append(f"[catalog.{slug}]")
         for k in _order:
             v = e.get(k)

@@ -271,8 +271,12 @@ class DetailPane(QScrollArea):
             "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount"], out)
 
     def _add_metadata_section(self, slug: str, e: dict):
+        from m110 import catalog
         targets = targets_for_slug(slug)
         rows = []
+        cats = catalog.catalogs_for_slug(slug)
+        if cats:
+            rows.append(("Catalogs", ", ".join(f"{n} ({d})" for n, d in cats)))
         if e.get("type"):
             rows.append(("Type", str(e["type"]).replace("_", " ")))
         if e.get("magnitude") is not None:

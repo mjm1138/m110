@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "astroquery>=0.4"]  # astroquery: build-time only (tools/gen_caldwell.py)
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"

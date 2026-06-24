@@ -125,7 +125,7 @@ tests (never a live root).
 **Data-root resolution** (in `config.py`, Qt-free): `M110_DATA_ROOT` env
 → saved preference (`~/.m110/settings.json`) → default
 `~/Documents/M110`. `ensure_data_root()` (called on launch) migrates, creates the
-skeleton, seeds `library.toml` (from the bundled object reference) + `priorities.toml` into `.m110_internal_data/` from
+skeleton, seeds `library.toml` (from the **default goals'** members in the bundled reference — Messier) + `priorities.toml` into `.m110_internal_data/` from
 `m110/seed/` if missing, writes the internals README + `journal_template.md`, and
 creates an `Objects/<id>/journal.md` stub (from the template) for **every catalog
 object** — all **idempotent, never overwrites**. Changing the root in Preferences
@@ -142,8 +142,8 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 |---|---|
 | `config.py` | data-root resolution, dir bootstrap/seed, per-target path helpers, settings persistence, Seestar mount detection (`find_seestar_myworks`) |
 | `migrate.py` | in-place, idempotent, version-stamped migration of an older store to the two-axis layout (`migrate_store`) |
-| `catalog.py` | `load_library` (per-store `library.toml` — the user's corpus); `load_reference` (bundled `seed/objects.toml`) + `load_bundled_catalog` (bundled `seed/catalogs/<name>.toml` membership lists); `catalog_sort_key`/`season_sort_key`; `load_coords` (reference coords + per-store library `ra_deg/dec_deg`); `add_captured_objects` (promote captured-but-uncatalogued folders into the Library) |
-| `derived.py` | **read** generated rollups (totals/priorities/summary/processing/images.json) |
+| `catalog.py` | `load_library` (per-store `library.toml` — the user's corpus); `load_reference` (bundled `seed/objects.toml`) + `load_bundled_catalog`/`list_bundled_catalogs` (bundled `seed/catalogs/*.toml` membership) + `catalogs_for_slug` (which catalogs an object is in) + `add_goal_members_to_library` (additively grow the Library from a catalog); `catalog_sort_key`/`season_sort_key`; `load_coords` (reference coords + per-store library `ra_deg/dec_deg`); `add_captured_objects` (promote captured-but-uncatalogued folders into the Library) |
+| `derived.py` | **read** generated rollups (totals/priorities/summary/processing/images/goals.json) |
 | `processing.py` | workflow registry (Siril active; PixInsight/others disabled "soon") + `run_autoprep` (preference-driven, runs after ingest) + `prepare_missing` (refresh-time/on-demand backfill — creates only *absent* sandboxes, never rewrites existing) |
 | `scan_sessions.py` | scan `Images/<target>/lights/` → `sessions.jsonl` (ported) |
 | `build_derived.py` | compute totals/priorities/summary/processing → `.m110_internal_data/derived/*.json` (ported) |
@@ -153,7 +153,8 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync) |
 | `media.py` | **read** non-catalog media — `scan()` enumerates `Media/<Category>_photo\|_video/` (Qt-free; backs the Media page) |
-| `seed/` | bundled `objects.toml` (object **reference**: id/type/mag/size/season + J2000 coords) · `catalogs/<name>.toml` (catalog membership lists, e.g. Messier) · `priorities.toml` (package-data) |
+| `goals.py` | active-catalog **goals** — `active_goal_ids` (pref `active_goals`, default Messier) + `set_active_goals` (saves + adds the goals' members to the Library via `catalog.add_goal_members_to_library`) |
+| `seed/` | bundled `objects.toml` (object **reference**: id/type/mag/size/season + J2000 coords; 110 Messier + 109 Caldwell) · `catalogs/<name>.toml` (catalog membership `[members]` slug→designation: Messier, Caldwell) · `priorities.toml` (package-data) |
 | `guidance/` | bundled Siril/Seestar workflow playbooks (`*.md`, package-data) surfaced in processing-prep |
 
 **UI (`m110/ui/`)** — PySide6:
@@ -164,7 +165,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `widgets.py` | shared `NumItem` (sort-key cell), `status_label`/colors, `targets_for_slug`, `make_table` |
 | `detail.py` | shared per-object `DetailPane`: header/status, hero (scales to pane), journal **view/edit** (raw `journal.md`), gallery (double-click → image viewer), **Import finished work** entry, + per-object **Processing** + **Sessions** tables and an **Object details** block (type/mag/size/season, RA/Dec in decimal + sexagesimal, filter rule, slug, capture targets, notes). Shows real filenames |
 | `pages/catalog.py` | catalog+status table (Object/Name/Type/Season/Mag/Size/Filter/Status/Integration/Sessions; sortable; sort persists across rebuilds; Season sorts by month) + **search box** + captured/deep/total **stat row**, hosting the shared `DetailPane`; `select_object`/`reload`; per-object import flow; edit-lock |
-| `pages/summary.py` | landing dashboard — category progress, processing-queue snapshot, current integrations, priority targets; object rows → `open_object` |
+| `pages/summary.py` | landing dashboard — **goal progress** (per active catalog), category progress, processing-queue snapshot, current integrations, priority targets; object rows → `open_object` |
 | `pages/processing.py` | Siril queue grouped by status with stack-meta columns; rows → `open_object` |
 | `pages/sessions.py` | capture-session log (sortable table Date/Object/Frames/Exp/Filter/Integration/Mount, default Date-desc) + search box; from `derived.load_sessions()`; rows → `open_object` |
 | `pages/journal.py` | reverse-chron **feed** of object cards (header · hero · status/stats · rendered notes) — every captured object + any noted-but-uncaptured; ordered by latest image mtime (reprocess re-orders); search box; cards → `open_object` |
@@ -173,7 +174,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `processing_dialog.py` | (legacy) manual **Prepare** preview — no longer launched (prep is automatic on ingest); kept pending a future processing-management view |
 | `import_dialog.py` | **Import finished work** preview (detected renders/stacks, hero pick, cleanup choice) → threaded `apply_import` behind modal progress+Cancel |
 | `image_viewer.py` | `ScalableImage` (pixmap that refits on resize — used for the hero) + `ImageViewer` (full-frame gallery viewer: Prev/Next, ←/→, Esc) |
-| `preferences.py` | choose data folder (save + restart) + **"Prepare objects for processing in:"** workflow checkboxes (Siril; others disabled "soon") → `processing_workflows` setting |
+| `preferences.py` | choose data folder (save + restart) + **"Prepare objects for processing in:"** workflow checkboxes → `processing_workflows`; + **"Goals — catalogs you're tracking"** checkboxes → `goals.set_active_goals` (activating one adds its members to the Library) |
 
 ---
 

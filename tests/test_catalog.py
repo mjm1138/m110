@@ -63,10 +63,11 @@ def test_add_captured_objects_minimal_when_offline(tmp_path, monkeypatch):
     config._seed_library(lib)
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
     monkeypatch.setattr(catalog, "_simbad_coords", lambda name: None)  # offline
-    (config.IMAGES_DIR / "NGC 7000" / "seestar-stacks").mkdir(parents=True)
-    assert catalog.add_captured_objects() == ["ngc-7000"]
-    assert "ngc-7000" not in catalog.load_coords()       # no coords, still added
-    assert catalog.load_library()["ngc-7000"]["id"] == "NGC 7000"
+    # a target not in any bundled catalog/reference (NGC 7000 is now Caldwell C20)
+    (config.IMAGES_DIR / "NGC 1234" / "seestar-stacks").mkdir(parents=True)
+    assert catalog.add_captured_objects() == ["ngc-1234"]
+    assert "ngc-1234" not in catalog.load_coords()       # no coords, still added
+    assert catalog.load_library()["ngc-1234"]["id"] == "NGC 1234"
 
 
 def test_season_sort_by_first_month_year_round_last():

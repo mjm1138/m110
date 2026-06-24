@@ -64,6 +64,27 @@ class SummaryPage(QScrollArea):
         title.setTextFormat(Qt.RichText)
         self._lay.addWidget(title)
 
+        # ── Goals (active catalogs) ─────────────────────────────────────────
+        goals = derived.load_goals()
+        if goals:
+            self._lay.addWidget(self._heading("Goals"))
+            g_tbl = make_table(["Goal", "Captured", "Deep", "Total", "Progress"],
+                               stretch_last=True)
+            g_tbl.setSortingEnabled(False)
+            for g in goals:
+                r = g_tbl.rowCount()
+                g_tbl.insertRow(r)
+                g_tbl.setItem(r, 0, QTableWidgetItem(g.get("name", g.get("id", ""))))
+                g_tbl.setItem(r, 1, QTableWidgetItem(str(g.get("captured", 0))))
+                g_tbl.setItem(r, 2, QTableWidgetItem(str(g.get("deep", 0))))
+                g_tbl.setItem(r, 3, QTableWidgetItem(str(g.get("total", 0))))
+                g_tbl.setItem(r, 4, QTableWidgetItem(
+                    f"{g.get('captured', 0)}/{g.get('total', 0)} "
+                    f"({g.get('percent', 0)}%)"))
+            g_tbl.resizeColumnsToContents()
+            g_tbl.setMinimumHeight(min(220, 28 * (len(goals) + 1) + 8))
+            self._lay.addWidget(g_tbl)
+
         # ── Progress by category ───────────────────────────────────────────
         self._lay.addWidget(self._heading("Progress by category"))
         cats = summary.get("by_category", {})

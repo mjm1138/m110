@@ -46,6 +46,11 @@ def load_processing() -> dict:
     return _load("processing.json") or {}
 
 
+def load_goals() -> list:
+    """Per active-goal progress [{id,name,total,captured,deep,percent}]; [] if absent."""
+    return _load("goals.json") or []
+
+
 def load_images() -> dict:
     """{slug: [ {name, label, viewable, thumb, full, ...} ]}.
 

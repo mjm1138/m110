@@ -549,6 +549,29 @@ def build_summary(catalog: dict, totals: dict) -> dict:
     return {"by_category": dict(cats), "grand": grand}
 
 
+def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
+    """Per active goal (bundled catalog), progress over its members:
+    {id, name, total, captured, deep, percent}. Captured/deep come from the
+    object-level rollup (by_slug)."""
+    from . import catalog
+    by_slug = totals["by_slug"]
+    out = []
+    for gid in active_ids:
+        cat = catalog.load_bundled_catalog(gid)
+        members = cat.get("members", {})
+        if not members:
+            continue
+        captured = [s for s in members if s in by_slug]
+        deep = [s for s in captured if by_slug[s].get("status") == "deep_stack"]
+        total = len(members)
+        out.append({
+            "id": gid, "name": cat.get("name", gid), "total": total,
+            "captured": len(captured), "deep": len(deep),
+            "percent": round(100 * len(captured) / total, 1) if total else 0.0,
+        })
+    return out
+
+
 def main():
     overrides_path = config.OVERRIDES_TOML
     catalog = load_toml(config.LIBRARY_TOML)["catalog"]
@@ -556,10 +579,12 @@ def main():
     sessions = load_sessions()
     overrides = load_toml(overrides_path) if overrides_path.exists() else None
 
+    from . import goals as goals_mod
     totals = build_totals(catalog, sessions)
     priority_progress = build_priorities(priorities, totals, catalog)
     summary = build_summary(catalog, totals)
     processing = build_processing(totals, overrides, catalog)
+    goals = build_goals(totals, goals_mod.active_goal_ids())
 
     out_dir = config.DERIVED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -571,6 +596,8 @@ def main():
         json.dumps(summary, indent=2, ensure_ascii=False))
     (out_dir / "processing.json").write_text(
         json.dumps(processing, indent=2, ensure_ascii=False))
+    (out_dir / "goals.json").write_text(
+        json.dumps(goals, indent=2, ensure_ascii=False))
 
     print(f"  totals:     {len(totals['by_slug'])} slugs, "
           f"{len(totals['by_folder'])} folders")
