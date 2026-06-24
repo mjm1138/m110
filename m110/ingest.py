@@ -155,7 +155,7 @@ def canonical_target(name: str) -> str:
                 return d.name              # reuse the existing folder's casing
 
     try:
-        cat = catalog.load_catalog()
+        cat = catalog.load_library()
     except Exception:
         cat = {}
     for slug, e in cat.items():
@@ -232,7 +232,7 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[Ing
     if not coords:
         return groups
     try:
-        cat = catalog.load_catalog()
+        cat = catalog.load_library()
     except Exception:
         cat = {}
     for g in groups:

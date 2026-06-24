@@ -551,7 +551,7 @@ def build_summary(catalog: dict, totals: dict) -> dict:
 
 def main():
     overrides_path = config.OVERRIDES_TOML
-    catalog = load_toml(config.CATALOG_TOML)["catalog"]
+    catalog = load_toml(config.LIBRARY_TOML)["catalog"]
     priorities = load_toml(config.PRIORITIES_TOML).get("priority", [])
     sessions = load_sessions()
     overrides = load_toml(overrides_path) if overrides_path.exists() else None

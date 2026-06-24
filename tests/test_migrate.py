@@ -67,8 +67,11 @@ def test_migrate_reshapes_store(tmp_path):
     assert migrate.migrate_store(root) is True
 
     internal = root / INTERNAL
-    # machine state → hidden internal store
-    assert (internal / "catalog.toml").is_file()
+    # machine state → hidden internal store; the object set lands as the Library
+    # (v0 → reshape → v3 catalog.toml→library.toml, all in one pass).
+    assert (internal / "library.toml").is_file()
+    assert not (internal / "catalog.toml").exists()
+    assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
     assert (internal / "priorities.toml").is_file()
     assert (internal / "sessions.jsonl").is_file()
     assert (internal / "processing_overrides.toml").is_file()
@@ -102,8 +105,7 @@ def test_migrate_reshapes_store(tmp_path):
     assert not (root / "Images" / "Seestar_stacks").exists()
     assert not (root / "Images" / "Finished Images").exists()
 
-    # version stamp
-    assert (internal / ".store_version").read_text().strip() == "2"
+    # version stamp (asserted above)
 
 
 def test_migrate_is_idempotent(tmp_path):
@@ -121,4 +123,22 @@ def test_migrate_skips_fresh_root(tmp_path):
     (root / "Objects").mkdir(parents=True)
     (root / "Images").mkdir()
     # no old-layout markers → nothing to do
+    assert migrate.migrate_store(root) is False
+
+
+def test_migrate_v2_to_v3_renames_catalog_to_library(tmp_path):
+    """A two-axis (v2) store with catalog.toml is brought to v3: the per-store
+    object set is renamed to library.toml (content preserved), no old-layout
+    reshape needed."""
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    (internal / "catalog.toml").write_text('[catalog.m31]\nid = "M31"\n')
+    (internal / ".store_version").write_text("2")
+
+    assert migrate.migrate_store(root) is True
+    assert (internal / "library.toml").read_text() == '[catalog.m31]\nid = "M31"\n'
+    assert not (internal / "catalog.toml").exists()
+    assert (internal / ".store_version").read_text().strip() == "3"
+    # idempotent
     assert migrate.migrate_store(root) is False

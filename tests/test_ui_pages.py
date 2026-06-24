@@ -33,7 +33,7 @@ def _seed_root(tmp_path, monkeypatch):
     root = tmp_path / "M110"
     internal = root / config.INTERNAL_DIRNAME
     monkeypatch.setattr(config, "DATA_ROOT", root)
-    monkeypatch.setattr(config, "CATALOG_TOML", internal / "catalog.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
     monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
@@ -48,7 +48,7 @@ def _seed_root(tmp_path, monkeypatch):
 
 
 def _first_object(root):
-    with (root / config.INTERNAL_DIRNAME / "catalog.toml").open("rb") as f:
+    with (root / config.INTERNAL_DIRNAME / "library.toml").open("rb") as f:
         slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
     return slug, (entry.get("id") or slug)
 
@@ -111,7 +111,7 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
     from m110 import catalog, derived
     d = DetailPane()
     try:
-        d.show_object(slug, catalog.load_catalog()[slug],
+        d.show_object(slug, catalog.load_library()[slug],
                       derived.totals_by_slug().get(slug, {}))
         qapp.processEvents()
         from PySide6.QtWidgets import QLabel

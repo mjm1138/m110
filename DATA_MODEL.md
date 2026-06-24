@@ -96,7 +96,7 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
   Inbox/                            staging area for ingest
   .m110_internal_data/              hidden machine state (README: "don't touch")
-    catalog.toml                    object catalog {slug:{id,name,type,…,ra_deg,dec_deg}}
+    library.toml                    the user's Library {slug:{id,name,type,size,mag,season,…}}
     priorities.toml                 priority targets ([[priority]]; optional track=false)
     processing_overrides.toml       per-folder status overrides ([folder.<name>])
     ingest_aliases.toml             source-name → canonical-target aliases
@@ -105,11 +105,12 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     derived/                        generated rollups: totals/summary/processing/
                                     priorities/images.json
     renders/                        generated thumbnails + hero/<slug>.jpg
-    .store_version                  layout version stamp (= 2)
+    .store_version                  layout version stamp (= 3)
 ```
 
 App-bundled **reference data** (ships in the package, not in the store):
-`m110/seed/{catalog,priorities}.toml`, `m110/seed/coords.csv` (J2000 ref coords),
+`m110/seed/objects.toml` (object **reference** dataset incl. J2000 coords),
+`m110/seed/priorities.toml`, `m110/seed/catalogs/*.toml` (bundled catalog membership lists),
 `m110/guidance/*.md` (workflow playbooks).
 
 ---
@@ -122,7 +123,9 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 
 | Entity / file | Location | Format | Derived / discovered | Mutability (enforcement) | Persistence | Retention / cleanup |
 |---|---|---|---|---|---|---|
-| Object catalog | `.m110_internal_data/catalog.toml` | TOML | Seeded from `seed/`; extended by `catalog.add_captured_objects` (captured-but-uncatalogued → minimal entry + Simbad coords) | **Mutable** — user-editable; app appends additively, never overwrites (convention) | Persistent | Never auto-deleted |
+| Library | `.m110_internal_data/library.toml` | TOML | The user's object corpus; seeded from the bundled reference (`seed/objects.toml`); extended by `catalog.add_captured_objects` (captured-but-uncatalogued → minimal entry + Simbad coords) | **Mutable** — user-editable; app appends additively, never overwrites (convention) | Persistent | Never auto-deleted |
+| Object reference | `m110/seed/objects.toml` | TOML | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
+| Catalog lists | `m110/seed/catalogs/*.toml` | TOML | Shipped with the app (Messier, …) | **Reference** (read-only) | Persistent (in package) | n/a |
 | Priorities | `.m110_internal_data/priorities.toml` | TOML (`[[priority]]`) | Hand-authored; joined with totals in `build_derived` | **Mutable** — user-owned | Persistent | Never auto-deleted |
 | Journal | `Objects/<id>/journal.md` | Markdown + YAML-ish frontmatter | Stub generated per catalog object from `journal_template.md`; body authored by user | **Mutable** — user-owned; app upserts only frontmatter keys (`objects.set_frontmatter_key`, e.g. hero) | Persistent | Never auto-deleted |
 | Processing overrides | `.m110_internal_data/processing_overrides.toml` | TOML (`[folder.<name>]`) | Authored (e.g. dismiss a folder) | **Mutable** — user-owned | Persistent | Never auto-deleted |
@@ -137,7 +140,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh |
 | Rollups | `.m110_internal_data/derived/*.json` | JSON | `build_derived` (totals/summary/processing/priorities), `build_images` (images) | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh (`processing.json` stamps `generated_at` and is intentionally not byte-stable) |
 | Renders cache | `.m110_internal_data/renders/` | JPG/PNG | `build_images` (content-hash cached: mtime+size+ver) | **Derived** | Regenerable | Safe to delete; **orphans should be pruned** (open #14) |
-| Store version | `.m110_internal_data/.store_version` | text (`2`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
+| Store version | `.m110_internal_data/.store_version` | text (`3`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
 | Bundled catalog/priorities/coords | `m110/seed/` | TOML/CSV | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
 | Guidance playbooks | `m110/guidance/*.md` | Markdown | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
 
@@ -180,7 +183,7 @@ for integrity verification.
 
 ## Versioning & migration
 
-`.store_version` (currently **2**) stamps the on-disk layout.
+`.store_version` (currently **3**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`.)
 `config.ensure_data_root()` runs `migrate.migrate_store()` on launch. Migrations
 are **idempotent, version-stamped, same-filesystem renames, resume-safe, and never
 destructive**. **Rule:** any change to the on-disk layout or file formats bumps the
@@ -204,7 +207,7 @@ flowchart TD
     end
 
     subgraph authored[Authored / .m110_internal_data]
-        CAT[catalog.toml]
+        CAT[library.toml]
         PRI[priorities.toml]
         OVR[processing_overrides.toml]
     end
@@ -250,7 +253,7 @@ migration**. These are intentionally *not* implemented yet; this section records
 the chosen direction so future work builds to it.
 
 ### Library, catalogs & goals (ROADMAP item 5)
-Four concepts (today all conflated in `catalog.toml`):
+Four concepts:
 - **Object** — intrinsic reference facts (coords, type, mag, size). Season is
   **derived** from coords + site, not stored.
 - **Catalog / List** — a curated, named, **app-bundled, immutable** reference set
@@ -259,16 +262,19 @@ Four concepts (today all conflated in `catalog.toml`):
 - **Library** — the user's mutable personal corpus: catalog members they track +
   arbitrary/captured additions. Objects ↔ catalogs are many-to-many (membership).
 
-**This reclassifies today's files:**
-- The per-store `.m110_internal_data/catalog.toml` is really the **Library**
-  (mutable, authored) — misnamed today; rename on this work (with a migration).
-- The bundled `seed/catalog.toml` + `seed/coords.csv` are *reference data*: split/
-  generalize into a bundled **object reference dataset** (id → coords/type/mag/
-  size) + **catalog membership lists** (proposed `seed/catalogs/<name>.toml` =
-  `{name, description, members:[ids]}`). Both immutable, shipped, version-with-app
-  (not the store).
-- **Goals** = which catalogs are active (a prefs selection); `build_derived`
-  computes **per-goal progress**.
+**Phase 5a (done):** the per-store object set is now the **Library**
+(`library.toml`; the v2→v3 migration renamed `catalog.toml`), and the bundled data
+is split into an **object reference dataset** (`seed/objects.toml`, id →
+coords/type/mag/size) + **catalog membership lists** (`seed/catalogs/<name>.toml` =
+`{name, description, members:[slug]}`; Messier ships). A fresh Library is seeded
+from the reference. `catalog.load_library()` / `load_reference()` /
+`load_bundled_catalog()`.
+
+**Still to build:**
+- **5b Goals** — which catalogs are active (a prefs selection); `build_derived`
+  computes **per-goal progress**; goal-selection + per-goal dashboard UI; more
+  bundled catalogs (Caldwell, …); the fresh-Library-=-Messier-only decision.
+- **5c Add arbitrary object + enrichment** — see below.
 
 **Add-arbitrary-object enrichment** (generalizes `catalog.add_captured_objects`),
 writing into the Library: bundled reference → else online by name (**astroquery**
@@ -295,7 +301,7 @@ type "unknown"). Season always derived from coords. The Library entry is
   `max(physical_obstruction, glow_floor)`), filter-aware. So each shooting
   location (home vs. dark-site trip) has its own horizon + glow, which the
   auto-prioritizer's season/observability gate reads. (Sources for an auto-derived
-  glow mask: World Atlas / VIIRS — bundle/cache offline like `seed/coords.csv`.)
+  glow mask: World Atlas / VIIRS — bundle/cache offline like `seed/objects.toml`.)
 - **Generated plan files** (SSC schedule JSON, NINA sequences) are user-facing
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.

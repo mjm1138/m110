@@ -24,9 +24,12 @@ def _make_staging(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
     monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
-    # Deterministic canonicalization/pointing: real seed catalog, isolated aliases.
+    # Deterministic canonicalization/pointing: a Library seeded from the bundled
+    # reference, isolated aliases.
     monkeypatch.setattr(config, "INTERNAL_DIR", root / ".m110_internal_data")
-    monkeypatch.setattr(config, "CATALOG_TOML", config.SEED_DIR / "catalog.toml")
+    lib = root / ".m110_internal_data" / "library.toml"
+    monkeypatch.setattr(config, "LIBRARY_TOML", lib)
+    config._seed_library(lib)
     staging = root / "Inbox"
     staging.mkdir(parents=True)
     return root, staging

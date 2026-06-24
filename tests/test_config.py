@@ -28,7 +28,7 @@ def test_ensure_data_root_creates_and_seeds(tmp_path):
     config.ensure_data_root(root)
     internal = root / config.INTERNAL_DIRNAME
     # seeded static files now live in the hidden internal store
-    assert (internal / "catalog.toml").is_file()
+    assert (internal / "library.toml").is_file()
     assert (internal / "priorities.toml").is_file()
     # a "don't touch" README accompanies the internals
     assert (internal / "README.txt").is_file()
@@ -43,7 +43,7 @@ def test_ensure_data_root_creates_and_seeds(tmp_path):
 def test_ensure_is_idempotent_and_preserves_edits(tmp_path):
     root = tmp_path / "M110"
     config.ensure_data_root(root)
-    cat = root / config.INTERNAL_DIRNAME / "catalog.toml"
+    cat = root / config.INTERNAL_DIRNAME / "library.toml"
     cat.write_text("# user-edited\n")
     config.ensure_data_root(root)  # must NOT overwrite an existing catalog
     assert cat.read_text() == "# user-edited\n"
@@ -57,7 +57,7 @@ def test_ensure_creates_journal_template_and_stubs(tmp_path):
     assert (internal / "journal_template.md").is_file()
     # every seeded catalog object gets an Objects/<id>/journal.md stub
     import tomllib
-    with (internal / "catalog.toml").open("rb") as f:
+    with (internal / "library.toml").open("rb") as f:
         catalog = tomllib.load(f)["catalog"]
     assert len(catalog) > 100
     sample_slug, sample = next(iter(catalog.items()))
@@ -67,11 +67,11 @@ def test_ensure_creates_journal_template_and_stubs(tmp_path):
     text = stub.read_text()
     assert text.startswith("---") and "name:" in text  # has the template frontmatter
     # objects.read_journal parses it when OBJECTS_DIR/CATALOG_TOML point here
-    monkey_cat = root / config.INTERNAL_DIRNAME / "catalog.toml"
+    monkey_cat = root / config.INTERNAL_DIRNAME / "library.toml"
     import pytest
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(config, "OBJECTS_DIR", root / "Objects")
-        mp.setattr(config, "CATALOG_TOML", monkey_cat)
+        mp.setattr(config, "LIBRARY_TOML", monkey_cat)
         fm, _ = objects.read_journal(sample_slug)
     assert fm.get("name")
 
@@ -80,7 +80,7 @@ def test_ensure_stub_never_overwrites_existing_journal(tmp_path):
     root = tmp_path / "M110"
     config.ensure_data_root(root)
     import tomllib
-    with (root / config.INTERNAL_DIRNAME / "catalog.toml").open("rb") as f:
+    with (root / config.INTERNAL_DIRNAME / "library.toml").open("rb") as f:
         slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
     obj_id = (entry.get("id") or slug).replace("/", "-").strip()
     journal = root / "Objects" / obj_id / "journal.md"

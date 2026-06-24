@@ -28,7 +28,7 @@ def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
     if render:
         try:
             from . import build_images, derived
-            rendered = build_images.render_images(catalog.load_catalog(),
+            rendered = build_images.render_images(catalog.load_library(),
                                                   derived.load_totals())
         except Exception as exc:  # never let rendering break a refresh
             print(f"  image render skipped: {exc}")

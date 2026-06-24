@@ -1,4 +1,7 @@
-[catalog.m31]
+# M110 bundled object reference dataset (immutable).
+# Intrinsic facts per object; coords J2000. See DATA_MODEL.md.
+
+[object.m31]
 id = "M31"
 name = "Andromeda Galaxy"
 type = "galaxy"
@@ -7,8 +10,10 @@ size = "3°×1°"
 season = "Sep–Nov"
 filter = "OFF"
 notes = "Mosaic required"
+ra_deg = 10.6847
+dec_deg = 41.2688
 
-[catalog.m32]
+[object.m32]
 id = "M32"
 name = "Andromeda companion"
 type = "galaxy"
@@ -17,8 +22,10 @@ size = "8'×6'"
 season = "Sep–Nov"
 filter = "OFF"
 notes = "Image with M31"
+ra_deg = 10.6743
+dec_deg = 40.8652
 
-[catalog.m33]
+[object.m33]
 id = "M33"
 name = "Triangulum Galaxy"
 type = "galaxy"
@@ -27,8 +34,10 @@ size = "73'×45'"
 season = "Oct–Dec"
 filter = "OFF"
 notes = "Very low SB; mosaic"
+ra_deg = 23.4621
+dec_deg = 30.6602
 
-[catalog.m49]
+[object.m49]
 id = "M49"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -36,8 +45,10 @@ magnitude = 8.4
 size = "9'×7'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 187.4449
+dec_deg = 8.0004
 
-[catalog.m51]
+[object.m51]
 id = "M51"
 name = "Whirlpool Galaxy"
 type = "galaxy"
@@ -45,8 +56,10 @@ magnitude = 8.4
 size = "11'×7'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 202.4696
+dec_deg = 47.1953
 
-[catalog.m58]
+[object.m58]
 id = "M58"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -54,8 +67,10 @@ magnitude = 9.7
 size = "6'×5'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 189.4317
+dec_deg = 11.8181
 
-[catalog.m59]
+[object.m59]
 id = "M59"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -63,8 +78,10 @@ magnitude = 9.8
 size = "5'×3'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 190.5094
+dec_deg = 11.6469
 
-[catalog.m60]
+[object.m60]
 id = "M60"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -72,8 +89,10 @@ magnitude = 8.8
 size = "7'×6'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 190.9165
+dec_deg = 11.5527
 
-[catalog.m61]
+[object.m61]
 id = "M61"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -81,8 +100,10 @@ magnitude = 9.7
 size = "6'×6'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 185.4789
+dec_deg = 4.4738
 
-[catalog.m63]
+[object.m63]
 id = "M63"
 name = "Sunflower Galaxy"
 type = "galaxy"
@@ -90,8 +111,10 @@ magnitude = 8.6
 size = "12'×7'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 198.9553
+dec_deg = 42.0294
 
-[catalog.m64]
+[object.m64]
 id = "M64"
 name = "Black Eye Galaxy"
 type = "galaxy"
@@ -99,8 +122,10 @@ magnitude = 8.5
 size = "10'×5'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 194.1821
+dec_deg = 21.6827
 
-[catalog.m65]
+[object.m65]
 id = "M65"
 name = "Leo Triplet"
 type = "galaxy"
@@ -108,8 +133,10 @@ magnitude = 9.3
 size = "8'×2'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 169.733
+dec_deg = 13.0923
 
-[catalog.m66]
+[object.m66]
 id = "M66"
 name = "Leo Triplet"
 type = "galaxy"
@@ -117,8 +144,10 @@ magnitude = 8.9
 size = "9'×4'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 170.0626
+dec_deg = 12.9915
 
-[catalog.m74]
+[object.m74]
 id = "M74"
 name = "Phantom Galaxy"
 type = "galaxy"
@@ -127,8 +156,10 @@ size = "10'×10'"
 season = "Oct–Dec"
 filter = "OFF"
 notes = "Very low SB"
+ra_deg = 24.1739
+dec_deg = 15.7836
 
-[catalog.m77]
+[object.m77]
 id = "M77"
 name = "Cetus Galaxy"
 type = "galaxy"
@@ -136,8 +167,10 @@ magnitude = 8.9
 size = "7'×6'"
 season = "Oct–Dec"
 filter = "OFF"
+ra_deg = 40.6696
+dec_deg = -0.0133
 
-[catalog.m81]
+[object.m81]
 id = "M81"
 name = "Bode's Galaxy"
 type = "galaxy"
@@ -145,8 +178,10 @@ magnitude = 6.9
 size = "27'×14'"
 season = "Feb–Apr"
 filter = "OFF"
+ra_deg = 148.8882
+dec_deg = 69.0653
 
-[catalog.m82]
+[object.m82]
 id = "M82"
 name = "Cigar Galaxy"
 type = "galaxy"
@@ -154,8 +189,10 @@ magnitude = 8.4
 size = "11'×4'"
 season = "Feb–Apr"
 filter = "OFF"
+ra_deg = 148.9685
+dec_deg = 69.6797
 
-[catalog.m83]
+[object.m83]
 id = "M83"
 name = "Southern Pinwheel"
 type = "galaxy"
@@ -164,8 +201,10 @@ size = "13'×12'"
 season = "Apr–Jun"
 filter = "OFF"
 notes = "~20° altitude from Boulder"
+ra_deg = 204.2538
+dec_deg = -29.8658
 
-[catalog.m84]
+[object.m84]
 id = "M84"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -174,8 +213,10 @@ size = "6'×5'"
 season = "Mar–May"
 filter = "OFF"
 notes = "Markarian's Chain"
+ra_deg = 186.2656
+dec_deg = 12.887
 
-[catalog.m85]
+[object.m85]
 id = "M85"
 name = "Coma Galaxy"
 type = "galaxy"
@@ -183,8 +224,10 @@ magnitude = 9.1
 size = "7'×5'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 186.3502
+dec_deg = 18.1911
 
-[catalog.m86]
+[object.m86]
 id = "M86"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -193,8 +236,10 @@ size = "8'×6'"
 season = "Mar–May"
 filter = "OFF"
 notes = "Markarian's Chain"
+ra_deg = 186.5492
+dec_deg = 12.946
 
-[catalog.m87]
+[object.m87]
 id = "M87"
 name = "Virgo A"
 type = "galaxy"
@@ -202,8 +247,10 @@ magnitude = 8.6
 size = "7'×6'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 187.7059
+dec_deg = 12.3911
 
-[catalog.m88]
+[object.m88]
 id = "M88"
 name = "Coma Galaxy"
 type = "galaxy"
@@ -211,8 +258,10 @@ magnitude = 9.6
 size = "7'×4'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 187.9965
+dec_deg = 14.4203
 
-[catalog.m89]
+[object.m89]
 id = "M89"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -220,8 +269,10 @@ magnitude = 9.8
 size = "4'×4'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 188.9159
+dec_deg = 12.5563
 
-[catalog.m90]
+[object.m90]
 id = "M90"
 name = "Virgo Galaxy"
 type = "galaxy"
@@ -229,8 +280,10 @@ magnitude = 9.5
 size = "10'×5'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 189.2075
+dec_deg = 13.1629
 
-[catalog.m91]
+[object.m91]
 id = "M91"
 name = "Coma Galaxy"
 type = "galaxy"
@@ -239,8 +292,10 @@ size = "5'×4'"
 season = "Mar–May"
 filter = "OFF"
 notes = "Faint"
+ra_deg = 188.8602
+dec_deg = 14.4963
 
-[catalog.m94]
+[object.m94]
 id = "M94"
 name = "Croc's Eye Galaxy"
 type = "galaxy"
@@ -248,8 +303,10 @@ magnitude = 8.2
 size = "11'×9'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 192.7211
+dec_deg = 41.1203
 
-[catalog.m95]
+[object.m95]
 id = "M95"
 name = "Leo Galaxy"
 type = "galaxy"
@@ -257,8 +314,10 @@ magnitude = 9.7
 size = "7'×5'"
 season = "Feb–Apr"
 filter = "OFF"
+ra_deg = 160.9905
+dec_deg = 11.7037
 
-[catalog.m96]
+[object.m96]
 id = "M96"
 name = "Leo Galaxy"
 type = "galaxy"
@@ -266,8 +325,10 @@ magnitude = 9.2
 size = "7'×5'"
 season = "Feb–Apr"
 filter = "OFF"
+ra_deg = 161.6906
+dec_deg = 11.8199
 
-[catalog.m98]
+[object.m98]
 id = "M98"
 name = "Coma Galaxy"
 type = "galaxy"
@@ -275,8 +336,10 @@ magnitude = 10.1
 size = "10'×3'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 183.4512
+dec_deg = 14.9005
 
-[catalog.m99]
+[object.m99]
 id = "M99"
 name = "Coma Galaxy"
 type = "galaxy"
@@ -284,8 +347,10 @@ magnitude = 9.9
 size = "5'×5'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 184.7068
+dec_deg = 14.4165
 
-[catalog.m100]
+[object.m100]
 id = "M100"
 name = "Coma Galaxy"
 type = "galaxy"
@@ -293,8 +358,10 @@ magnitude = 9.3
 size = "7'×6'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 185.7289
+dec_deg = 15.8223
 
-[catalog.m101]
+[object.m101]
 id = "M101"
 name = "Pinwheel Galaxy"
 type = "galaxy"
@@ -302,8 +369,10 @@ magnitude = 7.9
 size = "29'×27'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 210.8024
+dec_deg = 54.3488
 
-[catalog.m102]
+[object.m102]
 id = "M102"
 name = "Spindle Galaxy"
 type = "galaxy"
@@ -311,8 +380,10 @@ magnitude = 9.9
 size = "5'×2'"
 season = "May–Jul"
 filter = "OFF"
+ra_deg = 226.6232
+dec_deg = 55.7633
 
-[catalog.m104]
+[object.m104]
 id = "M104"
 name = "Sombrero Galaxy"
 type = "galaxy"
@@ -321,9 +392,10 @@ size = "9'×4'"
 season = "Mar–May"
 filter = "OFF"
 notes = "⚠ WSW tree — field site only"
-obstructed = true
+ra_deg = 189.9976
+dec_deg = -11.6231
 
-[catalog.m105]
+[object.m105]
 id = "M105"
 name = "Leo Galaxy"
 type = "galaxy"
@@ -331,8 +403,10 @@ magnitude = 9.3
 size = "4'×4'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 161.9567
+dec_deg = 12.5816
 
-[catalog.m106]
+[object.m106]
 id = "M106"
 name = "NGC 4258"
 type = "galaxy"
@@ -340,8 +414,10 @@ magnitude = 8.4
 size = "19'×8'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 184.7401
+dec_deg = 47.3037
 
-[catalog.m108]
+[object.m108]
 id = "M108"
 name = "Surfboard Galaxy"
 type = "galaxy"
@@ -349,8 +425,10 @@ magnitude = 10.0
 size = "8'×2'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 167.879
+dec_deg = 55.6741
 
-[catalog.m109]
+[object.m109]
 id = "M109"
 name = "Barred Spiral"
 type = "galaxy"
@@ -358,8 +436,10 @@ magnitude = 9.8
 size = "7'×5'"
 season = "Mar–May"
 filter = "OFF"
+ra_deg = 179.3998
+dec_deg = 53.3747
 
-[catalog.m110]
+[object.m110]
 id = "M110"
 name = "M31 companion"
 type = "galaxy"
@@ -368,8 +448,10 @@ size = "22'×11'"
 season = "Sep–Nov"
 filter = "OFF"
 notes = "Image with M31"
+ra_deg = 10.0919
+dec_deg = 41.6854
 
-[catalog.ngc-2903]
+[object.ngc-2903]
 id = "NGC 2903"
 name = "NGC 2903"
 type = "galaxy"
@@ -377,13 +459,17 @@ magnitude = 8.9
 size = "13'×6'"
 season = "Feb–Apr"
 filter = "OFF"
+ra_deg = 143.0421
+dec_deg = 21.5008
 
-[catalog.ngc-3628]
+[object.ngc-3628]
 id = "NGC 3628"
 type = "galaxy"
 season = "Mar–May"
+ra_deg = 170.0709
+dec_deg = 13.5895
 
-[catalog.m1]
+[object.m1]
 id = "M1"
 name = "Crab Nebula (SNR)"
 type = "emission_snr"
@@ -391,8 +477,10 @@ magnitude = 8.4
 size = "7'×5'"
 season = "Dec–Feb"
 filter = "ON"
+ra_deg = 83.6324
+dec_deg = 22.0174
 
-[catalog.m8]
+[object.m8]
 id = "M8"
 name = "Lagoon Nebula"
 type = "emission"
@@ -400,8 +488,10 @@ magnitude = 5.0
 size = "90'×40'"
 season = "Jun–Aug"
 filter = "ON"
+ra_deg = 270.9042
+dec_deg = -24.3867
 
-[catalog.m16]
+[object.m16]
 id = "M16"
 name = "Eagle Nebula"
 type = "emission"
@@ -409,8 +499,10 @@ magnitude = 6.4
 size = "35'×28'"
 season = "Jun–Aug"
 filter = "ON"
+ra_deg = 274.688
+dec_deg = -13.792
 
-[catalog.m17]
+[object.m17]
 id = "M17"
 name = "Omega/Swan Nebula"
 type = "emission"
@@ -418,8 +510,10 @@ magnitude = 7.0
 size = "46'×37'"
 season = "Jun–Aug"
 filter = "ON"
+ra_deg = 275.1958
+dec_deg = -16.1717
 
-[catalog.m20]
+[object.m20]
 id = "M20"
 name = "Trifid Nebula"
 type = "emission"
@@ -427,8 +521,10 @@ magnitude = 9.0
 size = "28'"
 season = "Jun–Aug"
 filter = "ON"
+ra_deg = 270.675
+dec_deg = -22.9717
 
-[catalog.m27]
+[object.m27]
 id = "M27"
 name = "Dumbbell Nebula"
 type = "planetary"
@@ -436,8 +532,10 @@ magnitude = 7.4
 size = "8'×6'"
 season = "Jul–Sep"
 filter = "ON"
+ra_deg = 299.9015
+dec_deg = 22.7212
 
-[catalog.m42]
+[object.m42]
 id = "M42"
 name = "Orion Nebula"
 type = "emission"
@@ -445,8 +543,10 @@ magnitude = 4.0
 size = "85'×60'"
 season = "Dec–Feb"
 filter = "OFF"
+ra_deg = 83.8201
+dec_deg = -5.3876
 
-[catalog.m43]
+[object.m43]
 id = "M43"
 name = "De Mairan's Nebula"
 type = "emission"
@@ -454,8 +554,10 @@ magnitude = 9.0
 size = "20'×15'"
 season = "Dec–Feb"
 filter = "ON"
+ra_deg = 83.8792
+dec_deg = -5.27
 
-[catalog.m57]
+[object.m57]
 id = "M57"
 name = "Ring Nebula"
 type = "planetary"
@@ -463,8 +565,10 @@ magnitude = 8.8
 size = "4'×3'"
 season = "Jul–Sep"
 filter = "ON"
+ra_deg = 283.3962
+dec_deg = 33.0291
 
-[catalog.m76]
+[object.m76]
 id = "M76"
 name = "Little Dumbbell"
 type = "planetary"
@@ -472,26 +576,32 @@ magnitude = 10.1
 size = "3'×2'"
 season = "Oct–Dec"
 filter = "ON"
+ra_deg = 25.5819
+dec_deg = 51.5754
 
-[catalog.m97]
+[object.m97]
 id = "M97"
-type = "planetary"
 name = "Owl Nebula"
+type = "planetary"
 magnitude = 9.9
 size = "3'"
 season = "Year-round"
 filter = "ON"
+ra_deg = 168.6988
+dec_deg = 55.019
 
-[catalog.m78]
+[object.m78]
 id = "M78"
-type = "reflection"
 name = "Reflection Neb"
+type = "reflection"
 magnitude = 8.3
 size = "8'×6'"
 season = "Dec–Feb"
 filter = "OFF"
+ra_deg = 86.6908
+dec_deg = 0.0792
 
-[catalog.m2]
+[object.m2]
 id = "M2"
 name = "Aquarius Globular"
 type = "globular"
@@ -499,8 +609,10 @@ magnitude = 6.5
 size = "16'"
 season = "Aug–Oct"
 filter = "OFF"
+ra_deg = 323.3626
+dec_deg = -0.8232
 
-[catalog.m3]
+[object.m3]
 id = "M3"
 name = "CVn Globular"
 type = "globular"
@@ -508,8 +620,10 @@ magnitude = 6.2
 size = "18'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 205.5484
+dec_deg = 28.3773
 
-[catalog.m4]
+[object.m4]
 id = "M4"
 name = "Scorpius Globular"
 type = "globular"
@@ -518,8 +632,10 @@ size = "26'"
 season = "May–Jul"
 filter = "OFF"
 notes = "Low from Boulder"
+ra_deg = 245.8968
+dec_deg = -26.5258
 
-[catalog.m5]
+[object.m5]
 id = "M5"
 name = "Serpens Globular"
 type = "globular"
@@ -527,8 +643,10 @@ magnitude = 5.7
 size = "17'"
 season = "May–Jul"
 filter = "OFF"
+ra_deg = 229.6384
+dec_deg = 2.081
 
-[catalog.m9]
+[object.m9]
 id = "M9"
 name = "Ophiuchus Globular"
 type = "globular"
@@ -536,8 +654,10 @@ magnitude = 7.7
 size = "9'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 259.7991
+dec_deg = -18.5162
 
-[catalog.m10]
+[object.m10]
 id = "M10"
 name = "Ophiuchus Globular"
 type = "globular"
@@ -545,8 +665,10 @@ magnitude = 6.6
 size = "15'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 254.2877
+dec_deg = -4.1003
 
-[catalog.m12]
+[object.m12]
 id = "M12"
 name = "Ophiuchus Globular"
 type = "globular"
@@ -554,8 +676,10 @@ magnitude = 6.7
 size = "14'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 251.8091
+dec_deg = -1.9485
 
-[catalog.m13]
+[object.m13]
 id = "M13"
 name = "Hercules Globular"
 type = "globular"
@@ -563,8 +687,10 @@ magnitude = 5.9
 size = "20'"
 season = "May–Jul"
 filter = "OFF"
+ra_deg = 250.4235
+dec_deg = 36.4613
 
-[catalog.m14]
+[object.m14]
 id = "M14"
 name = "Ophiuchus Globular"
 type = "globular"
@@ -572,8 +698,10 @@ magnitude = 7.6
 size = "11'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 264.4006
+dec_deg = -3.2459
 
-[catalog.m15]
+[object.m15]
 id = "M15"
 name = "Pegasus Globular"
 type = "globular"
@@ -581,8 +709,10 @@ magnitude = 6.2
 size = "18'"
 season = "Aug–Oct"
 filter = "OFF"
+ra_deg = 322.493
+dec_deg = 12.167
 
-[catalog.m19]
+[object.m19]
 id = "M19"
 name = "Ophiuchus Globular"
 type = "globular"
@@ -590,8 +720,10 @@ magnitude = 6.8
 size = "14'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 255.657
+dec_deg = -26.2679
 
-[catalog.m22]
+[object.m22]
 id = "M22"
 name = "Sagittarius Globular"
 type = "globular"
@@ -599,8 +731,10 @@ magnitude = 5.1
 size = "24'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 279.0997
+dec_deg = -23.9048
 
-[catalog.m28]
+[object.m28]
 id = "M28"
 name = "Sagittarius Globular"
 type = "globular"
@@ -608,8 +742,10 @@ magnitude = 6.8
 size = "11'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 276.137
+dec_deg = -24.8698
 
-[catalog.m30]
+[object.m30]
 id = "M30"
 name = "Capricornus Globular"
 type = "globular"
@@ -617,8 +753,10 @@ magnitude = 7.2
 size = "11'"
 season = "Aug–Oct"
 filter = "OFF"
+ra_deg = 325.0922
+dec_deg = -23.1799
 
-[catalog.m53]
+[object.m53]
 id = "M53"
 name = "Coma Globular"
 type = "globular"
@@ -626,8 +764,10 @@ magnitude = 7.6
 size = "12'"
 season = "Apr–Jun"
 filter = "OFF"
+ra_deg = 198.2302
+dec_deg = 18.1682
 
-[catalog.m54]
+[object.m54]
 id = "M54"
 name = "Sagittarius Globular"
 type = "globular"
@@ -635,8 +775,10 @@ magnitude = 7.6
 size = "9'"
 season = "Jul–Sep"
 filter = "OFF"
+ra_deg = 283.7639
+dec_deg = -30.4799
 
-[catalog.m55]
+[object.m55]
 id = "M55"
 name = "Sagittarius Globular"
 type = "globular"
@@ -645,8 +787,10 @@ size = "19'"
 season = "Jul–Sep"
 filter = "OFF"
 notes = "Low from Boulder"
+ra_deg = 294.9988
+dec_deg = -30.9648
 
-[catalog.m56]
+[object.m56]
 id = "M56"
 name = "Lyra Globular"
 type = "globular"
@@ -654,8 +798,10 @@ magnitude = 8.3
 size = "7'"
 season = "Jul–Sep"
 filter = "OFF"
+ra_deg = 289.1482
+dec_deg = 30.1835
 
-[catalog.m62]
+[object.m62]
 id = "M62"
 name = "Scorpius Globular"
 type = "globular"
@@ -664,8 +810,10 @@ size = "14'"
 season = "Jun–Aug"
 filter = "OFF"
 notes = "Low"
+ra_deg = 255.3025
+dec_deg = -30.1124
 
-[catalog.m68]
+[object.m68]
 id = "M68"
 name = "Hydra Globular"
 type = "globular"
@@ -674,8 +822,10 @@ size = "12'"
 season = "Mar–May"
 filter = "OFF"
 notes = "Very low from Boulder"
+ra_deg = 189.8666
+dec_deg = -26.7441
 
-[catalog.m69]
+[object.m69]
 id = "M69"
 name = "Sagittarius Globular"
 type = "globular"
@@ -684,8 +834,10 @@ size = "9'"
 season = "Jun–Aug"
 filter = "OFF"
 notes = "Very low"
+ra_deg = 277.8462
+dec_deg = -32.3481
 
-[catalog.m70]
+[object.m70]
 id = "M70"
 name = "Sagittarius Globular"
 type = "globular"
@@ -694,8 +846,10 @@ size = "8'"
 season = "Jun–Aug"
 filter = "OFF"
 notes = "Very low"
+ra_deg = 280.8032
+dec_deg = -32.2921
 
-[catalog.m71]
+[object.m71]
 id = "M71"
 name = "Sagitta Globular"
 type = "globular"
@@ -703,8 +857,10 @@ magnitude = 8.3
 size = "7'"
 season = "Jul–Sep"
 filter = "OFF"
+ra_deg = 298.4437
+dec_deg = 18.7792
 
-[catalog.m72]
+[object.m72]
 id = "M72"
 name = "Aquarius Globular"
 type = "globular"
@@ -713,8 +869,10 @@ size = "6'"
 season = "Aug–Oct"
 filter = "OFF"
 notes = "Faint"
+ra_deg = 313.3654
+dec_deg = -12.5373
 
-[catalog.m75]
+[object.m75]
 id = "M75"
 name = "Sagittarius Globular"
 type = "globular"
@@ -722,8 +880,10 @@ magnitude = 8.5
 size = "6'"
 season = "Jul–Sep"
 filter = "OFF"
+ra_deg = 301.5202
+dec_deg = -21.9223
 
-[catalog.m79]
+[object.m79]
 id = "M79"
 name = "Lepus Globular"
 type = "globular"
@@ -732,8 +892,10 @@ size = "9'"
 season = "Dec–Feb"
 filter = "OFF"
 notes = "Season ending"
+ra_deg = 81.0441
+dec_deg = -24.5242
 
-[catalog.m80]
+[object.m80]
 id = "M80"
 name = "Scorpius Globular"
 type = "globular"
@@ -742,8 +904,10 @@ size = "10'"
 season = "May–Jul"
 filter = "OFF"
 notes = "Low"
+ra_deg = 244.26
+dec_deg = -22.9761
 
-[catalog.m92]
+[object.m92]
 id = "M92"
 name = "Hercules Globular"
 type = "globular"
@@ -751,17 +915,21 @@ magnitude = 6.5
 size = "14'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 259.2808
+dec_deg = 43.1359
 
-[catalog.m107]
+[object.m107]
 id = "M107"
-type = "globular"
 name = "Ophiuchus Globular"
+type = "globular"
 magnitude = 7.8
 size = "10'"
 season = "May–Jul"
 filter = "OFF"
+ra_deg = 248.1328
+dec_deg = -13.0538
 
-[catalog.m6]
+[object.m6]
 id = "M6"
 name = "Butterfly Cluster"
 type = "open_cluster"
@@ -770,8 +938,10 @@ size = "25'"
 season = "Jun–Aug"
 filter = "OFF"
 notes = "Low from Boulder"
+ra_deg = 265.0692
+dec_deg = -32.2419
 
-[catalog.m7]
+[object.m7]
 id = "M7"
 name = "Ptolemy's Cluster"
 type = "open_cluster"
@@ -780,8 +950,10 @@ size = "80'"
 season = "Jun–Aug"
 filter = "OFF"
 notes = "Very low"
+ra_deg = 268.4471
+dec_deg = -34.8411
 
-[catalog.m11]
+[object.m11]
 id = "M11"
 name = "Wild Duck Cluster"
 type = "open_cluster"
@@ -789,8 +961,10 @@ magnitude = 5.8
 size = "14'"
 season = "Jul–Sep"
 filter = "OFF"
+ra_deg = 282.7658
+dec_deg = -6.2719
 
-[catalog.m18]
+[object.m18]
 id = "M18"
 name = "Open Cluster"
 type = "open_cluster"
@@ -798,8 +972,10 @@ magnitude = 7.5
 size = "9'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 274.9875
+dec_deg = -17.0883
 
-[catalog.m21]
+[object.m21]
 id = "M21"
 name = "Open Cluster"
 type = "open_cluster"
@@ -807,8 +983,10 @@ magnitude = 6.5
 size = "13'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 271.0358
+dec_deg = -22.505
 
-[catalog.m23]
+[object.m23]
 id = "M23"
 name = "Open Cluster"
 type = "open_cluster"
@@ -816,8 +994,10 @@ magnitude = 6.9
 size = "27'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 269.2371
+dec_deg = -18.9869
 
-[catalog.m24]
+[object.m24]
 id = "M24"
 name = "Sagittarius Star Cloud"
 type = "open_cluster"
@@ -826,8 +1006,10 @@ size = "90'"
 season = "Jun–Aug"
 filter = "OFF"
 notes = "Mosaic mode; Arches target"
+ra_deg = 274.2
+dec_deg = -18.55
 
-[catalog.m25]
+[object.m25]
 id = "M25"
 name = "Open Cluster"
 type = "open_cluster"
@@ -835,8 +1017,10 @@ magnitude = 6.5
 size = "32'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 277.9371
+dec_deg = -19.1139
 
-[catalog.m26]
+[object.m26]
 id = "M26"
 name = "Open Cluster"
 type = "open_cluster"
@@ -844,8 +1028,10 @@ magnitude = 8.0
 size = "15'"
 season = "Jun–Aug"
 filter = "OFF"
+ra_deg = 281.3171
+dec_deg = -9.3861
 
-[catalog.m29]
+[object.m29]
 id = "M29"
 name = "Cygnus Cluster"
 type = "open_cluster"
@@ -853,8 +1039,10 @@ magnitude = 7.1
 size = "7'"
 season = "Jul–Sep"
 filter = "OFF"
+ra_deg = 305.9417
+dec_deg = 38.4867
 
-[catalog.m34]
+[object.m34]
 id = "M34"
 name = "Perseus Cluster"
 type = "open_cluster"
@@ -862,8 +1050,10 @@ magnitude = 5.2
 size = "35'"
 season = "Oct–Dec"
 filter = "OFF"
+ra_deg = 40.5308
+dec_deg = 42.7219
 
-[catalog.m35]
+[object.m35]
 id = "M35"
 name = "Gemini Cluster"
 type = "open_cluster"
@@ -872,8 +1062,10 @@ size = "28'"
 season = "Dec–Feb"
 filter = "OFF"
 notes = "Season ending"
+ra_deg = 92.2721
+dec_deg = 24.3361
 
-[catalog.m36]
+[object.m36]
 id = "M36"
 name = "Auriga Cluster"
 type = "open_cluster"
@@ -882,8 +1074,10 @@ size = "12'"
 season = "Dec–Feb"
 filter = "OFF"
 notes = "Season ending"
+ra_deg = 84.0842
+dec_deg = 34.135
 
-[catalog.m37]
+[object.m37]
 id = "M37"
 name = "Auriga Cluster"
 type = "open_cluster"
@@ -891,8 +1085,10 @@ magnitude = 5.6
 size = "24'"
 season = "Dec–Feb"
 filter = "OFF"
+ra_deg = 88.0742
+dec_deg = 32.545
 
-[catalog.m38]
+[object.m38]
 id = "M38"
 name = "Auriga Cluster"
 type = "open_cluster"
@@ -901,8 +1097,10 @@ size = "21'"
 season = "Dec–Feb"
 filter = "OFF"
 notes = "Season ending"
+ra_deg = 82.1671
+dec_deg = 35.8239
 
-[catalog.m39]
+[object.m39]
 id = "M39"
 name = "Cygnus Cluster"
 type = "open_cluster"
@@ -910,8 +1108,10 @@ magnitude = 4.6
 size = "32'"
 season = "Aug–Oct"
 filter = "OFF"
+ra_deg = 322.8892
+dec_deg = 48.2469
 
-[catalog.m41]
+[object.m41]
 id = "M41"
 name = "Canis Major Cluster"
 type = "open_cluster"
@@ -920,8 +1120,10 @@ size = "38'"
 season = "Dec–Feb"
 filter = "OFF"
 notes = "Low from Boulder"
+ra_deg = 101.4992
+dec_deg = -20.7161
 
-[catalog.m44]
+[object.m44]
 id = "M44"
 name = "Beehive Cluster"
 type = "open_cluster"
@@ -929,8 +1131,10 @@ magnitude = 3.1
 size = "95'"
 season = "Jan–Mar"
 filter = "OFF"
+ra_deg = 130.0542
+dec_deg = 19.6211
 
-[catalog.m45]
+[object.m45]
 id = "M45"
 name = "Pleiades"
 type = "open_cluster"
@@ -939,8 +1143,10 @@ size = "110'"
 season = "Nov–Jan"
 filter = "OFF"
 notes = "Very large; mosaic"
+ra_deg = 56.6008
+dec_deg = 24.1139
 
-[catalog.m46]
+[object.m46]
 id = "M46"
 name = "Puppis Cluster"
 type = "open_cluster"
@@ -949,8 +1155,10 @@ size = "27'"
 season = "Jan–Mar"
 filter = "OFF"
 notes = "Low"
+ra_deg = 115.445
+dec_deg = -14.8439
 
-[catalog.m47]
+[object.m47]
 id = "M47"
 name = "Puppis Cluster"
 type = "open_cluster"
@@ -959,8 +1167,10 @@ size = "30'"
 season = "Jan–Mar"
 filter = "OFF"
 notes = "Low"
+ra_deg = 114.1471
+dec_deg = -14.4889
 
-[catalog.m48]
+[object.m48]
 id = "M48"
 name = "Hydra Cluster"
 type = "open_cluster"
@@ -968,8 +1178,10 @@ magnitude = 5.8
 size = "54'"
 season = "Jan–Mar"
 filter = "OFF"
+ra_deg = 123.4121
+dec_deg = -5.7261
 
-[catalog.m50]
+[object.m50]
 id = "M50"
 name = "Monoceros Cluster"
 type = "open_cluster"
@@ -978,8 +1190,10 @@ size = "16'"
 season = "Jan–Mar"
 filter = "OFF"
 notes = "Season ending"
+ra_deg = 105.6842
+dec_deg = -8.365
 
-[catalog.m52]
+[object.m52]
 id = "M52"
 name = "Cassiopeia Cluster"
 type = "open_cluster"
@@ -987,8 +1201,10 @@ magnitude = 6.9
 size = "13'"
 season = "Sep–Nov"
 filter = "OFF"
+ra_deg = 351.195
+dec_deg = 61.59
 
-[catalog.m67]
+[object.m67]
 id = "M67"
 name = "Cancer Cluster"
 type = "open_cluster"
@@ -996,8 +1212,10 @@ magnitude = 6.1
 size = "25'"
 season = "Feb–Apr"
 filter = "OFF"
+ra_deg = 132.8458
+dec_deg = 11.8139
 
-[catalog.m93]
+[object.m93]
 id = "M93"
 name = "Puppis Cluster"
 type = "open_cluster"
@@ -1006,8 +1224,10 @@ size = "22'"
 season = "Jan–Mar"
 filter = "OFF"
 notes = "Low"
+ra_deg = 116.1408
+dec_deg = -23.8531
 
-[catalog.m103]
+[object.m103]
 id = "M103"
 name = "Cassiopeia Cluster"
 type = "open_cluster"
@@ -1015,8 +1235,10 @@ magnitude = 7.4
 size = "6'"
 season = "Oct–Dec"
 filter = "OFF"
+ra_deg = 23.3392
+dec_deg = 60.6589
 
-[catalog.markarians-chain]
+[object.markarians-chain]
 id = "Markarian's Chain"
 name = "Markarian's Chain"
 type = "galaxy_group"

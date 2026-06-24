@@ -26,10 +26,20 @@ def test_markarians_not_parsed_as_messier():
     assert catalog_sort_key("M81")[0] == 0
 
 
+def test_bundled_reference_and_catalog():
+    ref = catalog.load_reference()
+    assert len(ref) >= 110                               # all reference objects
+    assert ref["m31"]["id"] == "M31" and ref["m31"]["ra_deg"]   # coords folded in
+    mes = catalog.load_bundled_catalog("messier")
+    assert mes["name"] == "Messier" and len(mes["members"]) == 108
+    assert "m31" in mes["members"]
+    assert catalog.load_bundled_catalog("nope") == {}
+
+
 def test_add_captured_objects(tmp_path, monkeypatch):
-    cat = tmp_path / "catalog.toml"
-    shutil.copy(config.SEED_DIR / "catalog.toml", cat)
-    monkeypatch.setattr(config, "CATALOG_TOML", cat)
+    lib = tmp_path / "library.toml"
+    monkeypatch.setattr(config, "LIBRARY_TOML", lib)
+    config._seed_library(lib)                            # seed from bundled reference
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
     monkeypatch.setattr(catalog, "_simbad_coords", lambda name: (314.08, 31.74))
 
@@ -38,7 +48,7 @@ def test_add_captured_objects(tmp_path, monkeypatch):
     (config.IMAGES_DIR / "NoCaptures").mkdir()                        # ignored
 
     assert catalog.add_captured_objects() == ["ngc-6992"]
-    c = catalog.load_catalog()
+    c = catalog.load_library()
     assert c["ngc-6992"]["id"] == "NGC 6992" and c["ngc-6992"]["type"] == "unknown"
     assert "m101" in c                                   # existing entries untouched
     # Simbad coords are written + merged into load_coords (→ pointing support)
@@ -48,15 +58,15 @@ def test_add_captured_objects(tmp_path, monkeypatch):
 
 
 def test_add_captured_objects_minimal_when_offline(tmp_path, monkeypatch):
-    cat = tmp_path / "catalog.toml"
-    shutil.copy(config.SEED_DIR / "catalog.toml", cat)
-    monkeypatch.setattr(config, "CATALOG_TOML", cat)
+    lib = tmp_path / "library.toml"
+    monkeypatch.setattr(config, "LIBRARY_TOML", lib)
+    config._seed_library(lib)
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
     monkeypatch.setattr(catalog, "_simbad_coords", lambda name: None)  # offline
     (config.IMAGES_DIR / "NGC 7000" / "seestar-stacks").mkdir(parents=True)
     assert catalog.add_captured_objects() == ["ngc-7000"]
     assert "ngc-7000" not in catalog.load_coords()       # no coords, still added
-    assert catalog.load_catalog()["ngc-7000"]["id"] == "NGC 7000"
+    assert catalog.load_library()["ngc-7000"]["id"] == "NGC 7000"
 
 
 def test_season_sort_by_first_month_year_round_last():

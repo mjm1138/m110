@@ -80,7 +80,7 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
 
 
 def load_catalog_slugs() -> set[str]:
-    cat_path = config.CATALOG_TOML
+    cat_path = config.LIBRARY_TOML
     if not cat_path.exists():
         print(f"warning: {cat_path} not found; slug mapping skipped",
               file=sys.stderr)

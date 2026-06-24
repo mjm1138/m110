@@ -82,7 +82,7 @@ class JournalPage(QWidget):
     def reload(self):
         self._clear()
         bs = derived.totals_by_slug()
-        cat = catalog.load_catalog()
+        cat = catalog.load_library()
 
         entries: list[tuple[float, str]] = []
         for slug in bs:

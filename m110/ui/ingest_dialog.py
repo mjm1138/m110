@@ -224,7 +224,7 @@ class IngestDialog(QDialog):
     def _catalog_ids(self):
         if not self._cat:
             try:
-                self._cat = catalog.load_catalog()
+                self._cat = catalog.load_library()
             except Exception:
                 self._cat = {}
         return sorted((e.get("id") or s) for s, e in self._cat.items())

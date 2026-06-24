@@ -11,7 +11,7 @@ def _make_target(tmp_path, monkeypatch, ircut=120, lp=0, name="M101"):
     root = tmp_path / "M110"
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     lights = config.lights_dir(name)
     lights.mkdir(parents=True)
     for i in range(ircut):
@@ -208,7 +208,7 @@ def test_keep_current_hero_on_reimport(tmp_path, monkeypatch):
 
 def test_set_frontmatter_key_upsert(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OBJECTS_DIR", tmp_path / "Objects")
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     objects.write_journal("m1", '---\nname: "Crab"\nhero: "old.png"\n---\n\nbody\n')
     objects.set_frontmatter_key("m1", "hero", "new.png")
     fm, body = objects.read_journal("m1")

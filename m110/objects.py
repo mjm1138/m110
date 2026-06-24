@@ -48,7 +48,7 @@ def object_folder_name(slug: str) -> str:
     """Human-friendly folder name for a catalog slug — the catalog `id`
     (e.g. 'm101' → 'M101'), falling back to the slug if unknown."""
     try:
-        obj_id = catalog.load_catalog().get(slug, {}).get("id") or slug
+        obj_id = catalog.load_library().get(slug, {}).get("id") or slug
     except Exception:
         obj_id = slug
     return obj_id.replace("/", "-").strip()

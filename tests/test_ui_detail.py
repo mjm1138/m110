@@ -28,7 +28,7 @@ def _count(widget, text):
 
 def _isolate(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OBJECTS_DIR", tmp_path / "Objects")
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     monkeypatch.setattr(config, "DERIVED_DIR", tmp_path / "derived")
     monkeypatch.setattr(config, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(config, "HERO_DIR", tmp_path / "renders" / "hero")
@@ -53,7 +53,7 @@ def test_table_sort_persists_across_rebuild(tmp_path, monkeypatch, qapp):
     root = tmp_path / "M110"
     internal = root / config.INTERNAL_DIRNAME
     monkeypatch.setattr(config, "DATA_ROOT", root)
-    monkeypatch.setattr(config, "CATALOG_TOML", internal / "catalog.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
     monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
@@ -84,7 +84,7 @@ def _seed_root(tmp_path, monkeypatch):
     root = tmp_path / "M110"
     internal = root / config.INTERNAL_DIRNAME
     monkeypatch.setattr(config, "DATA_ROOT", root)
-    monkeypatch.setattr(config, "CATALOG_TOML", internal / "catalog.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
     monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
@@ -101,7 +101,7 @@ def _seed_root(tmp_path, monkeypatch):
 def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     root = _seed_root(tmp_path, monkeypatch)
     import tomllib
-    with (root / config.INTERNAL_DIRNAME / "catalog.toml").open("rb") as f:
+    with (root / config.INTERNAL_DIRNAME / "library.toml").open("rb") as f:
         slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
     tid = (entry.get("id") or slug)
     lights = config.lights_dir(tid)
@@ -115,7 +115,7 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Summary", "Catalog", "Processing", "Sessions", "Journal", "Media"]
+            ["Summary", "Library", "Processing", "Sessions", "Journal", "Media"]
         assert win.stack.currentIndex() == 0          # Summary lands first
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index

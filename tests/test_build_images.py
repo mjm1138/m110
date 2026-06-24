@@ -28,7 +28,7 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
     monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
     monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     return root, internal
 
 

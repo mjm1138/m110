@@ -1,7 +1,13 @@
-"""Read and order the object catalog from the live data store.
+"""Read the user's **Library** + the bundled object **reference** / **catalog**
+data.
 
-Mirrors the shape of Astronomy's `catalog.toml` (a dict keyed by slug; each
-value has id/name/type/magnitude/size/season/...).
+- *Library* (per-store, mutable): `.m110_internal_data/library.toml` — the user's
+  corpus of objects (a dict keyed by slug; each value has id/name/type/magnitude/
+  size/season/...). This is what the UI tables read.
+- *Reference* (app-bundled, immutable): `seed/objects.toml` — intrinsic facts per
+  object incl. J2000 `ra_deg/dec_deg`. Seeds the Library + backs coords.
+- *Catalogs* (app-bundled): `seed/catalogs/<name>.toml` — named membership lists
+  (Messier, …) used by goals (item 5b).
 """
 from __future__ import annotations
 
@@ -19,39 +25,47 @@ _MONTHS = {m: i for i, m in enumerate(
      "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
 
 
-def load_catalog() -> dict[str, dict]:
-    """Return the catalog as {slug: entry}."""
-    with open(config.CATALOG_TOML, "rb") as f:
+def load_library() -> dict[str, dict]:
+    """Return the user's Library as {slug: entry} (from `library.toml`)."""
+    with open(config.LIBRARY_TOML, "rb") as f:
         return tomllib.load(f)["catalog"]
 
 
 def object_count() -> int:
-    return len(load_catalog())
+    return len(load_library())
+
+
+def load_reference() -> dict[str, dict]:
+    """Bundled object reference dataset {slug: entry} (from `seed/objects.toml`).
+    Immutable; ships with the app. `{}` if absent."""
+    path = config.SEED_DIR / "objects.toml"
+    if not path.is_file():
+        return {}
+    with path.open("rb") as f:
+        return tomllib.load(f).get("object", {})
+
+
+def load_bundled_catalog(name: str) -> dict:
+    """A bundled catalog membership list (`seed/catalogs/<name>.toml`):
+    `{name, description, members:[slug]}`. `{}` if absent. (Used by goals, 5b.)"""
+    path = config.SEED_DIR / "catalogs" / f"{name}.toml"
+    if not path.is_file():
+        return {}
+    with path.open("rb") as f:
+        return tomllib.load(f)
 
 
 def load_coords() -> dict[str, tuple[float, float]]:
-    """Bundled J2000 reference coordinates {slug: (ra_deg, dec_deg)}.
-
-    Shipped with the app (seed/coords.csv) so the ingest pointing check works
-    offline and regardless of the store's age. A few asterisms have no single
-    coordinate and are simply absent.
-    """
-    path = config.SEED_DIR / "coords.csv"
+    """J2000 reference coordinates {slug: (ra_deg, dec_deg)} for the pointing
+    check — from the bundled reference (`seed/objects.toml`), with the user's
+    Library `ra_deg/dec_deg` (e.g. auto-added captured objects) merged over it.
+    Asterisms with no single coordinate are simply absent."""
     out: dict[str, tuple[float, float]] = {}
-    if path.is_file():
-        with path.open() as f:
-            for line in f:
-                parts = line.strip().split(",")
-                if len(parts) != 3 or parts[0] == "slug":
-                    continue
-                try:
-                    out[parts[0]] = (float(parts[1]), float(parts[2]))
-                except ValueError:
-                    continue
-    # Catalog entries may carry their own ra_deg/dec_deg (auto-added captured
-    # objects resolved via Simbad) — merge them over the bundled defaults.
+    for slug, e in load_reference().items():
+        if e.get("ra_deg") is not None and e.get("dec_deg") is not None:
+            out[slug] = (float(e["ra_deg"]), float(e["dec_deg"]))
     try:
-        for slug, e in load_catalog().items():
+        for slug, e in load_library().items():
             if e.get("ra_deg") is not None and e.get("dec_deg") is not None:
                 out[slug] = (float(e["ra_deg"]), float(e["dec_deg"]))
     except Exception:
@@ -101,9 +115,9 @@ def _simbad_coords(name: str):
 
 
 def add_captured_objects(resolve_coords: bool = True) -> list[str]:
-    """Promote captured targets that aren't in the catalog into first-class
-    catalog objects, so they appear in the Catalog/Summary views, get an object
-    page + journal, and are clickable (not just folder-derived rows).
+    """Promote captured targets that aren't in the Library into first-class
+    objects, so they appear in the Library/Summary views, get an object page +
+    journal, and are clickable (not just folder-derived rows).
 
     A capture folder is uncatalogued if `folder_to_slugs` maps it to nothing.
     Adds a minimal entry (id = folder name, type "unknown"), best-effort enriched
@@ -111,10 +125,10 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
     an existing entry. Returns the slugs added.
     """
     from . import scan_sessions  # local import: avoids any import cycle
-    path = config.CATALOG_TOML
+    path = config.LIBRARY_TOML
     if not path.is_file() or not config.IMAGES_DIR.is_dir():
         return []
-    cat = load_catalog()
+    cat = load_library()
     existing = set(cat)
 
     new: list[tuple[str, dict]] = []

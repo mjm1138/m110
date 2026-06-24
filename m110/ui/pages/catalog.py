@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import config, derived, siril
-from m110.catalog import load_catalog, catalog_sort_key, season_sort_key
+from m110.catalog import load_library, catalog_sort_key, season_sort_key
 from m110.ui.detail import DetailPane
 from m110.ui.widgets import NumItem, status_label, STATUS_COLOR, MUTED, targets_for_slug
 
@@ -24,7 +24,7 @@ class CatalogPage(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._cat = load_catalog()
+        self._cat = load_library()
         self._totals = derived.totals_by_slug()
         self._sort_col = 0
         self._sort_order = Qt.AscendingOrder
@@ -75,7 +75,7 @@ class CatalogPage(QWidget):
         self._select_slug(slug)
 
     def reload(self):
-        new_cat = load_catalog()
+        new_cat = load_library()
         new_totals = derived.totals_by_slug()
         changed = (new_cat != self._cat) or (new_totals != self._totals)
         self._cat, self._totals = new_cat, new_totals

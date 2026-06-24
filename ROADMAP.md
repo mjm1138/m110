@@ -118,7 +118,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
        lat/lon) for the site-class tag, and **VIIRS Day/Night Band** radiance
        (NOAA/EOG, public domain) for *where* the domes are → project nearby
        sources to az/alt with a scattering falloff. Bundle/cache like
-       `seed/coords.csv` to stay offline. *v1:* a hand- or semi-auto `glow.hrz`
+       `seed/objects.toml` to stay offline. *v1:* a hand- or semi-auto `glow.hrz`
        sibling + a stored Bortle/SQM — cheap and immediately useful.
    - **The season gate hard-drops short-window targets.** `season_min_hours`
      (1.5h above min-alt, unobstructed, minus a pre-dawn hour) gates out objects
@@ -252,10 +252,14 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
      per-user. (Lightroom's "Library.") Objects are many-to-many with catalogs (the
      Veil is a non-Messier add *and* Caldwell C33/C34) — membership, not partition.
 
-   **Naming cleanup:** today's per-store `catalog.toml` is really the **Library**
-   (misnamed); the bundled `seed/catalog.toml` is *the Messier catalog reference
-   data*. Split them: bundle an **object reference dataset** (id → coords/type/mag/
-   size) + **catalog membership lists**; the per-store file becomes the Library.
+   **Phase 5a (done):** foundation — per-store `catalog.toml` → **`library.toml`**
+   (v2→v3 store migration); bundled data split into an **object reference dataset**
+   (`seed/objects.toml`, id → coords/type/mag/size) + **catalog membership lists**
+   (`seed/catalogs/*.toml`; Messier ships). A fresh Library seeds from the
+   reference. Nav "Catalog" → "Library". No new user-facing behavior yet.
+   **5b (next):** Goals — active-catalog selection + per-goal progress/dashboard;
+   more bundled catalogs; the fresh-Library-=-Messier-only decision.
+   **5c:** the add-arbitrary-object + enrich flow below.
 
    **Add arbitrary objects + auto-enrich.** A user can add any object to their
    Library; the app fills the data fields via a cascade (generalizes

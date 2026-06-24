@@ -12,7 +12,7 @@ def test_read_journal_frontmatter_and_body(tmp_path, monkeypatch):
     od = tmp_path / "Objects"
     # No catalog → object_folder_name falls back to the slug.
     monkeypatch.setattr(config, "OBJECTS_DIR", od)
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     _write_journal(
         od, "m99",
         '---\nname: "Test Galaxy"\nhero_caption: "a caption"\n---\n\n'
@@ -28,7 +28,7 @@ def test_journal_folder_uses_catalog_id(tmp_path, monkeypatch):
     cat = tmp_path / "catalog.toml"
     cat.write_text('[catalog.m99]\nid = "M99"\nname = "Coma Pinwheel"\n')
     monkeypatch.setattr(config, "OBJECTS_DIR", od)
-    monkeypatch.setattr(config, "CATALOG_TOML", cat)
+    monkeypatch.setattr(config, "LIBRARY_TOML", cat)
     # Folder is named by the human-friendly catalog id, not the slug.
     assert objects.object_folder_name("m99") == "M99"
     _write_journal(od, "M99", "no frontmatter body\n")
@@ -38,14 +38,14 @@ def test_journal_folder_uses_catalog_id(tmp_path, monkeypatch):
 
 def test_missing_journal_returns_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OBJECTS_DIR", tmp_path / "Objects")
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     assert objects.read_journal("nope") == ({}, "")
 
 
 def test_no_frontmatter_returns_whole_body(tmp_path, monkeypatch):
     od = tmp_path / "Objects"
     monkeypatch.setattr(config, "OBJECTS_DIR", od)
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     _write_journal(od, "x", "# Just body\n\ntext\n")
     fm, body = objects.read_journal("x")
     assert fm == {}
@@ -55,7 +55,7 @@ def test_no_frontmatter_returns_whole_body(tmp_path, monkeypatch):
 def test_write_journal_creates_folder_and_round_trips(tmp_path, monkeypatch):
     od = tmp_path / "Objects"
     monkeypatch.setattr(config, "OBJECTS_DIR", od)
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     # no folder yet → read is empty
     assert objects.read_journal_text("m42") == ""
 
@@ -88,7 +88,7 @@ def test_journal_to_markdown_preserves_lists_and_code():
 def test_write_journal_overwrites_existing(tmp_path, monkeypatch):
     od = tmp_path / "Objects"
     monkeypatch.setattr(config, "OBJECTS_DIR", od)
-    monkeypatch.setattr(config, "CATALOG_TOML", tmp_path / "absent.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
     objects.write_journal("m42", "first\n")
     objects.write_journal("m42", "second\n")   # edit replaces prior content
     assert objects.read_journal_text("m42") == "second\n"

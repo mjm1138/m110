@@ -2,26 +2,28 @@
 
 The store originally mixed machine state and content across `data/`, `Images/`
 (with jargon subfolders `FITS` / `Seestar_stacks` / `Finished Images` /
-`From the scope`), and `site/`. The current layout (store version 2) is:
+`From the scope`), and `site/`. The current layout (store version 3) is:
 
     Objects/<catalog id>/journal.md          (catalog-object axis)
     Images/<target>/{lights,stacks,seestar-stacks,finished}/
     Media/<Category>_photo|_video/
     Inbox/                                   (ingest staging)
-    .m110_internal_data/{catalog,priorities,sessions,...}  + derived/ + renders/
+    .m110_internal_data/{library,priorities,sessions,...}  + derived/ + renders/
 
-`migrate_store()` is **idempotent** and **version-stamped**: it runs only when an
-old-layout marker is present and the store hasn't reached version 2, moves data
-with same-filesystem renames (cheap), and a re-run resumes a partial move rather
-than duplicating or destroying anything. It is Qt-free and only ever exercised on
-temp/throwaway roots in tests — never pointed at a live root in validation.
+`migrate_store()` is **idempotent** and **version-stamped**: it runs whenever the
+store hasn't reached the current version — an old-layout marker triggers the v0→v2
+two-axis reshape, and later version bumps run regardless (v2→v3 renames the
+per-store `catalog.toml` → `library.toml`). Moves use same-filesystem renames
+(cheap); a re-run resumes a partial move rather than duplicating or destroying
+anything. Qt-free, and only ever exercised on temp/throwaway roots in tests —
+never pointed at a live root in validation.
 """
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-STORE_VERSION = 2
+STORE_VERSION = 3
 INTERNAL_DIRNAME = ".m110_internal_data"
 VERSION_FILE = ".store_version"
 
@@ -131,9 +133,23 @@ def migrate_store(root) -> bool:
     root = Path(root).expanduser()
     if _read_version(root) >= STORE_VERSION:
         return False
-    if not _has_old_layout(root):
-        return False
+    changed = False
+    if _has_old_layout(root):
+        _reshape_v0_to_v2(root)
+        changed = True
+    # v2 → v3: the per-store object set is the user's Library, not a "catalog".
+    internal = root / INTERNAL_DIRNAME
+    cat, lib = internal / "catalog.toml", internal / "library.toml"
+    if cat.is_file() and not lib.is_file():
+        cat.rename(lib)
+        changed = True
+    if changed and internal.is_dir():
+        (internal / VERSION_FILE).write_text(str(STORE_VERSION))
+    return changed
 
+
+def _reshape_v0_to_v2(root: Path) -> None:
+    """The original old-layout reshape (data/ + Images/FITS/ + site/ → two-axis)."""
     internal = root / INTERNAL_DIRNAME
     internal.mkdir(parents=True, exist_ok=True)
 
@@ -210,6 +226,3 @@ def migrate_store(root) -> bool:
     _drop_legacy(data)
     _drop_legacy(site)
     _drop_legacy(images / "From the scope")
-
-    (internal / VERSION_FILE).write_text(str(STORE_VERSION))
-    return True

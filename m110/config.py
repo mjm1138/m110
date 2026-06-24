@@ -32,8 +32,9 @@ _SUBDIRS = [
     f"{INTERNAL_DIRNAME}/derived",
     f"{INTERNAL_DIRNAME}/renders/hero",
 ]
-# Static files seeded from the bundled templates if missing.
-_SEED_FILES = ["catalog.toml", "priorities.toml"]
+# Static files copied verbatim from the bundled seed if missing. (library.toml is
+# generated from the object reference — see _seed_library.)
+_SEED_FILES = ["priorities.toml"]
 
 _README_TEXT = """\
 M110 — internal application data
@@ -109,7 +110,7 @@ def _resolve_data_root() -> Path:
 
 def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
-    global INTERNAL_DIR, CATALOG_TOML, PRIORITIES_TOML, SESSIONS_JSONL
+    global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR
     DATA_ROOT = root
     # Visible content axes
@@ -119,7 +120,7 @@ def _apply(root: Path) -> None:
     STAGING_DIR = root / "Inbox"            # ingest staging
     # Hidden machine state
     INTERNAL_DIR = root / INTERNAL_DIRNAME
-    CATALOG_TOML = INTERNAL_DIR / "catalog.toml"
+    LIBRARY_TOML = INTERNAL_DIR / "library.toml"   # the user's object corpus
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
@@ -177,7 +178,7 @@ def set_data_root(path) -> None:
 
 
 def data_root_ok() -> bool:
-    return CATALOG_TOML.is_file()
+    return LIBRARY_TOML.is_file()
 
 
 def ensure_data_root(root=None) -> Path:
@@ -200,24 +201,58 @@ def ensure_data_root(root=None) -> Path:
         src = SEED_DIR / name
         if not dst.exists() and src.is_file():
             shutil.copy(src, dst)
+    _seed_library(internal / "library.toml")
     readme = internal / "README.txt"
     if not readme.exists():
         readme.write_text(_README_TEXT)
 
-    # Reference journal template + a per-object stub for every catalog object
+    # Reference journal template + a per-object stub for every Library object
     # (idempotent — never overwrites an existing journal).
     template = internal / "journal_template.md"
     if not template.exists():
         template.write_text(JOURNAL_TEMPLATE)
     _ensure_object_stubs(r, internal)
+
+    # Stamp the store version so migrate short-circuits on the next launch.
+    from . import migrate
+    (internal / migrate.VERSION_FILE).write_text(str(migrate.STORE_VERSION))
     return r
 
 
+def _seed_library(dst: Path) -> None:
+    """Seed a fresh `library.toml` from the bundled object reference
+    (`seed/objects.toml`) — the starter Library. Idempotent; never overwrites."""
+    if dst.exists():
+        return
+    from . import catalog
+    ref = catalog.load_reference()
+    if not ref:
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# M110 Library — your object corpus (catalog members + additions).",
+             "# Seeded from the bundled reference; M110 reads/writes this file.\n"]
+    _order = ["id", "name", "type", "magnitude", "size", "season", "filter",
+              "notes", "ra_deg", "dec_deg"]
+    for slug, e in ref.items():
+        lines.append(f"[catalog.{slug}]")
+        for k in _order:
+            v = e.get(k)
+            if v is None:
+                continue
+            lines.append(f"{k} = {v if isinstance(v, (int, float)) else _toml_str(v)}")
+        lines.append("")
+    dst.write_text("\n".join(lines))
+
+
+def _toml_str(s) -> str:
+    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def _ensure_object_stubs(root: Path, internal: Path) -> None:
-    """Create Objects/<catalog id>/journal.md (from the template) for every
-    catalog object, if missing. Reads the seeded catalog directly from `internal`
-    so it's correct even when `root` differs from the global DATA_ROOT."""
-    cat_path = internal / "catalog.toml"
+    """Create Objects/<id>/journal.md (from the template) for every Library
+    object, if missing. Reads the Library directly from `internal` so it's
+    correct even when `root` differs from the global DATA_ROOT."""
+    cat_path = internal / "library.toml"
     if not cat_path.is_file():
         return
     try:

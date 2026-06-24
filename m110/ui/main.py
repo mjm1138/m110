@@ -48,7 +48,7 @@ class RefreshWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Summary", "Catalog", "Processing", "Sessions", "Journal", "Media"]
+    NAV = ["Summary", "Library", "Processing", "Sessions", "Journal", "Media"]
 
     def __init__(self):
         super().__init__()
@@ -61,7 +61,7 @@ class MainWindow(QMainWindow):
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
-                f"No catalog found at:\n{config.CATALOG_TOML}\n\n"
+                f"No library found at:\n{config.LIBRARY_TOML}\n\n"
                 f"Set M110_DATA_ROOT to your data folder."))
             self.resize(560, 160)
             return
