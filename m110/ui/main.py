@@ -103,6 +103,14 @@ class MainWindow(QMainWindow):
         self.sessions.open_object.connect(self.open_object)
         self.journal.open_object.connect(self.open_object)
 
+        # Wait for any in-flight refresh thread before teardown — otherwise quit
+        # (incl. Cmd+Q from a modal viewer → app.quit()) destroys a running
+        # QThread and Qt aborts ("QThread: Destroyed while thread is still
+        # running"). aboutToQuit covers app.quit(); closeEvent covers window close.
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._stop_worker)
+
         # Toolbar + menu (global).
         toolbar = self.addToolBar("Main")
         self.ingest_action = QAction("Ingest…", self)
@@ -209,6 +217,19 @@ class MainWindow(QMainWindow):
         self._last_refresh = time.monotonic()
         self.refresh_action.setEnabled(True)
         self._update_status(extra=f"  ·  Sync failed: {msg}")
+
+    # ---- clean shutdown ----
+    def _stop_worker(self) -> None:
+        """Block until the refresh thread finishes, so teardown never destroys a
+        running QThread (which Qt turns into a fatal abort). run_refresh isn't
+        cancellable, so we wait it out — quit pauses briefly rather than crashing."""
+        w = self._worker
+        if w is not None and w.isRunning():
+            w.wait()
+
+    def closeEvent(self, event):
+        self._stop_worker()
+        super().closeEvent(event)
 
 
 def main() -> None:

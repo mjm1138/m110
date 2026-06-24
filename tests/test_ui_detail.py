@@ -126,6 +126,26 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_quit_waits_for_running_refresh_worker(tmp_path, monkeypatch, qapp):
+    """Regression: quitting (incl. Cmd+Q from a viewer) must wait for the refresh
+    QThread, or Qt aborts ('Destroyed while thread is still running')."""
+    _seed_root(tmp_path, monkeypatch)
+    from m110.ui.main import MainWindow
+    win = MainWindow()
+    win._ready = True
+    try:
+        win._do_refresh()                       # starts the RefreshWorker thread
+        assert win._worker is not None
+        win._stop_worker()                      # must block until it finishes
+        assert not win._worker.isRunning()      # safe to tear down now
+    finally:
+        win._ready = False
+        win._stop_worker()
+        win.close()
+        win.deleteLater()
+        qapp.processEvents()
+
+
 def test_detail_edit_buttons_clear_on_cancel(tmp_path, monkeypatch, qapp):
     _isolate(tmp_path, monkeypatch)
     from m110.ui.detail import DetailPane
