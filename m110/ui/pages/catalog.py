@@ -265,7 +265,11 @@ class CatalogPage(QWidget):
             self._fill_one(slug)
 
     def _fill_one(self, slug: str):
-        filled = catalog_mod.fill_missing_metadata(slug)
+        try:
+            filled = catalog_mod.fill_missing_metadata(slug)
+        except catalog_mod.LibraryParseError as e:
+            QMessageBox.warning(self, "Library file error", str(e))
+            return
         if not filled:
             QMessageBox.information(self, "Nothing to fill",
                                    "This object already has all available metadata.")

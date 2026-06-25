@@ -37,10 +37,26 @@ _MONTHS = {m.lower(): i for i, m in enumerate(_MON_ABBR, start=1)}
 _SEASON_C0 = 10.1
 
 
+class LibraryParseError(Exception):
+    """`library.toml` is present but not valid TOML. Carries the file path so the
+    user can find + fix their hand-edit (we never auto-rewrite a corrupt file —
+    that would risk losing their corpus)."""
+
+
 def load_library() -> dict[str, dict]:
-    """Return the user's Library as {slug: entry} (from `library.toml`)."""
-    with open(config.LIBRARY_TOML, "rb") as f:
-        return tomllib.load(f)["catalog"]
+    """Return the user's Library as {slug: entry} (from `library.toml`).
+
+    Raises `LibraryParseError` (with the file + line) on a malformed file rather
+    than the bare tomllib traceback — `library.toml` is user-editable, and the most
+    common mistake is a TOML slip (e.g. `True` instead of lowercase `true`)."""
+    try:
+        with open(config.LIBRARY_TOML, "rb") as f:
+            return tomllib.load(f)["catalog"]
+    except tomllib.TOMLDecodeError as e:
+        raise LibraryParseError(
+            f"{config.LIBRARY_TOML} is not valid TOML: {e}\n"
+            "Fix the hand-edit in that file (note: TOML booleans are lowercase "
+            "`true`/`false`, not `True`/`False`) and try again.") from e
 
 
 def object_count() -> int:

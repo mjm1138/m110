@@ -96,6 +96,16 @@ def test_fill_all_missing(tmp_path, monkeypatch):
     assert catalog.fill_all_missing_metadata() == {}         # idempotent
 
 
+def test_load_library_reports_bad_toml(tmp_path, monkeypatch):
+    import pytest
+    lib = tmp_path / "library.toml"
+    monkeypatch.setattr(config, "LIBRARY_TOML", lib)
+    lib.write_text('[catalog.m104]\nobstructed = True\n')   # Python bool → invalid TOML
+    with pytest.raises(catalog.LibraryParseError) as ei:
+        catalog.load_library()
+    assert str(lib) in str(ei.value) and "true" in str(ei.value)   # names file + hint
+
+
 # ── regenerated Caldwell reference ────────────────────────────────────────────
 
 def test_caldwell_reference_has_season():

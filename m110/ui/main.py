@@ -187,9 +187,14 @@ class MainWindow(QMainWindow):
         if self.catalog.is_editing() or self._refreshing:
             return
         from m110 import catalog
-        n_missing = sum(
-            1 for s, e in catalog.load_library().items()
-            if catalog._compute_fill(e, catalog.load_reference().get(s, {})))
+        try:
+            lib = catalog.load_library()
+        except catalog.LibraryParseError as e:
+            QMessageBox.warning(self, "Library file error", str(e))
+            return
+        ref = catalog.load_reference()
+        n_missing = sum(1 for s, e in lib.items()
+                        if catalog._compute_fill(e, ref.get(s, {})))
         if not n_missing:
             QMessageBox.information(self, "Fill missing metadata",
                                    "Every Library object already has all available metadata.")
