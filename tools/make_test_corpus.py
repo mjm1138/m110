@@ -7,8 +7,15 @@ small rendered PNGs) that exercises the whole app:
   * captured objects with lights + Seestar stacks   → gallery / hero / sessions
   * an object with an imported finished render+stack → "finished" display
   * an object with UNIMPORTED Siril output           → Import-finished-work round-trip
-  * a captured-but-uncatalogued folder (NGC 7000)    → auto-cataloging on refresh
+  * a captured-but-uncatalogued folder (IC 1396)     → auto-cataloging on refresh +
+        the "Enrich online" / Add-object target (in no bundled catalog)
   * a multi-object folder ("M81 M82")                → many-to-many target→object
+  * Phase 5 (Library / catalogs / goals):
+      - Caldwell activated as a 2nd goal + captured Caldwell objects (C20 NGC 7000,
+        C27 Crescent, C33 Veil) → Summary goal progress, the Catalog filter, and
+        multi-identifier labels ("C20 (NGC 7000)")
+      - a stale Library stub (C33/NGC 6992: blank name, "unknown" type) → the
+        right-click "Fill in missing metadata" target (repairs from the reference)
   * an Inbox laid out like a Seestar export          → ingest (move): grouping,
         case-canonicalisation (m13→M13), a mis-pointed group (M65 frames that
         actually point at M66 → the ⚠ remap), an in-app stack, and a media folder
@@ -142,10 +149,16 @@ def build(out: Path):
     ra, dec = C("m81")
     _lights("M81 M82", "M81 M82", ra, dec, 20, "LP", base + timedelta(days=5), 16, 800)
 
-    # NGC 7000 — captured but NOT in the seed catalog (auto-catalog on refresh)
+    # NGC 7000 (C20, North America) — captured; becomes a known Caldwell member once
+    # the Caldwell goal is activated below (multi-id label "C20 (NGC 7000)").
     _lights("NGC 7000", "NGC 7000", 314.7, 44.5, 10, "LP", base + timedelta(days=6), 20, 900)
     _seestar_stack("NGC 7000", "NGC 7000", 314.7, 44.5, 100, 10, "LP",
                    base + timedelta(days=6, hours=1), 950)
+
+    # IC 1396 (Elephant Trunk) — captured but in NO bundled catalog and not in the
+    # reference: auto-cataloged as a minimal stub on first refresh; the "Enrich
+    # online" / Add-object target (Fill-missing can't help — nothing in the reference).
+    _lights("IC 1396", "IC 1396", 324.74, 57.5, 20, "LP", base + timedelta(days=11), 16, 980)
 
     # ---- M106 — a Siril sandbox with UNIMPORTED output (round-trip test) ----
     ra, dec = C("m106")
@@ -165,6 +178,31 @@ def build(out: Path):
           base + timedelta(days=7, hours=2), 1101)  # deliverable stack
     _fits(sb / f"{stem}_og.fit", "M106", ra, dec, 20, "LP", base, 1102)      # intermediate
     _fits(sb / f"{stem}.fit", "M106", ra, dec, 20, "LP", base, 1103)         # intermediate
+
+    # ---- Phase 5: catalogs / goals / fill-missing -------------------------------
+    from m110 import goals
+
+    # A *stale* Library stub for C33/NGC 6992 (the East Veil): blank name, "unknown"
+    # type — an object that entered the Library before its catalog data existed.
+    # Written BEFORE activating Caldwell so the goal (which never overwrites) leaves
+    # it incomplete → the right-click "Fill in missing metadata" demo.
+    vra, vdec = C("ngc-6992")
+    with config.LIBRARY_TOML.open("a") as f:
+        f.write(f'\n[catalog.ngc-6992]\nid = "NGC 6992"\nname = ""\n'
+                f'type = "unknown"\nra_deg = {vra}\ndec_deg = {vdec}\n')
+
+    # Activate Caldwell as a 2nd goal: adds its members to the Library + writes
+    # goals.toml. Now the Library carries Messier + Caldwell → Summary shows two
+    # goal-progress bars, the Catalog filter offers Caldwell, and objects show all
+    # identifiers ("C20 (NGC 7000)").
+    goals.set_active_goals(["messier", "caldwell"])
+    config._ensure_object_stubs(config.DATA_ROOT, config.INTERNAL_DIR)   # stubs for new members
+
+    # Captured Caldwell objects → non-trivial Caldwell goal progress (full / partial /
+    # stub reference coverage): C20 NGC 7000 (above), C27 Crescent (has mag), C33 Veil.
+    ra, dec = C("ngc-6888")
+    _lights("NGC 6888", "NGC 6888", ra, dec, 30, "LP", base + timedelta(days=8), 12, 3000)
+    _lights("NGC 6992", "NGC 6992", vra, vdec, 30, "LP", base + timedelta(days=9), 14, 3100)
 
     # ---- journals: give a couple real notes (feed/detail), leave the rest stubs ----
     objects.write_journal("m51", (
@@ -234,6 +272,22 @@ def verify(out: Path):
     from m110 import siril
     print(f"  M106 has unimported output: {siril.has_unimported_output('M106')}")
     assert sessions and staging, "corpus produced no sessions/inbox ops"
+
+    # Phase 5: Caldwell goal active, members in the Library, and the stale stub left
+    # incomplete for the Fill-missing demo.
+    from m110 import goals
+    lib = catalog.load_library()
+    assert goals.active_goal_ids() == ["messier", "caldwell"], "Caldwell not activated"
+    assert "ngc-7000" in lib and "ngc-6992" in lib, "Caldwell members not in Library"
+    stub = lib["ngc-6992"]
+    assert not stub.get("name") and stub.get("type") == "unknown", \
+        "ngc-6992 should be a stale stub (Fill-missing target)"
+    cald = catalog.load_bundled_catalog("caldwell")["members"]
+    captured_cald = [s for s in ("ngc-7000", "ngc-6888", "ngc-6992") if s in cald]
+    print(f"  goals: {goals.active_goal_ids()} · Caldwell members in Library: "
+          f"{sum(1 for s in cald if s in lib)}/{len(cald)} · captured Caldwell: {captured_cald}")
+    print(f"  ngc-6992 stub (Fill-missing target): name={stub.get('name')!r} "
+          f"type={stub.get('type')!r}")
 
 
 def make_tar(out: Path, tar_path: Path):
