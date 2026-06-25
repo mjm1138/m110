@@ -3,7 +3,7 @@ shared per-object detail pane. Hosts object selection; other pages route here vi
 `select_object`. Sort persists across in-session rebuilds."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
     QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox, QCheckBox, QMenu,
@@ -16,6 +16,24 @@ from m110.catalog import (
 )
 from m110.ui.detail import DetailPane
 from m110.ui.widgets import NumItem, status_label, STATUS_COLOR, MUTED, targets_for_slug
+
+
+class _EnrichOneWorker(QThread):
+    """Online (Simbad) enrichment for a single object, off the UI thread."""
+    done = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(self, slug, parent=None):
+        super().__init__(parent)
+        self._slug = slug
+
+    def run(self):
+        try:
+            self.done.emit(catalog_mod.fill_missing_metadata(self._slug, online=True))
+        except catalog_mod.OnlineLookupError as e:
+            self.failed.emit(str(e))
+        except Exception as e:                           # pragma: no cover - defensive
+            self.failed.emit(f"{type(e).__name__}: {e}")
 
 
 class CatalogPage(QWidget):
@@ -33,6 +51,7 @@ class CatalogPage(QWidget):
         self._sort_order = Qt.AscendingOrder
         self._catalog_filter = None       # None = all objects; else a catalog id
         self._catalogs = list_bundled_catalogs()
+        self._enrich_worker = None        # in-flight online enrichment (single)
 
         self.table = self._build_table()
         self.table.itemSelectionChanged.connect(self._on_select)
@@ -250,7 +269,7 @@ class CatalogPage(QWidget):
         self.table.setEnabled(not editing)
         self.editing_changed.emit(editing)
 
-    # ---- context menu: fill missing metadata ----
+    # ---- context menu: fill / enrich metadata ----
     def _on_context_menu(self, pos):
         item = self.table.itemAt(pos)
         if item is None:
@@ -258,11 +277,18 @@ class CatalogPage(QWidget):
         slug = self.table.item(item.row(), 0).data(Qt.UserRole)
         entry = self._cat.get(slug, {})
         missing = bool(catalog_mod._compute_fill(entry, catalog_mod.load_reference().get(slug, {})))
+        has_gaps = catalog_mod._has_gaps({**entry,
+            **catalog_mod._compute_fill(entry, catalog_mod.load_reference().get(slug, {}))})
         menu = QMenu(self)
-        act = menu.addAction("Fill in missing metadata")
-        act.setEnabled(missing)
-        if menu.exec(self.table.viewport().mapToGlobal(pos)) is act and missing:
+        fill_act = menu.addAction("Fill in missing metadata")
+        fill_act.setEnabled(missing)
+        online_act = menu.addAction("Enrich online")
+        online_act.setEnabled(has_gaps and self._enrich_worker is None)
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen is fill_act and missing:
             self._fill_one(slug)
+        elif chosen is online_act and has_gaps:
+            self._enrich_one_online(slug)
 
     def _fill_one(self, slug: str):
         try:
@@ -280,6 +306,32 @@ class CatalogPage(QWidget):
         fields = ", ".join(sorted(filled))
         QMessageBox.information(self, "Metadata filled",
                                f"Filled from the reference: {fields}.")
+
+    def _enrich_one_online(self, slug: str):
+        if self._enrich_worker is not None:
+            return
+        self._enrich_worker = _EnrichOneWorker(slug, self)
+        self._enrich_worker.done.connect(lambda f: self._on_enrich_one(slug, f))
+        self._enrich_worker.failed.connect(self._on_enrich_one_failed)
+        self._enrich_worker.finished.connect(self._clear_enrich_worker)
+        self._enrich_worker.start()
+
+    def _on_enrich_one(self, slug: str, filled: dict):
+        if not filled:
+            QMessageBox.information(self, "Nothing to enrich",
+                                   "Simbad had nothing to add for this object.")
+            return
+        self._cat = load_library()
+        self._rebuild_table()
+        self._select_slug(slug)
+        QMessageBox.information(self, "Enriched online",
+                               f"Filled from Simbad: {', '.join(sorted(filled))}.")
+
+    def _on_enrich_one_failed(self, msg: str):
+        QMessageBox.warning(self, "Online lookup unavailable", msg)
+
+    def _clear_enrich_worker(self):
+        self._enrich_worker = None
 
     # ---- import (prep is automatic on ingest) ----
     def _pick_target(self, targets: list[str], title: str) -> str | None:

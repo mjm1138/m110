@@ -139,7 +139,7 @@ def _append_library_entries(entries: dict[str, dict]) -> None:
             v = e.get(k)
             if v is None:
                 continue
-            lines.append(f"{k} = {v if isinstance(v, (int, float)) else _q(v)}")
+            lines.append(f"{k} = {_toml_value(v)}")
     with config.LIBRARY_TOML.open("a") as f:
         f.write("\n".join(lines) + "\n")
 
@@ -277,21 +277,33 @@ def _is_missing(field: str, value) -> bool:
     return False
 
 
-def fill_missing_metadata(slug: str) -> dict:
+def _has_gaps(entry: dict) -> bool:
+    """True if any fillable field is still missing (worth an online lookup)."""
+    return any(_is_missing(f, entry.get(f)) for f in _FILLABLE)
+
+
+def fill_missing_metadata(slug: str, *, online: bool = False) -> dict:
     """Backfill an existing Library entry's **missing** structured fields from the
     bundled reference (and derive `season` from coords if still missing). Never
     overwrites a present, real value — preserves user edits. Returns the
     `{field: value}` actually filled (empty if nothing to do or slug unknown).
 
-    Reference-only/offline: covers catalog objects whose Library row predates the
-    reference data (e.g. captured-but-uncatalogued stubs). Online enrichment for
-    fields the reference itself lacks is a later step (ROADMAP 5c)."""
+    Reference-only by default (offline) — covers catalog objects whose Library row
+    predates the reference data (e.g. captured-but-uncatalogued stubs). With
+    `online=True`, any gaps the reference can't fill are looked up on Simbad (the
+    Veil's mag/size, etc.); raises `OnlineLookupError` if astroquery/network is
+    unavailable (the caller surfaces a message)."""
     lib = load_library()
     entry = lib.get(slug)
     if entry is None:
         return {}
-    ref = load_reference().get(slug, {})
-    filled = _compute_fill(entry, ref)
+    filled = _compute_fill(entry, load_reference().get(slug, {}))
+    if online:
+        merged = {**entry, **filled}
+        if _has_gaps(merged):
+            data = resolve_object_online([merged.get("id") or slug]).get(
+                merged.get("id") or slug, {})
+            filled.update(_compute_fill(merged, data))
     if filled:
         entry.update(filled)
         _write_library(lib)
@@ -306,6 +318,37 @@ def fill_all_missing_metadata() -> dict[str, dict]:
     out: dict[str, dict] = {}
     for slug, entry in lib.items():
         filled = _compute_fill(entry, ref.get(slug, {}))
+        if filled:
+            entry.update(filled)
+            out[slug] = filled
+    if out:
+        _write_library(lib)
+    return out
+
+
+def enrich_online(slugs=None) -> dict[str, dict]:
+    """Online (Simbad) enrichment for existing Library entries with gaps the bundled
+    reference + derived season can't fill. One batched lookup; single rewrite. Never
+    overwrites real user values. `slugs=None` → every entry with remaining gaps.
+    Returns `{slug: {field: value}}`; raises `OnlineLookupError` if astroquery/network
+    is unavailable."""
+    lib = load_library()
+    ref = load_reference()
+    targets = list(lib) if slugs is None else [s for s in slugs if s in lib]
+    # Apply the (free, offline) reference pass first, then see who still has gaps.
+    base = {s: {**lib[s], **_compute_fill(lib[s], ref.get(s, {}))} for s in targets}
+    gapped = {s: e for s, e in base.items() if _has_gaps(e)}
+    if not gapped:
+        # still persist any reference-only fills we computed above
+        return fill_all_missing_metadata()
+    names = {s: (e.get("id") or s) for s, e in gapped.items()}
+    data = resolve_object_online(list(names.values()))
+    out: dict[str, dict] = {}
+    for slug, entry in lib.items():
+        filled = _compute_fill(entry, ref.get(slug, {}))
+        if slug in names:
+            merged = {**entry, **filled}
+            filled.update(_compute_fill(merged, data.get(names[slug], {})))
         if filled:
             entry.update(filled)
             out[slug] = filled
@@ -363,6 +406,180 @@ def _simbad_coords(name: str):
         return round(c.ra.deg, 4), round(c.dec.deg, 4)
     except Exception:
         return None
+
+
+# ── online (Simbad) enrichment — optional `online` extra, explicit-use only ──────
+
+class OnlineLookupError(Exception):
+    """Online lookup couldn't run — astroquery isn't installed (the `online` extra)
+    or the network/Simbad is unavailable. Distinct from a clean no-match (→ no
+    entry in the result dict). The UI turns this into a friendly message."""
+
+
+# Simbad object-type code → our vocabulary (mirrors gen_caldwell._our_type, which
+# maps Wikipedia prose; this maps Simbad's otype short codes — incl. AGN/Seyfert/
+# QSO galaxy subtypes and the various nebula codes).
+_SIMBAD_TYPE = {
+    # galaxies (incl. AGN / Seyfert / QSO / interacting / cluster-member subtypes)
+    "g": "galaxy", "gig": "galaxy", "gip": "galaxy", "gic": "galaxy",
+    "bic": "galaxy", "ig": "galaxy", "pag": "galaxy", "grg": "galaxy",
+    "clg": "galaxy", "sbg": "galaxy", "bcg": "galaxy", "h2g": "galaxy",
+    "emg": "galaxy", "lsb": "galaxy", "rg": "galaxy", "agn": "galaxy",
+    "syg": "galaxy", "sy": "galaxy", "sy1": "galaxy", "sy2": "galaxy",
+    "lin": "galaxy", "qso": "galaxy", "bla": "galaxy", "bll": "galaxy",
+    "gin": "galaxy", "gam": "galaxy",
+    "glc": "globular", "gl?": "globular",
+    "opc": "open_cluster", "cl*": "open_cluster", "as*": "open_cluster",
+    "cl?": "open_cluster", "op?": "open_cluster",
+    "pn": "planetary", "pn?": "planetary",
+    "snr": "emission_snr", "sr?": "emission_snr", "sn?": "emission_snr",
+    "dne": "dark_nebula", "gly": "dark_nebula",
+    "hii": "emission", "emn": "emission", "rne": "emission", "neb": "emission",
+    "gne": "emission", "cld": "emission", "ism": "emission", "mol": "emission",
+    "hh": "emission",
+}
+
+
+def _simbad_type(otype) -> str:
+    """Map a Simbad otype code to our type vocabulary; 'unknown' if unrecognized."""
+    return _SIMBAD_TYPE.get(str(otype or "").strip().lower(), "unknown")
+
+
+def _simbad_row_to_entry(row) -> dict:
+    """Extract `{type, magnitude, size, ra_deg, dec_deg}` from a Simbad result row
+    (shared by runtime enrichment + the bundled-data tool). Missing fields omitted."""
+    out: dict = {}
+    try:
+        if row["ra"] is not None and not getattr(row["ra"], "mask", False):
+            out["ra_deg"] = round(float(row["ra"]), 5)
+            out["dec_deg"] = round(float(row["dec"]), 5)
+    except Exception:
+        pass
+    try:
+        maj = float(row["galdim_majaxis"]); minr = float(row["galdim_minaxis"])
+        if maj == maj:                                   # not NaN
+            out["size"] = f"{maj:.0f}'×{minr:.0f}'" if minr == minr else f"{maj:.0f}'"
+    except Exception:
+        pass
+    try:
+        v = float(row["V"])
+        if v == v:
+            out["magnitude"] = round(v, 1)
+    except Exception:
+        pass
+    for col in ("otype", "otype_txt", "main_type"):
+        try:
+            t = _simbad_type(row[col])
+            if t != "unknown":
+                out["type"] = t
+                break
+        except Exception:
+            continue
+    return out
+
+
+def resolve_object_online(names) -> dict[str, dict]:
+    """Batched Simbad lookup → `{queried-name: entry}` (entries hold any of
+    type/magnitude/size/ra_deg/dec_deg that resolved). Names that don't resolve are
+    simply absent. Raises `OnlineLookupError` if astroquery is missing or the query
+    fails (offline). Network only runs when a caller explicitly invokes this."""
+    names = [n for n in names if n]
+    if not names:
+        return {}
+    try:
+        import socket
+        socket.setdefaulttimeout(15)
+        from astroquery.simbad import Simbad
+    except Exception as e:                                # astroquery not installed
+        raise OnlineLookupError(
+            "Online lookup needs the optional 'online' extra "
+            "(pip install 'm110[online]').") from e
+    try:
+        sim = Simbad()
+        sim.add_votable_fields("V", "dim", "otype")
+        res = sim.query_objects(names)
+    except Exception as e:                                # network / Simbad down
+        raise OnlineLookupError(f"Simbad lookup failed: {e}") from e
+    if res is None:
+        return {}
+    out: dict[str, dict] = {}
+    for row in res:
+        try:
+            key = (str(row["user_specified_id"]).strip()
+                   if "user_specified_id" in res.colnames else None)
+        except Exception:
+            key = None
+        entry = _simbad_row_to_entry(row)
+        if key and entry:
+            out[key] = entry
+    return out
+
+
+def _designation_index() -> dict[str, str]:
+    """`{slugified-designation: reference-slug}` across bundled catalogs, so a typed
+    designation like 'C20' resolves to its reference slug (ngc-7000)."""
+    from . import scan_sessions
+    idx: dict[str, str] = {}
+    for cat in list_bundled_catalogs():
+        for slug, desig in cat.get("members", {}).items():
+            idx[scan_sessions.slugify(str(desig))] = slug
+    return idx
+
+
+def resolve_new_object(identifier: str, *, online: bool = False) -> dict:
+    """Resolve a typed name/designation into a candidate Library entry (no disk
+    write) for the Add-object flow. Cascade: bundled reference (by slug or catalog
+    designation) → online Simbad (when `online`) → coords-only fallback; `season` is
+    always derived from resolved coords; `type` defaults 'unknown'.
+
+    Returns `{"slug","entry","source"}` where `source` maps each filled field to
+    'reference' / 'online' / 'derived' for the preview. Raises `OnlineLookupError`
+    only if `online` and the lookup can't run."""
+    from . import scan_sessions
+    ident = (identifier or "").strip()
+    norm = scan_sessions.slugify(ident)
+    ref = load_reference()
+    slug = norm if norm in ref else _designation_index().get(norm, norm)
+
+    entry: dict = {"id": ident}
+    source: dict = {}
+    refent = ref.get(slug)
+    if refent:
+        for f in ["id", "name", *_FILLABLE]:
+            v = refent.get(f)
+            if v is not None and not (isinstance(v, str) and not v.strip()):
+                entry[f] = v
+                source[f] = "reference"
+    if online and _has_gaps(entry):
+        data = resolve_object_online([ident]).get(ident, {})
+        for f, v in _compute_fill(entry, data).items():
+            entry[f] = v
+            source.setdefault(f, "online")
+    # season is always derivable from coords if still missing
+    if _is_missing("season", entry.get("season")) and entry.get("ra_deg") is not None:
+        s = season_from_ra(entry["ra_deg"])
+        if s:
+            entry["season"] = s
+            source.setdefault("season", "derived")
+    entry.setdefault("type", "unknown")
+    return {"slug": slug, "entry": entry, "source": source}
+
+
+def add_library_entry(slug: str, entry: dict) -> None:
+    """Commit a new object to the Library: append `[catalog.<slug>]` and create its
+    journal stub. Refuses to overwrite an existing slug (`ValueError`)."""
+    from . import scan_sessions
+    slug = scan_sessions.slugify(slug)
+    if not slug:
+        raise ValueError("empty slug")
+    if slug in load_library():
+        raise ValueError(f"{slug} is already in the Library")
+    clean = {k: v for k, v in entry.items()
+             if v is not None and not (isinstance(v, str) and not v.strip())}
+    clean.setdefault("id", slug)
+    clean.setdefault("type", "unknown")
+    _append_library_entries({slug: clean})
+    config._ensure_object_stubs(config.DATA_ROOT, config.INTERNAL_DIR)
 
 
 def add_captured_objects(resolve_coords: bool = True) -> list[str]:

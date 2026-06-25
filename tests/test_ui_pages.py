@@ -315,12 +315,47 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
     from m110.ui.main import MainWindow
     w = MainWindow()
     try:
-        # Library menu exists and carries Refresh + Fill missing metadata
+        # Library menu carries Refresh + Add object + Fill + Enrich online
         labels = [a.text() for a in w.lib_menu.actions()]
         assert "Refresh" in labels
+        assert any("Add object" in t for t in labels)
         assert any("Fill missing metadata" in t for t in labels)
+        assert any("Enrich online" in t for t in labels)
     finally:
         w.close()
+        qapp.processEvents()
+
+
+def test_add_object_dialog_resolves_and_adds(tmp_path, monkeypatch, qapp):
+    _seed_root(tmp_path, monkeypatch)
+    from m110 import catalog
+    from m110.ui.add_object_dialog import AddObjectDialog
+    dlg = AddObjectDialog()
+    try:
+        dlg._ident.setText("NGC 7000")        # in the bundled reference (Caldwell C20)
+        dlg._resolve_offline()
+        assert dlg._slug == "ngc-7000"
+        assert dlg._edits["name"].text() == "North America Nebula"
+        assert dlg._add_btn.isEnabled()
+        got = []
+        dlg.added.connect(got.append)
+        dlg._do_add()
+        assert got == ["ngc-7000"]
+        assert "ngc-7000" in catalog.load_library()
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_catalog_page_has_online_enrich_hook(tmp_path, monkeypatch, qapp):
+    _seed_root(tmp_path, monkeypatch)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        assert hasattr(page, "_enrich_one_online")
+        assert page._enrich_worker is None
+    finally:
+        page.deleteLater()
         qapp.processEvents()
 
 

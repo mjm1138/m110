@@ -276,8 +276,16 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    derives `season` from RA (`catalog.fill_missing_metadata` / `season_from_ra`),
    never overwriting user values. Fixes stale stubs (e.g. captured-but-uncatalogued
    objects added before their catalog was bundled). The bundled Caldwell reference was
-   regenerated to ship a derived `season` for every member. Still to do: the
-   add-arbitrary-object + **online** enrich flow below (mag/size the reference lacks).
+   regenerated to ship a derived `season` for every member.
+   **5c (done):** **Add object** (Library menu) resolves a typed name/designation via a
+   cascade — bundled reference → online Simbad → coords-only (season always derived) —
+   previews it editably, and commits a new Library entry + journal stub
+   (`catalog.resolve_new_object`/`add_library_entry`). **Online enrichment** fills gaps
+   the bundled reference can't (e.g. the Veil's mag/size) for existing entries too:
+   right-click **"Enrich online"** (single) + Library → **"Enrich online…"** (batched),
+   `fill_missing_metadata(online=)`/`enrich_online`. Online is opt-in (explicit action)
+   on the **optional `astroquery` extra** — graceful `OnlineLookupError` when it's
+   absent/offline; runtime stays offline by default.
 
    **Add arbitrary objects + auto-enrich.** A user can add any object to their
    Library; the app fills the data fields via a cascade (generalizes

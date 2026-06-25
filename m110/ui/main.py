@@ -47,6 +47,23 @@ class RefreshWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
+class _EnrichWorker(QThread):
+    """Online (Simbad) bulk enrichment off the UI thread."""
+    done = Signal(dict)
+    failed = Signal(str)
+
+    def run(self):
+        try:
+            from m110 import catalog
+            self.done.emit(catalog.enrich_online())
+        except Exception as exc:
+            from m110 import catalog
+            if isinstance(exc, catalog.OnlineLookupError):
+                self.failed.emit(str(exc))
+            else:
+                self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class MainWindow(QMainWindow):
     NAV = ["Summary", "Library", "Processing", "Sessions", "Journal", "Media"]
 
@@ -54,6 +71,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("M110")
         self._worker = None
+        self._enrich_worker = None
         self._ready = False
         self._refreshing = False
         self._last_refresh = 0.0
@@ -123,8 +141,12 @@ class MainWindow(QMainWindow):
         self.refresh_action.triggered.connect(self._do_refresh)
         self.prep_action = QAction("Prepare working folders", self)
         self.prep_action.triggered.connect(self._prepare_working_folders)
+        self.add_object_action = QAction("Add object…", self)
+        self.add_object_action.triggered.connect(self._add_object)
         self.fill_meta_action = QAction("Fill missing metadata…", self)
         self.fill_meta_action.triggered.connect(self._fill_missing_metadata)
+        self.enrich_online_action = QAction("Enrich online…", self)
+        self.enrich_online_action.triggered.connect(self._enrich_online_all)
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)
         prefs_action.triggered.connect(self._open_prefs)
@@ -134,7 +156,9 @@ class MainWindow(QMainWindow):
         # Library menu — store-level operations (room to grow: open / archive / export).
         self.lib_menu = self.menuBar().addMenu("Library")
         self.lib_menu.addAction(self.refresh_action)
+        self.lib_menu.addAction(self.add_object_action)
         self.lib_menu.addAction(self.fill_meta_action)
+        self.lib_menu.addAction(self.enrich_online_action)
 
         self.nav.setCurrentRow(0)          # Summary lands first
         self._update_status()
@@ -209,6 +233,54 @@ class MainWindow(QMainWindow):
             p.reload()
         QMessageBox.information(self, "Fill missing metadata",
                                f"Filled metadata for {len(filled)} object(s).")
+
+    def _add_object(self):
+        """Open the Add-object dialog; route to the new object on success."""
+        if self.catalog.is_editing() or self._refreshing:
+            return
+        from m110.ui.add_object_dialog import AddObjectDialog
+        dlg = AddObjectDialog(self)
+        dlg.added.connect(self._on_object_added)
+        dlg.exec()
+
+    def _on_object_added(self, slug: str):
+        for p in self.pages:
+            p.reload()
+        self._update_status()
+        self.open_object(slug)
+
+    def _enrich_online_all(self):
+        """Online (Simbad) enrichment for every Library entry with remaining gaps,
+        on a worker thread. Optional + graceful when astroquery/network is absent."""
+        if self.catalog.is_editing() or self._refreshing or self._enrich_worker:
+            return
+        if QMessageBox.question(
+                self, "Enrich online",
+                "Look up missing metadata on Simbad for Library objects with gaps?\n"
+                "This needs a network connection and the optional 'online' extra."
+                ) != QMessageBox.Yes:
+            return
+        self.enrich_online_action.setEnabled(False)
+        self._update_status(extra="  ·  Enriching online…")
+        self._enrich_worker = _EnrichWorker(self)
+        self._enrich_worker.done.connect(self._on_enrich_done)
+        self._enrich_worker.failed.connect(self._on_enrich_failed)
+        self._enrich_worker.start()
+
+    def _on_enrich_done(self, filled: dict):
+        self._enrich_worker = None
+        self.enrich_online_action.setEnabled(True)
+        for p in self.pages:
+            p.reload()
+        self._update_status()
+        QMessageBox.information(self, "Enrich online",
+                               f"Enriched {len(filled)} object(s) from Simbad.")
+
+    def _on_enrich_failed(self, msg: str):
+        self._enrich_worker = None
+        self.enrich_online_action.setEnabled(True)
+        self._update_status()
+        QMessageBox.warning(self, "Online lookup unavailable", msg)
 
     # ---- auto-sync ----
     def changeEvent(self, event):

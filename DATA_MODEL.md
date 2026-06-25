@@ -298,8 +298,19 @@ reference (and derive `season` from coords via `season_from_ra`), never touching
 user value, via `_write_library` (an in-place rewriter that preserves every key). Surfaced
 as the Library right-click action + the **Library → Fill missing metadata** menu. The
 bundled reference now ships a `season` for every Caldwell member too (derived from RA in
-`tools/gen_caldwell.py`), so fresh seeding + fills get it. Online enrichment for fields the
-reference itself lacks (e.g. mag/size for diffuse SNRs) remains the future step (5c).
+`tools/gen_caldwell.py`), so fresh seeding + fills get it.
+
+**Add arbitrary object + online enrich (5c):** the Library also grows on demand —
+`catalog.resolve_new_object(identifier)` resolves a typed name/designation through a
+cascade **bundled reference → online Simbad → coords-only** (season always derived),
+previews it, and `add_library_entry` commits a new `[catalog.<slug>]` + journal stub
+(refuses duplicates). The same online tier fills gaps the bundled reference *can't*
+(e.g. the Veil's mag/size) for existing entries — `fill_missing_metadata(slug,
+online=True)` (right-click "Enrich online") and `enrich_online(slugs)` (Library →
+Enrich online, batched). Online is **opt-in** (an explicit action, never automatic) and
+rides the **optional `astroquery` dependency**; without it (or offline) the action raises
+`OnlineLookupError` and the UI explains, while everything offline keeps working. Object
+type comes from a Simbad-otype → vocabulary map (`_simbad_type`).
 
 **Planned reframe (Goals view — see ROADMAP item 5):** the Library is to become the
 **captured/annotated collection** (the user's actual corpus), with **uncaptured
