@@ -285,6 +285,45 @@ def test_library_captured_only_filter(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_library_fill_missing_metadata(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    # Inject a stale stub like the live C33 (name/type/season all missing).
+    with (root / config.INTERNAL_DIRNAME / "library.toml").open("a") as f:
+        f.write('\n[catalog.ngc-6992]\nid = "NGC 6992"\nname = ""\ntype = "unknown"\n'
+                'ra_deg = 314.0792\ndec_deg = 31.7433\n')
+    from m110 import catalog
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        # Engine path the right-click action calls.
+        filled = catalog.fill_missing_metadata("ngc-6992")
+        assert filled.get("name") == "East Veil Nebula" and filled.get("season")
+        page.reload()
+        # the row now reflects the filled name
+        page._search.setText("Veil")
+        vis = [r for r in range(page.table.rowCount()) if not page.table.isRowHidden(r)]
+        assert any(page.table.item(r, 1).text() == "East Veil Nebula" for r in vis)
+        # the page exposes the context-menu hook
+        assert hasattr(page, "_on_context_menu")
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
+    _seed_root(tmp_path, monkeypatch)
+    from m110.ui.main import MainWindow
+    w = MainWindow()
+    try:
+        # Library menu exists and carries Refresh + Fill missing metadata
+        labels = [a.text() for a in w.lib_menu.actions()]
+        assert "Refresh" in labels
+        assert any("Fill missing metadata" in t for t in labels)
+    finally:
+        w.close()
+        qapp.processEvents()
+
+
 def test_body_markdown_excludes_stub():
     """A fresh stub (heading + comment only) is not 'real notes'; edited prose is."""
     from m110.ui.pages.journal import _body_markdown

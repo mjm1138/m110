@@ -123,13 +123,18 @@ class MainWindow(QMainWindow):
         self.refresh_action.triggered.connect(self._do_refresh)
         self.prep_action = QAction("Prepare working folders", self)
         self.prep_action.triggered.connect(self._prepare_working_folders)
+        self.fill_meta_action = QAction("Fill missing metadata…", self)
+        self.fill_meta_action.triggered.connect(self._fill_missing_metadata)
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)
         prefs_action.triggered.connect(self._open_prefs)
         menu = self.menuBar().addMenu("M110")
-        menu.addAction(self.refresh_action)
         menu.addAction(self.prep_action)
         menu.addAction(prefs_action)
+        # Library menu — store-level operations (room to grow: open / archive / export).
+        self.lib_menu = self.menuBar().addMenu("Library")
+        self.lib_menu.addAction(self.refresh_action)
+        self.lib_menu.addAction(self.fill_meta_action)
 
         self.nav.setCurrentRow(0)          # Summary lands first
         self._update_status()
@@ -175,6 +180,30 @@ class MainWindow(QMainWindow):
             return
         self._prep_feedback = True
         self._do_refresh()
+
+    def _fill_missing_metadata(self):
+        """Backfill every Library entry's missing fields from the bundled reference
+        (offline, non-destructive — fills blanks only). Reports what changed."""
+        if self.catalog.is_editing() or self._refreshing:
+            return
+        from m110 import catalog
+        n_missing = sum(
+            1 for s, e in catalog.load_library().items()
+            if catalog._compute_fill(e, catalog.load_reference().get(s, {})))
+        if not n_missing:
+            QMessageBox.information(self, "Fill missing metadata",
+                                   "Every Library object already has all available metadata.")
+            return
+        if QMessageBox.question(
+                self, "Fill missing metadata",
+                f"Fill in missing metadata for {n_missing} object(s) from the "
+                f"bundled reference?") != QMessageBox.Yes:
+            return
+        filled = catalog.fill_all_missing_metadata()
+        for p in self.pages:
+            p.reload()
+        QMessageBox.information(self, "Fill missing metadata",
+                               f"Filled metadata for {len(filled)} object(s).")
 
     # ---- auto-sync ----
     def changeEvent(self, event):

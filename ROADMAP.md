@@ -270,7 +270,14 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    **"Captured only"** filter (interim collection view; default off), and shows
    **all of an object's identifiers** ordered by a catalog hierarchy
    (Messier→Caldwell→NGC/IC; e.g. "C20 (NGC 7000)").
-   **5c (next):** the add-arbitrary-object + enrich flow below.
+   **5c (in progress):** reference-based enrichment is partly delivered — a
+   **"Fill missing metadata"** action (Library right-click + a **Library** menu bulk
+   pass) backfills an existing entry's missing fields from the bundled reference and
+   derives `season` from RA (`catalog.fill_missing_metadata` / `season_from_ra`),
+   never overwriting user values. Fixes stale stubs (e.g. captured-but-uncatalogued
+   objects added before their catalog was bundled). The bundled Caldwell reference was
+   regenerated to ship a derived `season` for every member. Still to do: the
+   add-arbitrary-object + **online** enrich flow below (mag/size the reference lacks).
 
    **Add arbitrary objects + auto-enrich.** A user can add any object to their
    Library; the app fills the data fields via a cascade (generalizes

@@ -27,9 +27,14 @@ _IC = re.compile(r"^IC\s*(\d+)$", re.IGNORECASE)
 # (by name), and the intrinsic reference id (NGC/IC/…) sorts last.
 _CATALOG_PRIORITY = ["messier", "caldwell"]
 
-_MONTHS = {m: i for i, m in enumerate(
-    ["jan", "feb", "mar", "apr", "may", "jun",
-     "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+_MON_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+_MONTHS = {m.lower(): i for i, m in enumerate(_MON_ABBR, start=1)}
+
+# RA→observing-season calibration. An object's 3-month evening-sky window tracks
+# its RA (24h of RA over 12 months); c0 is fit so the derived window reproduces the
+# curated Messier seasons in seed/objects.toml (≈98% exact match).
+_SEASON_C0 = 10.1
 
 
 def load_library() -> dict[str, dict]:
@@ -207,6 +212,117 @@ def season_sort_key(season: str):
     # First token before an en-dash / hyphen / space (e.g. "Mar–May" → "Mar").
     first = re.split(r"[–\-\s]+", s, maxsplit=1)[0].lower()[:3]
     return (_MONTHS.get(first, 99), s.lower())
+
+
+def season_from_ra(ra_deg) -> str:
+    """Derive an object's observing-season window ("Mon–Mon") from its J2000 RA.
+
+    The 3-month evening window an object is best placed advances ~1 month per 2h of
+    RA (24h ↔ 12 months); `_SEASON_C0` is calibrated against the curated Messier
+    seasons. Offline + deterministic; shared with the bundled-data generator
+    (`tools/gen_caldwell.py`). Returns "" for an invalid RA."""
+    try:
+        ra = float(ra_deg)
+    except (TypeError, ValueError):
+        return ""
+    center = ((ra / 30.0) + _SEASON_C0 - 1) % 12 + 1     # center month, 1..12 float
+    cm = ((round(center) - 1) % 12) + 1
+    lo = ((cm - 2) % 12) + 1                              # month before the center
+    hi = (cm % 12) + 1                                   # month after the center
+    return f"{_MON_ABBR[lo - 1]}–{_MON_ABBR[hi - 1]}"
+
+
+# Structured fields a Library entry can carry, in canonical write order (notes is
+# user content — never auto-filled).
+_FILLABLE = ["name", "type", "magnitude", "size", "season", "filter",
+             "ra_deg", "dec_deg"]
+
+
+def _is_missing(field: str, value) -> bool:
+    """A Library field counts as missing (eligible for fill) if it's absent, blank,
+    a placeholder "unknown" type, or a null magnitude — never a real user value."""
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    if field == "type" and str(value).strip().lower() == "unknown":
+        return True
+    return False
+
+
+def fill_missing_metadata(slug: str) -> dict:
+    """Backfill an existing Library entry's **missing** structured fields from the
+    bundled reference (and derive `season` from coords if still missing). Never
+    overwrites a present, real value — preserves user edits. Returns the
+    `{field: value}` actually filled (empty if nothing to do or slug unknown).
+
+    Reference-only/offline: covers catalog objects whose Library row predates the
+    reference data (e.g. captured-but-uncatalogued stubs). Online enrichment for
+    fields the reference itself lacks is a later step (ROADMAP 5c)."""
+    lib = load_library()
+    entry = lib.get(slug)
+    if entry is None:
+        return {}
+    ref = load_reference().get(slug, {})
+    filled = _compute_fill(entry, ref)
+    if filled:
+        entry.update(filled)
+        _write_library(lib)
+    return filled
+
+
+def fill_all_missing_metadata() -> dict[str, dict]:
+    """Backfill every Library entry in a single rewrite. Returns
+    `{slug: {field: value}}` for entries that gained fields."""
+    lib = load_library()
+    ref = load_reference()
+    out: dict[str, dict] = {}
+    for slug, entry in lib.items():
+        filled = _compute_fill(entry, ref.get(slug, {}))
+        if filled:
+            entry.update(filled)
+            out[slug] = filled
+    if out:
+        _write_library(lib)
+    return out
+
+
+def _compute_fill(entry: dict, ref: dict) -> dict:
+    """Fields to add to `entry` from `ref` (+ derived season). Pure; no I/O."""
+    filled: dict = {}
+    for f in _FILLABLE:
+        if not _is_missing(f, entry.get(f)):
+            continue
+        rv = ref.get(f)
+        if rv is not None and not (isinstance(rv, str) and not rv.strip()):
+            filled[f] = rv
+    if _is_missing("season", filled.get("season", entry.get("season"))):
+        ra = filled.get("ra_deg", entry.get("ra_deg"))
+        if ra is not None:
+            s = season_from_ra(ra)
+            if s:
+                filled["season"] = s
+    return filled
+
+
+def _write_library(entries: dict[str, dict]) -> None:
+    """Rewrite library.toml from `entries`, preserving **every** key per entry
+    (canonical order first, then any extras) so nothing is lost. The targeted writer
+    for in-place updates (the add paths stay append-only)."""
+    lines = ["# M110 Library — your object corpus (catalog members + additions).",
+             "# M110 reads/writes this file.\n"]
+    for slug, e in entries.items():
+        lines.append(f"[catalog.{slug}]")
+        extra = [k for k in e if k not in _LIB_ORDER]
+        for k in _LIB_ORDER + extra:
+            if k not in e:
+                continue
+            v = e[k]
+            if v is None:
+                continue
+            lines.append(f"{k} = {v if isinstance(v, (int, float)) else _q(v)}")
+        lines.append("")
+    config.LIBRARY_TOML.write_text("\n".join(lines))
 
 
 def _simbad_coords(name: str):

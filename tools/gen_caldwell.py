@@ -4,20 +4,34 @@
 From the canonical Caldwell list (designation + common name + type, transcribed
 from Wikipedia's Caldwell catalogue), resolve coordinates + angular size via Simbad
 and emit:
-  * append ~109 entries to m110/seed/objects.toml   (the object reference dataset)
+  * the Caldwell section of m110/seed/objects.toml  (the object reference dataset)
   * m110/seed/catalogs/caldwell.toml                (membership: slug → "C#")
 
 Also rewrites m110/seed/catalogs/messier.toml into the uniform [members] table
 format. Runtime stays offline — only the bundled output ships.
 
+**Idempotent re-run:** the Caldwell section of objects.toml is re-emitted (split at
+the marker comment), and each object's observing `season` is derived offline from
+its RA (`catalog.season_from_ra`). Simbad lookups fall back to the already-bundled
+coords/mag/size when they return nothing (or when offline), so a re-run only *adds*
+data — it never drops what already shipped.
+
     python tools/gen_caldwell.py        # writes the bundled files in place
 """
 from __future__ import annotations
 
+import sys
 import tomllib
 from pathlib import Path
 
 SEED = Path(__file__).resolve().parent.parent / "m110" / "seed"
+# Reuse the runtime season-from-RA model so derived seasons match the app.
+sys.path.insert(0, str(SEED.parent.parent))
+from m110.catalog import season_from_ra            # noqa: E402
+
+# Marker that opens the generated Caldwell section in objects.toml (everything from
+# here on is re-emitted on each run; the Messier section above it is left verbatim).
+_CALDWELL_MARKER = "# ── Caldwell catalogue objects"
 
 # caldwell #, primary designation (for Simbad), common name, Wikipedia type
 _CALDWELL = """\
@@ -160,27 +174,41 @@ def _toml_str(s) -> str:
     return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _query_simbad(names):
+    """Best-effort {input-id: simbad-row}. Empty when astroquery/network is absent —
+    callers fall back to the already-bundled values."""
+    try:
+        from astroquery.simbad import Simbad
+        sim = Simbad()
+        sim.add_votable_fields("V", "dim")
+        res = sim.query_objects(names)
+        by_name = {}
+        for row in res:
+            # user_specified_id is space-padded to a fixed column width — strip it.
+            key = (str(row["user_specified_id"]).strip()
+                   if "user_specified_id" in res.colnames else None)
+            by_name[key] = row
+        return by_name
+    except Exception as e:                       # offline / astroquery missing
+        print(f"  Simbad unavailable ({type(e).__name__}); using bundled values.")
+        return {}
+
+
 def main():
-    from astroquery.simbad import Simbad
     rows = []
     for line in _CALDWELL.strip().splitlines():
         num, desig, common, wtype = line.split("|")
         rows.append({"c": f"C{num}", "id": desig, "name": common,
                      "type": _our_type(wtype)})
 
-    # Resolve coords + size via Simbad (batch; match back by the input name).
-    sim = Simbad()
-    sim.add_votable_fields("V", "dim")
-    names = [r["id"] for r in rows]
-    res = sim.query_objects(names)
-    by_name = {}
-    for row in res:
-        # user_specified_id is space-padded to a fixed column width — strip it.
-        key = str(row["user_specified_id"]).strip() if "user_specified_id" in res.colnames else None
-        by_name[key] = row
+    by_name = _query_simbad([r["id"] for r in rows])
+    # Already-bundled Caldwell entries → fallback for coords/mag/size on a re-run.
+    bundled = tomllib.load(open(SEED / "objects.toml", "rb"))["object"]
 
     out_objs, members, missing = [], [], []
-    for i, r in enumerate(rows):
+    for r in rows:
+        slug = _slug(r["id"])
+        prev = bundled.get(slug, {})
         row = by_name.get(r["id"])
         ra = dec = size = mag = None
         if row is not None:
@@ -202,21 +230,26 @@ def main():
                     mag = round(v, 1)
             except Exception:
                 pass
+        # Fall back to bundled values so a re-run never drops shipped data.
+        if ra is None and prev.get("ra_deg") is not None:
+            ra, dec = prev["ra_deg"], prev.get("dec_deg")
+        if size is None:
+            size = prev.get("size")
+        if mag is None:
+            mag = prev.get("magnitude")
+        season = season_from_ra(ra) if ra is not None else None
         if ra is None:
             missing.append(r["id"])
-        slug = _slug(r["id"])
         members.append((slug, r["c"]))
-        out_objs.append((slug, r["id"], r["name"], r["type"], mag, size, ra, dec))
+        out_objs.append((slug, r["id"], r["name"], r["type"], mag, size, season, ra, dec))
 
-    # --- append to objects.toml (skip slugs already present) ---
+    # --- re-emit the Caldwell section of objects.toml (idempotent) ---
     obj_path = SEED / "objects.toml"
-    existing = set(tomllib.load(open(obj_path, "rb"))["object"])
-    blocks = ["", "# ── Caldwell catalogue objects (generated; coords/size via Simbad) ──"]
-    added = 0
-    for slug, oid, name, otype, mag, size, ra, dec in out_objs:
-        if slug in existing:
-            continue
-        added += 1
+    head = obj_path.read_text().split("\n" + _CALDWELL_MARKER, 1)[0].rstrip("\n")
+    blocks = [head, "",
+              "# ── Caldwell catalogue objects (generated; coords/size via Simbad, "
+              "season derived from RA) ──"]
+    for slug, oid, name, otype, mag, size, season, ra, dec in out_objs:
         blocks.append(f"\n[object.{slug}]")
         blocks.append(f"id = {_toml_str(oid)}")
         if name:
@@ -226,11 +259,13 @@ def main():
             blocks.append(f"magnitude = {mag}")
         if size:
             blocks.append(f"size = {_toml_str(size)}")
+        if season:
+            blocks.append(f"season = {_toml_str(season)}")
         if ra is not None:
             blocks.append(f"ra_deg = {ra}")
             blocks.append(f"dec_deg = {dec}")
-    with obj_path.open("a") as f:
-        f.write("\n".join(blocks) + "\n")
+    obj_path.write_text("\n".join(blocks) + "\n")
+    added = len(out_objs)
 
     # --- caldwell.toml membership table ---
     cw = ['name = "Caldwell"',
@@ -243,8 +278,8 @@ def main():
     # --- regenerate messier.toml into the [members] table format ---
     _rewrite_messier()
 
-    print(f"Caldwell: {len(rows)} objects, {added} appended to objects.toml, "
-          f"{len(members)} members.")
+    print(f"Caldwell: {len(rows)} objects re-emitted to objects.toml "
+          f"({added} entries), {len(members)} members.")
     if missing:
         print(f"  coords unresolved ({len(missing)}): {missing}")
 

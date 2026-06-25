@@ -1247,13 +1247,14 @@ season = "Mar–May"
 filter = "OFF"
 notes = "Mosaic — chain of galaxies in Virgo Cluster"
 
-# ── Caldwell catalogue objects (generated; coords/size via Simbad) ──
+# ── Caldwell catalogue objects (generated; coords/size via Simbad, season derived from RA) ──
 
 [object.ngc-188]
 id = "NGC 188"
 name = "Polarissima Cluster"
 type = "open_cluster"
 size = "33'×33'"
+season = "Sep–Nov"
 ra_deg = 11.79792
 dec_deg = 85.24389
 
@@ -1263,6 +1264,7 @@ name = "Bow-Tie Nebula"
 type = "planetary"
 magnitude = 11.5
 size = "0'×1'"
+season = "Sep–Nov"
 ra_deg = 3.25424
 dec_deg = 72.52195
 
@@ -1271,6 +1273,7 @@ id = "NGC 4236"
 type = "galaxy"
 magnitude = 10.1
 size = "12'×3'"
+season = "Mar–May"
 ra_deg = 184.17549
 dec_deg = 69.46257
 
@@ -1278,6 +1281,7 @@ dec_deg = 69.46257
 id = "NGC 7023"
 name = "Iris Nebula"
 type = "open_cluster"
+season = "Aug–Oct"
 ra_deg = 315.40375
 dec_deg = 68.16333
 
@@ -1286,6 +1290,7 @@ id = "IC 342"
 name = "Hidden Galaxy"
 type = "galaxy"
 size = "22'×21'"
+season = "Nov–Jan"
 ra_deg = 56.70214
 dec_deg = 68.09611
 
@@ -1295,6 +1300,7 @@ name = "Cat's Eye Nebula"
 type = "planetary"
 magnitude = 11.3
 size = "1'×1'"
+season = "Jun–Aug"
 ra_deg = 269.63918
 dec_deg = 66.63299
 
@@ -1303,6 +1309,7 @@ id = "NGC 2403"
 type = "galaxy"
 magnitude = 8.4
 size = "10'×6'"
+season = "Jan–Mar"
 ra_deg = 114.21391
 dec_deg = 65.60268
 
@@ -1311,6 +1318,7 @@ id = "NGC 559"
 type = "open_cluster"
 magnitude = 9.5
 size = "10'×10'"
+season = "Oct–Dec"
 ra_deg = 22.38708
 dec_deg = 63.30111
 
@@ -1319,6 +1327,7 @@ id = "Sh2-155"
 name = "Cave Nebula"
 type = "emission"
 size = "5'×4'"
+season = "Sep–Nov"
 ra_deg = 344.27462
 dec_deg = 62.63592
 
@@ -1327,6 +1336,7 @@ id = "NGC 663"
 type = "open_cluster"
 magnitude = 7.1
 size = "18'×18'"
+season = "Oct–Dec"
 ra_deg = 26.5875
 dec_deg = 61.21167
 
@@ -1335,6 +1345,7 @@ id = "NGC 7635"
 name = "Bubble Nebula"
 type = "emission"
 size = "42'×42'"
+season = "Sep–Nov"
 ra_deg = 350.20125
 dec_deg = 61.20167
 
@@ -1343,6 +1354,7 @@ id = "NGC 6946"
 name = "Fireworks Galaxy"
 type = "galaxy"
 size = "11'×11'"
+season = "Jul–Sep"
 ra_deg = 308.71805
 dec_deg = 60.15368
 
@@ -1352,6 +1364,7 @@ name = "Owl Cluster"
 type = "open_cluster"
 magnitude = 6.4
 size = "15'×15'"
+season = "Oct–Dec"
 ra_deg = 19.88708
 dec_deg = 58.27806
 
@@ -1360,6 +1373,7 @@ id = "NGC 869"
 name = "Double Cluster"
 type = "open_cluster"
 size = "16'×16'"
+season = "Oct–Dec"
 ra_deg = 34.74083
 dec_deg = 57.13389
 
@@ -1369,6 +1383,7 @@ name = "Blinking Planetary"
 type = "planetary"
 magnitude = 9.4
 size = "1'×1'"
+season = "Jul–Sep"
 ra_deg = 296.20063
 dec_deg = 50.52507
 
@@ -1377,6 +1392,7 @@ id = "NGC 7243"
 type = "open_cluster"
 magnitude = 6.4
 size = "31'×31'"
+season = "Aug–Oct"
 ra_deg = 333.7875
 dec_deg = 49.83
 
@@ -1385,6 +1401,7 @@ id = "NGC 147"
 type = "galaxy"
 magnitude = 9.5
 size = "13'×7'"
+season = "Sep–Nov"
 ra_deg = 8.3005
 dec_deg = 48.50874
 
@@ -1393,6 +1410,7 @@ id = "NGC 185"
 type = "galaxy"
 magnitude = 9.2
 size = "11'×10'"
+season = "Sep–Nov"
 ra_deg = 9.74142
 dec_deg = 48.33751
 
@@ -1401,6 +1419,7 @@ id = "IC 5146"
 name = "Cocoon Nebula"
 type = "open_cluster"
 size = "8'×8'"
+season = "Aug–Oct"
 ra_deg = 328.372
 dec_deg = 47.246
 
@@ -1408,6 +1427,7 @@ dec_deg = 47.246
 id = "NGC 7000"
 name = "North America Nebula"
 type = "emission"
+season = "Aug–Oct"
 ra_deg = 314.69583
 dec_deg = 44.33
 
@@ -1416,6 +1436,7 @@ id = "NGC 4449"
 type = "galaxy"
 magnitude = 9.6
 size = "7'×4'"
+season = "Mar–May"
 ra_deg = 187.04632
 dec_deg = 44.09356
 
@@ -1424,6 +1445,7 @@ id = "NGC 7662"
 name = "Blue Snowball"
 type = "planetary"
 size = "0'×0'"
+season = "Sep–Nov"
 ra_deg = 351.4743
 dec_deg = 42.53495
 
@@ -1433,6 +1455,7 @@ name = "Silver Sliver Galaxy"
 type = "galaxy"
 magnitude = 9.9
 size = "12'×2'"
+season = "Oct–Dec"
 ra_deg = 35.63711
 dec_deg = 42.34832
 
@@ -1442,6 +1465,7 @@ name = "Perseus A"
 type = "galaxy"
 magnitude = 12.5
 size = "3'×2'"
+season = "Nov–Jan"
 ra_deg = 49.95067
 dec_deg = 41.5117
 
@@ -1450,6 +1474,7 @@ id = "NGC 2419"
 type = "globular"
 magnitude = 10.1
 size = "4'×4'"
+season = "Jan–Mar"
 ra_deg = 114.53546
 dec_deg = 38.88192
 
@@ -1457,6 +1482,7 @@ dec_deg = 38.88192
 id = "NGC 4244"
 type = "galaxy"
 size = "19'×3'"
+season = "Mar–May"
 ra_deg = 184.37358
 dec_deg = 37.80711
 
@@ -1465,6 +1491,7 @@ id = "NGC 6888"
 name = "Crescent Nebula"
 type = "emission"
 magnitude = 7.5
+season = "Jul–Sep"
 ra_deg = 303.02726
 dec_deg = 38.35494
 
@@ -1472,6 +1499,7 @@ dec_deg = 38.35494
 id = "NGC 752"
 type = "open_cluster"
 size = "58'×58'"
+season = "Oct–Dec"
 ra_deg = 29.22292
 dec_deg = 37.79389
 
@@ -1480,6 +1508,7 @@ id = "NGC 5005"
 type = "galaxy"
 magnitude = 13.7
 size = "7'×3'"
+season = "Apr–Jun"
 ra_deg = 197.73463
 dec_deg = 37.05894
 
@@ -1488,6 +1517,7 @@ id = "NGC 7331"
 type = "galaxy"
 magnitude = 9.5
 size = "10'×4'"
+season = "Aug–Oct"
 ra_deg = 339.26688
 dec_deg = 34.41578
 
@@ -1495,6 +1525,7 @@ dec_deg = 34.41578
 id = "IC 405"
 name = "Flaming Star Nebula"
 type = "emission"
+season = "Dec–Feb"
 ra_deg = 79.35
 dec_deg = 34.38333
 
@@ -1504,6 +1535,7 @@ name = "Whale Galaxy"
 type = "galaxy"
 magnitude = 9.2
 size = "17'×3'"
+season = "Mar–May"
 ra_deg = 190.53337
 dec_deg = 32.54151
 
@@ -1511,6 +1543,7 @@ dec_deg = 32.54151
 id = "NGC 6992"
 name = "East Veil Nebula"
 type = "emission_snr"
+season = "Aug–Oct"
 ra_deg = 314.07917
 dec_deg = 31.74333
 
@@ -1518,6 +1551,7 @@ dec_deg = 31.74333
 id = "NGC 6960"
 name = "West Veil Nebula"
 type = "emission_snr"
+season = "Jul–Sep"
 ra_deg = 311.40833
 dec_deg = 30.70833
 
@@ -1527,6 +1561,7 @@ name = "Coma B"
 type = "galaxy"
 magnitude = 11.3
 size = "3'×2'"
+season = "Apr–Jun"
 ra_deg = 195.03374
 dec_deg = 27.97702
 
@@ -1535,6 +1570,7 @@ id = "NGC 4559"
 type = "galaxy"
 magnitude = 10.0
 size = "7'×3'"
+season = "Mar–May"
 ra_deg = 188.99017
 dec_deg = 27.95996
 
@@ -1543,6 +1579,7 @@ id = "NGC 6885"
 type = "open_cluster"
 magnitude = 8.1
 size = "15'×15'"
+season = "Jul–Sep"
 ra_deg = 303.00417
 dec_deg = 26.47833
 
@@ -1552,6 +1589,7 @@ name = "Needle Galaxy"
 type = "galaxy"
 magnitude = 12.4
 size = "14'×2'"
+season = "Mar–May"
 ra_deg = 189.08668
 dec_deg = 25.98739
 
@@ -1561,6 +1599,7 @@ name = "Eskimo Nebula"
 type = "planetary"
 magnitude = 9.7
 size = "0'×0'"
+season = "Jan–Mar"
 ra_deg = 112.29486
 dec_deg = 20.9118
 
@@ -1568,6 +1607,7 @@ dec_deg = 20.9118
 id = "NGC 3626"
 type = "galaxy"
 size = "3'×2'"
+season = "Mar–May"
 ra_deg = 170.01586
 dec_deg = 18.35682
 
@@ -1575,6 +1615,7 @@ dec_deg = 18.35682
 id = "Mel 25"
 name = "Hyades"
 type = "open_cluster"
+season = "Nov–Jan"
 ra_deg = 67.44708
 dec_deg = 16.94806
 
@@ -1583,6 +1624,7 @@ id = "NGC 7006"
 type = "globular"
 magnitude = 10.5
 size = "1'×1'"
+season = "Aug–Oct"
 ra_deg = 315.37277
 dec_deg = 16.18791
 
@@ -1590,6 +1632,7 @@ dec_deg = 16.18791
 id = "NGC 7814"
 type = "galaxy"
 size = "7'×3'"
+season = "Sep–Nov"
 ra_deg = 0.81228
 dec_deg = 16.14523
 
@@ -1599,6 +1642,7 @@ name = "Superman Galaxy"
 type = "galaxy"
 magnitude = 10.9
 size = "6'×3'"
+season = "Sep–Nov"
 ra_deg = 346.23601
 dec_deg = 12.32288
 
@@ -1606,6 +1650,7 @@ dec_deg = 12.32288
 id = "NGC 5248"
 type = "galaxy"
 size = "5'×3'"
+season = "Apr–Jun"
 ra_deg = 204.38339
 dec_deg = 8.88514
 
@@ -1614,6 +1659,7 @@ id = "NGC 2261"
 name = "Hubble's Variable Nebula"
 type = "emission"
 magnitude = 11.9
+season = "Dec–Feb"
 ra_deg = 99.79148
 dec_deg = 8.73598
 
@@ -1621,6 +1667,7 @@ dec_deg = 8.73598
 id = "NGC 6934"
 type = "globular"
 size = "6'×6'"
+season = "Jul–Sep"
 ra_deg = 308.54737
 dec_deg = 7.40447
 
@@ -1629,6 +1676,7 @@ id = "NGC 2775"
 type = "galaxy"
 magnitude = 10.5
 size = "5'×4'"
+season = "Feb–Apr"
 ra_deg = 137.58389
 dec_deg = 7.03802
 
@@ -1636,6 +1684,7 @@ dec_deg = 7.03802
 id = "NGC 2237"
 name = "Rosette Nebula"
 type = "emission"
+season = "Dec–Feb"
 ra_deg = 97.65042
 dec_deg = 4.98072
 
@@ -1644,6 +1693,7 @@ id = "NGC 2244"
 name = "Satellite Cluster"
 type = "open_cluster"
 size = "88'×88'"
+season = "Dec–Feb"
 ra_deg = 98.045
 dec_deg = 4.91389
 
@@ -1652,6 +1702,7 @@ id = "IC 1613"
 type = "galaxy"
 magnitude = 10.0
 size = "16'×14'"
+season = "Oct–Dec"
 ra_deg = 16.2017
 dec_deg = 2.1195
 
@@ -1659,6 +1710,7 @@ dec_deg = 2.1195
 id = "NGC 4697"
 type = "galaxy"
 size = "8'×5'"
+season = "Apr–Jun"
 ra_deg = 192.14958
 dec_deg = -5.80069
 
@@ -1667,6 +1719,7 @@ id = "NGC 3115"
 name = "Spindle Galaxy"
 type = "galaxy"
 size = "13'×5'"
+season = "Feb–Apr"
 ra_deg = 151.30803
 dec_deg = -7.71861
 
@@ -1675,6 +1728,7 @@ id = "NGC 2506"
 type = "open_cluster"
 magnitude = 7.6
 size = "11'×11'"
+season = "Jan–Mar"
 ra_deg = 120.01
 dec_deg = -10.77306
 
@@ -1684,6 +1738,7 @@ name = "Saturn Nebula"
 type = "planetary"
 magnitude = 12.1
 size = "1'×1'"
+season = "Aug–Oct"
 ra_deg = 316.04506
 dec_deg = -11.36349
 
@@ -1693,6 +1748,7 @@ name = "Skull Nebula"
 type = "planetary"
 magnitude = 11.8
 size = "4'×4'"
+season = "Sep–Nov"
 ra_deg = 11.76393
 dec_deg = -11.87194
 
@@ -1702,6 +1758,7 @@ name = "Barnard's Galaxy"
 type = "galaxy"
 magnitude = 8.1
 size = "14'×13'"
+season = "Jul–Sep"
 ra_deg = 296.23416
 dec_deg = -14.79758
 
@@ -1710,6 +1767,7 @@ id = "NGC 2360"
 name = "Caroline's Cluster"
 type = "open_cluster"
 size = "18'×18'"
+season = "Jan–Mar"
 ra_deg = 109.44292
 dec_deg = -15.63111
 
@@ -1719,6 +1777,7 @@ name = "Ghost of Jupiter"
 type = "planetary"
 magnitude = 12.1
 size = "0'×1'"
+season = "Feb–Apr"
 ra_deg = 156.19222
 dec_deg = -18.6423
 
@@ -1727,6 +1786,7 @@ id = "NGC 4038"
 name = "Antennae Galaxies"
 type = "galaxy"
 size = "5'×3'"
+season = "Mar–May"
 ra_deg = 180.47084
 dec_deg = -18.86759
 
@@ -1735,6 +1795,7 @@ id = "NGC 4039"
 name = "Antennae Galaxies"
 type = "galaxy"
 size = "3'×2'"
+season = "Mar–May"
 ra_deg = 180.47296
 dec_deg = -18.88619
 
@@ -1743,6 +1804,7 @@ id = "NGC 247"
 type = "galaxy"
 magnitude = 9.1
 size = "17'×6'"
+season = "Sep–Nov"
 ra_deg = 11.78564
 dec_deg = -20.7604
 
@@ -1752,6 +1814,7 @@ name = "Helix Nebula"
 type = "planetary"
 magnitude = 13.5
 size = "13'×13'"
+season = "Aug–Oct"
 ra_deg = 337.41061
 dec_deg = -20.83715
 
@@ -1760,6 +1823,7 @@ id = "NGC 2362"
 name = "Tau Canis Majoris Cluster"
 type = "open_cluster"
 size = "104'×104'"
+season = "Jan–Mar"
 ra_deg = 109.67083
 dec_deg = -24.95389
 
@@ -1768,6 +1832,7 @@ id = "NGC 253"
 name = "Sculptor Galaxy"
 type = "galaxy"
 size = "29'×6'"
+season = "Sep–Nov"
 ra_deg = 11.88806
 dec_deg = -25.2888
 
@@ -1775,6 +1840,7 @@ dec_deg = -25.2888
 id = "NGC 5694"
 type = "globular"
 size = "4'×4'"
+season = "Apr–Jun"
 ra_deg = 219.90217
 dec_deg = -26.53833
 
@@ -1783,6 +1849,7 @@ id = "NGC 1097"
 type = "galaxy"
 magnitude = 9.5
 size = "11'×6'"
+season = "Oct–Dec"
 ra_deg = 41.57941
 dec_deg = -30.27491
 
@@ -1790,6 +1857,7 @@ dec_deg = -30.27491
 id = "NGC 6729"
 name = "R CrA Nebula"
 type = "emission"
+season = "Jul–Sep"
 ra_deg = 285.44333
 dec_deg = -36.96111
 
@@ -1798,6 +1866,7 @@ id = "NGC 6302"
 name = "Bug Nebula"
 type = "planetary"
 size = "0'×0'"
+season = "Jun–Aug"
 ra_deg = 258.4354
 dec_deg = -37.1031
 
@@ -1807,6 +1876,7 @@ name = "Sculptor Pinwheel Galaxy"
 type = "galaxy"
 magnitude = 8.1
 size = "21'×13'"
+season = "Oct–Dec"
 ra_deg = 13.72269
 dec_deg = -37.68421
 
@@ -1815,6 +1885,7 @@ id = "NGC 2477"
 type = "open_cluster"
 magnitude = 5.8
 size = "18'×18'"
+season = "Jan–Mar"
 ra_deg = 118.04583
 dec_deg = -38.53694
 
@@ -1824,6 +1895,7 @@ name = "String of Pearls Galaxy"
 type = "galaxy"
 magnitude = 7.9
 size = "32'×4'"
+season = "Sep–Nov"
 ra_deg = 3.72334
 dec_deg = -39.19663
 
@@ -1831,6 +1903,7 @@ dec_deg = -39.19663
 id = "NGC 1851"
 type = "globular"
 size = "11'×11'"
+season = "Dec–Feb"
 ra_deg = 78.52817
 dec_deg = -40.04656
 
@@ -1840,6 +1913,7 @@ name = "Eight Burst Nebula"
 type = "planetary"
 magnitude = 10.0
 size = "1'×1'"
+season = "Feb–Apr"
 ra_deg = 151.75736
 dec_deg = -40.43643
 
@@ -1848,6 +1922,7 @@ id = "NGC 6124"
 type = "open_cluster"
 magnitude = 5.8
 size = "48'×48'"
+season = "May–Jul"
 ra_deg = 246.33208
 dec_deg = -40.66111
 
@@ -1855,6 +1930,7 @@ dec_deg = -40.66111
 id = "NGC 6231"
 type = "open_cluster"
 size = "120'×120'"
+season = "Jun–Aug"
 ra_deg = 253.545
 dec_deg = -41.81194
 
@@ -1864,6 +1940,7 @@ name = "Centaurus A"
 type = "galaxy"
 magnitude = 6.8
 size = "26'×18'"
+season = "Apr–Jun"
 ra_deg = 201.36506
 dec_deg = -43.01911
 
@@ -1871,6 +1948,7 @@ dec_deg = -43.01911
 id = "NGC 6541"
 type = "globular"
 size = "13'×13'"
+season = "Jun–Aug"
 ra_deg = 272.00983
 dec_deg = -43.71489
 
@@ -1878,6 +1956,7 @@ dec_deg = -43.71489
 id = "NGC 3201"
 type = "globular"
 size = "18'×18'"
+season = "Feb–Apr"
 ra_deg = 154.40342
 dec_deg = -46.41247
 
@@ -1886,6 +1965,7 @@ id = "NGC 5139"
 name = "Omega Centauri"
 type = "globular"
 size = "36'×36'"
+season = "Apr–Jun"
 ra_deg = 201.697
 dec_deg = -47.47947
 
@@ -1893,6 +1973,7 @@ dec_deg = -47.47947
 id = "NGC 6352"
 type = "globular"
 size = "7'×7'"
+season = "Jun–Aug"
 ra_deg = 261.37129
 dec_deg = -48.42217
 
@@ -1900,6 +1981,7 @@ dec_deg = -48.42217
 id = "NGC 6193"
 type = "open_cluster"
 size = "19'×19'"
+season = "May–Jul"
 ra_deg = 250.31917
 dec_deg = -48.77694
 
@@ -1908,6 +1990,7 @@ id = "NGC 4945"
 type = "galaxy"
 magnitude = 14.4
 size = "20'×4'"
+season = "Apr–Jun"
 ra_deg = 196.36366
 dec_deg = -49.4679
 
@@ -1915,6 +1998,7 @@ dec_deg = -49.4679
 id = "NGC 5286"
 type = "globular"
 size = "9'×9'"
+season = "Apr–Jun"
 ra_deg = 206.61171
 dec_deg = -51.37425
 
@@ -1923,6 +2007,7 @@ id = "IC 2391"
 name = "Omicron Velorum Cluster"
 type = "open_cluster"
 size = "98'×98'"
+season = "Jan–Mar"
 ra_deg = 130.29208
 dec_deg = -52.99111
 
@@ -1931,6 +2016,7 @@ id = "NGC 6397"
 type = "globular"
 magnitude = 5.2
 size = "26'×26'"
+season = "Jun–Aug"
 ra_deg = 265.17538
 dec_deg = -53.67433
 
@@ -1939,6 +2025,7 @@ id = "NGC 1261"
 type = "globular"
 magnitude = 8.6
 size = "7'×7'"
+season = "Nov–Jan"
 ra_deg = 48.06754
 dec_deg = -55.21622
 
@@ -1947,6 +2034,7 @@ id = "NGC 5823"
 type = "open_cluster"
 magnitude = 7.9
 size = "16'×16'"
+season = "May–Jul"
 ra_deg = 226.365
 dec_deg = -55.60806
 
@@ -1955,6 +2043,7 @@ id = "NGC 6087"
 name = "S Normae Cluster"
 type = "open_cluster"
 size = "30'×30'"
+season = "May–Jul"
 ra_deg = 244.72083
 dec_deg = -57.91611
 
@@ -1963,6 +2052,7 @@ id = "NGC 2867"
 type = "planetary"
 magnitude = 10.3
 size = "0'×0'"
+season = "Feb–Apr"
 ra_deg = 140.35576
 dec_deg = -58.31129
 
@@ -1971,6 +2061,7 @@ id = "NGC 3532"
 name = "Wishing Well Cluster"
 type = "open_cluster"
 size = "64'×64'"
+season = "Mar–May"
 ra_deg = 166.41708
 dec_deg = -58.70694
 
@@ -1978,6 +2069,7 @@ dec_deg = -58.70694
 id = "NGC 3372"
 name = "Eta Carinae Nebula"
 type = "emission"
+season = "Feb–Apr"
 ra_deg = 161.25929
 dec_deg = -59.69994
 
@@ -1986,6 +2078,7 @@ id = "NGC 6752"
 name = "Great Peacock Globular"
 type = "globular"
 size = "20'×20'"
+season = "Jul–Sep"
 ra_deg = 287.71712
 dec_deg = -59.98456
 
@@ -1994,6 +2087,7 @@ id = "NGC 4755"
 name = "Jewel Box"
 type = "open_cluster"
 size = "10'×10'"
+season = "Apr–Jun"
 ra_deg = 193.415
 dec_deg = -60.37111
 
@@ -2001,6 +2095,7 @@ dec_deg = -60.37111
 id = "NGC 6025"
 type = "open_cluster"
 size = "35'×35'"
+season = "May–Jul"
 ra_deg = 240.77917
 dec_deg = -60.43
 
@@ -2009,6 +2104,7 @@ id = "NGC 2516"
 name = "Southern Beehive Cluster"
 type = "open_cluster"
 size = "60'×60'"
+season = "Jan–Mar"
 ra_deg = 119.52708
 dec_deg = -60.8
 
@@ -2018,6 +2114,7 @@ name = "Pearl Cluster"
 type = "open_cluster"
 magnitude = 5.3
 size = "14'×14'"
+season = "Mar–May"
 ra_deg = 174.06083
 dec_deg = -61.61611
 
@@ -2026,6 +2123,7 @@ id = "NGC 4609"
 type = "open_cluster"
 magnitude = 6.9
 size = "13'×13'"
+season = "Mar–May"
 ra_deg = 190.58208
 dec_deg = -62.995
 
@@ -2033,6 +2131,7 @@ dec_deg = -62.995
 id = "Coalsack Nebula"
 name = "Coalsack Nebula"
 type = "dark_nebula"
+season = "Mar–May"
 ra_deg = 187.82917
 dec_deg = -63.74333
 
@@ -2040,6 +2139,7 @@ dec_deg = -63.74333
 id = "IC 2944"
 name = "Lambda Centauri Nebula"
 type = "open_cluster"
+season = "Mar–May"
 ra_deg = 174.58333
 dec_deg = -63.37278
 
@@ -2048,6 +2148,7 @@ id = "NGC 6744"
 type = "galaxy"
 magnitude = 8.2
 size = "17'×11'"
+season = "Jul–Sep"
 ra_deg = 287.44222
 dec_deg = -63.85747
 
@@ -2056,6 +2157,7 @@ id = "IC 2602"
 name = "Theta Car Cluster"
 type = "open_cluster"
 size = "174'×174'"
+season = "Feb–Apr"
 ra_deg = 160.61292
 dec_deg = -64.42611
 
@@ -2065,6 +2167,7 @@ name = "Tarantula Nebula"
 type = "open_cluster"
 magnitude = 7.2
 size = "4'×4'"
+season = "Dec–Feb"
 ra_deg = 84.675
 dec_deg = -69.1
 
@@ -2073,6 +2176,7 @@ id = "NGC 362"
 type = "globular"
 magnitude = 6.6
 size = "13'×13'"
+season = "Oct–Dec"
 ra_deg = 15.80942
 dec_deg = -70.84878
 
@@ -2080,6 +2184,7 @@ dec_deg = -70.84878
 id = "NGC 4833"
 type = "globular"
 size = "14'×14'"
+season = "Apr–Jun"
 ra_deg = 194.89133
 dec_deg = -70.8765
 
@@ -2089,6 +2194,7 @@ name = "47 Tucanae"
 type = "globular"
 magnitude = 4.1
 size = "44'×44'"
+season = "Sep–Nov"
 ra_deg = 6.02233
 dec_deg = -72.08144
 
@@ -2096,6 +2202,7 @@ dec_deg = -72.08144
 id = "NGC 6101"
 type = "globular"
 size = "11'×11'"
+season = "May–Jul"
 ra_deg = 246.4505
 dec_deg = -72.20219
 
@@ -2104,6 +2211,7 @@ id = "NGC 4372"
 type = "globular"
 magnitude = 9.9
 size = "24'×24'"
+season = "Mar–May"
 ra_deg = 186.43929
 dec_deg = -72.65908
 
@@ -2111,5 +2219,6 @@ dec_deg = -72.65908
 id = "NGC 3195"
 type = "planetary"
 size = "1'×1'"
+season = "Feb–Apr"
 ra_deg = 152.33713
 dec_deg = -80.85854

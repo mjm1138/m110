@@ -289,6 +289,18 @@ Library has a **catalog-filter** view, a **"Captured only"** filter (default off
 and shows **all identifiers** per object (display-only: intrinsic id + catalog
 designations, ordered by a catalog hierarchy — no stored change).
 
+**Reference backfill (Fill missing metadata):** a Library entry can lag the bundled
+reference — e.g. a captured-but-uncatalogued object promoted by `add_captured_objects`
+as a minimal stub (`name=""`, `type="unknown"`) *before* its catalog was bundled. Every
+add path is append-only and never overwrites, so the stub persists. `catalog.fill_missing_metadata(slug)`
+/ `fill_all_missing_metadata()` backfill **only the missing** structured fields from the
+reference (and derive `season` from coords via `season_from_ra`), never touching a real
+user value, via `_write_library` (an in-place rewriter that preserves every key). Surfaced
+as the Library right-click action + the **Library → Fill missing metadata** menu. The
+bundled reference now ships a `season` for every Caldwell member too (derived from RA in
+`tools/gen_caldwell.py`), so fresh seeding + fills get it. Online enrichment for fields the
+reference itself lacks (e.g. mag/size for diffuse SNRs) remains the future step (5c).
+
 **Planned reframe (Goals view — see ROADMAP item 5):** the Library is to become the
 **captured/annotated collection** (the user's actual corpus), with **uncaptured
 catalog members living in a dedicated Goals view** (a checklist by membership), not

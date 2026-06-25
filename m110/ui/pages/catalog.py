@@ -6,7 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
-    QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox, QCheckBox,
+    QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox, QCheckBox, QMenu,
 )
 
 from m110 import config, derived, siril, catalog as catalog_mod
@@ -202,6 +202,8 @@ class CatalogPage(QWidget):
         table.setSortingEnabled(True)
         table.sortByColumn(self._sort_col, self._sort_order)
         table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+        table.customContextMenuRequested.connect(self._on_context_menu)
         return table
 
     def _on_sort_changed(self, col: int, order):
@@ -247,6 +249,33 @@ class CatalogPage(QWidget):
     def _on_detail_editing(self, editing: bool):
         self.table.setEnabled(not editing)
         self.editing_changed.emit(editing)
+
+    # ---- context menu: fill missing metadata ----
+    def _on_context_menu(self, pos):
+        item = self.table.itemAt(pos)
+        if item is None:
+            return
+        slug = self.table.item(item.row(), 0).data(Qt.UserRole)
+        entry = self._cat.get(slug, {})
+        missing = bool(catalog_mod._compute_fill(entry, catalog_mod.load_reference().get(slug, {})))
+        menu = QMenu(self)
+        act = menu.addAction("Fill in missing metadata")
+        act.setEnabled(missing)
+        if menu.exec(self.table.viewport().mapToGlobal(pos)) is act and missing:
+            self._fill_one(slug)
+
+    def _fill_one(self, slug: str):
+        filled = catalog_mod.fill_missing_metadata(slug)
+        if not filled:
+            QMessageBox.information(self, "Nothing to fill",
+                                   "This object already has all available metadata.")
+            return
+        self._cat = load_library()
+        self._rebuild_table()
+        self._select_slug(slug)
+        fields = ", ".join(sorted(filled))
+        QMessageBox.information(self, "Metadata filled",
+                               f"Filled from the reference: {fields}.")
 
     # ---- import (prep is automatic on ingest) ----
     def _pick_target(self, targets: list[str], title: str) -> str | None:
