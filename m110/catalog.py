@@ -132,6 +132,17 @@ def _q(s) -> str:
     return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _toml_value(v) -> str:
+    """Serialize a Python value as TOML. bool **before** int (bool is an int
+    subclass) so a preserved boolean round-trips as lowercase `true`/`false`, not
+    Python's `True`/`False` (which is invalid TOML)."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    return _q(v)
+
+
 def load_coords() -> dict[str, tuple[float, float]]:
     """J2000 reference coordinates {slug: (ra_deg, dec_deg)} for the pointing
     check — from the bundled reference (`seed/objects.toml`), with the user's
@@ -320,7 +331,7 @@ def _write_library(entries: dict[str, dict]) -> None:
             v = e[k]
             if v is None:
                 continue
-            lines.append(f"{k} = {v if isinstance(v, (int, float)) else _q(v)}")
+            lines.append(f"{k} = {_toml_value(v)}")
         lines.append("")
     config.LIBRARY_TOML.write_text("\n".join(lines))
 

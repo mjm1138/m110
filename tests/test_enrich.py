@@ -74,6 +74,18 @@ def test_write_library_preserves_unknown_keys(tmp_path, monkeypatch):
     assert e["custom_field"] == "keep me"                    # extra key survived
 
 
+def test_write_library_roundtrips_boolean(tmp_path, monkeypatch):
+    # A hand-added boolean must round-trip as valid TOML (lowercase true/false),
+    # not Python's True/False (bool is an int subclass — easy to mis-serialize).
+    stub = ('\n[catalog.ngc-6992]\nid = "NGC 6992"\nname = ""\ntype = "unknown"\n'
+            'ra_deg = 314.0792\ndec_deg = 31.7433\nobstructed = true\n')
+    _seed_lib(tmp_path, monkeypatch, extra=stub)
+    catalog.fill_missing_metadata("ngc-6992")                # rewrite
+    text = config.LIBRARY_TOML.read_text()
+    assert "obstructed = true" in text and "obstructed = True" not in text
+    assert catalog.load_library()["ngc-6992"]["obstructed"] is True   # re-parses
+
+
 def test_fill_all_missing(tmp_path, monkeypatch):
     extra = _STALE_STUB + (
         '\n[catalog.ngc-6960]\nid = "NGC 6960"\nname = ""\ntype = "unknown"\n'
