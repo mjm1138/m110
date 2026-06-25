@@ -119,6 +119,7 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
         labels = " | ".join(l.text() for l in d._content.findChildren(QLabel))
         assert "Processing" in labels      # per-object processing section
         assert "Sessions" in labels        # per-object sessions section
+        assert "Object Notes" in labels    # per-object notes section (the journal body)
         assert "Object details" in labels  # metadata block
         assert slug in labels              # metadata shows the slug
         # comprehensive details incl. RA/Dec (decimal + sexagesimal) when coords known

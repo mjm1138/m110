@@ -1,8 +1,9 @@
 """Shared per-object detail pane (used by the Catalog page; opened from anywhere).
 
-Header + status + hero (scales to the pane) + journal (view/edit the raw
-`journal.md`) + gallery (double-click → image viewer) + an Import-finished-work
-entry when a processing sandbox has output to bring back.
+Header + status + hero (scales to the pane) + **Object Notes** (view/edit the raw
+`journal.md` — the object's entry in the Journal) + gallery (double-click → image
+viewer) + an Import-finished-work entry when a processing sandbox has output to
+bring back.
 """
 from __future__ import annotations
 
@@ -168,10 +169,10 @@ class DetailPane(QScrollArea):
             self._lay.addWidget(cap)
 
         header = QHBoxLayout()
-        header.addWidget(QLabel("<b>Journal</b>"))
+        header.addWidget(QLabel("<b>Object Notes</b>"))
         header.addStretch(1)
         edit_btn = QPushButton("Edit")
-        edit_btn.setToolTip("Edit this object's journal (Objects/<id>/journal.md)")
+        edit_btn.setToolTip("Edit this object's notes (Objects/<id>/journal.md)")
         edit_btn.clicked.connect(self._enter_edit)
         header.addWidget(edit_btn)
         self._lay.addLayout(header)
@@ -307,7 +308,7 @@ class DetailPane(QScrollArea):
         if targets:
             rows.append(("Capture targets", ", ".join(sorted(targets))))
         if e.get("notes"):
-            rows.append(("Notes", str(e["notes"])))
+            rows.append(("Remarks", str(e["notes"])))
         self._lay.addWidget(_section_label("Object details"))
         body = "<br>".join(
             f"<b>{k}:</b> {v}" for k, v in rows)
@@ -334,7 +335,7 @@ class DetailPane(QScrollArea):
         self._clear()
 
         self._lay.addWidget(QLabel(
-            f"<b>Editing journal</b> &mdash; {e.get('id', '')} "
+            f"<b>Editing Object Notes</b> &mdash; {e.get('id', '')} "
             f"&middot; <code>Objects/{objects.object_folder_name(slug)}/journal.md</code>"))
 
         self._editor = QPlainTextEdit()
