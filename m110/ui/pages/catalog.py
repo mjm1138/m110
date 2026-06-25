@@ -42,6 +42,7 @@ class CatalogPage(QWidget):
 
     editing_changed = Signal(bool)   # journal editor open/close (shell locks nav)
     dirty = Signal()                 # disk changed (import) → shell should refresh
+    notes_saved = Signal(str)        # Object Notes saved → shell reloads other views
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,6 +59,7 @@ class CatalogPage(QWidget):
         self.detail = DetailPane()
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
+        self.detail.saved.connect(self.notes_saved)      # re-emit to the shell
 
         # Left side: catalog selector + search + stat row above the table.
         cat_row = QHBoxLayout()

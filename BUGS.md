@@ -40,6 +40,9 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   is no longer skipped for thumbnailing). Tests:
   `test_siril.test_scan_finished_keeps_pipeline_step_tokens_in_final_name`,
   `test_build_images.test_is_intermediate_fit_honors_final_hint`.
+  
+- [x] **BUG**: **Edit object journal entry should trigger refresh in Journal view**. If I add notes to an object and return to the Journal view, the new content doesn’t appear until I do a manual refresh. *Done — saving Object Notes emits `DetailPane.saved` → `CatalogPage.notes_saved` → the shell reloads the other views (lightweight, no scan/derive/render). `test_ui_pages.test_object_notes_edit_wraps_and_signals_reload` + `test_catalog_page_reemits_notes_saved`.*
+- [x] **BUG**: **Text doesn’t wrap at view width in the “Editing Journal” view** (edit window showed a horizontal scroll bar). *Done — the Object Notes editor uses `QPlainTextEdit.WidgetWidth` wrap instead of `NoWrap`.*
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.

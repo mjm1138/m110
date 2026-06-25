@@ -348,6 +348,46 @@ def test_add_object_dialog_resolves_and_adds(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_object_notes_edit_wraps_and_signals_reload(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    slug, tid = _seed_capture(root, monkeypatch)
+    from PySide6.QtWidgets import QPlainTextEdit
+    from m110 import objects
+    from m110.ui.detail import DetailPane
+    from m110 import catalog, derived
+    d = DetailPane()
+    try:
+        d.show_object(slug, catalog.load_library()[slug],
+                      derived.totals_by_slug().get(slug, {}))
+        d._enter_edit()
+        # Bug #2: editor wraps to width (no horizontal scrollbar).
+        assert d._editor.lineWrapMode() == QPlainTextEdit.WidgetWidth
+        # Bug #1: saving emits `saved(slug)` so the shell can reload other views.
+        d._editor.setPlainText("# notes\n\nGot 4h last night.\n")
+        got = []
+        d.saved.connect(got.append)
+        d._save_edit()
+        assert got == [slug]
+        assert "4h last night" in objects.read_journal_text(slug)
+    finally:
+        d.deleteLater()
+        qapp.processEvents()
+
+
+def test_catalog_page_reemits_notes_saved(tmp_path, monkeypatch, qapp):
+    _seed_root(tmp_path, monkeypatch)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        got = []
+        page.notes_saved.connect(got.append)
+        page.detail.saved.emit("m31")        # detail → catalog re-emit
+        assert got == ["m31"]
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_catalog_page_has_online_enrich_hook(tmp_path, monkeypatch, qapp):
     _seed_root(tmp_path, monkeypatch)
     from m110.ui.pages.catalog import CatalogPage

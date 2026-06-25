@@ -63,6 +63,8 @@ class DetailPane(QScrollArea):
     editing_changed = Signal(bool)
     # The user asks to import finished processing output for an object.
     import_requested = Signal(str)
+    # Object Notes were saved → other views (e.g. the Journal feed) should reload.
+    saved = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -342,7 +344,7 @@ class DetailPane(QScrollArea):
         self._editor.setPlainText(objects.read_journal_text(slug))
         self._editor.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
         self._editor.setMinimumHeight(360)
-        self._editor.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)   # wrap to pane width
         self._lay.addWidget(self._editor)
 
         hint = QLabel("Frontmatter between the <code>---</code> fences feeds the "
@@ -372,6 +374,7 @@ class DetailPane(QScrollArea):
         self._editing = False
         self.editing_changed.emit(False)
         self.show_object(slug, e, t)
+        self.saved.emit(slug)        # let the shell reload other views (Journal feed)
 
     def _cancel_edit(self):
         if not self._current:

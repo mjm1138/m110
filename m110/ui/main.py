@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         # Routing + locking.
         self.catalog.editing_changed.connect(self._on_editing_changed)
         self.catalog.dirty.connect(self._do_refresh)
+        self.catalog.notes_saved.connect(self._on_notes_saved)
         self.summary.open_object.connect(self.open_object)
         self.processing.open_object.connect(self.open_object)
         self.sessions.open_object.connect(self.open_object)
@@ -198,6 +199,14 @@ class MainWindow(QMainWindow):
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
         self.prep_action.setEnabled(not editing)
+
+    def _on_notes_saved(self, _slug: str):
+        # Object Notes were edited in the detail pane — reload the other views (the
+        # Journal feed especially) so the new text shows without a manual Refresh.
+        # Lightweight: no scan/derive/render worker (a text edit adds no images).
+        for p in self.pages:
+            if p is not self.catalog:        # the detail pane already re-rendered
+                p.reload()
 
     def _prepare_working_folders(self):
         if self.catalog.is_editing() or self._refreshing:
