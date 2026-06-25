@@ -64,20 +64,23 @@ def test_bundled_reference_and_catalog():
 def test_add_captured_objects(tmp_path, monkeypatch):
     lib = tmp_path / "library.toml"
     monkeypatch.setattr(config, "LIBRARY_TOML", lib)
-    config._seed_library(lib)                            # seed from bundled reference
+    config._seed_library(lib)                            # 5d: empty Library
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
     monkeypatch.setattr(catalog, "_simbad_coords", lambda name: (314.08, 31.74))
 
-    (config.IMAGES_DIR / "M101" / "lights").mkdir(parents=True)       # cataloged
-    (config.IMAGES_DIR / "NGC 6992" / "lights").mkdir(parents=True)   # NEW
+    (config.IMAGES_DIR / "M101" / "lights").mkdir(parents=True)       # known (Messier)
+    (config.IMAGES_DIR / "NGC 1234" / "lights").mkdir(parents=True)   # NEW, off-catalog
     (config.IMAGES_DIR / "NoCaptures").mkdir()                        # ignored
 
-    assert catalog.add_captured_objects() == ["ngc-6992"]
+    # 5d: the Library starts empty, so capturing a known catalog object also
+    # promotes it — pulling its full bundled-reference metadata, not "unknown".
+    assert sorted(catalog.add_captured_objects()) == ["m101", "ngc-1234"]
     c = catalog.load_library()
-    assert c["ngc-6992"]["id"] == "NGC 6992" and c["ngc-6992"]["type"] == "unknown"
-    assert "m101" in c                                   # existing entries untouched
-    # Simbad coords are written + merged into load_coords (→ pointing support)
-    assert catalog.load_coords()["ngc-6992"] == (314.08, 31.74)
+    assert c["m101"]["id"] == "M101" and c["m101"]["type"] != "unknown"
+    assert "ra_deg" in c["m101"]                         # reference coords, not Simbad
+    # an off-catalog target falls back to a minimal entry + Simbad coords
+    assert c["ngc-1234"]["type"] == "unknown"
+    assert catalog.load_coords()["ngc-1234"] == (314.08, 31.74)
     # idempotent — second pass adds nothing
     assert catalog.add_captured_objects() == []
 

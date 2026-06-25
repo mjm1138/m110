@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch)",
+      "Bash(git branch -v*)",
+      "Bash(git branch -a*)",
+      "Bash(git branch --show-current*)",
+      "Bash(git show*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git merge*)",
+      "Bash(git branch -d*)",
+      "Bash(git branch -D*)",
+      "Bash(git push --delete*)",
+      "Bash(git push origin --delete*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit -n*)",
+      "Bash(git commit --no-gpg-sign*)",
+      "Bash(git push --no-verify*)",
+      "Bash(git -c commit.gpgsign=false*)",
+      "Bash(git -c * commit.gpgsign=false*)",
+      "Bash(git reset --hard*)",
+      "Bash(git rebase*)",
+      "Bash(git clean -f*)",
+      "Bash(git clean -fd*)",
+      "Bash(git clean -fdx*)"
+    ]
+  }
+}

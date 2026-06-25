@@ -75,6 +75,20 @@ def write_journal(slug: str, text: str) -> Path:
     return p
 
 
+def has_notes(slug: str) -> bool:
+    """True if the user has actually written notes for this object — i.e. the
+    journal body has real prose beyond the generated stub (the `# id — name`
+    heading + the boilerplate HTML comment). Used to decide whether a goal
+    deactivation may prune an object from the Library (annotated objects stay)."""
+    import re as _re
+    _, body = read_journal(slug)
+    if not body.strip():
+        return False
+    body = _re.sub(r"<!--.*?-->", "", body, flags=_re.DOTALL)   # drop comments
+    body = _re.sub(r"^\s*#.*$", "", body, flags=_re.MULTILINE)   # drop headings
+    return bool(body.strip())
+
+
 def read_journal(slug: str) -> tuple[dict, str]:
     """Return (frontmatter, body_markdown).
 

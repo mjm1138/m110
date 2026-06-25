@@ -158,9 +158,12 @@ def canonical_target(name: str) -> str:
         cat = catalog.load_library()
     except Exception:
         cat = {}
-    for slug, e in cat.items():
-        if (e.get("id") or "").lower() == nlow or slug.lower() == nlow:
-            return e.get("id") or norm
+    # The user's Library first, then the bundled reference (so a brand-new catalog
+    # object — not yet in the Library — still folds onto its canonical id casing).
+    for source in (cat, catalog.load_reference()):
+        for slug, e in source.items():
+            if (e.get("id") or "").lower() == nlow or slug.lower() == nlow:
+                return e.get("id") or norm
     return norm
 
 
@@ -209,10 +212,14 @@ def _separation_deg(ra1, dec1, ra2, dec2) -> float:
 
 
 def _slug_for_object(obj: str, cat: dict) -> str | None:
-    for slug, e in cat.items():
-        if (e.get("id") or "") == obj:
-            return slug
-    return obj if obj in cat else None
+    # Library first, then the bundled reference (catalog objects not yet captured).
+    for source in (cat, catalog.load_reference()):
+        for slug, e in source.items():
+            if (e.get("id") or "") == obj:
+                return slug
+        if obj in source:
+            return obj
+    return None
 
 
 def _nearest(coords: dict, ra: float, dec: float):
@@ -252,7 +259,8 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[Ing
             continue                          # pointing matches the name ✓
         near, near_sep = _nearest(coords, *radec)
         if near and near != slug and near_sep <= POINTING_TOL_DEG:
-            near_id = cat.get(near, {}).get("id") or near
+            near_id = (cat.get(near, {}).get("id")
+                       or catalog.load_reference().get(near, {}).get("id") or near)
             g.pointing = f"⚠ {sep:.2f}° off — looks like {near_id}"
             g.suggested = near
         else:

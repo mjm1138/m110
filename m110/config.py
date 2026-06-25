@@ -203,9 +203,6 @@ def ensure_data_root(root=None) -> Path:
         if not dst.exists() and src.is_file():
             shutil.copy(src, dst)
     _seed_library(internal / "library.toml")
-    if r == DATA_ROOT:                          # active store: keep Library in sync
-        from . import goals                     # with the per-store active goals
-        goals.ensure_library_has_active_goals()
     readme = internal / "README.txt"
     if not readme.exists():
         readme.write_text(_README_TEXT)
@@ -224,42 +221,16 @@ def ensure_data_root(root=None) -> Path:
 
 
 def _seed_library(dst: Path) -> None:
-    """Seed a fresh `library.toml` with the **default goals'** members (e.g.
-    Messier), pulled from the bundled reference — the starter Library. Other
-    catalogs (Caldwell, …) join only when activated as goals. Idempotent; never
-    overwrites. Falls back to the whole reference if no default-goal members."""
+    """Create a fresh, **empty** `library.toml`. As of Phase 5d the Library is the
+    user's captured/annotated collection, not the catalog — it grows only by
+    capture (`catalog.add_captured_objects`) or the Add-object flow; uncaptured
+    catalog members live in the Goals view. Idempotent; never overwrites."""
     if dst.exists():
         return
-    from . import catalog, goals
-    ref = catalog.load_reference()
-    if not ref:
-        return
-    slugs, seen = [], set()
-    for gid in goals.active_goal_ids():
-        for s in catalog.load_bundled_catalog(gid).get("members", {}):
-            if s in ref and s not in seen:
-                seen.add(s); slugs.append(s)
-    if not slugs:                                   # safety: no default catalog
-        slugs = list(ref)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["# M110 Library — your object corpus (catalog members + additions).",
-             "# Seeded from your default goals; M110 reads/writes this file.\n"]
-    _order = ["id", "name", "type", "magnitude", "size", "season", "filter",
-              "notes", "ra_deg", "dec_deg"]
-    for slug in slugs:
-        e = ref[slug]
-        lines.append(f"[catalog.{slug}]")
-        for k in _order:
-            v = e.get(k)
-            if v is None:
-                continue
-            lines.append(f"{k} = {v if isinstance(v, (int, float)) else _toml_str(v)}")
-        lines.append("")
-    dst.write_text("\n".join(lines))
-
-
-def _toml_str(s) -> str:
-    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    dst.write_text(
+        "# M110 Library — your object corpus (captured + annotated objects).\n"
+        "# Grows by capture / Add-object; M110 reads/writes this file.\n")
 
 
 def _ensure_object_stubs(root: Path, internal: Path) -> None:

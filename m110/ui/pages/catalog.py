@@ -286,11 +286,15 @@ class CatalogPage(QWidget):
         fill_act.setEnabled(missing)
         online_act = menu.addAction("Enrich online")
         online_act.setEnabled(has_gaps and self._enrich_worker is None)
+        menu.addSeparator()
+        remove_act = menu.addAction("Remove from Library")
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is fill_act and missing:
             self._fill_one(slug)
         elif chosen is online_act and has_gaps:
             self._enrich_one_online(slug)
+        elif chosen is remove_act:
+            self._remove_one(slug)
 
     def _fill_one(self, slug: str):
         try:
@@ -308,6 +312,28 @@ class CatalogPage(QWidget):
         fields = ", ".join(sorted(filled))
         QMessageBox.information(self, "Metadata filled",
                                f"Filled from the reference: {fields}.")
+
+    def _remove_one(self, slug: str):
+        oid = self._cat.get(slug, {}).get("id") or slug
+        if slug in self._totals:
+            # Captured objects ARE the collection — removing one is futile: the next
+            # refresh re-promotes any capture folder (add_captured_objects). Explain
+            # instead of removing-then-reappearing.
+            QMessageBox.information(
+                self, "Can't remove",
+                f"{oid} has captures, so it's part of your collection and would "
+                "reappear on the next refresh.\n\nTo drop it, remove its capture "
+                "folders under Images/ first.")
+            return
+        if QMessageBox.question(
+                self, "Remove from Library",
+                f"Remove {oid} from your Library? Its journal/notes are kept.") \
+                != QMessageBox.Yes:
+            return
+        if catalog_mod.remove_library_entry(slug):
+            self._cat = load_library()
+            self._rebuild_table()
+            self._update_stat()
 
     def _enrich_one_online(self, slug: str):
         if self._enrich_worker is not None:

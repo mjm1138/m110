@@ -101,10 +101,8 @@ def _seed_root(tmp_path, monkeypatch):
 
 def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     root = _seed_root(tmp_path, monkeypatch)
-    import tomllib
-    with (root / config.INTERNAL_DIRNAME / "library.toml").open("rb") as f:
-        slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
-    tid = (entry.get("id") or slug)
+    from m110 import catalog
+    slug, tid = next(iter(catalog.load_bundled_catalog("messier")["members"].items()))
     lights = config.lights_dir(tid)
     lights.mkdir(parents=True)
     (lights / f"Light_{tid}_a.fit").write_text("x")
@@ -116,7 +114,7 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Summary", "Library", "Processing", "Sessions", "Journal", "Media"]
+            ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal", "Media"]
         assert win.stack.currentIndex() == 0          # Summary lands first
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index

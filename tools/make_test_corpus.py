@@ -191,12 +191,11 @@ def build(out: Path):
         f.write(f'\n[catalog.ngc-6992]\nid = "NGC 6992"\nname = ""\n'
                 f'type = "unknown"\nra_deg = {vra}\ndec_deg = {vdec}\n')
 
-    # Activate Caldwell as a 2nd goal: adds its members to the Library + writes
-    # goals.toml. Now the Library carries Messier + Caldwell → Summary shows two
-    # goal-progress bars, the Catalog filter offers Caldwell, and objects show all
-    # identifiers ("C20 (NGC 7000)").
+    # Activate Caldwell as a 2nd goal (writes goals.toml). 5d: this no longer
+    # bulk-seeds the Library — uncaptured Caldwell members show in the Goals page
+    # checklist; the captured ones (NGC 7000 / 6888 / 6992 below) become Library
+    # objects on refresh, with all identifiers ("C20 (NGC 7000)").
     goals.set_active_goals(["messier", "caldwell"])
-    config._ensure_object_stubs(config.DATA_ROOT, config.INTERNAL_DIR)   # stubs for new members
 
     # Captured Caldwell objects → non-trivial Caldwell goal progress (full / partial /
     # stub reference coverage): C20 NGC 7000 (above), C27 Crescent (has mag), C33 Veil.
@@ -227,6 +226,12 @@ def build(out: Path):
     _inbox_sub(inbox, "M65", *C("m66"), 10, "LP", 18, 2200)          # frames point at M66!
     _inbox_stack(inbox, "M57", *C("m57"), 60, 10, "LP", 2300)        # in-app stack
     _inbox_media(inbox, "Nightscape_photo", 2400)                     # media
+
+    # Refresh once so captured folders are promoted into the Library (5d: the
+    # Library is the captured collection, no longer bulk-seeded from goals) and
+    # derived/renders are built — i.e. the post-launch state the app would produce.
+    from m110 import refresh
+    refresh.run_refresh()
 
     return out
 
@@ -273,19 +278,20 @@ def verify(out: Path):
     print(f"  M106 has unimported output: {siril.has_unimported_output('M106')}")
     assert sessions and staging, "corpus produced no sessions/inbox ops"
 
-    # Phase 5: Caldwell goal active, members in the Library, and the stale stub left
-    # incomplete for the Fill-missing demo.
+    # Phase 5 (5d): Caldwell goal active; the Library is the captured collection
+    # (only *captured* Caldwell members land here, not the whole catalog), and the
+    # stale stub is left incomplete for the Fill-missing demo.
     from m110 import goals
     lib = catalog.load_library()
     assert goals.active_goal_ids() == ["messier", "caldwell"], "Caldwell not activated"
-    assert "ngc-7000" in lib and "ngc-6992" in lib, "Caldwell members not in Library"
+    assert "ngc-7000" in lib and "ngc-6992" in lib, "captured Caldwell objects not promoted"
     stub = lib["ngc-6992"]
     assert not stub.get("name") and stub.get("type") == "unknown", \
         "ngc-6992 should be a stale stub (Fill-missing target)"
     cald = catalog.load_bundled_catalog("caldwell")["members"]
     captured_cald = [s for s in ("ngc-7000", "ngc-6888", "ngc-6992") if s in cald]
-    print(f"  goals: {goals.active_goal_ids()} · Caldwell members in Library: "
-          f"{sum(1 for s in cald if s in lib)}/{len(cald)} · captured Caldwell: {captured_cald}")
+    print(f"  goals: {goals.active_goal_ids()} · Library objects: {len(lib)} "
+          f"(captured collection) · captured Caldwell: {captured_cald}")
     print(f"  ngc-6992 stub (Fill-missing target): name={stub.get('name')!r} "
           f"type={stub.get('type')!r}")
 

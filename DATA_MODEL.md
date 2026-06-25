@@ -96,8 +96,8 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
   Inbox/                            staging area for ingest
   .m110_internal_data/              hidden machine state (README: "don't touch")
-    library.toml                    the user's Library {slug:{id,name,type,size,mag,season,…}}
-    goals.toml                      per-store active goals (active = [...]; default ["messier"])
+    library.toml                    the user's Library = captured/annotated collection {slug:{id,name,type,…}} (starts empty)
+    goals.toml                      per-store goals: active = [...] (default ["messier"]) + [[custom]] lists
     priorities.toml                 priority targets ([[priority]]; optional track=false)
     processing_overrides.toml       per-folder status overrides ([folder.<name>])
     ingest_aliases.toml             source-name → canonical-target aliases
@@ -124,10 +124,10 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 
 | Entity / file | Location | Format | Derived / discovered | Mutability (enforcement) | Persistence | Retention / cleanup |
 |---|---|---|---|---|---|---|
-| Library | `.m110_internal_data/library.toml` | TOML | The user's object corpus; seeded from the bundled reference (`seed/objects.toml`); extended by `catalog.add_captured_objects` (captured-but-uncatalogued → minimal entry + Simbad coords) | **Mutable** — user-editable; app appends additively, never overwrites (convention) | Persistent | Never auto-deleted |
+| Library | `.m110_internal_data/library.toml` | TOML | The user's **captured/annotated collection** (5d) — **starts empty**; grows by capture (`catalog.add_captured_objects`: known objects pull full reference metadata, off-catalog ones get a minimal entry + Simbad coords), the Add-object flow, or annotation. Uncaptured catalog members live in Goals, not here | **Mutable** — user-editable; app appends additively, never overwrites (convention); `remove_library_entry` / goal-deselect prune | Persistent | Never auto-deleted |
 | Object reference | `m110/seed/objects.toml` | TOML | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
-| Catalog lists | `m110/seed/catalogs/*.toml` | TOML | Shipped with the app (Messier, …) | **Reference** (read-only) | Persistent (in package) | n/a |
-| Goals | `.m110_internal_data/goals.toml` | TOML | The catalogs this store is actively pursuing (`active = [...]`); **per-store** (not a global setting), default `["messier"]` when absent | **Mutable** — app-written (`goals.set_active_goals`); reconstructible | Persistent | Never auto-deleted |
+| Catalog lists | `m110/seed/catalogs/*.toml` | TOML | Shipped with the app: Messier, Caldwell, RASC Finest NGC, Best of Sharpless, Bennett, Lacaille (gen by `tools/gen_caldwell.py` + `tools/gen_catalogs.py`) | **Reference** (read-only) | Persistent (in package) | n/a |
+| Goals | `.m110_internal_data/goals.toml` | TOML | The catalogs/lists this store is pursuing: `active = [...]` (bundled catalog ids + custom goal ids; default `["messier"]`) plus `[[custom]]` blocks (`id`, `name`, `members = [slugs]`); **per-store** | **Mutable** — app-written (`goals.set_active_goals` / `create_custom_goal` / `edit_custom_goal` / `delete_custom_goal`); reconstructible | Persistent | Never auto-deleted |
 | Priorities | `.m110_internal_data/priorities.toml` | TOML (`[[priority]]`) | Hand-authored; joined with totals in `build_derived` | **Mutable** — user-owned | Persistent | Never auto-deleted |
 | Journal | `Objects/<id>/journal.md` | Markdown + YAML-ish frontmatter | Stub generated per catalog object from `journal_template.md`; body authored by user | **Mutable** — user-owned; app upserts only frontmatter keys (`objects.set_frontmatter_key`, e.g. hero) | Persistent | Never auto-deleted |
 | Processing overrides | `.m110_internal_data/processing_overrides.toml` | TOML (`[folder.<name>]`) | Authored (e.g. dismiss a folder) | **Mutable** — user-owned | Persistent | Never auto-deleted |
@@ -261,8 +261,10 @@ Four concepts:
 - **Catalog / List** — a curated, named, **app-bundled, immutable** reference set
   (Messier, Caldwell, …). *Reference data* (ships with the app), not user state.
 - **Goal** — a catalog the user is actively pursuing (progress + dashboard).
-- **Library** — the user's mutable personal corpus: catalog members they track +
-  arbitrary/captured additions. Objects ↔ catalogs are many-to-many (membership).
+- **Library** — the user's mutable **captured/annotated collection** (5d): objects
+  they've captured, added, or annotated. Uncaptured catalog members are **not**
+  here — they live in the Goals view as a checklist. Objects ↔ catalogs are
+  many-to-many (membership).
 
 **Phase 5a (done):** the per-store object set is now the **Library**
 (`library.toml`; the v2→v3 migration renamed `catalog.toml`), and the bundled data
@@ -273,21 +275,18 @@ coords/type/mag/size) + **catalog membership lists**. `catalog.load_library()` /
 **Phase 5b (done):** **Goals** = active bundled catalogs stored **per-store** in
 `.m110_internal_data/goals.toml` (`active = [...]`, default `["messier"]`;
 `goals.py`). Per-store (not the old global `active_goals` setting) so each data
-store tracks its own goals and a fresh store genuinely starts Messier-only;
-`config.ensure_data_root` reconciles the Library to the active goals on launch
-(`goals.ensure_library_has_active_goals` — no manual Save needed). Membership lists
-are `seed/catalogs/<id>.toml` with a `[members]` table `slug = "<designation>"`.
-**Caldwell** is bundled (109 objects appended to the reference + `caldwell.toml`;
-generated by `tools/gen_caldwell.py` via Simbad — `astroquery` is a *build-time*
-dep, runtime stays offline). `build_derived.build_goals` → `derived/goals.json`
-(per-goal total/captured/deep/percent). A fresh Library seeds the **active goals'**
-members (Messier, not all reference); **activating a goal adds its members to the
-Library** (`catalog.add_goal_members_to_library` — additive; deactivating never
-removes — see the reframe below). Object detail shows a **Catalogs** membership
-line; Summary shows per-goal progress; Preferences selects active goals. The
-Library has a **catalog-filter** view, a **"Captured only"** filter (default off),
-and shows **all identifiers** per object (display-only: intrinsic id + catalog
-designations, ordered by a catalog hierarchy — no stored change).
+store tracks its own goals and a fresh store genuinely starts Messier-only.
+Membership lists are `seed/catalogs/<id>.toml` with a `[members]` table
+`slug = "<designation>"`. **Caldwell** is bundled (109 objects appended to the
+reference + `caldwell.toml`; generated by `tools/gen_caldwell.py` via Simbad —
+`astroquery` is a *build-time* dep, runtime stays offline). `build_derived.build_goals`
+→ `derived/goals.json` (per-goal total/captured/deep/percent + `in_progress`).
+Object detail shows a **Catalogs** membership line; Summary shows per-goal progress.
+The Library has a **catalog-filter** view (narrows the collection to a catalog's
+members), a **"Captured only"** filter, and shows **all identifiers** per object
+(display-only: intrinsic id + catalog designations, ordered by a catalog hierarchy
+— no stored change). *(Note: 5b's interim bulk-seed — activating a goal adding all
+its members to the Library — was retired in 5d; see below.)*
 
 **Reference backfill (Fill missing metadata):** a Library entry can lag the bundled
 reference — e.g. a captured-but-uncatalogued object promoted by `add_captured_objects`
@@ -312,24 +311,30 @@ rides the **optional `astroquery` dependency**; without it (or offline) the acti
 `OnlineLookupError` and the UI explains, while everything offline keeps working. Object
 type comes from a Simbad-otype → vocabulary map (`_simbad_type`).
 
-**Planned reframe (Goals view — see ROADMAP item 5):** the Library is to become the
-**captured/annotated collection** (the user's actual corpus), with **uncaptured
-catalog members living in a dedicated Goals view** (a checklist by membership), not
-bulk-seeded into the Library. That lands with the Goals nav page, which also takes
-over goal **de-select removal** (drop uncaptured, un-noted, not-in-another-active-
-goal members). Open question: where annotated-but-uncaptured targets live (lean:
-Library, since "annotated" = engaged). Until then the Library keeps the bulk goal
-seed + the "Captured only" toggle as the interim collection view.
-
-**Still to build:**
-- **5c Add arbitrary object + enrichment** — see below.
-
-**Add-arbitrary-object enrichment** (generalizes `catalog.add_captured_objects`),
-writing into the Library: bundled reference → else online by name (**astroquery**
-Simbad/VizieR; optional dep, network; mainly for objects in no bundled catalog) →
-else embedded coords (FITS `RA`/`DEC` or filename pointing, reusing ingest #12;
-type "unknown"). Season always derived from coords. The Library entry is
-*authored* (mutable); enrichment never overwrites a user edit.
+**Library-=-collection reframe + Goals view (5d, done):** the Library is now the
+**captured/annotated collection** (the user's actual corpus). A fresh `library.toml`
+is **empty**; it grows only by capture, the Add-object flow, or annotation —
+**uncaptured catalog members live in the dedicated Goals nav page** as a membership
+checklist, computed on the fly. Consequences:
+- **No bulk seed.** Activating a goal no longer copies its members into the Library
+  (`goals.set_active_goals` just persists the active set). The launch-time
+  reconcile (`ensure_library_has_active_goals`) and the `_seed_library` goal-seed
+  were removed.
+- **Goal de-select removal** — deactivating a goal (or deleting a custom goal)
+  prunes its members that are **uncaptured AND un-noted AND not in another active
+  goal** (`catalog.remove_goal_members_from_library`; "noted" = `objects.has_notes`,
+  "captured" = present in `derived` totals). Captured/annotated objects always stay.
+- **Manual removal** — `catalog.remove_library_entry(slug)` (Library right-click
+  "Remove from Library"); non-destructive (keeps `Objects/<id>/`).
+- **Custom goals** — a goal can be a user-defined `[[custom]]` list of arbitrary
+  slugs (`goals.create_custom_goal` / `edit_custom_goal` / `delete_custom_goal`),
+  not just a bundled catalog. `goals.goal_members` / `goal_name` / `list_goals`
+  unify bundled + custom.
+- **Capture pulls reference metadata** — `add_captured_objects` now fills a known
+  catalog object's entry from the bundled reference (full type/mag/size/coords),
+  falling back to the minimal-stub + Simbad path only for off-catalog targets.
+- Goal management moved **fully to the Goals page** (removed from Preferences).
+- Annotated-but-uncaptured targets stay in the **Library** (the settled lean).
 
 ### Multi-telescope ingest (BUGS #16)
 - A **device path level under the target**:

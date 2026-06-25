@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from m110 import config, derived
 from m110.catalog import object_count
 from m110.ui.pages.summary import SummaryPage
+from m110.ui.pages.goals import GoalsPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.sessions import SessionsPage
@@ -65,7 +66,7 @@ class _EnrichWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Summary", "Library", "Processing", "Sessions", "Journal", "Media"]
+    NAV = ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal", "Media"]
 
     def __init__(self):
         super().__init__()
@@ -86,12 +87,13 @@ class MainWindow(QMainWindow):
 
         # Pages (order matches the nav rail + stack).
         self.summary = SummaryPage()
+        self.goals = GoalsPage()
         self.catalog = CatalogPage()
         self.processing = ProcessingPage()
         self.sessions = SessionsPage()
         self.journal = JournalPage()
         self.media = MediaPage()
-        self.pages = [self.summary, self.catalog, self.processing,
+        self.pages = [self.summary, self.goals, self.catalog, self.processing,
                       self.sessions, self.journal, self.media]
         self._catalog_index = self.pages.index(self.catalog)
 
@@ -118,6 +120,8 @@ class MainWindow(QMainWindow):
         self.catalog.dirty.connect(self._do_refresh)
         self.catalog.notes_saved.connect(self._on_notes_saved)
         self.summary.open_object.connect(self.open_object)
+        self.goals.open_object.connect(self.open_object)
+        self.goals.dirty.connect(self._do_refresh)
         self.processing.open_object.connect(self.open_object)
         self.sessions.open_object.connect(self.open_object)
         self.journal.open_object.connect(self.open_object)

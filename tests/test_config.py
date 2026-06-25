@@ -55,35 +55,32 @@ def test_ensure_creates_journal_template_and_stubs(tmp_path):
     internal = root / config.INTERNAL_DIRNAME
     # reference template lives in the internals
     assert (internal / "journal_template.md").is_file()
-    # every seeded catalog object gets an Objects/<id>/journal.md stub
-    import tomllib
-    with (internal / "library.toml").open("rb") as f:
-        catalog = tomllib.load(f)["catalog"]
-    assert len(catalog) > 100
-    sample_slug, sample = next(iter(catalog.items()))
-    obj_id = (sample.get("id") or sample_slug).replace("/", "-").strip()
-    stub = root / "Objects" / obj_id / "journal.md"
+    # 5d: the Library starts empty; a stub is generated for each Library object on
+    # ensure_data_root. Add one, re-ensure, and confirm it gets a stub.
+    with (internal / "library.toml").open("a") as f:
+        f.write('\n[catalog.m31]\nid = "M31"\nname = "Andromeda"\ntype = "galaxy"\n')
+    config.ensure_data_root(root)
+    stub = root / "Objects" / "M31" / "journal.md"
     assert stub.is_file()
     text = stub.read_text()
     assert text.startswith("---") and "name:" in text  # has the template frontmatter
     # objects.read_journal parses it when OBJECTS_DIR/CATALOG_TOML point here
-    monkey_cat = root / config.INTERNAL_DIRNAME / "library.toml"
     import pytest
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(config, "OBJECTS_DIR", root / "Objects")
-        mp.setattr(config, "LIBRARY_TOML", monkey_cat)
-        fm, _ = objects.read_journal(sample_slug)
+        mp.setattr(config, "LIBRARY_TOML", internal / "library.toml")
+        fm, _ = objects.read_journal("m31")
     assert fm.get("name")
 
 
 def test_ensure_stub_never_overwrites_existing_journal(tmp_path):
     root = tmp_path / "M110"
     config.ensure_data_root(root)
-    import tomllib
-    with (root / config.INTERNAL_DIRNAME / "library.toml").open("rb") as f:
-        slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
-    obj_id = (entry.get("id") or slug).replace("/", "-").strip()
-    journal = root / "Objects" / obj_id / "journal.md"
+    internal = root / config.INTERNAL_DIRNAME
+    with (internal / "library.toml").open("a") as f:
+        f.write('\n[catalog.m31]\nid = "M31"\nname = "Andromeda"\ntype = "galaxy"\n')
+    journal = root / "Objects" / "M31" / "journal.md"
+    journal.parent.mkdir(parents=True, exist_ok=True)
     journal.write_text("# my own notes\n")
     config.ensure_data_root(root)  # must not clobber
     assert journal.read_text() == "# my own notes\n"

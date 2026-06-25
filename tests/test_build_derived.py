@@ -6,6 +6,7 @@
 """
 import pytest
 
+from m110 import config, build_derived
 from m110.build_derived import (
     parse_size_arcmin,
     default_star_removal_recommended,
@@ -13,6 +14,22 @@ from m110.build_derived import (
     build_priorities,
     STAR_REMOVAL_MIN_ARCMIN,
 )
+
+
+# ── Seestar-stack-only captures (no lights → no sessions) ────────────────────
+
+def test_seestar_only_target_is_captured(tmp_path, monkeypatch):
+    images = tmp_path / "Images"
+    (images / "M57" / "seestar-stacks").mkdir(parents=True)
+    (images / "Empty").mkdir()                       # bare folder, not a capture
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+    totals = build_derived.build_totals({}, [])      # no sessions at all
+    # the Seestar-only target is surfaced as a zero-integration capture
+    assert "M57" in totals["by_folder"]
+    assert totals["by_slug"]["m57"]["status"] == "initial"
+    assert totals["by_slug"]["m57"]["integration_min"] == 0.0
+    # a folder without any capture subdir is NOT a phantom capture
+    assert "Empty" not in totals["by_folder"]
 
 
 # ── build_priorities: the track flag ─────────────────────────────────────────

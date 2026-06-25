@@ -5,8 +5,6 @@ import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import tomllib
-
 import pytest
 
 pytest.importorskip("PySide6")
@@ -49,9 +47,23 @@ def _seed_root(tmp_path, monkeypatch):
 
 
 def _first_object(root):
-    with (root / config.INTERNAL_DIRNAME / "library.toml").open("rb") as f:
-        slug, entry = next(iter(tomllib.load(f)["catalog"].items()))
-    return slug, (entry.get("id") or slug)
+    # The Library starts empty (5d: it's the captured collection, not the catalog).
+    # Pick a known bundled Messier member to capture; add_captured_objects promotes
+    # it into the Library on refresh.
+    from m110 import catalog
+    slug, desig = next(iter(catalog.load_bundled_catalog("messier")["members"].items()))
+    return slug, desig
+
+
+def _add_library(root, entries):
+    """Append minimal `[catalog.<slug>]` blocks to the (empty) Library so a test
+    can populate the collection directly (5d: the Library no longer bulk-seeds)."""
+    lib = root / config.INTERNAL_DIRNAME / "library.toml"
+    with lib.open("a") as f:
+        for slug, e in entries.items():
+            f.write(f"\n[catalog.{slug}]\n")
+            for k, v in e.items():
+                f.write(f'{k} = "{v}"\n')
 
 
 def _seed_capture(root, monkeypatch):
@@ -79,6 +91,52 @@ def test_sessions_page_lists_and_links(tmp_path, monkeypatch, qapp):
         # search filters
         page._search.setText("zzz-nomatch")
         assert all(page._table.isRowHidden(r) for r in range(page._table.rowCount()))
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_goals_page_lists_progress_and_links(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    slug, tid = _seed_capture(root, monkeypatch)       # m31 captured (shallow)
+    from m110 import goals
+    goals.create_custom_goal("My List", ["m31", "m51"])
+    from m110.ui.pages.goals import GoalsPage
+    from PySide6.QtWidgets import QTableWidget
+    page = GoalsPage()
+    try:
+        # default Messier + the new custom goal each get a checkbox
+        assert page._checks["messier"].isChecked()
+        assert "my-list" in page._checks and page._checks["my-list"].isChecked()
+        # progress tables render; the captured-but-shallow m31 is clickable through
+        tables = page._content.findChildren(QTableWidget)
+        assert tables
+        got = []
+        page.open_object.connect(got.append)
+        for tbl in tables:
+            for r in range(tbl.rowCount()):
+                it = tbl.item(r, 0)
+                if it and it.data(Qt.UserRole) == slug:
+                    tbl.itemDoubleClicked.emit(it)
+                    break
+        assert got and got[0] == slug
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_goals_page_toggle_emits_dirty(tmp_path, monkeypatch, qapp):
+    root = _seed_root(tmp_path, monkeypatch)
+    from m110 import goals
+    from m110.ui.pages.goals import GoalsPage
+    page = GoalsPage()
+    try:
+        fired = []
+        page.dirty.connect(lambda: fired.append(True))
+        # activate Caldwell via its checkbox
+        page._checks["caldwell"].setChecked(True)
+        assert fired                                   # toggle → dirty (shell refreshes)
+        assert "caldwell" in goals.active_goal_ids()
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -232,18 +290,23 @@ def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
 
 def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
     root = _seed_root(tmp_path, monkeypatch)
-    from m110 import catalog, goals
-    goals.set_active_goals(["messier", "caldwell"])   # bring Caldwell into the Library
+    # 5d: the Library is the user's collection, not the full catalog. The catalog
+    # filter narrows the collection to a catalog's members. Seed a mixed collection.
+    _add_library(root, {
+        "m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"},
+        "ngc-7000": {"id": "NGC 7000", "name": "North America", "type": "nebula"},
+        "ngc-6992": {"id": "NGC 6992", "name": "Veil", "type": "nebula"},
+    })
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
         all_rows = page.table.rowCount()
-        assert all_rows >= 200                         # Messier + Caldwell
+        assert all_rows == 3                           # the whole collection
         # select Caldwell in the combo
         idx = next(i for i in range(page._catalog_combo.count())
                    if page._catalog_combo.itemData(i) == "caldwell")
         page._catalog_combo.setCurrentIndex(idx)
-        assert page.table.rowCount() == 109            # only Caldwell members
+        assert page.table.rowCount() == 2              # only Caldwell members in it
         # Object cells read by C-number, with the NGC id in parens
         cells = [page.table.item(r, 0).text() for r in range(page.table.rowCount())]
         joined = " ".join(cells)
@@ -260,12 +323,14 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
 
 def test_library_captured_only_filter(tmp_path, monkeypatch, qapp):
     root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)       # exactly one captured object
+    slug, tid = _seed_capture(root, monkeypatch)       # one captured object (m31)
+    # plus an uncaptured (e.g. added/annotated) object that the filter should hide
+    _add_library(root, {"ngc-7000": {"id": "NGC 7000", "name": "NA", "type": "nebula"}})
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
         total = page.table.rowCount()
-        assert total > 1                                # plenty of uncaptured rows
+        assert total == 2                               # one captured + one not
         # off (default): everything visible
         assert not any(page.table.isRowHidden(r) for r in range(total))
         # "Captured only" → only rows whose slug is in totals remain visible

@@ -11,7 +11,6 @@ data.
 """
 from __future__ import annotations
 
-import json
 import re
 import tomllib
 
@@ -25,7 +24,8 @@ _IC = re.compile(r"^IC\s*(\d+)$", re.IGNORECASE)
 # Display priority when an object carries several catalog designations (general
 # Library view). Extend as catalogs are bundled; unknown catalogs fall after these
 # (by name), and the intrinsic reference id (NGC/IC/…) sorts last.
-_CATALOG_PRIORITY = ["messier", "caldwell"]
+_CATALOG_PRIORITY = ["messier", "caldwell", "rasc-finest", "herschel400",
+                     "sharpless-best", "bennett", "lacaille"]
 
 _MON_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -51,7 +51,7 @@ def load_library() -> dict[str, dict]:
     common mistake is a TOML slip (e.g. `True` instead of lowercase `true`)."""
     try:
         with open(config.LIBRARY_TOML, "rb") as f:
-            return tomllib.load(f)["catalog"]
+            return tomllib.load(f).get("catalog", {})   # {} for an empty Library
     except tomllib.TOMLDecodeError as e:
         raise LibraryParseError(
             f"{config.LIBRARY_TOML} is not valid TOML: {e}\n"
@@ -123,6 +123,50 @@ def add_goal_members_to_library(goal_id: str) -> list[str]:
     if new:
         _append_library_entries({s: ref[s] for s in new})
     return new
+
+
+def remove_library_entry(slug: str) -> bool:
+    """Remove a single object from the Library (`library.toml`). Non-destructive:
+    leaves `Objects/<id>/` (the journal) intact. Returns True if it was present.
+    Backs the Library "Remove from Library" action."""
+    lib = load_library()
+    if slug not in lib:
+        return False
+    del lib[slug]
+    _write_library(lib)
+    return True
+
+
+def remove_goal_members_from_library(goal_id: str, *, members=None) -> list[str]:
+    """Prune a (de-activated) goal's members from the Library — but only those
+    that are **uncaptured AND un-noted AND not in another active goal**. Captured
+    or annotated objects always stay (the user has engaged with them). Returns the
+    slugs removed. `members` may be passed in (e.g. for an already-deleted custom
+    goal whose definition is gone)."""
+    from . import goals as goals_mod, objects, derived
+    if members is None:
+        members = goals_mod.goal_members(goal_id)
+    if not members:
+        return []
+    lib = load_library()
+    captured = set(derived.load_totals().get("by_slug", {}))
+    # Slugs still claimed by another *active* goal must be kept.
+    other_active: set[str] = set()
+    for gid in goals_mod.active_goal_ids():
+        if gid == goal_id:
+            continue
+        other_active.update(goals_mod.goal_members(gid))
+    removed = []
+    for slug in members:
+        if slug not in lib:
+            continue
+        if slug in captured or slug in other_active or objects.has_notes(slug):
+            continue
+        del lib[slug]
+        removed.append(slug)
+    if removed:
+        _write_library(lib)
+    return removed
 
 
 _LIB_ORDER = ["id", "name", "type", "magnitude", "size", "season", "filter",
@@ -588,9 +632,11 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
     journal, and are clickable (not just folder-derived rows).
 
     A capture folder is uncatalogued if `folder_to_slugs` maps it to nothing.
-    Adds a minimal entry (id = folder name, type "unknown"), best-effort enriched
-    with Simbad coords (→ pointing support). Idempotent + additive: never touches
-    an existing entry. Returns the slugs added.
+    If the folder's slug is a known bundled-reference object (a catalog member the
+    user just captured), the full reference entry is pulled in; otherwise a minimal
+    entry (id = folder name, type "unknown"), best-effort enriched with Simbad
+    coords (→ pointing support). Idempotent + additive: never touches an existing
+    entry. Returns the slugs added.
     """
     from . import scan_sessions  # local import: avoids any import cycle
     path = config.LIBRARY_TOML
@@ -598,8 +644,9 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
         return []
     cat = load_library()
     existing = set(cat)
+    ref = load_reference()
 
-    new: list[tuple[str, dict]] = []
+    new: dict[str, dict] = {}
     for d in sorted(p for p in config.IMAGES_DIR.iterdir() if p.is_dir()):
         if not ((d / "lights").is_dir() or (d / "seestar-stacks").is_dir()):
             continue                                  # not a capture target
@@ -607,23 +654,19 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
         if scan_sessions.folder_to_slugs(folder, existing):
             continue                                  # already maps to the catalog
         slug = scan_sessions.slugify(folder)
-        if not slug or slug in cat or slug in {s for s, _ in new}:
+        if not slug or slug in cat or slug in new:
             continue
-        entry = {"id": folder, "name": "", "type": "unknown"}
-        if resolve_coords:
-            rd = _simbad_coords(folder)
-            if rd:
-                entry["ra_deg"], entry["dec_deg"] = rd
-        new.append((slug, entry))
+        if slug in ref:                               # known catalog object
+            entry = dict(ref[slug])
+            entry.setdefault("id", folder)
+        else:
+            entry = {"id": folder, "name": "", "type": "unknown"}
+            if resolve_coords:
+                rd = _simbad_coords(folder)
+                if rd:
+                    entry["ra_deg"], entry["dec_deg"] = rd
+        new[slug] = entry
 
     if new:
-        with path.open("a") as f:
-            for slug, e in new:
-                f.write(f"\n[catalog.{slug}]\n")
-                f.write(f"id = {json.dumps(e['id'])}\n")
-                f.write(f"name = {json.dumps(e['name'])}\n")
-                f.write(f"type = {json.dumps(e['type'])}\n")
-                if "ra_deg" in e:
-                    f.write(f"ra_deg = {e['ra_deg']}\n")
-                    f.write(f"dec_deg = {e['dec_deg']}\n")
-    return [s for s, _ in new]
+        _append_library_entries(new)
+    return list(new)

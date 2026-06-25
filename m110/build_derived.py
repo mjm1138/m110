@@ -117,6 +117,24 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         if s.get("pre_new_start"):
             f["has_pre_new_start"] = True
 
+    # Targets captured *only* as Seestar in-app stacks have no raw light frames, so
+    # they produce no sessions and are absent from the loop above — yet they're real
+    # captures (and `add_captured_objects` promotes them on exactly this signal). Add
+    # a zero-integration folder/slug entry so they show up in the gallery / status /
+    # `targets_for_slug` like any other capture (no subs → 0 min, status "initial").
+    from . import scan_sessions
+    slugset = set(catalog)
+    images = config.IMAGES_DIR
+    if images.is_dir():
+        for d in sorted(p for p in images.iterdir() if p.is_dir()):
+            if d.name in folder_totals or not (d / "seestar-stacks").is_dir():
+                continue
+            slugs = (scan_sessions.folder_to_slugs(d.name, slugset)
+                     or [scan_sessions.slugify(d.name)])
+            folder_totals[d.name]["slugs"].update(slugs)
+            for slug in slugs:
+                by_slug[slug]                    # touch → default zero entry
+
     # Finalise — convert sets, compute derived fields, attach status.
     out = {}
     for slug, t in by_slug.items():
@@ -550,24 +568,32 @@ def build_summary(catalog: dict, totals: dict) -> dict:
 
 
 def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
-    """Per active goal (bundled catalog), progress over its members:
-    {id, name, total, captured, deep, percent}. Captured/deep come from the
-    object-level rollup (by_slug)."""
-    from . import catalog
+    """Per active goal (bundled catalog *or* custom list), progress over its
+    members: {id, name, total, captured, deep, percent, in_progress}.
+    Captured/deep come from the object-level rollup (by_slug). `in_progress` is
+    the short list of members captured but still below the deep-stack target —
+    {slug, name} — for the "in-progress captures" view."""
+    from . import catalog, goals as goals_mod
     by_slug = totals["by_slug"]
+    ref = catalog.load_reference()
     out = []
     for gid in active_ids:
-        cat = catalog.load_bundled_catalog(gid)
-        members = cat.get("members", {})
+        members = goals_mod.goal_members(gid)
         if not members:
             continue
+        name = goals_mod.goal_name(gid)
         captured = [s for s in members if s in by_slug]
         deep = [s for s in captured if by_slug[s].get("status") == "deep_stack"]
+        in_progress = [
+            {"slug": s, "name": (ref.get(s, {}).get("name") or members[s] or s)}
+            for s in captured if by_slug[s].get("status") != "deep_stack"
+        ]
         total = len(members)
         out.append({
-            "id": gid, "name": cat.get("name", gid), "total": total,
+            "id": gid, "name": name, "total": total,
             "captured": len(captured), "deep": len(deep),
             "percent": round(100 * len(captured) / total, 1) if total else 0.0,
+            "in_progress": in_progress,
         })
     return out
 
