@@ -31,6 +31,7 @@ _SUBDIRS = [
     INTERNAL_DIRNAME,
     f"{INTERNAL_DIRNAME}/derived",
     f"{INTERNAL_DIRNAME}/renders/hero",
+    f"{INTERNAL_DIRNAME}/profiles",
 ]
 # Static files copied verbatim from the bundled seed if missing. (library.toml is
 # generated from the object reference — see _seed_library.)
@@ -73,6 +74,37 @@ def _object_stub(obj_id: str, name: str) -> str:
     return JOURNAL_TEMPLATE.format(id=obj_id, name=name or obj_id)
 
 
+# Default observing-site profile. Seeded once into
+# `.m110_internal_data/profiles/default.toml` with placeholder coordinates the
+# user edits. The [glow] light-pollution layer starts empty — the light-dome
+# phase fills it in by looking up the location online. See m110/planning_config.py.
+DEFAULT_PROFILE_TOML = """\
+# M110 observing-site profile. Edit the coordinates for your location; M110's
+# session planning derives twilight, transit altitude, and observability from it.
+# Add more locations (e.g. a dark-site trip) as sibling <name>.toml files.
+
+[site]
+name = "Home"
+latitude_deg = 40.015        # decimal degrees, +N
+longitude_deg = -105.270     # decimal degrees, +E
+elevation_m = 1655           # metres above sea level
+timezone = "America/Denver"  # IANA timezone (DST handled automatically)
+
+[horizon]
+# Physical skyline obstruction. Point `mask` at a Stellarium/NINA .hrz file
+# (e.g. exported from theo.rocks) placed alongside this profile. Empty = open.
+mask = ""
+
+[glow]
+# Light-pollution layer (the city light-dome). Filled in by the light-dome
+# lookup; an azimuth-dependent quality floor layered over the physical horizon.
+bortle = 0                   # 0 = unset
+sqm_zenith = 0.0             # mag/arcsec^2, 0 = unset
+mask = ""                    # broadband glow floor (.hrz)
+mask_narrowband = ""         # softer floor for ON/LP (narrowband) filters
+"""
+
+
 def _read_settings() -> dict:
     try:
         return json.loads(SETTINGS_FILE.read_text())
@@ -112,6 +144,7 @@ def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
     global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
+    global PROFILES_DIR
     DATA_ROOT = root
     # Visible content axes
     OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
@@ -128,6 +161,7 @@ def _apply(root: Path) -> None:
     DERIVED_DIR = INTERNAL_DIR / "derived"
     RENDERS_DIR = INTERNAL_DIR / "renders"  # thumbnails (+ hero/<slug>.jpg)
     HERO_DIR = RENDERS_DIR / "hero"
+    PROFILES_DIR = INTERNAL_DIR / "profiles"  # observing-site / device planning profiles
 
 
 # ── per-target content paths (Images/<target>/<sub>) ────────────────────────
@@ -213,6 +247,12 @@ def ensure_data_root(root=None) -> Path:
     if not template.exists():
         template.write_text(JOURNAL_TEMPLATE)
     _ensure_object_stubs(r, internal)
+
+    # A default observing-site profile for session planning (idempotent).
+    profile = internal / "profiles" / "default.toml"
+    if not profile.exists():
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_text(DEFAULT_PROFILE_TOML)
 
     # Stamp the store version so migrate short-circuits on the next launch.
     from . import migrate

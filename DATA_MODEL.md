@@ -346,15 +346,42 @@ checklist, computed on the fly. Consequences:
   below). Classification will lean on FITS headers, not just folder names.
 
 ### Session planning & plan files (ROADMAP items 1–2)
-- **Profiles** — observing **site**, **equipment/device**, and **horizon mask**
-  (`.hrz`) — are authored config under `.m110_internal_data/` (proposed
-  `profiles/`). The **site** profile also carries **light-pollution** data: a
+- **Profiles** *(landed — site profile + planning engine)* — observing **site**,
+  **equipment/device**, and **horizon mask** (`.hrz`) are authored config under
+  `.m110_internal_data/profiles/`. One **site** profile = one shooting location
+  (home vs. a dark-site trip), each with its own horizon + glow; a `default.toml`
+  is seeded on first launch (idempotent, never overwritten — like the README /
+  journal template). The site profile also carries **light-pollution** data: a
   Bortle/SQM scalar (site class) + a **glow mask** — an azimuth-dependent quality
   floor layered over the physical horizon (effective floor =
-  `max(physical_obstruction, glow_floor)`), filter-aware. So each shooting
-  location (home vs. dark-site trip) has its own horizon + glow, which the
-  auto-prioritizer's season/observability gate reads. (Sources for an auto-derived
-  glow mask: World Atlas / VIIRS — bundle/cache offline like `seed/objects.toml`.)
+  `max(physical_obstruction, glow_floor)`, `m110/horizon.effective_floor`),
+  filter-aware (narrowband/LP punches through, so a softer floor). The engine
+  (`m110/planning.py` over `planning_config.py` + `horizon.py`) reads it for the
+  twilight / transit / seasonal **observability gate** the auto-prioritizer
+  consumes. Profile TOML shape:
+
+  ```toml
+  [site]
+  name = "Home"
+  latitude_deg = 40.015        # +N
+  longitude_deg = -105.270     # +E
+  elevation_m = 1655
+  timezone = "America/Denver"  # IANA; DST derived per-date
+  [horizon]
+  mask = "default.hrz"         # physical skyline (.hrz/.csv); "" = open
+  [glow]                        # light-dome layer — empty until derived
+  bortle = 0                   # 0 = unset
+  sqm_zenith = 0.0
+  mask = ""                    # broadband glow floor (.hrz)
+  mask_narrowband = ""         # softer floor for ON/LP filters
+  ```
+
+  This is **additive authored config** under the hidden dir — **no `.store_version`
+  bump / migration** (seeded idempotently, existing files unchanged). The `[glow]`
+  fields ship **empty**; the **next** phase populates them by looking up the
+  location online (Falchi **World Atlas** zenith brightness + **VIIRS** Day/Night
+  Band radiance over the surrounding ~30–50 mi → an azimuth-dependent floor),
+  caching the result into the profile so runtime stays offline.
 - **Generated plan files** (SSC schedule JSON, NINA sequences) are user-facing
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.

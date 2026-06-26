@@ -64,6 +64,16 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
    build a planning surface; emit the session-plan document.
+   **Foundation landed (2026-06-26):** the Qt-free engine is ported —
+   `m110/planning.py` (`twilight` / `moon_summary` / `transit_altitude` + the
+   seasonal/tonight `observability()` gate returning `{observable, hours_clear,
+   transit_alt, nights_to_close, season}`) over `m110/planning_config.py` (site/
+   device **profiles** in `.m110_internal_data/profiles/`, `default.toml` seeded
+   idempotently) + `m110/horizon.py` (`.hrz`/CSV mask + the **glow**-layer
+   `effective_floor` = `max(physical, glow)`). Coords reuse `catalog.load_coords`,
+   season `catalog.season_from_ra`. The glow seam is wired but **empty** (filled by
+   the next light-dome session). *Still open here:* a planning **UI surface**, the
+   **plan-file** emit (item 2), and the **auto-prioritizer** scorer below.
    *Head start (June 2026):* the Astronomy repo now has the tested, config-driven
    engine to port — `scripts/{sky,horizon,make_ssc,planning_config}.py` +
    `tests/test_planning.py` (site/device TOML profiles, zoneinfo DST, moon model,
