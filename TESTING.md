@@ -1,9 +1,21 @@
 # M110 — Testing Runbook
 
-Two layers: **automated tests** (fast, the first gate) and a **manual regression
-checklist** for the GUI flows that aren't unit-tested. Run the automated layer on
-every change; run the relevant manual sections before a release or after touching
-ingest / rendering / data-root code.
+Two layers: **automated tests** (fast, the first gate — they cover the mechanical
+regression: engine logic *and* the UI flows) and a **human pass** for what a
+machine can't cheaply judge — look-and-feel, UX, real hardware, and exploratory
+bug-finding. Run the automated layer on every change; do a human pass (using
+[`tests/MANUAL_TEST_TEMPLATE.md`](tests/MANUAL_TEST_TEMPLATE.md)) before a release
+or after touching ingest / rendering / data-root code.
+
+> **What's automated now (don't re-do these by hand):** the **ingest dialog**
+> (grouping, canonicalization, the ⚠ pointing-remap, alias-remember, apply-only-
+> checked, cancel safety — `tests/test_ui_ingest.py`); **processing-prep** (sandbox
+> hardlinks/preset, autoprep, import+archive, keep-hero re-import, self-heal —
+> `tests/test_siril.py` + `tests/test_processing.py`); **Library/detail** (sort,
+> status colours, gallery presence — `tests/test_ui_*.py`); and **rendering**
+> (thumbnail/hero **golden-image** comparison — `tests/test_render_golden.py`).
+> Sections below now covered by automation are marked **⚙**; spot-check them only
+> when something looks off.
 
 ---
 
@@ -70,39 +82,59 @@ Inbox fixture covers the same classification/grouping/pointing logic.
 ```bash
 cd ~/Documents/Code/m110
 source .venv/bin/activate
-pytest -q                 # all (~112); must be green before manual testing
+pip install -e ".[dev]"   # pulls pytest + pytest-qt (offscreen Qt driving)
+pytest -q                 # all (~223); must be green before a human pass
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
 reader, ingest plan/apply (incl. cancel + Seestar copy), config/bootstrap,
 store migration (old → two-axis, idempotent), image rendering (incl. FITS
-thumbnail + hero). UI is smoke-tested offscreen:
+thumbnail + hero), and the session-planning math. The **UI is driven offscreen**
+with **pytest-qt** (`qtbot`) — pages/dialogs are constructed, interacted with
+(clicks, checkboxes, dropdowns, keyboard), and asserted on state + emitted
+signals. Shared store/builder fixtures live in `tests/_helpers.py`; the offscreen
+platform is set in `tests/conftest.py`. To regenerate the render goldens after an
+intentional rendering change:
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -m m110.ui.main   # constructs/imports cleanly
+M110_UPDATE_GOLDENS=1 pytest -q tests/test_render_golden.py   # refresh tests/goldens/
+QT_QPA_PLATFORM=offscreen python -m m110.ui.main              # still constructs cleanly
 ```
 
 ---
 
-## 2. Manual regression checklist
+## 2. Human pass (look-and-feel, UX, real hardware, exploration)
 
-Mark each pass. Re-run a section whenever its area changes.
+The mechanical pass/fail of most of these is now an automated test (see the
+**⚙** markers and the note at the top). What a human is uniquely good at — and
+should focus on here — is **visual quality** (does the hero/stretch actually look
+right), **responsiveness/feel** (flicker, lag), **real hardware** (a mounted
+Seestar over SMB/USB, an actual Siril run), **OS integration** (native file
+pickers, "Open In…"), and **opportunistic bug-finding**. Use
+[`tests/MANUAL_TEST_TEMPLATE.md`](tests/MANUAL_TEST_TEMPLATE.md) to record a pass
+(including an exploratory session); file anything you find in `BUGS.md`.
+
+Mark each pass. A **⚙** section is covered by automation — only spot-check it (or
+re-run when its area changes and you want eyes on the visuals).
 
 ### A. First launch / data root
 - [ ] Fresh `M110_DATA_ROOT` (empty/nonexistent) → launches, creates the folder,
-      seeds the catalog; Library shows **111 objects, 0 captured**. Top level is
-      `Objects/ Images/ Media/ Inbox/ .m110_internal_data/` (seed catalog +
-      README inside the hidden internals).
+      seeds an **empty** Library (5d) + a `profiles/default.toml`; Library shows
+      **0 objects** until you ingest/Add. Top level is
+      `Objects/ Images/ Media/ Inbox/ .m110_internal_data/` (internals + README
+      hidden inside).
 - [ ] **Old-layout root migrates** (see §0 Migration check): a copied pre-#13
       root reshapes in place on launch; relaunch makes no further change.
 - [ ] Preferences (Cmd+,) → change data folder → Save → prompts restart →
       relaunch reads the new folder.
 - [ ] `M110_DATA_ROOT` env var overrides the saved preference.
 
-### B. Library
-- [ ] All catalog objects listed; status bar shows `N/111 captured`.
+### B. Library  ⚙ *(natural sort, status colours, gallery presence automated — `test_ui_*.py` / `test_catalog.py`)*
+- [ ] The Library (5d) is the **captured/annotated collection** — a fresh root
+      starts **empty** and grows by ingest / Add-object; the stat row reads
+      `N captured / N total`. (Uncaptured catalog members live in **Goals**.)
 - [ ] **Object column sorts naturally** (M1, M2, … M10, M100 — *not* lexical),
-      and NGC after Messier; click headers to sort each column.
+      and NGC after Messier; click headers to sort each column. *(eyes-on check.)*
 - [ ] Status colours: deep-stack green, initial amber, uncaptured muted.
 
 ### C. Object detail / gallery
@@ -147,7 +179,7 @@ Mark each pass. Re-run a section whenever its area changes.
 - [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
 - [ ] Manual override still works: View menu → Refresh (Ctrl+R).
 
-### E. Ingest — staging  (`Inbox/`)
+### E. Ingest — staging  (`Inbox/`)  ⚙ *(grouping/canonicalization/pointing automated — `test_ui_ingest.py`)*
 - [ ] With a `<obj>_sub/` of `.fit` files present, the preview shows **one row per
       object** (Object · Kind · Files · Size · → `Images/<obj>/lights/`) — *not*
       one row per frame — with a running total size in the summary. *(#9)*
@@ -185,7 +217,7 @@ Mark each pass. Re-run a section whenever its area changes.
       ingested…"; re-running Ingest copies only the remainder (skip-if-present,
       partial-safe).
 
-### G2. Processing-prep round-trip (0.1f)
+### G2. Processing-prep round-trip (0.1f)  ⚙ *(prep + import round-trip automated — `test_siril.py` / `test_processing.py`)*
 **Preference**
 - [ ] Preferences (Cmd+,) shows **"Prepare objects for processing in:"** with
       **Siril** checked (default) and PixInsight / DeepSkyStacker / Astro Pixel

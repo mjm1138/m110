@@ -28,7 +28,7 @@ dependencies = [
 # Optional online enrichment (Add object / Enrich online — Simbad lookups). Runtime
 # stays offline unless installed; the online actions degrade gracefully without it.
 online = ["astroquery>=0.4"]
-dev = ["pytest>=8", "astroquery>=0.4"]  # astroquery also used build-time (tools/gen_caldwell.py)
+dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4"]  # astroquery also build-time (tools/gen_caldwell.py)
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"

@@ -5,21 +5,13 @@ left stale Edit/Prepare/Save+Cancel buttons piling up because `_clear` didn't
 recurse into sub-layouts — which also caused a teardown crash when a stale button
 was clicked.
 """
-import os
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 import pytest
 
 pytest.importorskip("PySide6")
-from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
+from PySide6.QtWidgets import QPushButton  # noqa: E402
 
 from m110 import config  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def qapp():
-    return QApplication.instance() or QApplication([])
+from tests._helpers import seed_root  # noqa: E402
 
 
 def _count(widget, text):
@@ -80,27 +72,8 @@ def test_table_sort_persists_across_rebuild(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
-def _seed_root(tmp_path, monkeypatch):
-    root = tmp_path / "M110"
-    internal = root / config.INTERNAL_DIRNAME
-    monkeypatch.setattr(config, "DATA_ROOT", root)
-    monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
-    monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
-    monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
-    monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
-    monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
-    monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
-    monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
-    monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
-    monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
-    monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
-    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
-    config.ensure_data_root(root)
-    return root
-
-
 def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
     from m110 import catalog
     slug, tid = next(iter(catalog.load_bundled_catalog("messier")["members"].items()))
     lights = config.lights_dir(tid)
@@ -128,7 +101,7 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
 def test_quit_waits_for_running_refresh_worker(tmp_path, monkeypatch, qapp):
     """Regression: quitting (incl. Cmd+Q from a viewer) must wait for the refresh
     QThread, or Qt aborts ('Destroyed while thread is still running')."""
-    _seed_root(tmp_path, monkeypatch)
+    seed_root(tmp_path, monkeypatch)
     from m110.ui.main import MainWindow
     win = MainWindow()
     win._ready = True

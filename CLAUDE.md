@@ -229,10 +229,14 @@ pytest -q tests/test_ingest.py
 QT_QPA_PLATFORM=offscreen python -m m110.ui.main   # (won't render, but imports/constructs)
 ```
 
-181 tests, all fixture-based. UI is smoke-tested offscreen (construct windows,
-drive workers via `app.processEvents()`), not pixel-tested. Add tests alongside
+223 tests, all fixture-based. The **UI is driven offscreen with pytest-qt**
+(`qtbot` — clicks/keys/dropdowns + signal/state assertions, not just construct):
+ingest dialog, processing-prep, library/detail. Shared store/builder fixtures live
+in `tests/_helpers.py`; offscreen platform in `tests/conftest.py`. **Rendering has
+golden-image tests** (`tests/test_render_golden.py` vs committed `tests/goldens/`,
+tolerance pixel-compare; refresh with `M110_UPDATE_GOLDENS=1`). Add tests alongside
 any engine change; for UI, prefer extracting logic into the engine and testing
-that.
+that. (`pip install -e ".[dev]"` pulls pytest + pytest-qt.)
 
 **Manual / regression testing:** see [`TESTING.md`](TESTING.md) — a runbook for
 the GUI flows that aren't unit-tested (ingest, rendering, data-root), including a

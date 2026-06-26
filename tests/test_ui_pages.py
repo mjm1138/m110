@@ -1,84 +1,19 @@
-"""Offscreen smoke for the Phase-2 pages (Sessions + Journal): they construct,
-reload against a seeded temp root, and emit open_object on row/card activation."""
-import os
-import time
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
+"""Offscreen smoke for the pages + shared dialogs: they construct, reload against
+a seeded temp root, and emit open_object on row/card activation. Store/builder
+helpers come from tests/_helpers.py; qtbot/qapp come from pytest-qt."""
 import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QDialog, QMessageBox  # noqa: E402
 
-from m110 import config, refresh  # noqa: E402
-
-
-@pytest.fixture(scope="module")
-def qapp():
-    return QApplication.instance() or QApplication([])
-
-
-def _wait(cond, qapp, timeout=5.0):
-    end = time.time() + timeout
-    while time.time() < end and not cond():
-        qapp.processEvents()
-        time.sleep(0.01)
-    return cond()
-
-
-def _seed_root(tmp_path, monkeypatch):
-    root = tmp_path / "M110"
-    internal = root / config.INTERNAL_DIRNAME
-    monkeypatch.setattr(config, "DATA_ROOT", root)
-    monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
-    monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
-    monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
-    monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
-    monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
-    monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
-    monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
-    monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
-    monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
-    monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
-    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
-    config.ensure_data_root(root)
-    return root
-
-
-def _first_object(root):
-    # The Library starts empty (5d: it's the captured collection, not the catalog).
-    # Pick a known bundled Messier member to capture; add_captured_objects promotes
-    # it into the Library on refresh.
-    from m110 import catalog
-    slug, desig = next(iter(catalog.load_bundled_catalog("messier")["members"].items()))
-    return slug, desig
-
-
-def _add_library(root, entries):
-    """Append minimal `[catalog.<slug>]` blocks to the (empty) Library so a test
-    can populate the collection directly (5d: the Library no longer bulk-seeds)."""
-    lib = root / config.INTERNAL_DIRNAME / "library.toml"
-    with lib.open("a") as f:
-        for slug, e in entries.items():
-            f.write(f"\n[catalog.{slug}]\n")
-            for k, v in e.items():
-                f.write(f'{k} = "{v}"\n')
-
-
-def _seed_capture(root, monkeypatch):
-    """Give one object a light frame (→ a session) and rebuild derived."""
-    slug, tid = _first_object(root)
-    lights = config.lights_dir(tid)
-    lights.mkdir(parents=True)
-    (lights / f"Light_{tid}_30.0s_LP_20260529-010101.fit").write_text("x")
-    refresh.run_refresh(render=False)
-    return slug, tid
+from m110 import config  # noqa: E402
+from tests._helpers import add_library, seed_capture, seed_root, seed_sandbox  # noqa: E402
 
 
 def test_sessions_page_lists_and_links(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
     from m110.ui.pages.sessions import SessionsPage
     page = SessionsPage()
     try:
@@ -97,8 +32,8 @@ def test_sessions_page_lists_and_links(tmp_path, monkeypatch, qapp):
 
 
 def test_goals_page_lists_progress_and_links(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)       # m31 captured (shallow)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)       # m31 captured (shallow)
     from m110 import goals
     goals.create_custom_goal("My List", ["m31", "m51"])
     from m110.ui.pages.goals import GoalsPage
@@ -126,7 +61,7 @@ def test_goals_page_lists_progress_and_links(tmp_path, monkeypatch, qapp):
 
 
 def test_goals_page_toggle_emits_dirty(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
     from m110 import goals
     from m110.ui.pages.goals import GoalsPage
     page = GoalsPage()
@@ -143,8 +78,8 @@ def test_goals_page_toggle_emits_dirty(tmp_path, monkeypatch, qapp):
 
 
 def test_catalog_parity_columns_search_and_stat(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
@@ -164,8 +99,8 @@ def test_catalog_parity_columns_search_and_stat(tmp_path, monkeypatch, qapp):
 
 
 def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
     from m110.ui.detail import DetailPane
     from m110 import catalog, derived
     d = DetailPane()
@@ -197,24 +132,15 @@ def test_radec_formatters():
     assert _dec_dms(-12.5) == "-12°30′00″"
 
 
-def _seed_sandbox(target="M51"):
-    """A siril sandbox with two unimported deliverables (render + stack)."""
-    sb = config.siril_dir(target)
-    sb.mkdir(parents=True, exist_ok=True)
-    (sb / f"{target}_x_processed.png").write_text("png")
-    (sb / f"{target}_x_processed.fit").write_text("fit")
-    return sb
-
-
-def test_import_dialog_cleanup_default_follows_selection(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    _seed_sandbox("M51")
+def test_import_dialog_cleanup_default_follows_selection(tmp_path, monkeypatch, qapp, qtbot):
+    root = seed_root(tmp_path, monkeypatch)
+    seed_sandbox("M51")
     from m110 import siril
     assert siril.has_unimported_output("M51")
     from m110.ui.import_dialog import ImportDialog
     dlg = ImportDialog("M51", "m51")
     try:
-        assert _wait(lambda: dlg._import_btn.isEnabled(), qapp), "scan never finished"
+        qtbot.waitUntil(dlg._import_btn.isEnabled)  # scan finished
         assert dlg._cleanup.currentData() == "archive"      # all checked → archive
         dlg.table.item(0, 0).setCheckState(Qt.Unchecked)     # leave one behind
         qapp.processEvents()
@@ -233,9 +159,9 @@ def test_import_dialog_cleanup_default_follows_selection(tmp_path, monkeypatch, 
         qapp.processEvents()
 
 
-def test_import_dialog_self_closes_after_import(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    _seed_sandbox("M51")
+def test_import_dialog_self_closes_after_import(tmp_path, monkeypatch, qapp, qtbot):
+    root = seed_root(tmp_path, monkeypatch)
+    seed_sandbox("M51")
     # auto-confirm the "Confirm import" question box (it would otherwise block)
     monkeypatch.setattr(QMessageBox, "question",
                         staticmethod(lambda *a, **k: QMessageBox.Yes))
@@ -244,9 +170,9 @@ def test_import_dialog_self_closes_after_import(tmp_path, monkeypatch, qapp):
     fired = []
     dlg.imported.connect(fired.append)
     try:
-        assert _wait(lambda: dlg._import_btn.isEnabled(), qapp)
+        qtbot.waitUntil(dlg._import_btn.isEnabled)
         dlg._do_import()
-        assert _wait(lambda: dlg.result() == QDialog.Accepted, qapp), "did not self-close"
+        qtbot.waitUntil(lambda: dlg.result() == QDialog.Accepted)  # self-closes
         assert fired == ["M51"]                              # main window got notified
         assert (config.finished_dir("M51") / "M51_x_processed.png").is_file()
     finally:
@@ -273,7 +199,7 @@ def test_image_viewer_close_and_quit_shortcuts(qapp):
 
 
 def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
     from m110.ui.pages.media import MediaPage
     page = MediaPage()
     try:
@@ -289,10 +215,10 @@ def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
 
 
 def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
     # 5d: the Library is the user's collection, not the full catalog. The catalog
     # filter narrows the collection to a catalog's members. Seed a mixed collection.
-    _add_library(root, {
+    add_library(root, {
         "m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"},
         "ngc-7000": {"id": "NGC 7000", "name": "North America", "type": "nebula"},
         "ngc-6992": {"id": "NGC 6992", "name": "Veil", "type": "nebula"},
@@ -322,10 +248,10 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
 
 
 def test_library_captured_only_filter(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)       # one captured object (m31)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)       # one captured object (m31)
     # plus an uncaptured (e.g. added/annotated) object that the filter should hide
-    _add_library(root, {"ngc-7000": {"id": "NGC 7000", "name": "NA", "type": "nebula"}})
+    add_library(root, {"ngc-7000": {"id": "NGC 7000", "name": "NA", "type": "nebula"}})
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
@@ -352,7 +278,7 @@ def test_library_captured_only_filter(tmp_path, monkeypatch, qapp):
 
 
 def test_library_fill_missing_metadata(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
     # Inject a stale stub like the live C33 (name/type/season all missing).
     with (root / config.INTERNAL_DIRNAME / "library.toml").open("a") as f:
         f.write('\n[catalog.ngc-6992]\nid = "NGC 6992"\nname = ""\ntype = "unknown"\n'
@@ -377,7 +303,7 @@ def test_library_fill_missing_metadata(tmp_path, monkeypatch, qapp):
 
 
 def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
-    _seed_root(tmp_path, monkeypatch)
+    seed_root(tmp_path, monkeypatch)
     from m110.ui.main import MainWindow
     w = MainWindow()
     try:
@@ -393,7 +319,7 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
 
 
 def test_add_object_dialog_resolves_and_adds(tmp_path, monkeypatch, qapp):
-    _seed_root(tmp_path, monkeypatch)
+    seed_root(tmp_path, monkeypatch)
     from m110 import catalog
     from m110.ui.add_object_dialog import AddObjectDialog
     dlg = AddObjectDialog()
@@ -414,8 +340,8 @@ def test_add_object_dialog_resolves_and_adds(tmp_path, monkeypatch, qapp):
 
 
 def test_object_notes_edit_wraps_and_signals_reload(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
     from PySide6.QtWidgets import QPlainTextEdit
     from m110 import objects
     from m110.ui.detail import DetailPane
@@ -440,7 +366,7 @@ def test_object_notes_edit_wraps_and_signals_reload(tmp_path, monkeypatch, qapp)
 
 
 def test_catalog_page_reemits_notes_saved(tmp_path, monkeypatch, qapp):
-    _seed_root(tmp_path, monkeypatch)
+    seed_root(tmp_path, monkeypatch)
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
@@ -454,7 +380,7 @@ def test_catalog_page_reemits_notes_saved(tmp_path, monkeypatch, qapp):
 
 
 def test_catalog_page_has_online_enrich_hook(tmp_path, monkeypatch, qapp):
-    _seed_root(tmp_path, monkeypatch)
+    seed_root(tmp_path, monkeypatch)
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
@@ -474,8 +400,8 @@ def test_body_markdown_excludes_stub():
 
 
 def test_journal_page_card_per_captured_object(tmp_path, monkeypatch, qapp):
-    root = _seed_root(tmp_path, monkeypatch)
-    slug, tid = _seed_capture(root, monkeypatch)
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
     from m110.ui.pages.journal import JournalPage
     page = JournalPage()
     try:
