@@ -11,3 +11,5 @@ dist/
 *.tar.gz
 # local crash reports
 /crash_dumps/
+# stamped manual-test working sheets (template lives in tests/MANUAL_TEST_TEMPLATE.md)
+/manual_tests/
