@@ -1247,6 +1247,33 @@ season = "Mar–May"
 filter = "OFF"
 notes = "Mosaic — chain of galaxies in Virgo Cluster"
 
+# M40 and M73 are non-deep-sky Messier oddities (a double star and a 4-star
+# asterism) that don't resolve in Simbad, so they're authored here by hand to keep
+# the Messier catalogue complete at all 110.
+[object.m40]
+id = "M40"
+name = "Winnecke 4"
+type = "double_star"
+magnitude = 9.6
+size = "49\""
+season = "Mar–May"
+filter = "OFF"
+notes = "Optical double star (Winnecke 4) — Messier oddity, not a deep-sky object"
+ra_deg = 185.552
+dec_deg = 58.0833
+
+[object.m73]
+id = "M73"
+name = "NGC 6994"
+type = "asterism"
+magnitude = 9.0
+size = "2.8'"
+season = "Aug–Oct"
+filter = "OFF"
+notes = "Four-star asterism (NGC 6994) — Messier oddity, not a true cluster"
+ra_deg = 314.725
+dec_deg = -12.6333
+
 # ── Caldwell catalogue objects (generated; coords/size via Simbad, season derived from RA) ──
 
 [object.ngc-188]

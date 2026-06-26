@@ -56,7 +56,8 @@ def test_bundled_reference_and_catalog():
     assert len(ref) >= 110                               # all reference objects
     assert ref["m31"]["id"] == "M31" and ref["m31"]["ra_deg"]   # coords folded in
     mes = catalog.load_bundled_catalog("messier")
-    assert mes["name"] == "Messier" and len(mes["members"]) == 108
+    assert mes["name"] == "Messier" and len(mes["members"]) == 110   # complete catalogue
+    assert {"m40", "m73"} <= set(mes["members"])          # the two non-deep-sky oddities
     assert "m31" in mes["members"]
     assert catalog.load_bundled_catalog("nope") == {}
 

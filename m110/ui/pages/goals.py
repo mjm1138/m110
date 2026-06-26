@@ -149,10 +149,19 @@ class GoalsPage(QScrollArea):
     def _object_table(self, rows, clickable: bool = True):
         tbl = make_table(["Object", "Name"], stretch_last=True)
         tbl.setSortingEnabled(False)
+        # Resolve each label from the object's real entry (Library, else the bundled
+        # reference) so the id shows as its proper designation — not the lowercase
+        # slug fabricated as `{"id": slug}`, which rendered "M51 (m51)".
+        try:
+            lib = catalog.load_library()
+        except Exception:
+            lib = {}
+        ref = catalog.load_reference()
         for slug, name in rows:
             r = tbl.rowCount()
             tbl.insertRow(r)
-            label = catalog.object_label(catalog.object_identifiers(slug, {"id": slug}))
+            entry = lib.get(slug) or ref.get(slug)
+            label = catalog.object_label(catalog.object_identifiers(slug, entry))
             it = QTableWidgetItem(label or slug)
             it.setData(Qt.UserRole, slug)
             tbl.setItem(r, 0, it)

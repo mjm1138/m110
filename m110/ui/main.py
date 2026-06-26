@@ -28,6 +28,7 @@ from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.sessions import SessionsPage
 from m110.ui.pages.journal import JournalPage
 from m110.ui.pages.media import MediaPage
+from m110.ui.pages.import_page import ImportPage
 
 
 class RefreshWorker(QThread):
@@ -66,7 +67,8 @@ class _EnrichWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal", "Media"]
+    NAV = ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal",
+           "Media", "Import"]
 
     def __init__(self):
         super().__init__()
@@ -93,9 +95,11 @@ class MainWindow(QMainWindow):
         self.sessions = SessionsPage()
         self.journal = JournalPage()
         self.media = MediaPage()
+        self.import_page = ImportPage()
         self.pages = [self.summary, self.goals, self.catalog, self.processing,
-                      self.sessions, self.journal, self.media]
+                      self.sessions, self.journal, self.media, self.import_page]
         self._catalog_index = self.pages.index(self.catalog)
+        self._import_index = self.pages.index(self.import_page)
 
         self.stack = QStackedWidget()
         for p in self.pages:
@@ -125,6 +129,8 @@ class MainWindow(QMainWindow):
         self.processing.open_object.connect(self.open_object)
         self.sessions.open_object.connect(self.open_object)
         self.journal.open_object.connect(self.open_object)
+        self.import_page.imported.connect(
+            lambda moved: self._do_refresh() if moved else None)
 
         # Wait for any in-flight refresh thread before teardown — otherwise quit
         # (incl. Cmd+Q from a modal viewer → app.quit()) destroys a running
@@ -136,7 +142,7 @@ class MainWindow(QMainWindow):
 
         # Toolbar + menu (global).
         toolbar = self.addToolBar("Main")
-        self.ingest_action = QAction("Ingest…", self)
+        self.ingest_action = QAction("Import…", self)
         self.ingest_action.setShortcut("Ctrl+I")
         self.ingest_action.triggered.connect(self._open_ingest)
         toolbar.addAction(self.ingest_action)
@@ -183,12 +189,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{captured}/{object_count()} captured · {config.DATA_ROOT}{note}{extra}")
 
-    # ---- ingest / prefs ----
+    # ---- import / prefs ----
     def _open_ingest(self):
-        from m110.ui.ingest_dialog import IngestDialog
-        dlg = IngestDialog(self)
-        dlg.ingested.connect(lambda moved: self._do_refresh() if moved else None)
-        dlg.exec()
+        # Import is now a top-level page (was a modal dialog) — navigate to it and
+        # let the user refresh the source list (a device may have just mounted).
+        self.nav.setCurrentRow(self._import_index)
+        self.import_page.reload()
 
     def _open_prefs(self):
         from m110.ui.preferences import PreferencesDialog
@@ -306,6 +312,8 @@ class MainWindow(QMainWindow):
     def _do_refresh(self):
         if not self._ready or self._refreshing or self.catalog.is_editing():
             return
+        if getattr(self, "import_page", None) is not None and self.import_page.is_busy():
+            return                         # don't race an in-progress import's autoprep
         self._refreshing = True
         self.refresh_action.setEnabled(False)
         self._update_status(extra="  ·  Syncing…")

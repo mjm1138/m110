@@ -283,6 +283,76 @@ def test_seestar_plan_uses_copy_and_leaves_device(tmp_path, monkeypatch):
     assert (sub / "Light_M13_a.fit").is_file()
 
 
+# ── 6a: recursive any-directory scan + content-aware collisions ───────────────
+
+def test_scan_directory_plan_recurses_nested_tree(tmp_path, monkeypatch):
+    """Point at an arbitrary tree: Seestar-shaped folders are found at any depth,
+    with copy semantics (the source is left untouched)."""
+    _root, _staging = _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    sub = src / "2026-01" / "night1" / "M13_sub"      # nested 3 levels deep
+    sub.mkdir(parents=True)
+    (sub / "Light_a.fit").write_text("x")
+    stk = src / "2026-01" / "M51"                      # a stack dir elsewhere
+    stk.mkdir(parents=True)
+    (stk / "Stacked_10_M51.fit").write_text("s")
+    (stk / "random.jpg").write_text("noise")          # rides along (stack dir)
+
+    ops = ingest.scan_directory_plan(str(src))
+    by_kind = {}
+    for op in ops:
+        by_kind.setdefault(op.kind, []).append(op)
+    assert all(op.action == "copy" for op in ops)     # never moves an external src
+    assert len(by_kind["light"]) == 1
+    assert "Images/M13/lights/" in by_kind["light"][0].dest_rel
+    assert any("Images/M51/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+
+
+def test_scan_directory_ignores_unrecognized_dirs(tmp_path, monkeypatch):
+    """A plain folder of loose images (no `_sub`/`_photo`, no Stacked_* FITS) is
+    NOT vacuumed up as a stack — the stricter stack rule keeps arbitrary trees safe."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    loose = src / "Vacation"
+    loose.mkdir(parents=True)
+    (loose / "beach.jpg").write_text("j")
+    (loose / "notes.fit").write_text("f")             # not a Stacked_* prefix
+    assert ingest.scan_directory_plan(str(src)) == []
+
+
+def test_apply_collision_distinct_gets_suffix(tmp_path, monkeypatch):
+    """Two distinct files with the same name landing on one target → the second is
+    written under a `_1` suffix (never overwritten, never renamed lossily)."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    for folder, content in (("A", "AAA"), ("B", "BBB")):
+        d = src / folder / "M13_sub"
+        d.mkdir(parents=True)
+        (d / "Light_a.fit").write_text(content)        # same name, different bytes
+    ops = ingest.scan_directory_plan(str(src))
+    res = ingest.apply_ops(ops)
+    assert res["moved"] == 2 and res["skipped"] == 0
+    names = sorted(p.name for p in config.lights_dir("M13").iterdir())
+    assert names == ["Light_a.fit", "Light_a_1.fit"]
+    # source untouched (copy)
+    assert (src / "A" / "M13_sub" / "Light_a.fit").read_text() == "AAA"
+
+
+def test_apply_collision_identical_is_skipped(tmp_path, monkeypatch):
+    """Byte-identical same-name files are recognised as duplicates → skipped, not
+    suffixed."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    for folder in ("A", "B"):
+        d = src / folder / "M13_sub"
+        d.mkdir(parents=True)
+        (d / "Light_a.fit").write_text("SAME")         # identical bytes
+    ops = ingest.scan_directory_plan(str(src))
+    res = ingest.apply_ops(ops)
+    assert res["moved"] == 1 and res["skipped"] == 1
+    assert [p.name for p in config.lights_dir("M13").iterdir()] == ["Light_a.fit"]
+
+
 def test_seestar_copies_stack_previews(tmp_path, monkeypatch):
     """Stack folders' preview .jpg/.png are copied too (so the gallery has
     ready-made images); the device's *_thn.* sidecars are skipped."""

@@ -65,6 +65,18 @@ def test_prepare_single_filter_literal_lights(tmp_path, monkeypatch):
     assert siril.apply_prep(plan)["linked"] == 0
 
 
+def test_link_or_copy_is_idempotent_when_already_linked(tmp_path):
+    """Regression: a second/concurrent prep where the sandbox hardlink already
+    exists must NOT fall back to copyfile onto the same inode (SameFileError) —
+    the bug that surfaced when two autopreps raced an import (ROADMAP 6a)."""
+    src = tmp_path / "a.fit"
+    src.write_text("data")
+    dst = tmp_path / "b.fit"
+    os.link(str(src), str(dst))                 # a prior/concurrent pass linked it
+    siril._link_or_copy(str(src), str(dst))     # must be a no-op, not raise
+    assert dst.exists() and os.path.samefile(str(src), str(dst))
+
+
 def test_prepare_multi_filter_per_job(tmp_path, monkeypatch):
     target = _make_target(tmp_path, monkeypatch, ircut=120, lp=40)
     plan = siril.plan_prep(target)

@@ -87,7 +87,8 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal", "Media"]
+            ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal",
+             "Media", "Import"]
         assert win.stack.currentIndex() == 0          # Summary lands first
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index

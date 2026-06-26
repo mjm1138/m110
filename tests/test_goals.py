@@ -186,9 +186,9 @@ def test_build_goals_progress_and_in_progress():
         "m31": {"status": "deep_stack"}, "m51": {"status": "initial"}}}
     out = {g["id"]: g for g in build_derived.build_goals(totals, ["messier"])}
     m = out["messier"]
-    assert m["name"] == "Messier" and m["total"] == 108
+    assert m["name"] == "Messier" and m["total"] == 110
     assert m["captured"] == 2 and m["deep"] == 1
-    assert m["percent"] == round(100 * 2 / 108, 1)
+    assert m["percent"] == round(100 * 2 / 110, 1)
     # in_progress = captured but below the deep-stack target
     ip = {x["slug"] for x in m["in_progress"]}
     assert ip == {"m51"}

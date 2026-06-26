@@ -295,32 +295,23 @@ def seestar_available() -> bool:
     return config.find_seestar_myworks() is not None
 
 
-def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
-    """Classify a base dir laid out like the Seestar staging/MyWorks structure
-    and return the operations to bring NEW files into the collection. Reads only.
-    `action` is 'move' (staging) or 'copy' (device — leaves originals in place).
-    `should_cancel` is an optional callable checked at directory boundaries;
-    if it returns true, IngestCancelled is raised (for a responsive Cancel)."""
-    if base is None or not base.is_dir():
-        return []
-
-    def _ck():
-        if should_cancel and should_cancel():
-            raise IngestCancelled()
-
-    entries = sorted(e.name for e in base.iterdir()
-                     if e.is_dir() and not e.name.startswith("."))
-    sub_dirs = [e for e in entries if e.endswith("_sub")]
-    media_dirs = [e for e in entries if is_media_dir(e)]
-    stack_dirs = [e for e in entries if not e.endswith("_sub") and not is_media_dir(e)]
-
+def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+    """Classify ONE source directory by the Seestar-style folder conventions and
+    return the ops for its NEW files (those not already present at the destination).
+    Shared by the legacy per-child scan (`_scan_base`) and the recursive
+    `scan_directory_plan`. A directory is one of:
+      • *lights* — name ends `_sub` → `Light_*.fit` → `Images/<obj>/lights/`;
+      • *media*  — name ends `_photo`/`_video` → all files → `Media/<name>/`;
+      • *stack*  — anything else that **actually contains** a `Stacked_*` FITS →
+        the stacks (+ preview .jpg/.png, minus `*_thn.*`) → `seestar-stacks/`.
+    The "must contain a stacked FITS" rule (stricter than the old "any other dir is
+    a stack dir") keeps a recursive walk over an arbitrary tree from vacuuming up
+    unrelated images. Reads only."""
     root = config.DATA_ROOT
     ops: list[IngestOp] = []
 
-    for sub in sub_dirs:
-        _ck()
-        obj = canonical_target(sub[:-4])  # strip "_sub"; fold case/aliases
-        src_dir = base / sub
+    if name.endswith("_sub"):
+        obj = canonical_target(name[:-4])      # strip "_sub"; fold case/aliases
         dst_dir = config.lights_dir(obj)
         existing = set(_fit_files(dst_dir))
         new_object = not config.target_dir(obj).is_dir()
@@ -328,48 +319,88 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
             if f in existing:
                 continue
             dest = dst_dir / f
-            ops.append(IngestOp(str(src_dir / f), str(dest), "light", sub,
+            ops.append(IngestOp(str(src_dir / f), str(dest), "light", name,
                                 str(dest.relative_to(root)), new_object, action,
                                 _size(src_dir / f)))
+        return ops
 
-    for sd in stack_dirs:
-        _ck()
-        obj = canonical_target(sd)
-        src_dir = base / sd
-        dst_dir = config.seestar_stacks_dir(obj)
-        existing = set(_fit_files(dst_dir))
-        for f in _fit_files(src_dir):
-            if not is_stacked_fit(f) or f in existing:
-                continue
-            dest = dst_dir / f
-            ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                str(dest.relative_to(root)), False, action,
-                                _size(src_dir / f)))
-        # Also pull the device's preview renders (.jpg/.png) into the same stack
-        # folder so the gallery has ready-made images; skip the Seestar's
-        # *_thn.* sidecar thumbnails.
-        existing_all = set(_all_files(dst_dir))
-        for f in _all_files(src_dir):
-            if "_thn." in f or f in existing_all:
-                continue
-            if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png"):
-                dest = dst_dir / f
-                ops.append(IngestOp(str(src_dir / f), str(dest), "stack", sd,
-                                    str(dest.relative_to(root)), False, action,
-                                    _size(src_dir / f)))
-
-    for md in media_dirs:
-        _ck()
-        src_dir = base / md
-        dst_dir = config.MEDIA_DIR / md
+    if is_media_dir(name):
+        dst_dir = config.MEDIA_DIR / name
         existing = set(_all_files(dst_dir))
         for f in _all_files(src_dir):
             if f in existing:
                 continue
             dest = dst_dir / f
-            ops.append(IngestOp(str(src_dir / f), str(dest), "media", md,
+            ops.append(IngestOp(str(src_dir / f), str(dest), "media", name,
                                 str(dest.relative_to(root)), False, action,
                                 _size(src_dir / f)))
+        return ops
+
+    # Stack candidate — only if it really holds in-app stacks.
+    stacked = [f for f in _fit_files(src_dir) if is_stacked_fit(f)]
+    if not stacked:
+        return ops
+    obj = canonical_target(name)
+    dst_dir = config.seestar_stacks_dir(obj)
+    existing = set(_fit_files(dst_dir))
+    for f in stacked:
+        if f in existing:
+            continue
+        dest = dst_dir / f
+        ops.append(IngestOp(str(src_dir / f), str(dest), "stack", name,
+                            str(dest.relative_to(root)), False, action,
+                            _size(src_dir / f)))
+    # Also pull the device's preview renders (.jpg/.png) into the same stack folder
+    # so the gallery has ready-made images; skip the Seestar's *_thn.* thumbnails.
+    existing_all = set(_all_files(dst_dir))
+    for f in _all_files(src_dir):
+        if "_thn." in f or f in existing_all:
+            continue
+        if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png"):
+            dest = dst_dir / f
+            ops.append(IngestOp(str(src_dir / f), str(dest), "stack", name,
+                                str(dest.relative_to(root)), False, action,
+                                _size(src_dir / f)))
+    return ops
+
+
+def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
+    """Classify the immediate children of a base dir laid out like the Seestar
+    staging/MyWorks structure and return the operations to bring NEW files into the
+    collection. Reads only. `action` is 'move' (staging) or 'copy' (device — leaves
+    originals in place). `should_cancel` is checked at directory boundaries; if it
+    returns true, IngestCancelled is raised (for a responsive Cancel)."""
+    if base is None or not base.is_dir():
+        return []
+    ops: list[IngestOp] = []
+    for d in sorted((e for e in base.iterdir()
+                     if e.is_dir() and not e.name.startswith(".")),
+                    key=lambda p: p.name):
+        if should_cancel and should_cancel():
+            raise IngestCancelled()
+        ops.extend(_classify_dir(d, d.name, action))
+    return ops
+
+
+def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[IngestOp]:
+    """Dry-run plan for an **arbitrary** directory (ROADMAP 6a). Walks `root`
+    recursively and classifies *every* directory by the same Seestar-style
+    conventions, so a nested layout (e.g. a per-object tree, or device folders a
+    few levels down) is found — not just the immediate children. **Copy** semantics
+    by default, so the source is left untouched. Reads only; raises IngestCancelled
+    if `should_cancel()` turns true."""
+    root = Path(root) if root is not None else None
+    if root is None or not root.is_dir():
+        return []
+    ops: list[IngestOp] = []
+    for dirpath, dirnames, _files in os.walk(root):
+        if should_cancel and should_cancel():
+            raise IngestCancelled()
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        d = Path(dirpath)
+        if d.name.startswith("."):
+            continue
+        ops.extend(_classify_dir(d, d.name, action))
     return ops
 
 
@@ -422,10 +453,46 @@ def scan_seestar_plan(should_cancel=None) -> list[IngestOp]:
     return _scan_base(config.find_seestar_myworks(), "copy", should_cancel)
 
 
+def _digest(path: str) -> str:
+    """SHA-256 of a file's bytes (streamed; cheap enough — only run on a name
+    collision, not on every op)."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _same_content(a: str, b: str) -> bool:
+    """True if two files are byte-identical (size short-circuits the hash)."""
+    try:
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        return _digest(a) == _digest(b)
+    except OSError:
+        return False
+
+
+def _free_dest(dest: str) -> str:
+    """A non-colliding destination path: `dest` if free, else `stem_1.ext`,
+    `stem_2.ext`, … (preserves the original filename, just disambiguates)."""
+    if not os.path.exists(dest):
+        return dest
+    stem, ext = os.path.splitext(dest)
+    i = 1
+    while os.path.exists(f"{stem}_{i}{ext}"):
+        i += 1
+    return f"{stem}_{i}{ext}"
+
+
 def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
     """Perform the moves/copies. THIS WRITES INTO Images/ — callers must confirm.
 
-    Creates destination dirs, skips files that already exist at the destination.
+    Creates destination dirs. **Collision handling is content-aware** (replaces the
+    old skip-by-name-only): on a destination filename clash, a byte-identical file
+    is a true **duplicate** → skipped; a same-name but **distinct** file is written
+    under a disambiguating `_N` suffix (never a lossy rename, never an overwrite).
     `progress(i, total)` is called after each op. `should_cancel()` is checked
     before each op; cancelling stops cleanly (files already done stay done — safe,
     since a re-scan simply lists whatever's still missing).
@@ -438,19 +505,20 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
             cancelled = True
             break
         os.makedirs(os.path.dirname(op.dest), exist_ok=True)
-        if os.path.exists(op.dest):
-            skipped += 1
+        if os.path.exists(op.dest) and _same_content(op.src, op.dest):
+            skipped += 1                    # identical bytes already present
         else:
+            dest = _free_dest(op.dest)      # free → op.dest; distinct clash → _N
             if op.action == "copy":
                 # Bytes only (no copystat): copying from an SMB-mounted Seestar,
                 # copying the source's flags/xattrs onto the destination raises
                 # EPERM on macOS. Write to a temp then atomically rename so an
                 # interrupted copy never leaves a partial file that a re-scan
                 # would treat as "already present".
-                tmp = op.dest + ".part"
+                tmp = dest + ".part"
                 try:
                     shutil.copyfile(op.src, tmp)
-                    os.replace(tmp, op.dest)
+                    os.replace(tmp, dest)
                 except BaseException:
                     if os.path.exists(tmp):
                         try:
@@ -459,7 +527,7 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
                             pass
                     raise
             else:
-                shutil.move(op.src, op.dest)
+                shutil.move(op.src, dest)
             moved += 1
         if progress:
             progress(i, total)
