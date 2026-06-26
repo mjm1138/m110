@@ -31,35 +31,20 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 
 ---
 
-## MVP (v0.1) — "the Library"
+## MVP (v0.1) — "the Library" *(complete)*
 
-| Step | Status | What |
-|---|---|---|
-| 0.1a | ✅ | engine package + read functions (config, catalog, derived, objects) |
-| 0.1b | ✅ | read-only Library: capture-status table (natural M/NGC sort) + object detail/gallery |
-| 0.1c | ✅ | in-app **Refresh** (threaded) — ported scan_sessions + build_derived |
-| —    | ✅ | **Own data root** (`~/Documents/M110`) + bootstrap/seed + Preferences + Seestar mount detection |
-| —    | ✅ | **Image rendering** port (build_images: thumbnails / heroes / images.json, cached) |
-| 0.1d | ✅ | **Ingest** — preview-then-confirm; sources: staging (move) + mounted Seestar `MyWorks` (copy); threaded + cancellable |
-| —    | ✅ | **Two-axis data store** (BUGS #13) — `Objects/` (catalog axis) + `Images/` (capture-target axis), hidden `.m110_internal_data/`, in-place idempotent migration. Landed *before* 0.1e/0.1f so both build on the final layout |
-| 0.1e | ✅ | **inline journal editing** — Edit/Save/Cancel the raw `Objects/<id>/journal.md` in the detail pane (table + actions lock while editing) |
-| 0.1f | ✅ | **processing-prep round-trip** — prepare a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks + Naztronomy preset by frame count + guidance), set up **automatically on ingest**; then **import finished work** (renders→`finished/`, stack→`stacks/`, hero pick) and clean the sandbox up. Detail-pane entry points |
+0.1a–0.1f shipped, plus the own-data-root + bootstrap, the image-rendering port, the
+two-axis data store (BUGS #13), and the processing-prep round-trip. Full breakdown
+archived in **[`DONE.md`](DONE.md)**.
 
 ---
 
 ## Later phases (post-MVP)
 
-0. **Site-parity multi-page UI** *(done)* — bring the app to functional
-   parity with the published static site's pages. Left **nav rail + stacked
-   pages**, Summary as the landing page, one shared Object detail reachable from
-   every object link. **Phase 1 done:** shell + **Summary** + **Processing**
-   (Catalog = the relocated Library). **Phase 2 done:** **Sessions** (sortable log   + search) + **Journal** feed (reverse-chron object cards by latest image
-   activity); `derived.load_sessions()` added.
-   **Phase 3 done:** Object view enriched (per-object Processing + Sessions tables + Catalog-details block) + Catalog parity (Size/Filter columns, search box,
-   captured/deep/total stat row). **Site-parity multi-page UI complete.** All
-   backed by existing derived data; only `derived.load_sessions()` was net-new.
-   **Plus a Media page** (BUGS #11) — browses non-catalog `Media/` (photos →
-   viewer, videos → OS player) via a new Qt-free `media.scan()`.
+0. **Site-parity multi-page UI** *(done)* — nav rail + stacked pages (Summary ·
+   Catalog · Processing · Sessions · Journal · Media), Summary as the landing page,
+   one shared Object detail reachable from every object link. Plus the Media page
+   (BUGS #11). Details in **[`DONE.md`](DONE.md)**.
 
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
@@ -247,110 +232,72 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    in tools/data, cite sources); and scope — keep it "an LLM over the existing
    engine," not a bespoke agent framework.
 
-5. **Library, catalogs & goals — multi-list tracking + arbitrary objects.**
-   Today everything is one implicit list (Messier). Generalize into four clear
-   concepts:
-   - **Object** — an astronomical target with intrinsic reference data (coords,
-     type, magnitude, size). Season is **derived** from coords + site, not stored.
-   - **Catalog / List** — a curated, named, **app-bundled, immutable** reference
-     set (Messier, Caldwell, RASC Finest, Herschel 400, Sharpless, Arp, Lunar 100,
-     …). Ships with the app.
-   - **Goal** — a catalog the user is *actively pursuing* (selection over catalogs,
-     with progress tracking + a dashboard/list view).
-   - **Library** — the user's **personal corpus**: every object in their store —
-     catalog members they track **plus arbitrary/captured additions**. Mutable,
-     per-user. (Lightroom's "Library.") Objects are many-to-many with catalogs (the
-     Veil is a non-Messier add *and* Caldwell C33/C34) — membership, not partition.
+5. **Library, catalogs & goals — multi-list tracking + arbitrary objects** *(done; catalog library still growing)*.
+   Four concepts shipped — **Object** (intrinsic reference data; season derived),
+   **Catalog/List** (bundled, immutable membership sets), **Goal** (a catalog being
+   actively pursued, with progress), **Library** (the user's mutable corpus =
+   captured/annotated collection). Phases 5a–5d landed: per-store `library.toml`,
+   the bundled object reference + catalog lists, the Goals nav page (select/create/
+   edit custom goals), reference + online (Simbad) enrichment, and the
+   Library-=-collection reframe. **Six catalogs ship** (Messier, Caldwell, RASC
+   Finest, Best-of-Sharpless, Bennett, Lacaille). Full detail in **[`DONE.md`](DONE.md)**.
+   *Remaining (growth, not blocking):* more bundled catalogs from
+   `next_catalog_lists.md` — **Herschel 400**, **Arp**, **Lunar 100**, AL Double Star
+   (data-generation in `tools/gen_catalogs.py`).
 
-   **Phase 5a (done):** foundation — per-store `catalog.toml` → **`library.toml`**
-   (v2→v3 store migration); bundled data split into an **object reference dataset**
-   (`seed/objects.toml`, id → coords/type/mag/size) + **catalog membership lists**
-   (`seed/catalogs/*.toml`; Messier ships). A fresh Library seeds from the
-   reference. Nav "Catalog" → "Library". No new user-facing behavior yet.
-   **Phase 5b (done):** Goals — active-catalog selection (Preferences), stored
-   **per-store** in `.m110_internal_data/goals.toml` (`goals.py`; default Messier).
-   Per-store, not the old global `active_goals` setting, so each store tracks its
-   own goals, a fresh store starts genuinely Messier-only, and the Library is
-   reconciled to the active goals on launch (no manual Save). Per-goal progress on
-   Summary (`build_goals` → `goals.json`), an object **Catalogs** membership line,
-   and a 2nd bundled catalog — **Caldwell** (109 objects via `tools/gen_caldwell.py`
-   + Simbad; astroquery is build-time only). Fresh Library seeds the active goals'
-   members (Messier); activating a goal adds its members to the Library (additive).
-   Library has a **catalog-filter selector** (browse one catalog's members), a
-   **"Captured only"** filter (interim collection view; default off), and shows
-   **all of an object's identifiers** ordered by a catalog hierarchy
-   (Messier→Caldwell→NGC/IC; e.g. "C20 (NGC 7000)").
-   **5c — reference enrichment (done):** a
-   **"Fill missing metadata"** action (Library right-click + a **Library** menu bulk
-   pass) backfills an existing entry's missing fields from the bundled reference and
-   derives `season` from RA (`catalog.fill_missing_metadata` / `season_from_ra`),
-   never overwriting user values. Fixes stale stubs (e.g. captured-but-uncatalogued
-   objects added before their catalog was bundled). The bundled Caldwell reference was
-   regenerated to ship a derived `season` for every member.
-   **5c — add object + online enrich (done):** **Add object** (Library menu) resolves a typed name/designation via a
-   cascade — bundled reference → online Simbad → coords-only (season always derived) —
-   previews it editably, and commits a new Library entry + journal stub
-   (`catalog.resolve_new_object`/`add_library_entry`). **Online enrichment** fills gaps
-   the bundled reference can't (e.g. the Veil's mag/size) for existing entries too:
-   right-click **"Enrich online"** (single) + Library → **"Enrich online…"** (batched),
-   `fill_missing_metadata(online=)`/`enrich_online`. Online is opt-in (explicit action)
-   on the **optional `astroquery` extra** — graceful `OnlineLookupError` when it's
-   absent/offline; runtime stays offline by default.
+6. **Import — robust, layout-flexible, multi-source** (BUGS **#16**; ingest →
+   *Import*). Today's ingest is fixed to two special-cased sources (the `Inbox/`
+   staging area it *moves* from, a mounted Seestar `MyWorks` it *copies* from) and
+   classifies purely by **folder-name convention** (`<obj>_sub/` → lights, `<obj>/`
+   of `Stacked_*` → seestar-stacks, `*_photo`/`*_video` → media); a one-level scan
+   that **silently ignores** anything else (a flat FITS pile, a ZWO ASIAIR tree, an
+   arbitrary directory, calibration frames). The "Lightroom for smart telescopes"
+   target: **point the importer at any directory**, recurse, recognize the source,
+   classify by **FITS header**, present the familiar select/deselect preview, and
+   give unrecognized files a **holding area + manual assign** instead of dropping
+   them. **Copy** by default (leave the source alone), preserving original filenames.
 
-   **Add arbitrary objects + auto-enrich.** A user can add any object to their
-   Library; the app fills the data fields via a cascade (generalizes
-   `catalog.add_captured_objects`):
-   1. **Bundled reference** (covers catalog objects — instant, offline, complete);
-   2. else **online lookup by name** — **astroquery** (Simbad/VizieR) for
-      type/mag/size/coords. *(c): bundled-first, astroquery as enrichment, mainly
-      for objects outside any supported catalog.* New optional dependency; network.
-   3. else **embedded coordinates** — FITS `RA`/`DEC` or the filename pointing data
-      (reuses ingest #12); type stays "unknown" for the user to complete.
-   4. **Season is always derived** from the resolved coords (no lookup).
+   **Decided** (2026-06-26): rename **Ingest → Import** (user-facing strings, nav,
+   menu/shortcut; engine module `ingest.py` keeps its internal names). Promote to a
+   **top-level Import nav page**. The special-cased Inbox/Seestar *sources* go away —
+   they're just directories you browse to (a **directory chooser + Favorites/Recent
+   places** makes `/Volumes/Seestar`, `~/Astronomy/Images` one click); `Inbox/` is
+   repurposed on-disk as the **holding area / import queue**. **Lazy
+   device-under-target** for source differentiation (see [`DATA_MODEL.md`](DATA_MODEL.md)):
+   flat `Images/<target>/` stays the implicit **default device**, the
+   `Images/<target>/<device>/` level appears only when a 2nd device shows up — no
+   forced migration. Phases:
 
-   Default goal ships as Messier; users add other goals from the bundled catalog
-   library (or import their own). See the sibling Astronomy project's
-   `next_catalog_lists.md` for candidate lists.
+   - **6a — Import view + any-directory source.** Top-level Import page; directory
+     chooser + Favorites/Recent places (special-cased Inbox/Seestar entries removed);
+     **recurse** the chosen tree; always **copy**, preserving filenames, with
+     content-aware **collision handling** — on a dest name clash, checksum (and FITS
+     header) compare → *duplicate*→skip vs. *distinct*→minimal suffix (replaces today's
+     skip-by-name-only). Preview/select/confirm flow unchanged in spirit.
+   - **6b — Header-based classification + layout registry.** Classify by FITS header
+     (OBJECT/IMAGETYP/FILTER/RA/DEC) over folder names, so unstructured dumps sort and
+     **calibration frames** (`IMAGETYP=DARK/FLAT/BIAS`) finally route to
+     `darks/`/`flats/`/`biases/`. A **layout-recognizer registry** (mirrors the
+     processing-workflow registry in `processing.py`) names what it detected — Seestar,
+     ZWO ASIAIR, raw-FITS tree, already-an-M110-store-folder ("belongs in Images/, not
+     the queue"). Pairs with #12's pointing logic (`frame_radec`).
+   - **6c — Holding area + manual assign.** Unclassifiable files land in the holding
+     area (repurposed `Inbox/`); the Import view shows them with **manual assign**
+     (object + kind) reusing the existing remap dropdown (`ingest.retarget`) + alias
+     learning (`ingest.add_alias`); assignment **moves** them into the content tree.
+     Nothing is silently ignored.
+   - **6d — Lazy device-under-target + source differentiation.** Record device/source
+     per session; introduce the optional `Images/<target>/<device>/` path level only
+     when a 2nd device appears (flat = default device). A **device registry** keyed to
+     planning device-profiles (`planning_config.load_device` is the existing seam).
+     This is the phase that bumps `.store_version` + adds a `migrate.py` step — defer
+     until a real 2nd device exists.
 
-   **Bundled catalog library (done / growing).** Six catalogs ship today: **Messier**
-   + **Caldwell** (`gen_caldwell.py`), and **RASC Finest NGC** (111), **Best of
-   Sharpless** (30, curated), **Bennett** (152, southern), **Lacaille 1755** (29,
-   southern) — all generated by `tools/gen_catalogs.py` (Simbad coords/size/mag at
-   build time, season derived from RA; idempotent, runtime offline). Still candidates
-   from `next_catalog_lists.md`: **Herschel 400**, **Arp**, **Lunar 100**, AL Double
-   Star — mostly more data-generation in the same tool.
-
-   **5d — Goals view + the Library-=-collection reframe (done).** A dedicated
-   **Goals** nav page (left rail) where goals are **selected, created, and edited** —
-   including **custom goals built from an arbitrary object list** (`[[custom]]` in
-   `goals.toml`), not just bundled catalogs. Each active goal shows a **progress
-   summary** + an **"in-progress captures"** list (captured but below the deep-stack
-   target) + a **Remaining (uncaptured)** membership checklist. The model reframe
-   landed: the **Library is the captured/annotated collection** (a fresh
-   `library.toml` starts empty), and **uncaptured catalog members live in the Goals
-   view**, not the Library. What shipped:
-   - **Dropped the bulk Library goal-seed** (5b's "activating a goal adds all
-     members") + the launch-time reconcile. The Library grows only by capture
-     (`add_captured_objects`, now pulling full reference metadata for known
-     objects), the Add-object flow, or annotation.
-   - **Goal de-select removal** — deactivating a goal (or deleting a custom one)
-     prunes its uncaptured, un-noted, not-in-another-active-goal members
-     (`catalog.remove_goal_members_from_library`). Captured/annotated objects stay.
-   - **Manual removal** — Library right-click **"Remove from Library"**
-     (`catalog.remove_library_entry`; non-destructive).
-   - **Resolved:** annotated-but-uncaptured targets live in the **Library**.
-   - Goal management moved **fully to the Goals page** (removed from Preferences).
-
-6. **Ingest evolution — robust, layout-flexible, multi-telescope** (BUGS **#16**).
-   Today's Inbox recognizes only the Seestar export shape. Grow to: recognize
-   multiple known layouts (Seestar, ZWO ASIAIR, raw FITS trees, already-M110-store
-   folders), **classify by FITS header** (OBJECT/IMAGETYP/FILTER/RA/DEC) over
-   folder-name conventions (pairs with #12's pointing logic), manual-assign the
-   unrecognized rather than silently ignoring, and a device/format **registry**
-   mirroring the processing-workflow registry. Lands the **device-under-target**
-   layout from [`DATA_MODEL.md`](DATA_MODEL.md) so frames differentiate by source.
-   Foundational for everything multi-scope; scope after the ingest/processing UX
-   settles.
+   Foundational for everything multi-scope; 6a–6c have no hard gate (build on #12
+   pointing, #9/#10 grouped+selectable preview, the two-axis store). The **full import
+   triage toolkit** — FITS header inspector, in-app viewer/annotator for headerless
+   files, plate-solving — is deferred to its own later item (pulls in a solver
+   dependency).
 
 7. **Processing & curation UX** (BUGS **#17/#18/#19**). Generalize processing-prep
    past one user's habits and add curation:
@@ -382,6 +329,14 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
    *Sequencing:* high personal value (it replaces the site the user relies on today)
    and shares rendering concerns with phase 0 (same sections) — reasonable to pull
    forward once the multi-page UI and multi-list (item 5) are in place.
+
+9. **Full import triage toolkit** (extends item 6's holding area). Deeper tools for
+   files the header/layout classifier (6b) can't place: a **FITS header inspector**,
+   an in-app **image viewer/annotator** for headerless frames, and **plate-solving**
+   to recover pointing (→ object) when no usable `OBJECT`/`RA`/`DEC` exists. Builds on
+   the 6c holding area + manual-assign UI. Deferred — pulls in a plate-solver
+   dependency; only worth it once real-world messy imports demand more than manual
+   assign.
 
 ---
 

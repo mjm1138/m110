@@ -102,19 +102,26 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   sandboxes for the enabled workflow(s) and never rewrites an existing one
   (protects hand-edited presets + in-progress runs). Ingest still does the full
   prep (links new lights + refreshes the preset) for freshly-ingested targets.
-- [ ] **#16**: **Robust, layout-flexible ingest (multi-telescope).** Inbox today
-  recognizes exactly one shape — the Seestar export (`<obj>_sub/` of `Light_*.fit`,
-  `<obj>/` of `Stacked_*`, `*_photo`/`*_video`). It silently finds nothing for any
-  other structure (e.g. dropping M110 *store* folders in, or another telescope's
-  layout, or a flat pile of FITS). As M110 grows past the Seestar it should:
-  (a) **recognize multiple known layouts** (Seestar, ZWO ASIAIR, raw FITS trees,
-  already-M110-store folders → "these belong in Images/, not Inbox") and say which
-  it detected; (b) **classify by FITS header** (`OBJECT`/`IMAGETYP`/`FILTER`/
-  `RA`/`DEC`) rather than folder-name conventions, so unstructured dumps still
-  sort correctly (pairs with #12's pointing logic); (c) when it can't classify,
-  **show the unrecognized items with a manual assign** rather than ignoring them;
-  (d) a device/format **registry** mirroring the processing-workflow registry.
-  Big; scope after the current ingest/processing UX settles. Decision required on how lights from different sources would land in the data store; it should be possible to differentiate based on source.
+- [~] **#16**: **Import — robust, layout-flexible, multi-source** *(specced
+  2026-06-26 → ROADMAP item 6, phased 6a–6d).* Ingest is being renamed **Import** and
+  rebuilt. Inbox today recognizes exactly one shape — the Seestar export (`<obj>_sub/`
+  of `Light_*.fit`, `<obj>/` of `Stacked_*`, `*_photo`/`*_video`) and silently finds
+  nothing for any other structure (M110 *store* folders, another telescope's layout, a
+  flat pile of FITS, calibration frames). The build: (a) **recognize multiple known
+  layouts** (Seestar, ZWO ASIAIR, raw FITS trees, already-M110-store folders → "belong
+  in Images/, not the queue") and say which it detected; (b) **classify by FITS header**
+  (`OBJECT`/`IMAGETYP`/`FILTER`/`RA`/`DEC`) over folder names, so unstructured dumps and
+  calibration frames sort (pairs with #12's pointing logic); (c) when it can't classify,
+  **holding area + manual assign** rather than ignoring; (d) a device/format **registry**
+  mirroring the processing-workflow registry. **Resolved decisions:** point at **any
+  directory** (recurse) — the special-cased Inbox/Seestar *sources* go away (directory
+  chooser + Favorites/Recent places); **copy, don't rename**, with content-aware
+  collision handling (checksum/header → duplicate-skip vs. distinct-suffix); top-level
+  **Import nav page**; and the open "how do lights from different sources land in the
+  store?" question → **lazy device-under-target** (flat = default device; the
+  `Images/<target>/<device>/` level + `.store_version` bump only when a 2nd device
+  appears; source recorded in session metadata meanwhile). The deeper **triage toolkit**
+  (header inspector, viewer/annotator, plate-solving) is split out as ROADMAP item 9.
   
 - [ ] **#17**: **Intermediate and finished file hinting** The naming patterns for intermediate and finished images are built on Mike’s particular habits, and are probably not generalizable. Two enhancements can help with this:
 	- [ ] A preference pane to explicitly list intermediate and finished filename hints, populated by a default set build on current preferences

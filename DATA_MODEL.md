@@ -92,9 +92,12 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     siril/                          contained processing-prep sandbox:
       lights/ (hardlinks) · process/ (scratch) · presets/ · next-steps.md
       archive/<ts>/ (past runs)
-    (darks/ flats/ biases/ preserved if present)
+    (darks/ flats/ biases/ — calibration; preserved if present, and import targets
+                            once header-routed by IMAGETYP, ROADMAP item 6b)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
-  Inbox/                            staging area for ingest
+  Inbox/                            holding area / import queue (transient): unclassified
+                                    imports await manual assign here (ROADMAP item 6c);
+                                    no longer a user-facing import *source*
   .m110_internal_data/              hidden machine state (README: "don't touch")
     library.toml                    the user's Library = captured/annotated collection {slug:{id,name,type,…}} (starts empty)
     goals.toml                      per-store goals: active = [...] (default ["messier"]) + [[custom]] lists
@@ -195,13 +198,18 @@ version and adds a migration step that brings older stores forward in place.
 
 ## Data flow
 
+> The **Import** path below reflects the specced redesign (ROADMAP item 6 / BUGS #16).
+> Shipped today: ingest reads only a fixed `Inbox/` (move) + mounted Seestar (copy) and
+> classifies by folder name. `ingest.apply_ops` remains the single gated writer either way.
+
 ```mermaid
 flowchart TD
     subgraph sources[Sources]
-        DEV[Seestar / staging]
+        DEV[Any directory: device mount / other scope / arbitrary tree]
     end
-    DEV -->|copy/move| INBOX[Inbox/]
-    INBOX -->|ingest.apply_ops<br/>confirm-first| IMG
+    DEV -->|Import: recurse + classify<br/>copy, confirm-first| IMG
+    DEV -.->|unclassified| INBOX[Inbox/ — holding area]
+    INBOX -.->|manual assign<br/>move, confirm-first| IMG
 
     subgraph content[Content axis: Images/&lt;target&gt;/]
         IMG[lights/ · seestar-stacks/ · stacks/ · finished/]
@@ -336,14 +344,27 @@ checklist, computed on the fly. Consequences:
 - Goal management moved **fully to the Goals page** (removed from Preferences).
 - Annotated-but-uncaptured targets stay in the **Library** (the settled lean).
 
-### Multi-telescope ingest (BUGS #16)
-- A **device path level under the target**:
-  `Images/<target>/<device>/{lights,stacks,seestar-stacks,finished,siril}/`.
+### Import & multi-source / multi-telescope (BUGS #16, ROADMAP item 6)
+- **Import (was "ingest")** points at **any directory** (device mount, another scope's
+  export, an arbitrary tree), recurses, classifies by **FITS header**
+  (`OBJECT`/`IMAGETYP`/`FILTER`/`RA`/`DEC`) over folder names, and **copies** into the
+  content tree (originals untouched, filenames preserved; collisions resolved
+  content-aware — checksum/header → duplicate-skip vs. distinct-suffix). Unclassifiable
+  files land in the `Inbox/` **holding area** for manual assign. `Inbox/` is no longer a
+  user-facing *source*. A **layout-recognizer registry** + a **device registry** mirror
+  the processing-workflow registry. (Specced 2026-06-26; phased 6a–6d.)
+- **Source differentiation = lazy device-under-target.** Decided approach for "how
+  lights from different sources land in the store so they can be differentiated": keep
+  recording source/device as **session metadata** now, and only introduce a **device
+  path level under the target** — `Images/<target>/<device>/{lights,stacks,
+  seestar-stacks,finished,siril}/` — when a **2nd device actually appears**.
 - Today's flat `Images/<target>/…` = an implicit **default device** (the Seestar
-  S50); migration is lazy/optional and the absence of a device level means the
-  default device.
+  S50); migration is **lazy/optional** and the absence of a device level means the
+  default device. Introducing the `<device>/` level is the change that bumps
+  `.store_version` + adds a `migrate.py` step (item 6d) — not done until needed.
 - The `<device>` id is a **device-profile key** (links to the planning profiles
-  below). Classification will lean on FITS headers, not just folder names.
+  below, `planning_config.load_device`). Classification leans on FITS headers, not
+  just folder names.
 
 ### Session planning & plan files (ROADMAP items 1–2)
 - **Profiles** *(landed — site profile + planning engine)* — observing **site**,
