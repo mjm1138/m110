@@ -69,10 +69,11 @@ def test_ingest_dialog_groups_canonicalizes_and_flags_pointing(tmp_path, monkeyp
     assert dlg.table.item(rows - 1, 2).text() == "media"
     assert dlg.table.item(rows - 1, 5).text() == "—"          # media → no pointing check
 
-    # canonicalization (#12a) is on the *destination*: lowercase m13_sub routes to
-    # Images/M13/lights (the row label keeps the raw folder name).
+    # canonicalization (#12a): lowercase m13_sub routes to Images/M13/lights AND the
+    # row label folds to the canonical "M13" (matches where files land).
     r13 = _row_for(dlg, "Images/M13/lights")
     assert dlg.table.item(r13, 6).text() == "Images/M13/lights"
+    assert dlg.table.item(r13, 1).text().startswith("M13")     # label canonicalized too
 
     # the M27 group aggregated both frames
     r27 = _row_for(dlg, "Images/M27/lights")

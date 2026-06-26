@@ -71,7 +71,7 @@ Time-boxed, charter-driven poking — this is where most real bugs surface. Run
   - _________________________________________________________________
 - **Failure modes / rough edges:** _(things that worked but felt wrong)_
   - _________________________________________________________________
-- **Bugs filed (→ `BUGS.md`):** _e.g. #NN — ingest row label keeps raw folder casing_
+- **Bugs filed (→ `BUGS.md`):** _e.g. #NN — short description of what you found_
   - _________________________________________________________________
 
 ### Session B (optional)

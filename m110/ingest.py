@@ -374,11 +374,13 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
 
 
 def _object_label(group: str, kind: str) -> str:
-    """Friendly object/category name for a source folder."""
+    """Friendly object/category name for a source folder. Folds onto the canonical
+    destination target (case/alias), so the preview label matches where the files
+    actually land (e.g. `m13_sub` → "M13", not "m13")."""
     if kind == "media":
         return group
     base = group[:-4] if group.endswith("_sub") else group   # strip "_sub"
-    return fits_object_name(base)
+    return canonical_target(base)
 
 
 def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:

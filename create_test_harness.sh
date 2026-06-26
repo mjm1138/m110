@@ -54,7 +54,17 @@ echo "Extracting → $DEST"
 mkdir -p "$(dirname "$DEST")"
 tar xzf "$TARBALL" -C "$(dirname "$DEST")"
 
-# 4. Launch the app pointed at it (Refresh once inside to build derived/renders).
+# 4. Stamp a fresh manual-test sheet from the template (gitignored working copies).
+TEMPLATE="$REPO/tests/MANUAL_TEST_TEMPLATE.md"
+if [ -f "$TEMPLATE" ]; then
+  SHEET_DIR="$REPO/manual_tests"
+  SHEET="$SHEET_DIR/$(date +%Y%m%d%H%M)-manual_test.md"
+  mkdir -p "$SHEET_DIR"
+  cp "$TEMPLATE" "$SHEET"
+  echo "Manual-test sheet ready: $SHEET"
+fi
+
+# 5. Launch the app pointed at it (Refresh once inside to build derived/renders).
 echo "Launching M110 (M110_DATA_ROOT=$DEST)…"
 M110_BIN="$REPO/.venv/bin/m110"
 if [ -x "$M110_BIN" ]; then
