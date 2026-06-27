@@ -43,12 +43,14 @@ def _staging() -> Path:
 class IngestOp:
     src: str         # absolute source file
     dest: str        # absolute destination file
-    kind: str        # 'light' | 'stack' | 'media'
+    kind: str        # 'light'|'stack'|'media'|'dark'|'flat'|'bias'|'finished'
     group: str       # source directory name
     dest_rel: str    # destination relative to the data root (for display)
     new_object: bool = False  # a new capture-target dir will be created
     action: str = "move"      # 'move' (staging) | 'copy' (device)
     size_bytes: int = 0       # source file size (stat'd on the scan worker)
+    layout: str = "seestar"   # recognizer that claimed it (LAYOUTS id)
+    object: str = ""          # canonical object/category label this op lands under
 
 
 @dataclass
@@ -56,7 +58,7 @@ class IngestGroup:
     """One source folder's worth of ops, aggregated for a per-object preview."""
     group: str               # source directory name (the selectable unit)
     object: str              # friendly object/category label
-    kind: str                # 'light' | 'stack' | 'media'
+    kind: str                # 'light'|'stack'|'media'|'dark'|'flat'|'bias'|'finished'
     frames: int              # number of new files
     size_bytes: int          # total size of the new files
     dest_dir: str            # destination dir, relative to the data root
@@ -65,6 +67,33 @@ class IngestGroup:
     ops: list                # the underlying IngestOps
     pointing: str | None = None    # warning text if the frame's RA/DEC ≠ the name
     suggested: str | None = None   # slug of a better-matching catalog object
+    layout: str = "seestar"        # detected source layout (LAYOUTS id)
+
+
+# ── layout-recognizer registry (6b) ────────────────────────────────────────────
+# Names the source layout a directory was classified as, mirroring the
+# processing-workflow registry in processing.py. `available=False` entries are
+# registered placeholders ("soon") that don't classify yet.
+
+@dataclass(frozen=True)
+class Layout:
+    id: str
+    label: str
+    available: bool
+
+
+LAYOUTS = [
+    Layout("seestar",    "Seestar",    True),   # folder-name conventions (_sub/Stacked_/_photo)
+    Layout("m110-store", "M110 store", True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
+    Layout("raw-fits",   "Raw FITS",   True),    # loose FITS sorted by header
+    Layout("asiair",     "ZWO ASIAIR", False),   # registered placeholder
+]
+LAYOUTS_BY_ID = {l.id: l for l in LAYOUTS}
+
+
+def layout_label(layout_id: str) -> str:
+    l = LAYOUTS_BY_ID.get(layout_id)
+    return l.label if l else layout_id
 
 
 # ── classification helpers (ported verbatim) ───────────────────────────────────
@@ -88,7 +117,7 @@ def _fit_files(d: Path) -> list[str]:
     if not d.is_dir():
         return []
     return sorted(f.name for f in d.iterdir()
-                  if f.is_file() and f.suffix.lower() == ".fit")
+                  if f.is_file() and f.suffix.lower() in (".fit", ".fits"))
 
 
 def _all_files(d: Path) -> list[str]:
@@ -184,23 +213,66 @@ def _parse_sexagesimal(ra: str, dec: str):
         return None
 
 
-def frame_radec(path: str):
-    """(ra_deg, dec_deg) from a frame header, or None. Seestar uses RA/DEC in
-    degrees; falls back to sexagesimal OBJCTRA/OBJCTDEC."""
+# IMAGETYP header values vary by capture software; fold them onto our four kinds.
+_IMAGETYP_MAP = {
+    "light": "light", "light frame": "light", "object": "light", "target": "light",
+    "dark": "dark", "dark frame": "dark", "master dark": "dark",
+    "flat": "flat", "flat frame": "flat", "flat field": "flat",
+    "flatfield": "flat", "master flat": "flat",
+    "bias": "bias", "bias frame": "bias", "offset": "bias",
+    "offset frame": "bias", "master bias": "bias",
+}
+
+
+def _normalize_imagetyp(raw) -> str | None:
+    """Fold a raw IMAGETYP header (ZWO/INDI/Seestar variants) onto
+    'light'|'dark'|'flat'|'bias', or None if absent/unrecognized."""
+    if not raw:
+        return None
+    return _IMAGETYP_MAP.get(str(raw).strip().lower())
+
+
+def frame_info(path: str) -> dict | None:
+    """Normalized header facts from a FITS frame, or None.
+    Returns {object, imagetyp, filter, ra_deg, dec_deg} — `imagetyp` folded onto
+    light/dark/flat/bias (or None), coords in degrees (Seestar RA/DEC, else
+    sexagesimal OBJCTRA/OBJCTDEC). Header-only read (no pixel load)."""
     try:
         from astropy.io import fits
     except ImportError:
         return None
     try:
-        with fits.open(path) as h:
-            hdr = h[0].header
-            if hdr.get("RA") is not None and hdr.get("DEC") is not None:
-                return float(hdr["RA"]), float(hdr["DEC"])
-            ra, dec = hdr.get("OBJCTRA"), hdr.get("OBJCTDEC")
-            if ra and dec:
-                return _parse_sexagesimal(ra, dec)
+        hdr = fits.getheader(path)
     except Exception:
         return None
+    ra_deg = dec_deg = None
+    try:
+        if hdr.get("RA") is not None and hdr.get("DEC") is not None:
+            ra_deg, dec_deg = float(hdr["RA"]), float(hdr["DEC"])
+        else:
+            ra, dec = hdr.get("OBJCTRA"), hdr.get("OBJCTDEC")
+            if ra and dec:
+                parsed = _parse_sexagesimal(ra, dec)
+                if parsed:
+                    ra_deg, dec_deg = parsed
+    except (ValueError, TypeError):
+        ra_deg = dec_deg = None
+    obj = hdr.get("OBJECT")
+    return {
+        "object": str(obj).strip() if obj not in (None, "") else None,
+        "imagetyp": _normalize_imagetyp(hdr.get("IMAGETYP")),
+        "filter": (str(hdr.get("FILTER")).strip() or None) if hdr.get("FILTER") else None,
+        "ra_deg": ra_deg,
+        "dec_deg": dec_deg,
+    }
+
+
+def frame_radec(path: str):
+    """(ra_deg, dec_deg) from a frame header, or None. Thin wrapper over
+    `frame_info` kept for the pointing check (#12b)."""
+    info = frame_info(path)
+    if info and info["ra_deg"] is not None and info["dec_deg"] is not None:
+        return info["ra_deg"], info["dec_deg"]
     return None
 
 
@@ -245,7 +317,7 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[Ing
     for g in groups:
         if should_cancel and should_cancel():
             break
-        if g.kind == "media" or not g.ops:
+        if g.kind in ("media", "dark", "flat", "bias", "finished") or not g.ops:
             continue
         radec = frame_radec(g.ops[0].src)
         if radec is None:
@@ -270,17 +342,16 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[Ing
 
 def retarget(group: IngestGroup, new_object: str) -> IngestGroup:
     """Rebuild a group's ops to land under a different destination object (used by
-    the remap dropdown). Only light/stack groups are retargetable."""
+    the remap dropdown). Media groups don't retarget; every per-target kind does."""
     root = config.DATA_ROOT
-    dst_dir = (config.lights_dir(new_object) if group.kind == "light"
-               else config.seestar_stacks_dir(new_object))
+    dst_dir = _KIND_DIR.get(group.kind, config.lights_dir)(new_object)
     new_flag = not config.target_dir(new_object).is_dir()
     new_ops = []
     for op in group.ops:
         dest = dst_dir / Path(op.src).name
         new_ops.append(replace(op, dest=str(dest),
                                dest_rel=str(dest.relative_to(root)),
-                               new_object=new_flag))
+                               new_object=new_flag, object=new_object))
     return replace(group, object=new_object, dest_dir=str(dst_dir.relative_to(root)),
                    new_object=new_flag, ops=new_ops, pointing=None, suggested=None)
 
@@ -295,73 +366,184 @@ def seestar_available() -> bool:
     return config.find_seestar_myworks() is not None
 
 
-def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
-    """Classify ONE source directory by the Seestar-style folder conventions and
-    return the ops for its NEW files (those not already present at the destination).
-    Shared by the legacy per-child scan (`_scan_base`) and the recursive
-    `scan_directory_plan`. A directory is one of:
-      • *lights* — name ends `_sub` → `Light_*.fit` → `Images/<obj>/lights/`;
-      • *media*  — name ends `_photo`/`_video` → all files → `Media/<name>/`;
-      • *stack*  — anything else that **actually contains** a `Stacked_*` FITS →
-        the stacks (+ preview .jpg/.png, minus `*_thn.*`) → `seestar-stacks/`.
-    The "must contain a stacked FITS" rule (stricter than the old "any other dir is
-    a stack dir") keeps a recursive walk over an arbitrary tree from vacuuming up
-    unrelated images. Reads only."""
+# kind → per-target destination dir (media routes to MEDIA_DIR, handled separately)
+_KIND_DIR = {
+    "light": config.lights_dir,
+    "dark": config.darks_dir,
+    "flat": config.flats_dir,
+    "bias": config.biases_dir,
+    "stack": config.seestar_stacks_dir,
+    "siril-stack": config.stacks_dir,
+    "finished": config.finished_dir,
+}
+
+# M110-store-shaped sources (6b): a subdir named like this under an <object> dir
+# (the ~/Astronomy/Images precursor: FITS/<obj>/lights, …), or an <object> dir
+# under one of these parents (Finished Images/<obj>, Seestar_stacks/<obj>).
+_STORE_SUBDIR_KIND = {
+    "lights": "light", "darks": "dark", "flats": "flat", "biases": "bias",
+    "stacks": "siril-stack", "seestar-stacks": "stack", "finished": "finished",
+}
+_STORE_PARENT_KIND = {
+    "finished images": "finished", "finished": "finished",
+    "seestar_stacks": "stack", "seestar-stacks": "stack",
+}
+# Working/sandbox dirs that are never content — don't import or recurse into them.
+_SKIP_DIRS = {"process", "siril"}
+
+
+def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
+                action: str, layout: str) -> list[IngestOp]:
+    """Ops routing `files` (names in `src_dir`) into the target subdir for `kind`
+    under object `obj`, skipping ones already present at the dest. `group` is the
+    grouping/label key shown in the preview."""
     root = config.DATA_ROOT
+    dst_dir = _KIND_DIR[kind](obj)
+    existing = set(_all_files(dst_dir))
+    new_object = not config.target_dir(obj).is_dir()
     ops: list[IngestOp] = []
+    for f in files:
+        if f in existing:
+            continue
+        dest = dst_dir / f
+        ops.append(IngestOp(str(src_dir / f), str(dest), kind, group,
+                            str(dest.relative_to(root)), new_object, action,
+                            _size(src_dir / f), layout, obj))
+    return ops
+
+
+def _detect_layout(src_dir: Path, name: str) -> str | None:
+    """Which LAYOUTS recognizer claims this directory (or None to skip it)."""
+    if name.lower() in _SKIP_DIRS:
+        return None
+    # M110-store-shaped (precursor like ~/Astronomy/Images): a known content
+    # subdir under an <object>, or an <object> under a known container.
+    if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
+        if _all_files(src_dir):
+            return "m110-store"
+    # Seestar folder conventions.
+    if name.endswith("_sub") or is_media_dir(name):
+        return "seestar"
+    if any(is_stacked_fit(f) for f in _fit_files(src_dir)):
+        return "seestar"
+    # Anything else holding loose FITS → sort by header.
+    if _fit_files(src_dir):
+        return "raw-fits"
+    return None
+
+
+def _classify_store_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+    """Import an M110-store-shaped directory (6b). Maps a content subdir
+    (lights/darks/…/stacks/finished) onto the matching M110 target dir; the object
+    comes from the parent (FITS/<obj>/lights) or from this dir (Finished Images/<obj>)."""
+    sub_kind = _STORE_SUBDIR_KIND.get(name.lower())
+    if sub_kind:
+        obj = canonical_target(src_dir.parent.name)
+        files = (_fit_files(src_dir) if sub_kind in ("light", "dark", "flat", "bias")
+                 else _all_files(src_dir))
+        return _emit_files(src_dir, files, sub_kind, obj, name, action, "m110-store")
+    kind = _STORE_PARENT_KIND.get(src_dir.parent.name.lower())
+    if kind:
+        obj = canonical_target(name)
+        return _emit_files(src_dir, _all_files(src_dir), kind, obj, name, action, "m110-store")
+    return []
+
+
+def _classify_seestar_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+    """Seestar folder conventions (the original classifier), with a 6b header
+    override: a calibration frame (IMAGETYP=DARK/FLAT/BIAS) inside a lights folder
+    is split out to its calibration dir — the header wins over the folder name."""
+    root = config.DATA_ROOT
 
     if name.endswith("_sub"):
         obj = canonical_target(name[:-4])      # strip "_sub"; fold case/aliases
-        dst_dir = config.lights_dir(obj)
-        existing = set(_fit_files(dst_dir))
-        new_object = not config.target_dir(obj).is_dir()
+        ops: list[IngestOp] = []
         for f in _fit_files(src_dir):
-            if f in existing:
-                continue
-            dest = dst_dir / f
-            ops.append(IngestOp(str(src_dir / f), str(dest), "light", name,
-                                str(dest.relative_to(root)), new_object, action,
-                                _size(src_dir / f)))
+            info = frame_info(str(src_dir / f))
+            kind = info["imagetyp"] if info and info["imagetyp"] in ("dark", "flat", "bias") else "light"
+            ops.extend(_emit_files(src_dir, [f], kind, obj, name, action, "seestar"))
         return ops
 
     if is_media_dir(name):
         dst_dir = config.MEDIA_DIR / name
         existing = set(_all_files(dst_dir))
+        ops = []
         for f in _all_files(src_dir):
             if f in existing:
                 continue
             dest = dst_dir / f
             ops.append(IngestOp(str(src_dir / f), str(dest), "media", name,
                                 str(dest.relative_to(root)), False, action,
-                                _size(src_dir / f)))
+                                _size(src_dir / f), "seestar", name))
         return ops
 
     # Stack candidate — only if it really holds in-app stacks.
     stacked = [f for f in _fit_files(src_dir) if is_stacked_fit(f)]
     if not stacked:
-        return ops
+        return []
     obj = canonical_target(name)
-    dst_dir = config.seestar_stacks_dir(obj)
-    existing = set(_fit_files(dst_dir))
-    for f in stacked:
-        if f in existing:
-            continue
-        dest = dst_dir / f
-        ops.append(IngestOp(str(src_dir / f), str(dest), "stack", name,
-                            str(dest.relative_to(root)), False, action,
-                            _size(src_dir / f)))
+    ops = _emit_files(src_dir, stacked, "stack", obj, name, action, "seestar")
     # Also pull the device's preview renders (.jpg/.png) into the same stack folder
     # so the gallery has ready-made images; skip the Seestar's *_thn.* thumbnails.
-    existing_all = set(_all_files(dst_dir))
-    for f in _all_files(src_dir):
-        if "_thn." in f or f in existing_all:
-            continue
-        if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png"):
-            dest = dst_dir / f
-            ops.append(IngestOp(str(src_dir / f), str(dest), "stack", name,
-                                str(dest.relative_to(root)), False, action,
-                                _size(src_dir / f)))
+    previews = [f for f in _all_files(src_dir)
+                if "_thn." not in f and f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")]
+    ops.extend(_emit_files(src_dir, previews, "stack", obj, name, action, "seestar"))
     return ops
+
+
+def _classify_raw_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+    """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
+    routed by its IMAGETYP; the object comes from the OBJECT header, else the
+    containing folder name. Frames with neither a usable type nor an object are
+    left unclassified (the 6c holding area)."""
+    ops: list[IngestOp] = []
+    for f in _fit_files(src_dir):
+        info = frame_info(str(src_dir / f))
+        kind = info["imagetyp"] if info else None
+        obj_hdr = canonical_target(info["object"]) if info and info["object"] else None
+        if kind in ("dark", "flat", "bias"):
+            obj = obj_hdr or canonical_target(name)
+        elif kind == "light" or obj_hdr:
+            kind, obj = "light", (obj_hdr or canonical_target(name))
+        else:
+            continue                              # unclassifiable → 6c holding area
+        ops.extend(_emit_files(src_dir, [f], kind, obj, name, action, "raw-fits"))
+    return ops
+
+
+def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+    """Classify ONE source directory and return the ops for its NEW files. Picks a
+    layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
+    raw-FITS header sort — and delegates. A directory inside this app's own store is
+    skipped (don't re-import the library into itself). Reads only."""
+    if _in_own_store(src_dir):
+        return []
+    layout = _detect_layout(src_dir, name)
+    if layout == "m110-store":
+        return _classify_store_dir(src_dir, name, action)
+    if layout == "seestar":
+        return _classify_seestar_dir(src_dir, name, action)
+    if layout == "raw-fits":
+        return _classify_raw_dir(src_dir, name, action)
+    return []
+
+
+def _in_own_store(src_dir: Path) -> bool:
+    """True if `src_dir` is inside this app's own content tree (`Images/` or the
+    hidden internals) — don't re-import the library into itself. The Inbox staging
+    area and everything *outside* the content tree (a foreign M110 store, the
+    ~/Astronomy/Images precursor) import normally."""
+    try:
+        rp = src_dir.resolve()
+    except OSError:
+        rp = src_dir
+    for base in (config.IMAGES_DIR, config.INTERNAL_DIR):
+        try:
+            rp.relative_to(Path(base).resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
 
 
 def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
@@ -384,11 +566,11 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
 
 def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[IngestOp]:
     """Dry-run plan for an **arbitrary** directory (ROADMAP 6a). Walks `root`
-    recursively and classifies *every* directory by the same Seestar-style
-    conventions, so a nested layout (e.g. a per-object tree, or device folders a
-    few levels down) is found — not just the immediate children. **Copy** semantics
-    by default, so the source is left untouched. Reads only; raises IngestCancelled
-    if `should_cancel()` turns true."""
+    recursively and classifies *every* directory by the layout recognizers (6b) —
+    M110-store-shaped, Seestar conventions, or a raw-FITS header sort — so a nested
+    layout (a per-object tree, device folders, a precursor store) is found, not just
+    the immediate children. **Copy** semantics by default, so the source is left
+    untouched. Reads only; raises IngestCancelled if `should_cancel()` turns true."""
     root = Path(root) if root is not None else None
     if root is None or not root.is_dir():
         return []
@@ -396,7 +578,8 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
     for dirpath, dirnames, _files in os.walk(root):
         if should_cancel and should_cancel():
             raise IngestCancelled()
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        dirnames[:] = sorted(d for d in dirnames
+                             if not d.startswith(".") and d.lower() not in _SKIP_DIRS)
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
@@ -404,31 +587,33 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
     return ops
 
 
-def _object_label(group: str, kind: str) -> str:
-    """Friendly object/category name for a source folder. Folds onto the canonical
-    destination target (case/alias), so the preview label matches where the files
-    actually land (e.g. `m13_sub` → "M13", not "m13")."""
-    if kind == "media":
-        return group
-    base = group[:-4] if group.endswith("_sub") else group   # strip "_sub"
+def _object_label(op: IngestOp) -> str:
+    """Friendly object/category name for an op. Prefers the canonical object the op
+    resolved to (6b sets it on every op); falls back to folding the source folder
+    name for any legacy op without one (e.g. `m13_sub` → "M13")."""
+    if op.object:
+        return op.object
+    if op.kind == "media":
+        return op.group
+    base = op.group[:-4] if op.group.endswith("_sub") else op.group
     return canonical_target(base)
 
 
 def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
-    """Aggregate a flat op list into one IngestGroup per source folder — the unit
-    the preview shows and the user selects. Order: objects A→Z, media last."""
-    by_group: dict[str, list[IngestOp]] = {}
+    """Aggregate a flat op list into one IngestGroup per (source folder, kind) — the
+    unit the preview shows and the user selects. Keying on kind lets a header-sorted
+    pile split into separate lights/darks/… rows. Order: objects A→Z, media last."""
+    by_group: dict[tuple, list[IngestOp]] = {}
     for op in ops:
-        by_group.setdefault(op.group, []).append(op)
+        by_group.setdefault((op.group, op.kind), []).append(op)
 
     groups: list[IngestGroup] = []
-    for name, gops in by_group.items():
-        kind = gops[0].kind
+    for (name, kind), gops in by_group.items():
         # destination dir = parent of the first op's destination
         dest_dir = str(Path(gops[0].dest_rel).parent)
         groups.append(IngestGroup(
             group=name,
-            object=_object_label(name, kind),
+            object=_object_label(gops[0]),
             kind=kind,
             frames=len(gops),
             size_bytes=sum(o.size_bytes for o in gops),
@@ -436,9 +621,10 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
             new_object=any(o.new_object for o in gops),
             action=gops[0].action,
             ops=gops,
+            layout=gops[0].layout,
         ))
     # media rows after catalog objects, then by object name
-    groups.sort(key=lambda g: (g.kind == "media", g.object.lower()))
+    groups.sort(key=lambda g: (g.kind == "media", g.object.lower(), g.kind))
     return groups
 
 

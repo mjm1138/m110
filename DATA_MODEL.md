@@ -92,8 +92,9 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     siril/                          contained processing-prep sandbox:
       lights/ (hardlinks) · process/ (scratch) · presets/ · next-steps.md
       archive/<ts>/ (past runs)
-    (darks/ flats/ biases/ — calibration; preserved if present, and import targets
-                            once header-routed by IMAGETYP, ROADMAP item 6b)
+    (darks/ flats/ biases/ — calibration; preserved if present, and **import targets**
+                            for frames header-routed by IMAGETYP (ROADMAP item 6b);
+                            written by ingest, layout unchanged → no .store_version bump)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
   Inbox/                            holding area / import queue (transient): unclassified
                                     imports await manual assign here (ROADMAP item 6c);

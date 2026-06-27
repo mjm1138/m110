@@ -279,13 +279,22 @@ archived in **[`DONE.md`](DONE.md)**.
      *duplicate*→skip vs. *distinct*→minimal `_N` suffix (replaces skip-by-name-only;
      header compare wasn't needed). Preview/select/confirm + pointing-remap unchanged.
      Classification is still **folder-name** based — header-based sorting is 6b.
-   - **6b — Header-based classification + layout registry.** Classify by FITS header
-     (OBJECT/IMAGETYP/FILTER/RA/DEC) over folder names, so unstructured dumps sort and
-     **calibration frames** (`IMAGETYP=DARK/FLAT/BIAS`) finally route to
-     `darks/`/`flats/`/`biases/`. A **layout-recognizer registry** (mirrors the
-     processing-workflow registry in `processing.py`) names what it detected — Seestar,
-     ZWO ASIAIR, raw-FITS tree, already-an-M110-store-folder ("belongs in Images/, not
-     the queue"). Pairs with #12's pointing logic (`frame_radec`).
+   - **6b — Header-based classification + layout registry** *(done 2026-06-27)*.
+     Classification now reads the FITS header (`ingest.frame_info` →
+     OBJECT/IMAGETYP/FILTER/RA/DEC, header-only via `fits.getheader`) so unstructured
+     dumps sort and **calibration frames** (`IMAGETYP=DARK/FLAT/BIAS`, folded from
+     ZWO/INDI variants by `_normalize_imagetyp`) route to `darks/`/`flats/`/`biases/`
+     (new `config.{darks,flats,biases}_dir`). New op **kinds** `dark`/`flat`/`bias`/
+     `siril-stack`/`finished` join `light`/`stack`/`media`; **header wins** over folder
+     name (a stray DARK in `_sub` → `darks/`). A **layout-recognizer registry**
+     (`ingest.LAYOUTS`, mirrors `processing.py`'s workflow registry) names the detected
+     source per group — **seestar** (folder conventions), **m110-store** (the
+     `~/Astronomy/Images` precursor: `FITS/<obj>/{lights,darks,…,stacks}`, `Finished
+     Images/<obj>`, `Seestar_stacks/<obj>`; `process/`+`siril/` sandboxes skipped),
+     **raw-fits** (loose FITS header-sorted), and **asiair** (registered-disabled
+     placeholder). The app's own `Images/` content tree is never re-imported into
+     itself (`_in_own_store`). The Import preview shows the kind + detected layout
+     (tooltip). Pairs with #12's pointing logic (`frame_radec`).
    - **6c — Holding area + manual assign.** Unclassifiable files land in the holding
      area (repurposed `Inbox/`); the Import view shows them with **manual assign**
      (object + kind) reusing the existing remap dropdown (`ingest.retarget`) + alias

@@ -215,10 +215,13 @@ class ImportPage(QWidget):
             chk.setData(Qt.UserRole, r)
             self.table.setItem(r, 0, chk)
             self._set_object_cell(r, g)
-            self.table.setItem(r, 2, QTableWidgetItem(KIND_LABEL.get(g.kind, g.kind)))
+            kind_item = QTableWidgetItem(KIND_LABEL.get(g.kind, g.kind))
+            kind_item.setToolTip(f"Detected layout: {ingest.layout_label(g.layout)}")
+            self.table.setItem(r, 2, kind_item)
             self.table.setItem(r, 3, QTableWidgetItem(str(g.frames)))
             self.table.setItem(r, 4, QTableWidgetItem(_fmt_size(g.size_bytes)))
-            point = g.pointing or ("—" if g.kind == "media" else "✓")
+            no_pointing = g.kind in ("media", "dark", "flat", "bias", "finished")
+            point = g.pointing or ("—" if no_pointing else "✓")
             self.table.setItem(r, 5, QTableWidgetItem(point))
             self.table.setItem(r, 6, QTableWidgetItem(g.dest_dir))
         self._loading = False
@@ -304,7 +307,9 @@ class ImportPage(QWidget):
             self._import_btn.setEnabled(False)
             return
         counts = Counter(o.kind for o in ops)
-        parts = [f"{counts[k]} {KIND_LABEL[k]}" for k in ("light", "stack", "media")
+        parts = [f"{counts[k]} {KIND_LABEL.get(k, k)}"
+                 for k in ("light", "stack", "siril-stack", "dark", "flat",
+                           "bias", "finished", "media")
                  if counts.get(k)]
         size = _fmt_size(sum(o.size_bytes for o in ops))
         new_objs = sorted({g.object for g in groups if g.new_object})

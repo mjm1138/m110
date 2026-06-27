@@ -369,3 +369,118 @@ def test_seestar_copies_stack_previews(tmp_path, monkeypatch):
     assert "Stacked_10_M13.fit" in names
     assert "M13.jpg" in names
     assert "M13_thn.jpg" not in names
+
+
+# ── 6b: header-based classification + layout registry ─────────────────────────
+
+def _fits_hdr(path, *, object=None, imagetyp=None, filter=None, ra=None, dec=None):
+    """Write a tiny FITS frame carrying the headers 6b classifies on."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="float32"))
+    if object is not None:
+        h.header["OBJECT"] = object
+    if imagetyp is not None:
+        h.header["IMAGETYP"] = imagetyp
+    if filter is not None:
+        h.header["FILTER"] = filter
+    if ra is not None:
+        h.header["RA"] = ra
+    if dec is not None:
+        h.header["DEC"] = dec
+    h.writeto(path)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("Light", "light"), ("Light Frame", "light"), ("OBJECT", "light"),
+    ("Dark", "dark"), ("Master Dark", "dark"),
+    ("Flat", "flat"), ("Flat Field", "flat"), ("FLATFIELD", "flat"),
+    ("Bias", "bias"), ("Offset", "bias"),
+    ("weird", None), (None, None), ("", None),
+])
+def test_normalize_imagetyp(raw, expected):
+    assert ingest._normalize_imagetyp(raw) == expected
+
+
+def test_frame_info_reads_headers(tmp_path):
+    p = tmp_path / "f.fit"
+    _fits_hdr(p, object="M 1", imagetyp="Light", filter="LP", ra=84.02, dec=22.06)
+    info = ingest.frame_info(str(p))
+    assert info["object"] == "M 1"
+    assert info["imagetyp"] == "light"
+    assert info["filter"] == "LP"
+    assert info["ra_deg"] == pytest.approx(84.02)
+    # frame_radec still works through the wrapper
+    assert ingest.frame_radec(str(p)) == pytest.approx((84.02, 22.06))
+
+
+def test_m110_store_layout_routes_subdirs(tmp_path, monkeypatch):
+    """A precursor store (~/Astronomy/Images shape) sorts lights/darks/flats/stacks/
+    finished onto the matching M110 dirs; process/ is skipped."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "Astro" / "FITS" / "M1"
+    _fits_hdr(src / "lights" / "Light_M1_a.fit", imagetyp="Light")
+    _fits_hdr(src / "darks" / "Dark_a.fit", imagetyp="Dark")
+    _fits_hdr(src / "flats" / "Flat_a.fit", imagetyp="Flat")
+    (src / "stacks").mkdir(parents=True)
+    (src / "stacks" / "M1_processed.tif").write_text("t")
+    (src / "process").mkdir(parents=True)
+    (src / "process" / "lights.fit").write_text("p")   # Siril sandbox → skip
+    (tmp_path / "Astro" / "Finished Images" / "M1").mkdir(parents=True)
+    (tmp_path / "Astro" / "Finished Images" / "M1" / "M1-final.png").write_text("f")
+
+    ops = ingest.scan_directory_plan(tmp_path / "Astro")
+    by_kind = {}
+    for op in ops:
+        by_kind.setdefault(op.kind, []).append(op)
+        assert op.layout == "m110-store"
+    assert by_kind["light"][0].dest_rel == "Images/M1/lights/Light_M1_a.fit"
+    assert by_kind["dark"][0].dest_rel.startswith("Images/M1/darks/")
+    assert by_kind["flat"][0].dest_rel.startswith("Images/M1/flats/")
+    assert by_kind["siril-stack"][0].dest_rel.startswith("Images/M1/stacks/")
+    assert by_kind["finished"][0].dest_rel == "Images/M1/finished/M1-final.png"
+    all_srcs = [op.src for ops_ in by_kind.values() for op in ops_]
+    assert not any(s.endswith("process/lights.fit") for s in all_srcs)  # sandbox skipped
+
+
+def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
+    """Loose mixed FITS in one dir sort by IMAGETYP; the object comes from OBJECT."""
+    _make_staging(tmp_path, monkeypatch)
+    pile = tmp_path / "dump"
+    _fits_hdr(pile / "a.fit", object="M51", imagetyp="Light")
+    _fits_hdr(pile / "b.fit", object="M51", imagetyp="Dark")
+    _fits_hdr(pile / "c.fit", imagetyp="Bias")          # no OBJECT → folder name
+    _fits_hdr(pile / "junk.fit")                         # no type/object → skipped
+
+    ops = ingest.scan_directory_plan(tmp_path / "dump")
+    by_kind = {op.kind: op for op in ops}
+    assert set(by_kind) == {"light", "dark", "bias"}
+    assert by_kind["light"].dest_rel.startswith("Images/M51/lights/")
+    assert by_kind["dark"].dest_rel.startswith("Images/M51/darks/")
+    assert by_kind["bias"].dest_rel.startswith("Images/dump/biases/")  # folder fallback
+    assert all(op.layout == "raw-fits" for op in ops)
+
+
+def test_header_wins_over_sub_folder(tmp_path, monkeypatch):
+    """A DARK-header frame sitting in an `_sub` lights folder routes to darks/."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M81_sub"
+    _fits_hdr(sub / "Light_M81_a.fit", imagetyp="Light")
+    _fits_hdr(sub / "Dark_stray.fit", imagetyp="Dark")
+
+    ops = ingest.scan_staging_plan()
+    by_kind = {op.kind: op for op in ops}
+    assert by_kind["light"].dest_rel.startswith("Images/M81/lights/")
+    assert by_kind["dark"].dest_rel.startswith("Images/M81/darks/")
+
+
+def test_own_content_tree_not_reimported(tmp_path, monkeypatch):
+    """Scanning the app's own Images/ tree yields no ops (no re-import into self)."""
+    _make_staging(tmp_path, monkeypatch)
+    _fits_hdr(config.lights_dir("M1") / "Light_M1_a.fit", imagetyp="Light")
+    assert ingest.scan_directory_plan(config.IMAGES_DIR) == []
+
+
+def test_layout_registry_labels():
+    assert ingest.layout_label("seestar") == "Seestar"
+    assert ingest.layout_label("m110-store") == "M110 store"
+    assert ingest.LAYOUTS_BY_ID["asiair"].available is False

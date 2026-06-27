@@ -199,6 +199,20 @@ re-run when its area changes and you want eyes on the visuals).
       `.m110_internal_data/ingest_aliases.toml`; a later ingest of that source
       folder auto-routes to the remembered object.
 
+### E2. Import — header classification + layout registry  (6b)  ⚙ *(classification/registry automated — `test_ingest.py`)*
+- [ ] Point Import at a **copy of `~/Astronomy/Images`** (a throwaway slice — never the
+      live dir). The grouped preview sorts `FITS/<obj>/lights` → `Images/<obj>/lights`,
+      `…/stacks` → `stacks`, `Finished Images/<obj>` → `finished`, media → `Media/`; the
+      Kind cell **tooltip** names the detected layout ("M110 store" / "Seestar" / "Raw
+      FITS"). `process/`+`siril/` sandboxes are **not** imported.
+- [ ] A **flat pile of loose `.fit`** (mixed `IMAGETYP`) sorts into separate
+      **lights / darks / flats / biases** rows by header; a frame with no usable
+      `OBJECT`/`IMAGETYP` is left out (no false routing).
+- [ ] **Header wins:** a `DARK`-header frame dropped into an `<obj>_sub/` folder routes
+      to `Images/<obj>/darks/`, not `lights/`.
+- [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
+- [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
+
 ### F. Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
 - [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown

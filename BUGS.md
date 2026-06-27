@@ -103,11 +103,15 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   (protects hand-edited presets + in-progress runs). Ingest still does the full
   prep (links new lights + refreshes the preset) for freshly-ingested targets.
 - [~] **#16**: **Import — robust, layout-flexible, multi-source** *(6a landed
-  2026-06-26; 6b–6d open → ROADMAP item 6).* **6a shipped:** ingest renamed **Import**,
-  promoted to a top-level nav page, any-directory recursive scan
+  2026-06-26, 6b landed 2026-06-27; 6c–6d open → ROADMAP item 6).* **6a shipped:** ingest
+  renamed **Import**, promoted to a top-level nav page, any-directory recursive scan
   (`ingest.scan_directory_plan`), copy semantics + content-aware collision handling,
-  Favorites/Recent-places source picker. Still folder-name classification (6b adds the
-  FITS-header sort). Ingest is being renamed **Import** and rebuilt. Inbox today recognizes exactly one shape — the Seestar export (`<obj>_sub/`
+  Favorites/Recent-places source picker. **6b shipped:** FITS-header classification
+  (`ingest.frame_info`), calibration frames route to `darks/`/`flats/`/`biases/`, new
+  kinds (`dark`/`flat`/`bias`/`siril-stack`/`finished`), header-wins-over-folder, and the
+  **layout-recognizer registry** (`ingest.LAYOUTS`: seestar · m110-store — incl. the
+  `~/Astronomy/Images` precursor · raw-fits · asiair-disabled) shown in the preview;
+  own-content-tree never re-imported. Inbox originally recognized exactly one shape — the Seestar export (`<obj>_sub/`
   of `Light_*.fit`, `<obj>/` of `Stacked_*`, `*_photo`/`*_video`) and silently finds
   nothing for any other structure (M110 *store* folders, another telescope's layout, a
   flat pile of FITS, calibration frames). The build: (a) **recognize multiple known

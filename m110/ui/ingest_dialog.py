@@ -18,7 +18,11 @@ from PySide6.QtWidgets import (
 
 from m110 import catalog, config, ingest
 
-KIND_LABEL = {"light": "lights", "stack": "Seestar stack", "media": "media"}
+KIND_LABEL = {
+    "light": "lights", "stack": "Seestar stack", "media": "media",
+    "dark": "darks", "flat": "flats", "bias": "biases",
+    "siril-stack": "Siril stack", "finished": "finished",
+}
 
 
 def _fmt_size(n: int) -> str:
@@ -299,7 +303,7 @@ class IngestDialog(QDialog):
             self._ingest_btn.setEnabled(False)
             return
         counts = Counter(o.kind for o in ops)
-        parts = [f"{counts[k]} {KIND_LABEL[k]}" for k in ("light", "stack", "media")
+        parts = [f"{counts[k]} {KIND_LABEL.get(k, k)}" for k in KIND_LABEL
                  if counts.get(k)]
         size = _fmt_size(sum(o.size_bytes for o in ops))
         verb = "copy" if any(o.action == "copy" for o in ops) else "move"

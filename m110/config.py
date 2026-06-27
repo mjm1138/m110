@@ -188,6 +188,21 @@ def finished_dir(name: str) -> Path:
     return IMAGES_DIR / name / "finished"
 
 
+def darks_dir(name: str) -> Path:
+    """Dark calibration frames for a capture target."""
+    return IMAGES_DIR / name / "darks"
+
+
+def flats_dir(name: str) -> Path:
+    """Flat calibration frames for a capture target."""
+    return IMAGES_DIR / name / "flats"
+
+
+def biases_dir(name: str) -> Path:
+    """Bias/offset calibration frames for a capture target."""
+    return IMAGES_DIR / name / "biases"
+
+
 def siril_dir(name: str) -> Path:
     """Contained Siril sandbox for a capture target (processing-prep)."""
     return IMAGES_DIR / name / "siril"
