@@ -188,6 +188,14 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 
 ## Conventions & rules
 
+- **Work on a feature branch; close out by updating the roadmap.** Land each unit of
+  work on a dedicated branch off `main` (convention: `feature/<short-name>`) — never
+  commit feature work directly to `main`. **Conclude the same change** with `pytest -q`
+  green **and** an appropriate update to **[`ROADMAP.md`](ROADMAP.md) and/or
+  [`BUGS.md`](BUGS.md)** marking what landed (roadmap items marked done; new fixes get
+  a brief done entry) — plus [`DATA_MODEL.md`](DATA_MODEL.md) / [`TESTING.md`](TESTING.md)
+  when the change touches the data model or the manual-test surface. Docs ship *with*
+  the code, not later.
 - **Record data-model changes in [`DATA_MODEL.md`](DATA_MODEL.md).** Any change to
   the on-disk layout, a file format, a derived-JSON shape, or `.store_version`
   **must** be reflected there (it's canonical). On-disk changes additionally bump

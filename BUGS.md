@@ -102,9 +102,12 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   sandboxes for the enabled workflow(s) and never rewrites an existing one
   (protects hand-edited presets + in-progress runs). Ingest still does the full
   prep (links new lights + refreshes the preset) for freshly-ingested targets.
-- [~] **#16**: **Import — robust, layout-flexible, multi-source** *(specced
-  2026-06-26 → ROADMAP item 6, phased 6a–6d).* Ingest is being renamed **Import** and
-  rebuilt. Inbox today recognizes exactly one shape — the Seestar export (`<obj>_sub/`
+- [~] **#16**: **Import — robust, layout-flexible, multi-source** *(6a landed
+  2026-06-26; 6b–6d open → ROADMAP item 6).* **6a shipped:** ingest renamed **Import**,
+  promoted to a top-level nav page, any-directory recursive scan
+  (`ingest.scan_directory_plan`), copy semantics + content-aware collision handling,
+  Favorites/Recent-places source picker. Still folder-name classification (6b adds the
+  FITS-header sort). Ingest is being renamed **Import** and rebuilt. Inbox today recognizes exactly one shape — the Seestar export (`<obj>_sub/`
   of `Light_*.fit`, `<obj>/` of `Stacked_*`, `*_photo`/`*_video`) and silently finds
   nothing for any other structure (M110 *store* folders, another telescope's layout, a
   flat pile of FITS, calibration frames). The build: (a) **recognize multiple known
@@ -122,7 +125,26 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   `Images/<target>/<device>/` level + `.store_version` bump only when a 2nd device
   appears; source recorded in session metadata meanwhile). The deeper **triage toolkit**
   (header inspector, viewer/annotator, plate-solving) is split out as ROADMAP item 9.
-  
+
+- [x] **#22**: **Siril autoprep race → `SameFileError`** *(fixed 2026-06-26, with #16
+  6a).* When the import worker's `run_autoprep` and the shell's focus-triggered
+  `prepare_missing` built the *same* new `siril/` sandbox concurrently, one pass linked
+  a file in the gap between the other's `exists()` check and `os.link`, so the loser
+  fell back to `copyfile` on the same inode → `SameFileError`. (Surfaced because Import
+  became a **non-modal page** — the old modal dialog blocked that refresh.) Fix:
+  `siril._link_or_copy` is now idempotent (`FileExistsError` → no-op; copy fallback only
+  when dst is absent), and `main._do_refresh` skips while `ImportPage.is_busy()`.
+  Regression test in `test_siril.py`.
+- [x] **#23**: **Messier catalogue shipped only 108/110** *(fixed 2026-06-26).* `M40`
+  (Winnecke 4, a double star) and `M73` (NGC 6994, a 4-star asterism) were dropped
+  because they don't resolve in Simbad. Authored by hand in `seed/objects.toml`
+  (coords/type/mag/size, season derived) + added to `seed/catalogs/messier.toml`
+  membership, so Goals progress reads /110. Fits the app's "Complete the catalog" ethos.
+- [x] **#24**: **Goals page redundant object label "M51 (m51)"** *(fixed 2026-06-26).*
+  `pages/goals.py::_object_table` fabricated `{"id": slug}` (the lowercase slug), so
+  `object_identifiers` appended it after the catalog designation. Now resolves each row
+  from the real Library/reference entry → just "M51".
+
 - [ ] **#17**: **Intermediate and finished file hinting** The naming patterns for intermediate and finished images are built on Mike’s particular habits, and are probably not generalizable. Two enhancements can help with this:
 	- [ ] A preference pane to explicitly list intermediate and finished filename hints, populated by a default set build on current preferences
 	- [ ] An addition to the object view: below the gallery of “finished” images, have a gallery of “unfinished” images. Introduce a right-click actions for images to:

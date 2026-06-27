@@ -268,12 +268,17 @@ archived in **[`DONE.md`](DONE.md)**.
    `Images/<target>/<device>/` level appears only when a 2nd device shows up — no
    forced migration. Phases:
 
-   - **6a — Import view + any-directory source.** Top-level Import page; directory
-     chooser + Favorites/Recent places (special-cased Inbox/Seestar entries removed);
-     **recurse** the chosen tree; always **copy**, preserving filenames, with
-     content-aware **collision handling** — on a dest name clash, checksum (and FITS
-     header) compare → *duplicate*→skip vs. *distinct*→minimal suffix (replaces today's
-     skip-by-name-only). Preview/select/confirm flow unchanged in spirit.
+   - **6a — Import view + any-directory source** *(done 2026-06-26)*. Top-level
+     **Import** nav page (the old modal Ingest dialog superseded; `Ctrl+I`/toolbar
+     repointed to it). Directory chooser + **Favorites/Recent places** (the
+     special-cased Inbox/Seestar source entries removed; recents persist in settings,
+     a mounted Seestar + the Inbox auto-appear). **Recursive** `ingest.scan_directory_plan`
+     walks an arbitrary tree (Seestar-shaped folders found at any depth). Always
+     **copy** (source untouched), preserving filenames, with content-aware **collision
+     handling** in `apply_ops` — on a dest name clash a **checksum/size** compare →
+     *duplicate*→skip vs. *distinct*→minimal `_N` suffix (replaces skip-by-name-only;
+     header compare wasn't needed). Preview/select/confirm + pointing-remap unchanged.
+     Classification is still **folder-name** based — header-based sorting is 6b.
    - **6b — Header-based classification + layout registry.** Classify by FITS header
      (OBJECT/IMAGETYP/FILTER/RA/DEC) over folder names, so unstructured dumps sort and
      **calibration frames** (`IMAGETYP=DARK/FLAT/BIAS`) finally route to
