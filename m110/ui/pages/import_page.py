@@ -239,6 +239,11 @@ class ImportPage(QWidget):
 
     def _set_object_cell(self, r, g):
         """Plain label, or a remap dropdown when the frame's pointing disagrees."""
+        # Clear any stale label/combo first — setRowCount reuses rows across scans,
+        # and setCellWidget/setItem don't remove each other, so a row switching
+        # between label and dropdown would otherwise render both, overlapping.
+        self.table.removeCellWidget(r, 1)
+        self.table.takeItem(r, 1)
         if g.pointing and g.kind != "media":
             combo = QComboBox()
             order = [g.object]
