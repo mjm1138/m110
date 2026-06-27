@@ -623,8 +623,10 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
             ops=gops,
             layout=gops[0].layout,
         ))
-    # media rows after catalog objects, then by object name
-    groups.sort(key=lambda g: (g.kind == "media", g.object.lower(), g.kind))
+    # media rows after catalog objects, then by natural catalog order (M1, M2, …
+    # M100 — not M1, M10, M100), then kind
+    groups.sort(key=lambda g: (g.kind == "media",
+                               catalog.catalog_sort_key(g.object), g.kind))
     return groups
 
 

@@ -480,6 +480,17 @@ def test_own_content_tree_not_reimported(tmp_path, monkeypatch):
     assert ingest.scan_directory_plan(config.IMAGES_DIR) == []
 
 
+def test_group_ops_natural_object_sort(tmp_path, monkeypatch):
+    """Object rows sort M1, M2, … M10, M100 — not lexically (M1, M10, M100, M2)."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    for obj in ("M100", "M2", "M10", "M1"):
+        d = staging / f"{obj}_sub"
+        d.mkdir()
+        (d / f"Light_{obj}.fit").write_text("x")
+    objs = [g.object for g in ingest.group_ops(ingest.scan_staging_plan())]
+    assert objs == ["M1", "M2", "M10", "M100"]
+
+
 def test_layout_registry_labels():
     assert ingest.layout_label("seestar") == "Seestar"
     assert ingest.layout_label("m110-store") == "M110 store"
