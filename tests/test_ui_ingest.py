@@ -169,6 +169,39 @@ def test_import_page_holding_assign_moves_files(tmp_path, monkeypatch, qtbot):
     qtbot.waitUntil(lambda: p.holding_table.rowCount() == 0, timeout=5000)
 
 
+def test_import_page_rescans_after_import(tmp_path, monkeypatch, qtbot):
+    """After importing a subset, the view auto-rescans to true remaining state
+    (imported group gone, unselected group still shown) instead of going blank."""
+    seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    src = tmp_path / "src"
+    for obj, n in (("M27", 3), ("M13", 2)):
+        d = src / f"{obj}_sub"
+        d.mkdir(parents=True)
+        for i in range(n):
+            (d / f"Light_{obj}_{i}.fit").write_text("x")
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QMessageBox.Yes))
+    from m110.ui.pages.import_page import ImportPage
+    p = ImportPage()
+    qtbot.addWidget(p)
+    p._root = str(src)
+    p.scan()
+    qtbot.waitUntil(lambda: p.table.rowCount() == 2, timeout=5000)
+
+    # uncheck M13 → import only M27
+    for r in range(p.table.rowCount()):
+        if p._groups[r].object == "M13":
+            p.table.item(r, 0).setCheckState(Qt.Unchecked)
+    p._do_import()
+
+    # auto-rescan settles to just the un-imported M13 (not blank), with a confirmation
+    qtbot.waitUntil(lambda: not p.is_busy() and p.table.rowCount() == 1, timeout=5000)
+    assert p._groups[0].object == "M13"
+    assert "imported" in p._summary.text()
+    assert config.lights_dir("M27").is_dir() and not config.target_dir("M13").exists()
+
+
 def test_ingest_dialog_close_during_scan_is_safe(tmp_path, monkeypatch, qtbot):
     seed_root(tmp_path, monkeypatch)
     _no_device(monkeypatch)

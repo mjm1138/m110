@@ -42,6 +42,7 @@ class ImportPage(QWidget):
         self._worker = None
         self._progress = None
         self._cancel_event = None
+        self._post_import_msg = None   # confirmation shown after the post-import rescan
 
         outer = QVBoxLayout(self)
 
@@ -205,17 +206,24 @@ class ImportPage(QWidget):
         self._set_busy(False)
         self._groups = groups
         self._populate()
+        if self._post_import_msg:    # confirm the import, then show what's left
+            tail = (f"  {self._summary.text()}" if self._groups
+                    else "  Nothing left to import.")
+            self._summary.setText(self._post_import_msg + tail)
+            self._post_import_msg = None
 
     def _on_scan_cancelled(self):
         self._finish_worker()
         self._close_progress()
         self._set_busy(False)
+        self._post_import_msg = None
         self._set_empty("Scan cancelled.")
 
     def _on_scan_failed(self, msg):
         self._finish_worker()
         self._close_progress()
         self._set_busy(False)
+        self._post_import_msg = None
         self._set_empty(f"Scan failed: {msg}")
 
     # ---- table / summary ----
@@ -496,16 +504,15 @@ class ImportPage(QWidget):
         skipped = result.get("skipped", 0)
         cancelled = result.get("cancelled", False)
         self.imported.emit(moved)
-        self._groups = []
-        self.table.setRowCount(0)
-        self._import_btn.setEnabled(False)
+        self.refresh_holding()      # unclassified files may have landed in Inbox/
         bits = [f"{moved} file(s) imported"]
         if skipped:
             bits.append(f"{skipped} already present")
         prefix = "Import cancelled — " if cancelled else ""
-        self._summary.setText(prefix + ", ".join(bits)
-                              + ".   Rescan to check for more.")
-        self.refresh_holding()      # unclassified files may have landed in Inbox/
+        self._post_import_msg = prefix + ", ".join(bits) + "."
+        # Re-scan the source so the view shows true remaining state (imported groups
+        # drop out via dedup; unselected ones stay) instead of going blank.
+        self.scan()
 
     def _on_apply_failed(self, msg):
         self._finish_worker()
