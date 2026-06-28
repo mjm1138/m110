@@ -491,7 +491,11 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
     if name.endswith("_sub"):
         obj = canonical_target(name[:-4])      # strip "_sub"; fold case/aliases
         fits = _fit_files(src_dir)
-        handled.update(fits)
+        # A `_sub` folder is a lights folder: the `.fit` are lights; the Seestar's
+        # per-sub `.jpg` previews (one beside every sub) are recognized sidecars we
+        # intentionally don't import — mark the whole folder handled so they aren't
+        # swept into the holding area.
+        handled.update(_content_files(src_dir))
         # Bucket by kind, then emit per kind in ONE batch — `_emit_files` lists the
         # destination once per call, so a per-file loop is O(files × dest) (the
         # device-scan slowdown). Seestar lights are `Light_*` by convention, so trust

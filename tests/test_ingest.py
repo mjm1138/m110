@@ -591,6 +591,24 @@ def test_canonical_folds_onto_spaced_folder(tmp_path, monkeypatch):
     assert ingest.scan_staging_plan() == []              # deduped, nothing held
 
 
+def test_sub_per_frame_jpg_previews_not_held(tmp_path, monkeypatch):
+    """Regression: a Seestar `_sub` folder saves a full-size `.jpg` preview beside
+    every `.fit` sub. The `.fit` are lights; the per-sub JPGs are recognized sidecars
+    that must NOT be swept into the holding area (and `_thn.jpg` is skipped)."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M109_sub"
+    sub.mkdir()
+    for i in range(3):
+        stem = f"Light_M109_20s_IRCUT_2026061{i}"
+        _fits_hdr(sub / f"{stem}.fit", object="M109", imagetyp="Light")
+        (sub / f"{stem}.jpg").write_text("preview")          # per-sub full preview
+        (sub / f"{stem}_thn.jpg").write_text("thumb")        # per-sub thumbnail
+    ops = ingest.scan_staging_plan()
+    kinds = {o.kind for o in ops}
+    assert "unassigned" not in kinds                          # no JPG sweep to holding
+    assert kinds == {"light"} and len(ops) == 3              # only the 3 .fit lights
+
+
 def test_already_imported_sub_not_swept_to_holding(tmp_path, monkeypatch):
     """Regression: a Seestar `_sub` folder whose lights are already in the library
     must produce NO ops — not get swept into the holding area as 'unassigned'."""
