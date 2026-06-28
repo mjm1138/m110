@@ -605,6 +605,22 @@ def test_sub_lights_skip_per_frame_header_read(tmp_path, monkeypatch):
     assert calls == []                    # no per-frame header reads for Light_* files
 
 
+def test_sub_emit_is_batched_not_per_file(tmp_path, monkeypatch):
+    """Perf: a `_sub` folder of N lights must emit in ONE batch, not N calls — each
+    `_emit_files` call lists the destination, so per-file is O(N × dest)."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M27_sub"
+    for i in range(30):
+        _fits_hdr(sub / f"Light_M27_{i}.fit", object="M27", imagetyp="Light")
+    calls = []
+    real = ingest._emit_files
+    monkeypatch.setattr(ingest, "_emit_files",
+                        lambda *a, **k: calls.append(a[2]) or real(*a, **k))  # a[2]=kind
+    ops = ingest.scan_staging_plan()
+    assert len(ops) == 30
+    assert calls == ["light"]              # exactly one batched emit, not 30
+
+
 def test_assign_media_routes_to_media_dir(tmp_path, monkeypatch):
     root, _ = _make_staging(tmp_path, monkeypatch)
     (config.STAGING_DIR / "clips").mkdir(parents=True)

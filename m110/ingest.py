@@ -486,19 +486,24 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
 
     if name.endswith("_sub"):
         obj = canonical_target(name[:-4])      # strip "_sub"; fold case/aliases
-        ops: list[IngestOp] = []
-        for f in _fit_files(src_dir):
-            handled.add(f)
-            # Seestar lights are `Light_*` by convention — trust the name and avoid a
-            # per-frame header read (prohibitive over SMB for a big device). Only
-            # header-check the odd file that isn't an obvious light.
+        fits = _fit_files(src_dir)
+        handled.update(fits)
+        # Bucket by kind, then emit per kind in ONE batch — `_emit_files` lists the
+        # destination once per call, so a per-file loop is O(files × dest) (the
+        # device-scan slowdown). Seestar lights are `Light_*` by convention, so trust
+        # the name and skip the per-frame header read; only header-check odd names.
+        buckets: dict[str, list[str]] = {}
+        for f in fits:
             if f.startswith("Light_"):
                 kind = "light"
             else:
                 info = frame_info(str(src_dir / f))
                 kind = (info["imagetyp"] if info and info["imagetyp"] in ("dark", "flat", "bias")
                         else "light")
-            ops.extend(_emit_files(src_dir, [f], kind, obj, name, action, "seestar"))
+            buckets.setdefault(kind, []).append(f)
+        ops: list[IngestOp] = []
+        for kind, fs in buckets.items():
+            ops += _emit_files(src_dir, fs, kind, obj, name, action, "seestar")
         return ops
 
     if is_media_dir(name):
@@ -537,7 +542,7 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
     routed by its IMAGETYP; the object comes from the OBJECT header, else the
     containing folder name. Frames with neither a usable type nor an object are left
     unclassified (the 6c holding area). Records recognized files in `handled`."""
-    ops: list[IngestOp] = []
+    buckets: dict[tuple, list[str]] = {}          # (kind, obj) → files
     for f in _fit_files(src_dir):
         info = frame_info(str(src_dir / f))
         kind = info["imagetyp"] if info else None
@@ -549,7 +554,10 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
         else:
             continue                              # unclassifiable → 6c holding area
         handled.add(f)                            # recognized (even if skipped as dup)
-        ops.extend(_emit_files(src_dir, [f], kind, obj, name, action, "raw-fits"))
+        buckets.setdefault((kind, obj), []).append(f)
+    ops: list[IngestOp] = []
+    for (kind, obj), fs in buckets.items():       # one dest listing per (kind, obj)
+        ops += _emit_files(src_dir, fs, kind, obj, name, action, "raw-fits")
     return ops
 
 
