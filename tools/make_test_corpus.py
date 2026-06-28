@@ -16,9 +16,13 @@ small rendered PNGs) that exercises the whole app:
         multi-identifier labels ("C20 (NGC 7000)")
       - a stale Library stub (C33/NGC 6992: blank name, "unknown" type) → the
         right-click "Fill in missing metadata" target (repairs from the reference)
-  * an Inbox laid out like a Seestar export          → ingest (move): grouping,
-        case-canonicalisation (m13→M13), a mis-pointed group (M65 frames that
-        actually point at M66 → the ⚠ remap), an in-app stack, and a media folder
+  * unclassifiable files in the Inbox holding area   → Import → Holding area panel
+        (6c): headerless FITS + a stray render (a grouped dump), a no-IMAGETYP
+        loose FITS, and a loose orphan → manual assign (object + kind)
+  * an external import-source folder (ships beside the store) → Import → Browse…:
+        a Seestar-style export that classifies (grouping, case-canonicalisation
+        m13→M13, a mis-pointed M65→M66 remap, an in-app stack, media) + a mixed dump
+        whose strays sweep into the holding area
 
 The generator is committed (it's small + reproducible); its OUTPUT is meant to
 live OUTSIDE the repo (default ~/m110-testdata) so the repo stays lean.
@@ -31,6 +35,8 @@ Usage:
 Then test against it (no install changes needed):
     tar xzf ~/m110-testdata/m110-test-corpus.tar.gz -C ~/Documents
     M110_DATA_ROOT=~/Documents/M110-test m110     # then Refresh (Ctrl+R)
+    # Import → Browse… → ~/Documents/M110-test-import-source to exercise the
+    # classify + sweep-to-holding flow. The tarball also unpacks that source folder.
 """
 from __future__ import annotations
 
@@ -74,6 +80,16 @@ def _fits(path: Path, obj: str, ra: float, dec: float,
     h["DATE-OBS"] = when.strftime("%Y-%m-%dT%H:%M:%S")
     h["RA"] = round(ra, 5)
     h["DEC"] = round(dec, 5)
+    hdu.writeto(path, overwrite=True)
+
+
+def _fits_unclassifiable(path: Path, seed: int, obj: str | None = None):
+    """A FITS frame with no IMAGETYP and (by default) no OBJECT — the kind of file
+    the importer can't place, so it falls into the Inbox/ holding area (6c)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    hdu = fits.PrimaryHDU(data=_blob(seed=seed))
+    if obj:
+        hdu.header["OBJECT"] = obj          # an object but still no IMAGETYP/kind
     hdu.writeto(path, overwrite=True)
 
 
@@ -219,13 +235,11 @@ def build(out: Path):
         for s in seeds:
             _png(config.MEDIA_DIR / cat / f"IMG_{s}.jpg", s)
 
-    # ---- Inbox: a Seestar-style export to ingest ----
-    inbox = config.STAGING_DIR
-    _inbox_sub(inbox, "M27", *C("m27"), 10, "LP", 30, 2000)            # new object
-    _inbox_sub(inbox, "m13", *C("m13"), 10, "LP", 20, 2100)           # lowercase → M13
-    _inbox_sub(inbox, "M65", *C("m66"), 10, "LP", 18, 2200)          # frames point at M66!
-    _inbox_stack(inbox, "M57", *C("m57"), 60, 10, "LP", 2300)        # in-app stack
-    _inbox_media(inbox, "Nightscape_photo", 2400)                     # media
+    # ---- Inbox: the 6c holding area — unclassifiable files only ----
+    _inbox_holding(config.STAGING_DIR, 2500)
+
+    # ---- An external import source to Browse→Import (ships beside the store) ----
+    _build_import_source(out.parent / f"{out.name}-import-source")
 
     # Refresh once so captured folders are promoted into the Library (5d: the
     # Library is the captured collection, no longer bulk-seeded from goals) and
@@ -236,8 +250,31 @@ def build(out: Path):
     return out
 
 
-def _inbox_sub(inbox, obj, ra, dec, exp, filt, n, seed0):
-    d = inbox / f"{obj}_sub"
+def _build_import_source(src: Path):
+    """A messy **external** folder to point Import at (Browse…), beside the store and
+    not part of it. A Seestar-style export that classifies cleanly (grouping, case
+    canonicalisation m13→M13, a mis-pointed M65→M66 remap, an in-app stack, media) +
+    a mixed dump that partly classifies and partly **sweeps into the holding area**."""
+    if src.exists():
+        shutil.rmtree(src)
+    coords = catalog.load_coords()
+    C = lambda slug: coord(coords, slug)                        # noqa: E731
+    _src_sub(src, "M27", *C("m27"), 10, "LP", 30, 2000)        # new object
+    _src_sub(src, "m13", *C("m13"), 10, "LP", 20, 2100)        # lowercase → M13
+    _src_sub(src, "M65", *C("m66"), 10, "LP", 18, 2200)        # frames point at M66!
+    _src_stack(src, "M57", *C("m57"), 60, 10, "LP", 2300)      # in-app stack
+    _src_media(src, "Nightscape_photo", 2400)                  # media
+    # a mixed dump: one header-bearing light classifies, the strays sweep to holding
+    dump = src / "mixed_dump"
+    ra, dec = C("m92")
+    _fits(dump / "Light_M92_30s_LP_20260620-010000.fit", "M92", ra, dec, 30, "LP",
+          datetime(2026, 6, 20, 1, 0, 0), 2600)                # → Images/M92/lights
+    _fits_unclassifiable(dump / "capture_001.fit", 2610)       # headerless → holding
+    _png(dump / "edit_final.png", 2620)                        # stray render → holding
+
+
+def _src_sub(src, obj, ra, dec, exp, filt, n, seed0):
+    d = src / f"{obj}_sub"
     d.mkdir(parents=True, exist_ok=True)
     start = datetime(2026, 6, 18, 2, 0, 0)
     for i in range(n):
@@ -246,8 +283,8 @@ def _inbox_sub(inbox, obj, ra, dec, exp, filt, n, seed0):
               obj, ra, dec, exp, filt, when, seed0 + i)
 
 
-def _inbox_stack(inbox, obj, ra, dec, n, exp, filt, seed):
-    d = inbox / obj
+def _src_stack(src, obj, ra, dec, n, exp, filt, seed):
+    d = src / obj
     d.mkdir(parents=True, exist_ok=True)
     when = datetime(2026, 6, 18, 4, 0, 0)
     base = f"Stacked_{n}_{obj}_{exp}s_{filt}_{when.strftime('%Y%m%d-%H%M%S')}"
@@ -255,11 +292,28 @@ def _inbox_stack(inbox, obj, ra, dec, n, exp, filt, seed):
     _png(d / f"{base}.jpg", seed)
 
 
-def _inbox_media(inbox, name, seed):
-    d = inbox / name
+def _src_media(src, name, seed):
+    d = src / name
     d.mkdir(parents=True, exist_ok=True)
     _png(d / "IMG_0001.jpg", seed)
     _png(d / "IMG_0002.jpg", seed + 1)
+
+
+def _inbox_holding(inbox, seed0):
+    """Seed the Inbox/ holding area (6c) with files the importer can't classify, so
+    the Import → Holding area panel is populated on launch — the manual-assign demo.
+      * `unsorted_dump/` — headerless FITS + a stray render (a grouped held folder)
+      * `NGC 281.fit`    — a loose FITS with an OBJECT but no IMAGETYP (assign the kind)
+      * `orphan.fit`     — a loose headerless file (the "(loose)" group)
+    `*_thn.jpg`/hidden/non-content alongside are intentionally NOT surfaced."""
+    dump = inbox / "unsorted_dump"
+    for i in range(3):
+        _fits_unclassifiable(dump / f"frame_{i:04d}.fit", seed0 + i)
+    _png(dump / "screenshot.png", seed0 + 10)           # a stray image → held
+    _png(dump / "screenshot_thn.png", seed0 + 11)       # thumbnail sidecar → skipped
+    (dump / "notes.txt").write_text("scratch notes\n")  # non-content → skipped
+    _fits_unclassifiable(inbox / "NGC 281.fit", seed0 + 20, obj="NGC 281")
+    _fits_unclassifiable(inbox / "orphan.fit", seed0 + 30)
 
 
 # ── self-check + packaging ────────────────────────────────────────────────────
@@ -269,14 +323,31 @@ def verify(out: Path):
     from m110 import scan_sessions, ingest
     config.set_data_root(out)
     sessions = scan_sessions.scan()
-    staging = ingest.scan_staging_plan()
     objs = {s["object_dir"] for s in sessions}
     print(f"  sessions parsed: {len(sessions)} across {len(objs)} folders {sorted(objs)}")
-    print(f"  inbox ops planned: {len(staging)}")
+
+    # The external import source (Browse→Import): classifiable Seestar export + a
+    # mixed dump whose strays sweep into the holding area.
+    src = out.parent / f"{out.name}-import-source"
+    src_ops = ingest.scan_directory_plan(src)
+    src_kinds = {o.kind for o in src_ops}
+    print(f"  import source: {len(src_ops)} ops, kinds {sorted(src_kinds)}")
+    assert "light" in src_kinds and "unassigned" in src_kinds, \
+        "import source should both classify and sweep some files to holding"
+
+    # 6c: the Inbox holding area carries unclassifiable files for the manual-assign demo
+    held_ops = ingest.scan_holding()
+    held = ingest.group_ops(held_ops)
+    held_names = {Path(o.src).name for o in held_ops}
+    print(f"  holding-area: {ingest.holding_count()} file(s) in {len(held)} group(s) "
+          f"{sorted(g.group for g in held)}")
+    assert ingest.holding_count() > 0, "holding area should carry unclassifiable files"
+    assert "screenshot_thn.png" not in held_names, "thumbnail leaked into holding"
+    assert "notes.txt" not in held_names, "non-content leaked into holding"
     # the M106 sandbox should report importable output
     from m110 import siril
     print(f"  M106 has unimported output: {siril.has_unimported_output('M106')}")
-    assert sessions and staging, "corpus produced no sessions/inbox ops"
+    assert sessions, "corpus produced no sessions"
 
     # Phase 5 (5d): Caldwell goal active; the Library is the captured collection
     # (only *captured* Caldwell members land here, not the whole catalog), and the
@@ -296,12 +367,14 @@ def verify(out: Path):
           f"type={stub.get('type')!r}")
 
 
-def make_tar(out: Path, tar_path: Path):
+def make_tar(paths, tar_path: Path):
     tar_path.parent.mkdir(parents=True, exist_ok=True)
     if tar_path.exists():
         tar_path.unlink()
     with tarfile.open(tar_path, "w:gz") as tf:
-        tf.add(out, arcname=out.name)
+        for p in paths:
+            if p.exists():
+                tf.add(p, arcname=p.name)
     return tar_path
 
 
@@ -318,17 +391,21 @@ def main():
     args = ap.parse_args()
 
     out = args.out.expanduser().resolve()
+    import_src = out.parent / f"{out.name}-import-source"
     print(f"Building synthetic corpus → {out}")
+    print(f"  + external import source → {import_src}")
     build(out)
     print("Verifying (read-only)…")
     verify(out)
     if not args.no_tar:
-        tar = make_tar(out, args.tar.expanduser().resolve())
+        tar = make_tar([out, import_src], args.tar.expanduser().resolve())
         size = tar.stat().st_size / 1024
         print(f"Wrote tarball → {tar}  ({size:.0f} KB)")
     print("\nTo test:")
     print(f"  tar xzf {args.tar} -C ~/Documents")
     print(f"  M110_DATA_ROOT=~/Documents/{out.name} m110     # then Refresh (Ctrl+R)")
+    print(f"  # then Import → Browse… → ~/Documents/{import_src.name}  "
+          f"(classifies + sweeps strays to the Holding area panel)")
 
 
 if __name__ == "__main__":

@@ -67,13 +67,15 @@ What it contains (and what each fixture exercises):
 | `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) |
 | `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) |
 | `M81 M82` (multi-object folder) | many-to-many target→object rollups |
-| `Inbox/` Seestar export: `M27_sub`, `m13_sub`, `M65_sub`, `M57/`, `Nightscape_photo/` | **Ingest** (move): grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65` frames actually point at M66 → the ⚠ remap, #12); in-app stack ingest; media ingest |
+| `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced |
+| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c) |
 
 Regenerate any time (`python tools/make_test_corpus.py`); `--out`/`--tar` relocate
-it, `--no-tar` leaves just the directory. The data-root override is the existing
-`M110_DATA_ROOT` env var — no special flag. To exercise the Seestar **copy** path
-specifically (vs. the Inbox move path) you still need a real mounted device; the
-Inbox fixture covers the same classification/grouping/pointing logic.
+it, `--no-tar` leaves just the directories. The tarball unpacks **two** siblings — the
+store `M110-test/` and the external `M110-test-import-source/` you Browse to. The
+data-root override is the existing `M110_DATA_ROOT` env var — no special flag. To
+exercise the Seestar **copy** path specifically you still need a real mounted device;
+the import-source fixture covers the same classification/grouping/pointing logic.
 
 ---
 
@@ -180,6 +182,10 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] Manual override still works: View menu → Refresh (Ctrl+R).
 
 ### E. Ingest — staging  (`Inbox/`)  ⚙ *(grouping/canonicalization/pointing automated — `test_ui_ingest.py`)*
+> **Legacy / not in the shipping app:** the modal `IngestDialog` these steps drive is
+> no longer launched (superseded by the **Import** page in 6a; `Inbox/` is the 6c
+> holding area, not a source). Kept for the engine logic it still exercises in tests;
+> for the live GUI flow use **§E2/§E3** with the `M110-test-import-source/` folder.
 - [ ] With a `<obj>_sub/` of `.fit` files present, the preview shows **one row per
       object** (Object · Kind · Files · Size · → `Images/<obj>/lights/`) — *not*
       one row per frame — with a running total size in the summary. *(#9)*
