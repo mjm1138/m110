@@ -576,6 +576,21 @@ def test_assign_moves_held_files_into_target(tmp_path, monkeypatch):
     assert not (config.STAGING_DIR / "blob" / "f1.fit").exists()   # moved out of Inbox
 
 
+def test_canonical_folds_onto_spaced_folder(tmp_path, monkeypatch):
+    """Dedup regression: a device 'M 10_sub' must fold onto an existing 'M 10/'
+    folder (space spelling) — not resolve to 'M10' and re-import already-present
+    frames into a different dir."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    fn = "Light_M 10_20.0s_IRCUT_20260619-003957.fit"
+    (config.lights_dir("M 10")).mkdir(parents=True)       # store uses the spaced spelling
+    (config.lights_dir("M 10") / fn).write_text("x")
+    sub = staging / "M 10_sub"
+    sub.mkdir()
+    (sub / fn).write_text("x")                            # same file, already imported
+    assert ingest.canonical_target("M 10") == "M 10"
+    assert ingest.scan_staging_plan() == []              # deduped, nothing held
+
+
 def test_already_imported_sub_not_swept_to_holding(tmp_path, monkeypatch):
     """Regression: a Seestar `_sub` folder whose lights are already in the library
     must produce NO ops — not get swept into the holding area as 'unassigned'."""

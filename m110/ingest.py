@@ -201,8 +201,12 @@ def canonical_target(name: str) -> str:
     images = config.IMAGES_DIR
     if images.is_dir():
         for d in images.iterdir():
-            if d.is_dir() and d.name.lower() == nlow:
-                return d.name              # reuse the existing folder's casing
+            # Match an existing folder by normalized name so a device "M 10" folds
+            # onto an existing "M10" (or vice-versa) — otherwise dedup would look in
+            # the wrong dir and re-import already-present frames.
+            if d.is_dir() and (d.name.lower() == nlow
+                               or fits_object_name(d.name).lower() == nlow):
+                return d.name              # reuse the existing folder's spelling
 
     try:
         cat = catalog.load_library()
