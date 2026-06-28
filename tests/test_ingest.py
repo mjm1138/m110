@@ -576,6 +576,35 @@ def test_assign_moves_held_files_into_target(tmp_path, monkeypatch):
     assert not (config.STAGING_DIR / "blob" / "f1.fit").exists()   # moved out of Inbox
 
 
+def test_already_imported_sub_not_swept_to_holding(tmp_path, monkeypatch):
+    """Regression: a Seestar `_sub` folder whose lights are already in the library
+    must produce NO ops — not get swept into the holding area as 'unassigned'."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M109_sub"
+    for nm in ("Light_M109_a.fit", "Light_M109_b.fit"):
+        _fits_hdr(sub / nm, object="M109", imagetyp="Light")
+        (config.lights_dir("M109") / nm).parent.mkdir(parents=True, exist_ok=True)
+        _fits_hdr(config.lights_dir("M109") / nm, object="M109", imagetyp="Light")
+    ops = ingest.scan_staging_plan()
+    assert ops == []                      # nothing new, nothing held
+
+
+def test_sub_lights_skip_per_frame_header_read(tmp_path, monkeypatch):
+    """Perf: classifying a `_sub` folder of `Light_*` frames must NOT open a header
+    per frame (prohibitive over SMB). frame_info is only consulted for odd names."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M27_sub"
+    for i in range(5):
+        _fits_hdr(sub / f"Light_M27_{i}.fit", object="M27", imagetyp="Light")
+    calls = []
+    monkeypatch.setattr(ingest, "frame_info",
+                        lambda p: calls.append(p) or {"object": None, "imagetyp": None,
+                                                       "filter": None, "ra_deg": None, "dec_deg": None})
+    ops = ingest.scan_staging_plan()
+    assert len(ops) == 5 and all(o.kind == "light" for o in ops)
+    assert calls == []                    # no per-frame header reads for Light_* files
+
+
 def test_assign_media_routes_to_media_dir(tmp_path, monkeypatch):
     root, _ = _make_staging(tmp_path, monkeypatch)
     (config.STAGING_DIR / "clips").mkdir(parents=True)

@@ -430,7 +430,7 @@ class ImportPage(QWidget):
         counts = Counter(o.kind for o in ops)
         parts = [f"{counts[k]} {KIND_LABEL.get(k, k)}"
                  for k in ("light", "stack", "siril-stack", "dark", "flat",
-                           "bias", "finished", "media")
+                           "bias", "finished", "media", "unassigned")
                  if counts.get(k)]
         size = _fmt_size(sum(o.size_bytes for o in ops))
         new_objs = sorted({g.object for g in groups if g.new_object})

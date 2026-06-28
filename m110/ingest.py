@@ -453,35 +453,51 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     return None
 
 
-def _classify_store_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+def _classify_store_dir(src_dir: Path, name: str, action: str,
+                        handled: set) -> list[IngestOp]:
     """Import an M110-store-shaped directory (6b). Maps a content subdir
     (lights/darks/…/stacks/finished) onto the matching M110 target dir; the object
-    comes from the parent (FITS/<obj>/lights) or from this dir (Finished Images/<obj>)."""
+    comes from the parent (FITS/<obj>/lights) or from this dir (Finished Images/<obj>).
+    Records every recognized file in `handled` (so the sweep won't re-hold ones that
+    were skipped as already-present)."""
     sub_kind = _STORE_SUBDIR_KIND.get(name.lower())
     if sub_kind:
         obj = canonical_target(src_dir.parent.name)
         files = (_fit_files(src_dir) if sub_kind in ("light", "dark", "flat", "bias")
                  else _all_files(src_dir))
+        handled.update(files)
         return _emit_files(src_dir, files, sub_kind, obj, name, action, "m110-store")
     kind = _STORE_PARENT_KIND.get(src_dir.parent.name.lower())
     if kind:
         obj = canonical_target(name)
-        return _emit_files(src_dir, _all_files(src_dir), kind, obj, name, action, "m110-store")
+        files = _all_files(src_dir)
+        handled.update(files)
+        return _emit_files(src_dir, files, kind, obj, name, action, "m110-store")
     return []
 
 
-def _classify_seestar_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+def _classify_seestar_dir(src_dir: Path, name: str, action: str,
+                          handled: set) -> list[IngestOp]:
     """Seestar folder conventions (the original classifier), with a 6b header
-    override: a calibration frame (IMAGETYP=DARK/FLAT/BIAS) inside a lights folder
-    is split out to its calibration dir — the header wins over the folder name."""
+    override: a calibration frame (IMAGETYP=DARK/FLAT/BIAS) inside a lights folder is
+    split out to its calibration dir — the header wins over the folder name. Records
+    recognized files in `handled`."""
     root = config.DATA_ROOT
 
     if name.endswith("_sub"):
         obj = canonical_target(name[:-4])      # strip "_sub"; fold case/aliases
         ops: list[IngestOp] = []
         for f in _fit_files(src_dir):
-            info = frame_info(str(src_dir / f))
-            kind = info["imagetyp"] if info and info["imagetyp"] in ("dark", "flat", "bias") else "light"
+            handled.add(f)
+            # Seestar lights are `Light_*` by convention — trust the name and avoid a
+            # per-frame header read (prohibitive over SMB for a big device). Only
+            # header-check the odd file that isn't an obvious light.
+            if f.startswith("Light_"):
+                kind = "light"
+            else:
+                info = frame_info(str(src_dir / f))
+                kind = (info["imagetyp"] if info and info["imagetyp"] in ("dark", "flat", "bias")
+                        else "light")
             ops.extend(_emit_files(src_dir, [f], kind, obj, name, action, "seestar"))
         return ops
 
@@ -490,6 +506,7 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str) -> list[IngestO
         existing = set(_all_files(dst_dir))
         ops = []
         for f in _all_files(src_dir):
+            handled.add(f)
             if f in existing:
                 continue
             dest = dst_dir / f
@@ -503,20 +520,23 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str) -> list[IngestO
     if not stacked:
         return []
     obj = canonical_target(name)
+    handled.update(stacked)
     ops = _emit_files(src_dir, stacked, "stack", obj, name, action, "seestar")
     # Also pull the device's preview renders (.jpg/.png) into the same stack folder
     # so the gallery has ready-made images; skip the Seestar's *_thn.* thumbnails.
     previews = [f for f in _all_files(src_dir)
                 if "_thn." not in f and f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")]
+    handled.update(previews)
     ops.extend(_emit_files(src_dir, previews, "stack", obj, name, action, "seestar"))
     return ops
 
 
-def _classify_raw_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+def _classify_raw_dir(src_dir: Path, name: str, action: str,
+                      handled: set) -> list[IngestOp]:
     """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
     routed by its IMAGETYP; the object comes from the OBJECT header, else the
-    containing folder name. Frames with neither a usable type nor an object are
-    left unclassified (the 6c holding area)."""
+    containing folder name. Frames with neither a usable type nor an object are left
+    unclassified (the 6c holding area). Records recognized files in `handled`."""
     ops: list[IngestOp] = []
     for f in _fit_files(src_dir):
         info = frame_info(str(src_dir / f))
@@ -528,6 +548,7 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
             kind, obj = "light", (obj_hdr or canonical_target(name))
         else:
             continue                              # unclassifiable → 6c holding area
+        handled.add(f)                            # recognized (even if skipped as dup)
         ops.extend(_emit_files(src_dir, [f], kind, obj, name, action, "raw-fits"))
     return ops
 
@@ -559,17 +580,19 @@ def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
     if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
+    handled: set[str] = set()      # files the recognizer claimed (new OR already-present)
     if layout == "m110-store":
-        ops = _classify_store_dir(src_dir, name, action)
+        ops = _classify_store_dir(src_dir, name, action, handled)
     elif layout == "seestar":
-        ops = _classify_seestar_dir(src_dir, name, action)
+        ops = _classify_seestar_dir(src_dir, name, action, handled)
     elif layout == "raw-fits":
-        ops = _classify_raw_dir(src_dir, name, action)
+        ops = _classify_raw_dir(src_dir, name, action, handled)
     else:
         ops = []
-    # Sweep: any content file the recognizer didn't claim → holding area.
-    claimed = {Path(o.src).name for o in ops}
-    leftover = [f for f in _content_files(src_dir) if f not in claimed]
+    # Sweep: any content file the recognizer didn't claim → holding area. `handled`
+    # (not the emitted ops) is the authority, so files skipped as already-present
+    # don't get mistaken for unclassifiable and re-held.
+    leftover = [f for f in _content_files(src_dir) if f not in handled]
     ops += _emit_unassigned(src_dir, leftover, name, action, layout or "unknown")
     return ops
 
