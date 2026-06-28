@@ -295,11 +295,19 @@ archived in **[`DONE.md`](DONE.md)**.
      placeholder). The app's own `Images/` content tree is never re-imported into
      itself (`_in_own_store`). The Import preview shows the kind + detected layout
      (tooltip). Pairs with #12's pointing logic (`frame_radec`).
-   - **6c — Holding area + manual assign.** Unclassifiable files land in the holding
-     area (repurposed `Inbox/`); the Import view shows them with **manual assign**
-     (object + kind) reusing the existing remap dropdown (`ingest.retarget`) + alias
-     learning (`ingest.add_alias`); assignment **moves** them into the content tree.
-     Nothing is silently ignored.
+   - **6c — Holding area + manual assign** *(done 2026-06-27)*. **Nothing is silently
+     ignored:** `_classify_dir` now **sweeps** every unclaimed content file (headerless
+     FITS, stray images/video — junk/hidden/`*_thn.` excluded via `_is_content_file`)
+     into the repurposed `Inbox/` **holding area** as `kind="unassigned"` ops. The
+     Import view gained an always-visible **Holding area panel** (a vertical splitter
+     below the scan preview) listing held files grouped per source folder with an
+     editable **Object** dropdown + a **Kind** dropdown (`ASSIGNABLE_KINDS`) + **Assign**;
+     `ingest.assign(group, object, kind)` rebuilds the group as **move** ops and
+     `apply_ops` moves them out of `Inbox/` into the content tree (`Images/<obj>/<kind>`
+     or `Media/`), with the same alias-learning prompt (`ingest.add_alias`). Engine
+     adds `scan_holding`/`holding_count`/`assign`; `Inbox/` is no longer a user-facing
+     *source*. Off-catalog assigns just create `Images/<obj>/…` (the refresh
+     auto-adds them to the Library).
    - **6d — Lazy device-under-target + source differentiation.** Record device/source
      per session; introduce the optional `Images/<target>/<device>/` path level only
      when a 2nd device appears (flat = default device). A **device registry** keyed to

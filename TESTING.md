@@ -213,6 +213,16 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
 - [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
 
+### E3. Import — holding area + manual assign  (6c)  ⚙ *(sweep/assign automated — `test_ingest.py`, `test_ui_ingest.py`)*
+- [ ] Import a messy folder containing a **headerless `.fit`** and a **stray `.jpg`**
+      (not in a recognized folder): they appear in the preview as **"→ holding area"**
+      rows and, after Import, land in the **Holding area panel** (below the preview).
+      A `readme.txt` / `.DS_Store` / `*_thn.jpg` is **not** surfaced.
+- [ ] In the panel, pick an **Object** (type a new one or choose from the list) + a
+      **Kind**, click **Assign** → confirm → files **move** out of `Inbox/` into
+      `Images/<obj>/<kind>` (or `Media/`); the panel row disappears; Library refreshes.
+- [ ] "Remember alias?" after an assign persists `ingest_aliases.toml`.
+
 ### F. Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
 - [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown

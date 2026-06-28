@@ -134,6 +134,27 @@ def _size(p: Path) -> int:
         return 0
 
 
+# Content file types worth surfacing on import (6c): FITS + image/video. Anything
+# else (text/json/sidecars) is not content and is never held.
+CONTENT_EXTS = {".fit", ".fits", ".jpg", ".jpeg", ".png", ".tif", ".tiff",
+                ".mp4", ".mov", ".avi"}
+
+
+def _is_content_file(name: str) -> bool:
+    """A file worth importing/holding: a content extension, not hidden, not a
+    Seestar `*_thn.` thumbnail sidecar."""
+    if name.startswith(".") or "_thn." in name:
+        return False
+    return ("." + name.rsplit(".", 1)[-1].lower()) in CONTENT_EXTS if "." in name else False
+
+
+def _content_files(d: Path) -> list[str]:
+    if not d.is_dir():
+        return []
+    return sorted(f.name for f in d.iterdir()
+                  if f.is_file() and _is_content_file(f.name))
+
+
 # ── name canonicalization + alias table (#12a, #12c) ──────────────────────────
 
 def _alias_path() -> Path:
@@ -511,21 +532,46 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
     return ops
 
 
+def _emit_unassigned(src_dir: Path, files, name: str, action: str,
+                     layout: str) -> list[IngestOp]:
+    """Ops routing content files into the `Inbox/<name>/` holding area (6c) for later
+    manual assign. kind='unassigned', object='' — skips ones already held."""
+    root = config.DATA_ROOT
+    dst_dir = config.STAGING_DIR / name
+    existing = set(_all_files(dst_dir))
+    ops: list[IngestOp] = []
+    for f in files:
+        if f in existing:
+            continue
+        dest = dst_dir / f
+        ops.append(IngestOp(str(src_dir / f), str(dest), "unassigned", name,
+                            str(dest.relative_to(root)), False, action,
+                            _size(src_dir / f), layout, ""))
+    return ops
+
+
 def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
     """Classify ONE source directory and return the ops for its NEW files. Picks a
     layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
-    raw-FITS header sort — and delegates. A directory inside this app's own store is
-    skipped (don't re-import the library into itself). Reads only."""
-    if _in_own_store(src_dir):
+    raw-FITS header sort — delegates, then **sweeps any unclaimed content file into
+    the Inbox/ holding area** (6c — nothing is silently ignored). A directory inside
+    this app's own store, or a sandbox (process/siril), is skipped. Reads only."""
+    if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
     if layout == "m110-store":
-        return _classify_store_dir(src_dir, name, action)
-    if layout == "seestar":
-        return _classify_seestar_dir(src_dir, name, action)
-    if layout == "raw-fits":
-        return _classify_raw_dir(src_dir, name, action)
-    return []
+        ops = _classify_store_dir(src_dir, name, action)
+    elif layout == "seestar":
+        ops = _classify_seestar_dir(src_dir, name, action)
+    elif layout == "raw-fits":
+        ops = _classify_raw_dir(src_dir, name, action)
+    else:
+        ops = []
+    # Sweep: any content file the recognizer didn't claim → holding area.
+    claimed = {Path(o.src).name for o in ops}
+    leftover = [f for f in _content_files(src_dir) if f not in claimed]
+    ops += _emit_unassigned(src_dir, leftover, name, action, layout or "unknown")
+    return ops
 
 
 def _in_own_store(src_dir: Path) -> bool:
@@ -639,6 +685,64 @@ def scan_seestar_plan(should_cancel=None) -> list[IngestOp]:
     """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
     untouched). Empty if no Seestar is mounted. Reads only."""
     return _scan_base(config.find_seestar_myworks(), "copy", should_cancel)
+
+
+# ── holding area (6c): manual assign of unclassifiable files ───────────────────
+
+def scan_holding(should_cancel=None) -> list[IngestOp]:
+    """List the Inbox/ holding area's content files as unassigned ops (6c), for the
+    manual-assign panel. group = the top-level subfolder under Inbox (or '(loose)'
+    for files sitting directly in Inbox). dest is a placeholder until `assign` routes
+    them. Reads only; raises IngestCancelled if `should_cancel()` turns true."""
+    base = config.STAGING_DIR
+    if not base.is_dir():
+        return []
+    root = config.DATA_ROOT
+    ops: list[IngestOp] = []
+    for dirpath, dirnames, files in os.walk(base):
+        if should_cancel and should_cancel():
+            raise IngestCancelled()
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        d = Path(dirpath)
+        rel = d.relative_to(base)
+        group = "(loose)" if rel == Path(".") else rel.parts[0]
+        for f in sorted(files):
+            if not _is_content_file(f):
+                continue
+            src = d / f
+            ops.append(IngestOp(str(src), str(src), "unassigned", group,
+                                str(src.relative_to(root)), False, "move",
+                                _size(src), "holding", ""))
+    return ops
+
+
+def holding_count() -> int:
+    """Number of content files currently in the Inbox/ holding area (cheap)."""
+    base = config.STAGING_DIR
+    if not base.is_dir():
+        return 0
+    return sum(1 for dp, _dn, files in os.walk(base) for f in files
+               if _is_content_file(f))
+
+
+def assign(group: IngestGroup, object: str, kind: str) -> IngestGroup:
+    """Rebuild a held (unassigned) group's ops to **move** its files into the content
+    tree under `object` as `kind` (6c manual assign). Mirrors `retarget` but sets the
+    kind and move semantics; `apply_ops` remains the only writer."""
+    root = config.DATA_ROOT
+    obj = canonical_target(object)
+    dst_dir = (config.MEDIA_DIR / obj if kind == "media"
+               else _KIND_DIR[kind](obj))
+    new_flag = kind != "media" and not config.target_dir(obj).is_dir()
+    new_ops = []
+    for op in group.ops:
+        dest = dst_dir / Path(op.src).name
+        new_ops.append(replace(op, dest=str(dest), kind=kind, object=obj,
+                               action="move", new_object=new_flag,
+                               dest_rel=str(dest.relative_to(root))))
+    return replace(group, object=obj, kind=kind,
+                   dest_dir=str(dst_dir.relative_to(root)),
+                   new_object=new_flag, ops=new_ops)
 
 
 def _digest(path: str) -> str:

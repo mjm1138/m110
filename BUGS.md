@@ -102,16 +102,21 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   sandboxes for the enabled workflow(s) and never rewrites an existing one
   (protects hand-edited presets + in-progress runs). Ingest still does the full
   prep (links new lights + refreshes the preset) for freshly-ingested targets.
-- [~] **#16**: **Import — robust, layout-flexible, multi-source** *(6a landed
-  2026-06-26, 6b landed 2026-06-27; 6c–6d open → ROADMAP item 6).* **6a shipped:** ingest
-  renamed **Import**, promoted to a top-level nav page, any-directory recursive scan
+- [~] **#16**: **Import — robust, layout-flexible, multi-source** *(6a–6c landed
+  2026-06-26/27; 6d open → ROADMAP item 6).* **6a shipped:** ingest renamed **Import**,
+  promoted to a top-level nav page, any-directory recursive scan
   (`ingest.scan_directory_plan`), copy semantics + content-aware collision handling,
   Favorites/Recent-places source picker. **6b shipped:** FITS-header classification
   (`ingest.frame_info`), calibration frames route to `darks/`/`flats/`/`biases/`, new
   kinds (`dark`/`flat`/`bias`/`siril-stack`/`finished`), header-wins-over-folder, and the
   **layout-recognizer registry** (`ingest.LAYOUTS`: seestar · m110-store — incl. the
   `~/Astronomy/Images` precursor · raw-fits · asiair-disabled) shown in the preview;
-  own-content-tree never re-imported. Inbox originally recognized exactly one shape — the Seestar export (`<obj>_sub/`
+  own-content-tree never re-imported. **6c shipped:** **nothing silently ignored** — a
+  sweep routes every unclaimed content file (headerless FITS, stray images; junk/`*_thn.`
+  excluded) into the `Inbox/` **holding area** (`kind="unassigned"`), surfaced in an
+  always-visible **Holding area panel** with per-folder object+kind **manual assign**
+  (`ingest.scan_holding`/`assign` → move into the content tree; alias-learning). Inbox is
+  no longer a user-facing source. Inbox originally recognized exactly one shape — the Seestar export (`<obj>_sub/`
   of `Light_*.fit`, `<obj>/` of `Stacked_*`, `*_photo`/`*_video`) and silently finds
   nothing for any other structure (M110 *store* folders, another telescope's layout, a
   flat pile of FITS, calibration frames). The build: (a) **recognize multiple known

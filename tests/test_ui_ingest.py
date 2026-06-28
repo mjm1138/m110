@@ -135,6 +135,40 @@ def test_ingest_dialog_applies_only_checked_groups(tmp_path, monkeypatch, qtbot)
     assert (staging / "M13_sub" / "Light_M13_a.fit").exists()
 
 
+def test_import_page_holding_assign_moves_files(tmp_path, monkeypatch, qtbot):
+    """6c: held files in Inbox/ show in the holding panel; assigning an object+kind
+    moves them out of the holding area into the content tree."""
+    seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    blob = config.STAGING_DIR / "blob"
+    blob.mkdir(parents=True)
+    (blob / "f1.fit").write_text("1")
+    (blob / "f2.fit").write_text("2")
+    # auto-confirm the move + decline the "remember alias?" follow-up
+    answers = iter([QMessageBox.Yes, QMessageBox.No])
+    monkeypatch.setattr(QMessageBox, "question",
+                        staticmethod(lambda *a, **k: next(answers, QMessageBox.No)))
+    from m110 import processing
+    monkeypatch.setattr(processing, "run_autoprep", lambda *a, **k: None)
+    from m110.ui.pages.import_page import ImportPage
+    p = ImportPage()
+    qtbot.addWidget(p)
+    p.refresh_holding()
+
+    assert p.holding_table.rowCount() == 1
+    assert p.holding_table.item(0, 0).text() == "blob"
+    p.holding_table.cellWidget(0, 3).setCurrentText("M27")     # object
+    # kind dropdown defaults to the first assignable kind (light)
+    assert p.holding_table.cellWidget(0, 4).currentData() == "light"
+
+    with qtbot.waitSignal(p.imported, timeout=5000):
+        p._on_assign(0)
+
+    assert sorted(x.name for x in config.lights_dir("M27").iterdir()) == ["f1.fit", "f2.fit"]
+    assert not (blob / "f1.fit").exists()                       # moved out of Inbox
+    qtbot.waitUntil(lambda: p.holding_table.rowCount() == 0, timeout=5000)
+
+
 def test_ingest_dialog_close_during_scan_is_safe(tmp_path, monkeypatch, qtbot):
     seed_root(tmp_path, monkeypatch)
     _no_device(monkeypatch)

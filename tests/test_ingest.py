@@ -3,6 +3,8 @@
 dest_rel is relative to the data root, so destinations read as
 ``Images/<target>/lights``, ``Images/<target>/seestar-stacks``, ``Media/<cat>``.
 """
+from pathlib import Path
+
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -308,16 +310,20 @@ def test_scan_directory_plan_recurses_nested_tree(tmp_path, monkeypatch):
     assert any("Images/M51/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
 
 
-def test_scan_directory_ignores_unrecognized_dirs(tmp_path, monkeypatch):
-    """A plain folder of loose images (no `_sub`/`_photo`, no Stacked_* FITS) is
-    NOT vacuumed up as a stack — the stricter stack rule keeps arbitrary trees safe."""
+def test_unrecognized_loose_files_go_to_holding(tmp_path, monkeypatch):
+    """A plain folder of loose content (no `_sub`/`_photo`, no Stacked_* FITS) isn't
+    vacuumed up as a stack, but is no longer silently dropped — 6c routes every
+    content file to the Inbox/ holding area for manual assign."""
     _make_staging(tmp_path, monkeypatch)
     src = tmp_path / "external"
     loose = src / "Vacation"
     loose.mkdir(parents=True)
     (loose / "beach.jpg").write_text("j")
-    (loose / "notes.fit").write_text("f")             # not a Stacked_* prefix
-    assert ingest.scan_directory_plan(str(src)) == []
+    (loose / "notes.fit").write_text("f")             # no usable header
+    ops = ingest.scan_directory_plan(str(src))
+    assert {op.kind for op in ops} == {"unassigned"}
+    assert sorted(op.dest_rel for op in ops) == [
+        "Inbox/Vacation/beach.jpg", "Inbox/Vacation/notes.fit"]
 
 
 def test_apply_collision_distinct_gets_suffix(tmp_path, monkeypatch):
@@ -449,15 +455,16 @@ def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
     _fits_hdr(pile / "a.fit", object="M51", imagetyp="Light")
     _fits_hdr(pile / "b.fit", object="M51", imagetyp="Dark")
     _fits_hdr(pile / "c.fit", imagetyp="Bias")          # no OBJECT → folder name
-    _fits_hdr(pile / "junk.fit")                         # no type/object → skipped
+    _fits_hdr(pile / "junk.fit")                         # no type/object → holding (6c)
 
     ops = ingest.scan_directory_plan(tmp_path / "dump")
     by_kind = {op.kind: op for op in ops}
-    assert set(by_kind) == {"light", "dark", "bias"}
+    assert set(by_kind) == {"light", "dark", "bias", "unassigned"}
     assert by_kind["light"].dest_rel.startswith("Images/M51/lights/")
     assert by_kind["dark"].dest_rel.startswith("Images/M51/darks/")
     assert by_kind["bias"].dest_rel.startswith("Images/dump/biases/")  # folder fallback
-    assert all(op.layout == "raw-fits" for op in ops)
+    assert by_kind["unassigned"].dest_rel == "Inbox/dump/junk.fit"     # 6c holding
+    assert by_kind["light"].layout == "raw-fits"
 
 
 def test_header_wins_over_sub_folder(tmp_path, monkeypatch):
@@ -495,3 +502,84 @@ def test_layout_registry_labels():
     assert ingest.layout_label("seestar") == "Seestar"
     assert ingest.layout_label("m110-store") == "M110 store"
     assert ingest.LAYOUTS_BY_ID["asiair"].available is False
+
+
+# ── 6c: holding area + manual assign ──────────────────────────────────────────
+
+def test_sweep_holds_unclaimed_content_skips_junk(tmp_path, monkeypatch):
+    """Every unclaimed content file (headerless FITS, stray image) is swept to the
+    holding area; non-content + thumbnails + hidden files are never surfaced."""
+    _make_staging(tmp_path, monkeypatch)
+    d = tmp_path / "src" / "mess"
+    d.mkdir(parents=True)
+    _fits_hdr(d / "good.fit", object="M31", imagetyp="Light")  # claimed → lights
+    _fits_hdr(d / "headerless.fit")                            # → holding
+    (d / "render.png").write_text("p")                         # stray image → holding
+    (d / "render_thn.png").write_text("t")                     # thumbnail → skip
+    (d / "notes.txt").write_text("x")                          # non-content → skip
+    (d / ".hidden.jpg").write_text("h")                        # hidden → skip
+
+    ops = ingest.scan_directory_plan(tmp_path / "src")
+    held = sorted(Path(o.src).name for o in ops if o.kind == "unassigned")
+    assert held == ["headerless.fit", "render.png"]
+    assert any(o.kind == "light" for o in ops)                 # good.fit still classified
+    assert all(o.dest_rel.startswith("Inbox/mess/")
+               for o in ops if o.kind == "unassigned")
+
+
+def test_nothing_silently_ignored(tmp_path, monkeypatch):
+    """Invariant: every content file in a messy tree appears in some op (claimed or
+    held) — nothing is dropped."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "src"
+    _fits_hdr(src / "M13_sub" / "Light_a.fit", imagetyp="Light")
+    _fits_hdr(src / "loose" / "x.fit")                         # headerless
+    (src / "loose" / "pretty.jpg").write_text("j")
+    ops = ingest.scan_directory_plan(src)
+    seen = {Path(o.src).name for o in ops}
+    assert {"Light_a.fit", "x.fit", "pretty.jpg"} <= seen
+
+
+def test_scan_holding_groups_by_top_folder(tmp_path, monkeypatch):
+    """scan_holding lists Inbox content as unassigned ops grouped by top subfolder."""
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    (config.STAGING_DIR / "M42").mkdir(parents=True)
+    (config.STAGING_DIR / "M42" / "a.fit").write_text("a")
+    (config.STAGING_DIR / "M42" / "b.png").write_text("b")
+    (config.STAGING_DIR / "loner.jpg").write_text("l")        # directly in Inbox
+    (config.STAGING_DIR / "skip.txt").write_text("x")         # non-content
+
+    groups = ingest.group_ops(ingest.scan_holding())
+    by_group = {g.group: g for g in groups}
+    assert by_group["M42"].frames == 2
+    assert all(g.kind == "unassigned" for g in groups)
+    assert "(loose)" in by_group              # loner.jpg
+    assert ingest.holding_count() == 3
+
+
+def test_assign_moves_held_files_into_target(tmp_path, monkeypatch):
+    """assign() rebuilds a held group to move its files into Images/<obj>/<kind>;
+    apply_ops actually moves them out of the holding area."""
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    (config.STAGING_DIR / "blob").mkdir(parents=True)
+    (config.STAGING_DIR / "blob" / "f1.fit").write_text("1")
+    (config.STAGING_DIR / "blob" / "f2.fit").write_text("2")
+
+    groups = ingest.group_ops(ingest.scan_holding())
+    g = next(g for g in groups if g.group == "blob")
+    assigned = ingest.assign(g, "M27", "light")
+    assert assigned.kind == "light"
+    assert all(o.action == "move" and o.kind == "light" for o in assigned.ops)
+    res = ingest.apply_ops(assigned.ops)
+    assert res["moved"] == 2
+    assert sorted(p.name for p in config.lights_dir("M27").iterdir()) == ["f1.fit", "f2.fit"]
+    assert not (config.STAGING_DIR / "blob" / "f1.fit").exists()   # moved out of Inbox
+
+
+def test_assign_media_routes_to_media_dir(tmp_path, monkeypatch):
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    (config.STAGING_DIR / "clips").mkdir(parents=True)
+    (config.STAGING_DIR / "clips" / "moon.jpg").write_text("m")
+    g = next(g for g in ingest.group_ops(ingest.scan_holding()) if g.group == "clips")
+    assigned = ingest.assign(g, "Lunar_photo", "media")
+    assert assigned.ops[0].dest_rel == "Media/Lunar_photo/moon.jpg"

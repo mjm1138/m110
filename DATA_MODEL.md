@@ -96,8 +96,9 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                             for frames header-routed by IMAGETYP (ROADMAP item 6b);
                             written by ingest, layout unchanged → no .store_version bump)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
-  Inbox/                            holding area / import queue (transient): unclassified
-                                    imports await manual assign here (ROADMAP item 6c);
+  Inbox/                            holding area / import queue (transient): unclassifiable
+                                    files (`ingest.scan_holding`) await **manual assign**
+                                    (`ingest.assign` → move into the content tree, 6c);
                                     no longer a user-facing import *source*
   .m110_internal_data/              hidden machine state (README: "don't touch")
     library.toml                    the user's Library = captured/annotated collection {slug:{id,name,type,…}} (starts empty)
@@ -199,9 +200,10 @@ version and adds a migration step that brings older stores forward in place.
 
 ## Data flow
 
-> The **Import** path below reflects the specced redesign (ROADMAP item 6 / BUGS #16).
-> Shipped today: ingest reads only a fixed `Inbox/` (move) + mounted Seestar (copy) and
-> classifies by folder name. `ingest.apply_ops` remains the single gated writer either way.
+> The **Import** path below is largely shipped (ROADMAP 6a–6c / BUGS #16): point at any
+> directory, recurse, classify by FITS header + layout registry, copy in, and route
+> unclassifiable files to the `Inbox/` holding area for manual assign. Still open: 6d
+> (lazy device-under-target). `ingest.apply_ops` remains the single gated writer.
 
 ```mermaid
 flowchart TD
