@@ -41,6 +41,11 @@ archived in **[`DONE.md`](DONE.md)**.
 
 ## Later phases (post-MVP)
 
+> **UI look & feel** is planned separately in **[`UI_ROADMAP.md`](UI_ROADMAP.md)** —
+> a design-system-first refresh toward a professional, image-forward photo tool
+> (tokens + hand-rolled QSS, light/dark follow-system, Library list/grid, thumbnails
+> everywhere, upgraded viewer). Cross-cuts the pages below.
+
 0. **Site-parity multi-page UI** *(done)* — nav rail + stacked pages (Summary ·
    Catalog · Processing · Sessions · Journal · Media), Summary as the landing page,
    one shared Object detail reachable from every object link. Plus the Media page
