@@ -1,0 +1,28 @@
+{% extends "_base.html" %}
+{% block title %}Journal · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>Journal</h1>
+
+<p class="muted">One entry per captured object. Click through for full sessions and gallery.</p>
+
+<div class="journal-feed">
+{% for o in objects %}
+  <article class="journal-card">
+    <header>
+      <h2><a href="objects/{{ o.slug }}.html">{{ o.entry.id }} — {{ o.entry.name or '' }}</a></h2>
+      <div class="meta">
+        <span class="badge {{ o.totals.status }}">{{ o.totals.status|status_label }}</span>
+        <span>{{ o.totals.integration_hms }} · {{ o.totals.frames }} frames · {{ o.totals.session_count }} sessions</span>
+        <span class="muted">last captured {{ o.totals.last_capture }}</span>
+      </div>
+    </header>
+    {% if o.hero %}
+      <a href="objects/{{ o.slug }}.html"><img class="hero-thumb" src="{{ o.hero }}" alt="{{ o.entry.id }}"></a>
+    {% endif %}
+    <div class="journal-body">
+      {{ o.journal_html|safe }}
+    </div>
+  </article>
+{% endfor %}
+</div>
+{% endblock %}

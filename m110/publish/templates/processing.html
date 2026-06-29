@@ -1,0 +1,54 @@
+{% extends "_base.html" %}
+{% block title %}Processing · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>Processing Queue</h1>
+
+<div class="stat-row">
+  <div class="stat"><span class="big">{{ processing.counts.out_of_date }}</span> out of date</div>
+  <div class="stat"><span class="big">{{ processing.counts.not_processed }}</span> not processed</div>
+  <div class="stat"><span class="big">{{ processing.counts.up_to_date }}</span> up to date</div>
+  {% if processing.counts.dismissed %}
+  <div class="stat"><span class="big">{{ processing.counts.dismissed }}</span> dismissed</div>
+  {% endif %}
+</div>
+
+{% set status_groups = [
+  ('out_of_date',   'Out of date — restack to incorporate new lights'),
+  ('not_processed', 'Not processed — first stack needed'),
+  ('up_to_date',    'Up to date'),
+] %}
+
+{% for status, label in status_groups %}
+  {% set group_rows = processing.queue|selectattr('status', 'equalto', status)|list %}
+  {% if group_rows %}
+  <section>
+    <h2>{{ label }}</h2>
+    <table class="catalog">
+      <thead>
+        <tr>
+          <th>Folder</th>
+          <th class="num">Raw integration</th>
+          <th class="num">In stack</th>
+          <th class="num">New since stack</th>
+          <th>Last capture</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in group_rows %}
+        <tr>
+          <td>{% if f.slugs %}<a href="objects/{{ f.slugs[0] }}.html">{{ f.folder }}</a>{% else %}{{ f.folder }}{% endif %}</td>
+          <td class="num">{{ f.integration_hms }}<br><span class="muted">{{ f.frames }} fr</span></td>
+          <td class="num">
+            {% if f.stack_meta %}{{ f.stack_meta.stack_integration_hms }}<br><span class="muted">{{ f.stack_meta.stack_frames }} fr</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td class="num">{% if f.new_lights_since_stack > 0 %}<span class="delta-add">+{{ f.new_lights_since_stack }}</span>{% else %}—{% endif %}</td>
+          <td><span class="muted">{{ f.last_capture or '—' }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "_base.html" %}
+{% block title %}{{ obj.entry.id }} · {{ site_title }}{% endblock %}
+{% block content %}
+<article class="object">
+  <header class="obj-header">
+    <h1>{{ obj.entry.id }} <span class="muted">— {{ obj.entry.name or '' }}</span></h1>
+    <div class="meta">
+      <span class="badge {{ obj.totals.status }}">{{ obj.totals.status|status_label }}</span>
+      <span>{{ obj.entry.type|replace('_', ' ') }}{% if obj.entry.magnitude %} · mag {{ obj.entry.magnitude }}{% endif %}{% if obj.entry.size %} · {{ obj.entry.size }}{% endif %}</span>
+    </div>
+  </header>
+
+  {% if obj.hero %}
+  <figure class="obj-hero">
+    <img src="{{ root }}{{ obj.hero }}" alt="{{ obj.entry.id }} hero image">
+  </figure>
+  {% endif %}
+
+  <section class="stat-row">
+    <div class="stat"><span class="big">{{ obj.totals.integration_hms }}</span> raw</div>
+    <div class="stat"><span class="big">{{ obj.totals.frames }}</span> frames</div>
+    <div class="stat"><span class="big">{{ obj.totals.session_count }}</span> sessions</div>
+    <div class="stat"><span class="big">{{ obj.totals.first_capture }}</span> first</div>
+    <div class="stat"><span class="big">{{ obj.totals.last_capture }}</span> last</div>
+  </section>
+
+  {% if obj.processing %}
+  <section>
+    <h2>Processing</h2>
+    {% for p in obj.processing %}
+    <div class="proc-row">
+      <span class="badge proc-{{ p.status }}">{{ p.status|replace('_', ' ') }}</span>
+      <strong>{{ p.folder }}</strong>
+      {% if p.stack_meta %}
+        <br><span class="muted">stack contains <strong>{{ p.stack_meta.stack_frames }}</strong> frames
+          ({{ p.stack_meta.stack_integration_hms }} integrated)</span>
+      {% endif %}
+      {% if p.new_lights_since_stack > 0 %}
+        · <span class="delta-add">+{{ p.new_lights_since_stack }} new lights</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% set viewable_imgs = obj.images | selectattr('viewable') | list %}
+  {% if viewable_imgs %}
+  <section>
+    <h2>Gallery</h2>
+    <div class="gallery gallery-view">
+    {% for im in viewable_imgs %}
+      <figure{% if im.full %} class="clickable" data-full="{{ root }}{{ im.full }}" data-name="{{ im.name }}"{% endif %}>
+        {% if im.thumb %}
+          <img src="{{ root }}{{ im.thumb }}" alt="{{ im.name }}">
+        {% else %}
+          <div class="no-thumb">no preview</div>
+        {% endif %}
+        <figcaption>
+          <span class="muted">{{ im.label }}</span><br>
+          <code>{{ im.name }}</code>
+          <span class="muted">· {{ im.size_mb }} MB</span>
+        </figcaption>
+      </figure>
+    {% endfor %}
+    </div>
+  </section>
+
+  <dialog id="lb" aria-label="Image viewer">
+    <button id="lb-close" aria-label="Close">✕</button>
+    <button id="lb-prev" class="lb-nav" aria-label="Previous image">‹</button>
+    <button id="lb-next" class="lb-nav" aria-label="Next image">›</button>
+    <img id="lb-img" src="" alt="">
+    <p id="lb-cap"></p>
+  </dialog>
+  <script>
+  (function () {
+    var dlg = document.getElementById('lb');
+    var img = document.getElementById('lb-img');
+    var cap = document.getElementById('lb-cap');
+    var prevBtn = document.getElementById('lb-prev');
+    var nextBtn = document.getElementById('lb-next');
+    var figs = Array.prototype.slice.call(
+      document.querySelectorAll('.gallery-view figure.clickable'));
+    var current = 0;
+    function show(i) {
+      current = ((i % figs.length) + figs.length) % figs.length;
+      var fig = figs[current];
+      img.src = fig.dataset.full;
+      img.alt = fig.dataset.name;
+      cap.textContent = fig.dataset.name;
+    }
+    figs.forEach(function (fig, i) {
+      fig.addEventListener('click', function () { show(i); dlg.showModal(); });
+    });
+    prevBtn.addEventListener('click', function (e) { e.stopPropagation(); show(current - 1); });
+    nextBtn.addEventListener('click', function (e) { e.stopPropagation(); show(current + 1); });
+    document.getElementById('lb-close').addEventListener('click', function (e) { e.stopPropagation(); dlg.close(); });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    document.addEventListener('keydown', function (e) {
+      if (!dlg.open) return;
+      if (e.key === 'ArrowLeft')  { show(current - 1); e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { show(current + 1); e.preventDefault(); }
+    });
+    if (figs.length < 2) { prevBtn.style.display = 'none'; nextBtn.style.display = 'none'; }
+  }());
+  </script>
+  {% endif %}
+
+  {% if obj.journal_html %}
+  <section class="journal-section">
+    <h2>Notes</h2>
+    {{ obj.journal_html|safe }}
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Sessions</h2>
+    <table class="catalog">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th class="num">Frames</th>
+          <th class="num">Exp (s)</th>
+          <th>Filter</th>
+          <th class="num">Integration</th>
+          <th>Mount</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in obj.sessions %}
+        <tr>
+          <td>{{ s.date }}</td>
+          <td class="num">{{ s.frames }}</td>
+          <td class="num">{{ s.exposure_s }}</td>
+          <td>{{ s.filter }}</td>
+          <td class="num">{{ "%.1f"|format(s.integration_min) }} min</td>
+          <td>{{ s.mount_mode }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Object Details</h2>
+    <dl class="meta-dl">
+      {% if obj.entry.season %}<dt>Season</dt><dd>{{ obj.entry.season }}</dd>{% endif %}
+      {% if obj.entry.filter %}<dt>Filter rule</dt><dd>{{ obj.entry.filter }}</dd>{% endif %}
+      {% if obj.entry.notes %}<dt>Remarks</dt><dd>{{ obj.entry.notes }}</dd>{% endif %}
+      <dt>Slug</dt><dd><code>{{ obj.slug }}</code></dd>
+      <dt>Capture targets</dt><dd>{{ obj.folders|join(', ') }}</dd>
+    </dl>
+  </section>
+</article>
+{% endblock %}

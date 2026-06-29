@@ -287,14 +287,25 @@ class CatalogPage(QWidget):
         online_act = menu.addAction("Enrich online")
         online_act.setEnabled(has_gaps and self._enrich_worker is None)
         menu.addSeparator()
+        published = entry.get("publish", True) is not False
+        publish_act = menu.addAction(
+            "Exclude from publishing" if published else "Include in publishing")
         remove_act = menu.addAction("Remove from Library")
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is fill_act and missing:
             self._fill_one(slug)
         elif chosen is online_act and has_gaps:
             self._enrich_one_online(slug)
+        elif chosen is publish_act:
+            self._toggle_publish(slug, not published)
         elif chosen is remove_act:
             self._remove_one(slug)
+
+    def _toggle_publish(self, slug: str, publish: bool):
+        if catalog_mod.set_publish_flag(slug, publish):
+            self._cat = load_library()
+            self._rebuild_table()
+            self._select_slug(slug)
 
     def _fill_one(self, slug: str):
         try:

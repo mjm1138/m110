@@ -170,7 +170,23 @@ def remove_goal_members_from_library(goal_id: str, *, members=None) -> list[str]
 
 
 _LIB_ORDER = ["id", "name", "type", "magnitude", "size", "season", "filter",
-              "notes", "ra_deg", "dec_deg"]
+              "notes", "ra_deg", "dec_deg", "publish"]
+
+
+def set_publish_flag(slug: str, publish: bool) -> bool:
+    """Set an object's publish opt-out in `library.toml`. Default-publish: a True
+    flag is stored as *absence* of the key (keeps the file clean), excluding sets
+    `publish = false`. Returns True if the entry existed. Backs the Library
+    "Exclude from publishing" / "Include in publishing" action."""
+    lib = load_library()
+    if slug not in lib:
+        return False
+    if publish:
+        lib[slug].pop("publish", None)
+    else:
+        lib[slug]["publish"] = False
+    _write_library(lib)
+    return True
 
 
 def _append_library_entries(entries: dict[str, dict]) -> None:

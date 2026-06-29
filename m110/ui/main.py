@@ -158,6 +158,8 @@ class MainWindow(QMainWindow):
         self.fill_meta_action.triggered.connect(self._fill_missing_metadata)
         self.enrich_online_action = QAction("Enrich online…", self)
         self.enrich_online_action.triggered.connect(self._enrich_online_all)
+        self.publish_action = QAction("Publish / share…", self)
+        self.publish_action.triggered.connect(self._open_publish)
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)
         prefs_action.triggered.connect(self._open_prefs)
@@ -170,6 +172,8 @@ class MainWindow(QMainWindow):
         self.lib_menu.addAction(self.add_object_action)
         self.lib_menu.addAction(self.fill_meta_action)
         self.lib_menu.addAction(self.enrich_online_action)
+        self.lib_menu.addSeparator()
+        self.lib_menu.addAction(self.publish_action)
 
         self.nav.setCurrentRow(0)          # Summary lands first
         self._update_status()
@@ -199,6 +203,12 @@ class MainWindow(QMainWindow):
     def _open_prefs(self):
         from m110.ui.preferences import PreferencesDialog
         PreferencesDialog(self).exec()
+
+    def _open_publish(self):
+        if self.catalog.is_editing() or self._refreshing:
+            return
+        from m110.ui.publish_dialog import PublishDialog
+        PublishDialog(self).exec()
 
     # ---- editing lock ----
     def _on_editing_changed(self, editing: bool):

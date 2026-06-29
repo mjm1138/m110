@@ -1,0 +1,66 @@
+{% extends "_base.html" %}
+{% block title %}Catalog · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>Catalog</h1>
+
+{% if summary.grand %}
+<div class="stat-row">
+  <div class="stat"><span class="big">{{ summary.grand.captured }}</span> captured</div>
+  <div class="stat"><span class="big">{{ summary.grand.deep_stack }}</span> deep stack</div>
+  <div class="stat"><span class="big">{{ summary.grand.total }}</span> in library</div>
+</div>
+{% endif %}
+
+<input type="search" id="filter" placeholder="Filter by id or name…" oninput="filterRows()">
+
+<table class="catalog">
+  <thead>
+    <tr>
+      <th>Object</th>
+      <th>Name</th>
+      <th>Type</th>
+      <th class="num">Mag</th>
+      <th>Size</th>
+      <th>Season</th>
+      <th>Status</th>
+      <th>Integration</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for obj in rows %}
+    <tr class="row {{ 'captured' if obj.is_captured else 'uncaptured' }}">
+      <td>
+        {% if obj.is_captured %}
+          <a href="objects/{{ obj.slug }}.html">{{ obj.entry.id }}</a>
+        {% else %}
+          {{ obj.entry.id }}
+        {% endif %}
+      </td>
+      <td>{{ obj.entry.name or '' }}</td>
+      <td>{{ obj.entry.type|replace('_', ' ') }}</td>
+      <td class="num">{{ obj.entry.magnitude or '' }}</td>
+      <td>{{ obj.entry.size or '' }}</td>
+      <td>{{ obj.entry.season or '' }}</td>
+      <td>
+        {% if obj.totals %}
+          <span class="badge {{ obj.totals.status }}">{{ obj.totals.status|status_label }}</span>
+        {% else %}
+          <span class="badge none">—</span>
+        {% endif %}
+      </td>
+      <td class="num">{{ obj.totals.integration_hms if obj.totals else '' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+function filterRows() {
+  const q = document.getElementById('filter').value.toLowerCase();
+  for (const row of document.querySelectorAll('table.catalog tbody tr')) {
+    const t = row.textContent.toLowerCase();
+    row.style.display = t.includes(q) ? '' : 'none';
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ site_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ root }}style.css">
+  <script src="{{ root }}sortable.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="brand">
+    <a href="{{ root }}index.html">{{ site_title }}</a>
+  </div>
+  <nav>
+    <a href="{{ root }}index.html">Catalog</a>
+    {% if 'summary' in sections %}<a href="{{ root }}summary.html">Summary</a>{% endif %}
+    {% if 'sessions' in sections %}<a href="{{ root }}sessions.html">Sessions</a>{% endif %}
+    {% if 'processing' in sections %}<a href="{{ root }}processing.html">Processing</a>{% endif %}
+    {% if 'journal' in sections %}<a href="{{ root }}journal.html">Journal</a>{% endif %}
+  </nav>
+</header>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  © {{ year }} &ensp;·&ensp; Built with M110 &ensp;·&ensp; {{ build_time }}
+</footer>
+</body>
+</html>

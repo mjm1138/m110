@@ -285,6 +285,24 @@ re-run when its area changes and you want eyes on the visuals).
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
 
+### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
+> Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
+- [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target
+      list (only **Static website** enabled; GitHub Pages/Netlify show **"(soon)"**),
+      site-title field, output-folder chooser.
+- [ ] Pick a **throwaway output folder** (NOT inside the data store), click **Publish**
+      → modal progress (Cancel works) → "Published N pages" → **Open folder**.
+- [ ] Open `index.html`: catalog table, working **filter** box; captured objects link
+      to `objects/<slug>.html` (hero, gallery lightbox ←/→/Esc, sessions, notes). Nav
+      shows only the **selected** sections.
+- [ ] **Per-object exclude:** right-click an object → **Exclude from publishing** →
+      re-publish → that object has **no row and no page**; right-click → **Include** →
+      reappears.
+- [ ] **Journal privacy:** add `private: true` to an object's `journal.md` frontmatter
+      (or tick **Exclude all journal notes**) → its notes are absent from the site.
+- [ ] **Deps-missing path:** with the `publish` extra uninstalled, Publish shows a
+      clear "pip install 'm110[publish]'" message (no crash).
+
 ### H. Cross-check with the source workflow (optional)
 - [ ] Refresh output (sessions/derived) for a shared object matches the reference
       Astronomy `rebuild.sh` (aside from `processing.json`'s `generated_at`).

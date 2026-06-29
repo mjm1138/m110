@@ -108,3 +108,21 @@ def test_season_sort_by_first_month_year_round_last():
     seasons = ["Year-round", "Mar–May", "Jan–Mar", "Dec–Feb", "Jun–Aug"]
     assert sorted(seasons, key=season_sort_key) == [
         "Jan–Mar", "Mar–May", "Jun–Aug", "Dec–Feb", "Year-round"]
+
+
+def test_set_publish_flag_roundtrips(tmp_path, monkeypatch):
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {"m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"}})
+    # exclude → publish = false persisted, other keys intact
+    assert catalog.set_publish_flag("m31", False) is True
+    lib = catalog.load_library()
+    assert lib["m31"]["publish"] is False
+    assert lib["m31"]["id"] == "M31" and lib["m31"]["name"] == "Andromeda"
+    # include → flag removed (back to default-publish), entry still present
+    assert catalog.set_publish_flag("m31", True) is True
+    lib = catalog.load_library()
+    assert "publish" not in lib["m31"]
+    assert lib["m31"]["id"] == "M31"
+    # unknown slug → no-op False
+    assert catalog.set_publish_flag("nope", False) is False

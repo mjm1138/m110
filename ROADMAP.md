@@ -245,7 +245,8 @@ archived in **[`DONE.md`](DONE.md)**.
    `next_catalog_lists.md` — **Herschel 400**, **Arp**, **Lunar 100**, AL Double Star
    (data-generation in `tools/gen_catalogs.py`).
 
-6. **Import — robust, layout-flexible, multi-source** (BUGS **#16**; ingest →
+6. **Import — robust, layout-flexible, multi-source** *(6a–6c done 2026-06-26/27;
+   6d deferred)* (BUGS **#16**; ingest →
    *Import*). Today's ingest is fixed to two special-cased sources (the `Inbox/`
    staging area it *moves* from, a mounted Seestar `MyWorks` it *copies* from) and
    classifies purely by **folder-name convention** (`<obj>_sub/` → lights, `<obj>/`
@@ -337,20 +338,32 @@ archived in **[`DONE.md`](DONE.md)**.
      dir first). Pure **guide**, not control — fits the processing philosophy;
      cross-platform launch is the main risk.
 
-8. **Publishing / sharing.** Let users publish their collection to the web — the
-   generalized successor to the Astronomy `build_site` static site (which M110
-   intentionally did *not* port as its own UI). **Selective**: choose what goes
-   public — catalog, goals/lists, the Summary dashboard, processing queue, object
-   pages, journal entries, galleries/heroes — with privacy controls (e.g. exclude
-   private journals; per-object/per-list publish flags). **Pluggable targets** via
-   a publisher **registry** (mirroring the processing-workflow / device registries):
-   **GitHub Pages first** (static-site export, like today's site), then other
-   CMS/hosting platforms (Netlify, S3/CloudFront, WordPress/Ghost via API, …).
-   Qt-free `publish/` engine renders selected derived data + journals + renders into
-   the chosen artifact; the UI just picks sections + target + triggers it.
-   *Sequencing:* high personal value (it replaces the site the user relies on today)
-   and shares rendering concerns with phase 0 (same sections) — reasonable to pull
-   forward once the multi-page UI and multi-list (item 5) are in place.
+8. **Publishing / sharing** *(first slice done 2026-06-29 — local static-site export)*.
+   Let users publish their collection to the web — the generalized successor to the
+   Astronomy `build_site` static site (which M110 intentionally did *not* port as its
+   own UI). **Selective**: choose what goes public — catalog, the Summary dashboard,
+   processing queue, object pages, journal entries, galleries/heroes — with privacy
+   controls (exclude journals globally or per-object `private`; per-object `publish`
+   opt-out). **Pluggable targets** via a publisher **registry** (mirroring the
+   processing-workflow / device registries): then other CMS/hosting platforms
+   (Netlify, S3/CloudFront, WordPress/Ghost via API, …). Qt-free `publish/` engine
+   renders selected derived data + journals + renders into the chosen artifact; the
+   UI just picks sections + target + triggers it.
+
+   - **8a — Static-site export + registry** *(done 2026-06-29)*. New Qt-free
+     `m110/publish/` package: a publisher **registry** (`PUBLISHERS`, `run_publish`,
+     `enabled_target_ids`) mirroring `processing.WORKFLOWS` — `static-site` available,
+     `github-pages`/`netlify` registered-disabled placeholders. `site.py` (ported from
+     `build_site.py`) renders Jinja2 templates → a user-chosen **local folder** from
+     the existing derived JSON + `build_images` derivatives + journals; `select.py` is
+     the testable selection/privacy core; `images.py` reuses `build_images` for web
+     thumb/full derivatives. Per-object `publish` flag (`catalog.set_publish_flag`,
+     right-click in the Library) + journal `private` frontmatter. **Library → Publish /
+     share…** dialog (section/target/output pickers) runs on a threaded worker behind a
+     modal progress+Cancel. Optional `publish` extra (jinja2 + markdown; degrades via
+     `PublishDepsMissing`).
+   - *Deferred:* GitHub Pages / git-push deploy target, Netlify/S3/CMS targets,
+     per-list publish flags, cross-publish image-cache reuse, auto-publish on refresh.
 
 9. **Full import triage toolkit** (extends item 6's holding area). Deeper tools for
    files the header/layout classifier (6b) can't place: a **FITS header inspector**,

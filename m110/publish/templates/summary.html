@@ -1,0 +1,112 @@
+{% extends "_base.html" %}
+{% block title %}Summary · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>Summary</h1>
+
+<section>
+  <h2>Progress by Category</h2>
+  <table class="kv">
+    <thead><tr><th>Category</th><th class="num">Captured</th><th class="num">Deep Stack</th><th class="num">Total</th><th>Captured Objects</th></tr></thead>
+    <tbody>
+    {% for cat, v in summary.by_category.items() %}
+      <tr>
+        <td>{{ cat|replace('_', ' ')|title }}</td>
+        <td class="num">{{ v.captured }}</td>
+        <td class="num">{{ v.deep_stack }}</td>
+        <td class="num">{{ v.total }}</td>
+        <td class="muted">{{ v.captured_ids|join(', ') }}</td>
+      </tr>
+    {% endfor %}
+      <tr class="total">
+        <td>Total</td>
+        <td class="num">{{ summary.grand.captured }}</td>
+        <td class="num">{{ summary.grand.deep_stack }}</td>
+        <td class="num">{{ summary.grand.total }}</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+{% if 'processing' in sections %}
+<section>
+  <h2>Processing Queue</h2>
+  <div class="stat-row">
+    <div class="stat"><span class="big">{{ processing.counts.out_of_date }}</span> out of date</div>
+    <div class="stat"><span class="big">{{ processing.counts.not_processed }}</span> not processed</div>
+    <div class="stat"><span class="big">{{ processing.counts.up_to_date }}</span> up to date</div>
+  </div>
+  {% set urgent = processing.queue|rejectattr('status', 'equalto', 'up_to_date')|rejectattr('status', 'equalto', 'dismissed')|list %}
+  {% if urgent %}
+  <table class="catalog">
+    <thead>
+      <tr><th>Folder</th><th>Status</th><th class="num">Integration</th><th class="num">+ since stack</th></tr>
+    </thead>
+    <tbody>
+    {% for f in urgent[:8] %}
+      <tr>
+        <td>{% if f.slugs %}<a href="objects/{{ f.slugs[0] }}.html">{{ f.folder }}</a>{% else %}{{ f.folder }}{% endif %}</td>
+        <td><span class="badge proc-{{ f.status }}">{{ f.status|replace('_', ' ') }}</span></td>
+        <td class="num">{{ f.integration_hms }}</td>
+        <td class="num">+{{ f.new_lights_since_stack }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted"><a href="processing.html">Full processing queue →</a></p>
+  {% else %}
+  <p class="muted">All caught up. <a href="processing.html">Full processing queue →</a></p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Current Integrations</h2>
+  <table class="catalog">
+    <thead>
+      <tr><th>Object</th><th class="num">Sessions</th><th class="num">Frames</th><th class="num">Integration</th><th>Filter</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    {% for fname, t in by_folder.items()|sort(attribute='1.integration_min', reverse=true) %}
+      <tr>
+        <td>{% if t.slugs %}<a href="objects/{{ t.slugs[0] }}.html">{{ fname }}</a>{% else %}{{ fname }}{% endif %}</td>
+        <td class="num">{{ t.session_count }}</td>
+        <td class="num">{{ t.frames }}</td>
+        <td class="num">{{ t.integration_hms }}</td>
+        <td>{{ t.filters|join('/') }}</td>
+        <td><span class="badge {{ t.status }}">{{ t.status|status_label }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if priorities %}
+<section>
+  <h2>Priority Targets</h2>
+  <table class="catalog">
+    <thead>
+      <tr><th>Object</th><th class="num">Target</th><th>Progress</th></tr>
+    </thead>
+    <tbody>
+    {% for p in priorities %}
+      <tr>
+        <td>{{ p.name or p.id }}</td>
+        <td class="num">{{ p.target_integration_min or '' }}</td>
+        <td class="progress-cell">
+          {% if p.progress %}
+            <div class="bar"><div class="fill" style="width: {{ p.percent_complete|bar_pct }}%"></div></div>
+            <span class="bar-text">{{ p.progress.integration_hms }} ({{ p.percent_complete }}%)</span>
+          {% elif not p.track %}
+            <span class="muted">campaign</span>
+          {% else %}
+            <span class="muted">not started</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
