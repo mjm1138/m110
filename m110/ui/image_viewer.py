@@ -91,7 +91,7 @@ class ImageViewer(QDialog):
         self._prev.clicked.connect(self.prev)
         self._caption = QLabel()
         self._caption.setAlignment(Qt.AlignCenter)
-        self._caption.setStyleSheet("color:#8b949e")
+        self._caption.setProperty("muted", True)
         self._next = QPushButton("Next ›")
         self._next.clicked.connect(self.next)
         row.addWidget(self._prev)

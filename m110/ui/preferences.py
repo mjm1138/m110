@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QMessageBox, QGroupBox, QCheckBox,
+    QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox,
 )
 
 from m110 import config, processing
+from m110.ui import theme
 
 
 class PreferencesDialog(QDialog):
@@ -30,7 +31,7 @@ class PreferencesDialog(QDialog):
         hint = QLabel(f"Default: {config.DEFAULT_DATA_ROOT}\n"
                       "The folder is created (with a starter catalog) if it doesn't exist. "
                       "Changing it takes effect after you restart M110.")
-        hint.setStyleSheet("color:#8b949e; font-size:11px")
+        hint.setProperty("caption", True)
         lay.addWidget(hint)
 
         # ── processing-prep workflows ────────────────────────────────────────
@@ -50,6 +51,23 @@ class PreferencesDialog(QDialog):
             bl.addWidget(cb)
             self._wf_checks[w.id] = cb
         lay.addWidget(box)
+
+        # ── appearance (theme) ───────────────────────────────────────────────
+        appearance = QGroupBox("Appearance")
+        al = QHBoxLayout(appearance)
+        al.addWidget(QLabel("Theme:"))
+        self._theme_combo = QComboBox()
+        for mode, label in (("system", "Follow system"), ("light", "Light"),
+                            ("dark", "Dark")):
+            self._theme_combo.addItem(label, mode)
+        cur = config.get_setting(theme.SETTING_KEY, "system")
+        idx = self._theme_combo.findData(cur)
+        self._theme_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        # Apply live as the user changes it (no restart; mirrors the workflows).
+        self._theme_combo.currentIndexChanged.connect(
+            lambda *_: theme.set_mode(self._theme_combo.currentData()))
+        al.addWidget(self._theme_combo, 1)
+        lay.addWidget(appearance)
 
         # Goals (catalogs / custom lists) are managed on the Goals page, not here.
 

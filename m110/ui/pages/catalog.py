@@ -15,7 +15,7 @@ from m110.catalog import (
     object_label, list_bundled_catalogs,
 )
 from m110.ui.detail import DetailPane
-from m110.ui.widgets import NumItem, status_label, STATUS_COLOR, MUTED, targets_for_slug
+from m110.ui.widgets import NumItem, status_label, status_color, muted_color, targets_for_slug
 
 
 class _EnrichOneWorker(QThread):
@@ -79,7 +79,7 @@ class CatalogPage(QWidget):
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._apply_filter)
         self._stat = QLabel()
-        self._stat.setStyleSheet("color:#8b949e")
+        self._stat.setProperty("muted", True)
 
         left = QWidget()
         self._left_lay = QVBoxLayout(left)
@@ -120,6 +120,10 @@ class CatalogPage(QWidget):
         self._catalog_filter = self._catalog_combo.currentData()
         self._rebuild_table()
         self._update_stat()
+
+    def restyle(self):
+        """Theme changed — repaint table foregrounds (status/muted) from new tokens."""
+        self._rebuild_table()
 
     def reload(self):
         new_cat = load_library()
@@ -206,7 +210,7 @@ class CatalogPage(QWidget):
             table.setItem(row, 6, QTableWidgetItem(str(e.get("filter") or "")))
 
             status_item = QTableWidgetItem(status_label(t.get("status"), captured))
-            status_item.setForeground(STATUS_COLOR.get(t.get("status"), MUTED))
+            status_item.setForeground(status_color(t.get("status")) if captured else muted_color())
             table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)
@@ -217,7 +221,7 @@ class CatalogPage(QWidget):
             if not captured:
                 for c in range(len(self.HEADERS)):
                     if c != self._status_col:
-                        table.item(row, c).setForeground(MUTED)
+                        table.item(row, c).setForeground(muted_color())
 
         table.resizeColumnsToContents()
         table.setSortingEnabled(True)

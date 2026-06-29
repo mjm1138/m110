@@ -122,7 +122,7 @@ class IngestDialog(QDialog):
         lay.addLayout(src_row)
 
         self._path_lbl = QLabel()
-        self._path_lbl.setStyleSheet("color:#8b949e")
+        self._path_lbl.setProperty("muted", True)
         lay.addWidget(self._path_lbl)
 
         # One row per object/source folder, each selectable via a checkbox.

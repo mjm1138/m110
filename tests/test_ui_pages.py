@@ -417,3 +417,32 @@ def test_journal_page_card_per_captured_object(tmp_path, monkeypatch, qapp):
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+def test_catalog_status_color_follows_theme(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)                        # m31 captured → status cell colored
+    from m110.ui import theme
+    from m110.ui.pages.catalog import CatalogPage
+    mgr = theme.install(qapp)
+    page = CatalogPage()
+    try:
+        sc = page.HEADERS.index("Status")
+
+        def status_cell_color():
+            for r in range(page.table.rowCount()):
+                it = page.table.item(r, sc)
+                if it and it.text() not in ("—", ""):
+                    return it.foreground().color().name()
+            return None
+
+        mgr.set_mode("dark")
+        page.restyle()                        # repaint programmatic colors
+        dark = status_cell_color()
+        mgr.set_mode("light")
+        page.restyle()
+        light = status_cell_color()
+        assert dark and light and dark != light
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

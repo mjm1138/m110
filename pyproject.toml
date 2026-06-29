@@ -37,8 +37,9 @@ dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>
 m110 = "m110.ui.main:main"
 
 [tool.setuptools]
-packages = ["m110", "m110.ui", "m110.publish"]
+packages = ["m110", "m110.ui", "m110.ui.theme", "m110.publish"]
 
 [tool.setuptools.package-data]
 m110 = ["seed/*.toml", "seed/catalogs/*.toml", "guidance/*.md"]
 "m110.publish" = ["templates/*.html", "templates/*.css", "templates/*.js"]
+"m110.ui.theme" = ["fonts/*.ttf", "fonts/*.txt"]

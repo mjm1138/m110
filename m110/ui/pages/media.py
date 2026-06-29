@@ -101,7 +101,7 @@ class MediaPage(QWidget):
                 row = QHBoxLayout()
                 row.addWidget(QLabel(it["name"]))
                 sz = QLabel(_fmt_size(it["size_bytes"]))
-                sz.setStyleSheet("color:#8b949e")
+                sz.setProperty("muted", True)
                 row.addWidget(sz)
                 row.addStretch(1)
                 btn = QPushButton("Open")

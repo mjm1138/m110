@@ -8,13 +8,14 @@ bring back.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QPixmap, QIcon, QFontDatabase
+from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
 )
 
 from m110 import config, derived, objects, siril
+from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import status_label, targets_for_slug, make_table
 
@@ -133,7 +134,7 @@ class DetailPane(QScrollArea):
         if e.get("season"):
             bits.append(str(e["season"]))
         meta = QLabel(" · ".join(b for b in bits if b))
-        meta.setStyleSheet("color:#8b949e")
+        meta.setProperty("muted", True)
         self._lay.addWidget(meta)
 
         if captured:
@@ -167,7 +168,7 @@ class DetailPane(QScrollArea):
         if fm.get("hero_caption"):
             cap = QLabel(fm["hero_caption"])
             cap.setWordWrap(True)
-            cap.setStyleSheet("color:#8b949e; font-size:11px")
+            cap.setProperty("caption", True)
             self._lay.addWidget(cap)
 
         header = QHBoxLayout()
@@ -186,13 +187,14 @@ class DetailPane(QScrollArea):
             self._lay.addWidget(tb)
         else:
             empty = QLabel("<i>No notes yet — click Edit to start.</i>")
-            empty.setStyleSheet("color:#8b949e")
+            empty.setProperty("muted", True)
             self._lay.addWidget(empty)
 
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
-            self._lay.addWidget(QLabel(f"<b>Gallery</b> ({len(imgs)}) — "
-                                       "<span style='color:#8b949e'>double-click to view</span>"))
+            self._lay.addWidget(QLabel(
+                f"<b>Gallery</b> ({len(imgs)}) — <span style='color:"
+                f"{theme.active_tokens().text_secondary}'>double-click to view</span>"))
             gallery = QListWidget()
             gallery.setViewMode(QListWidget.IconMode)
             gallery.setIconSize(QSize(160, 160))
@@ -317,7 +319,7 @@ class DetailPane(QScrollArea):
         lbl = QLabel(body)
         lbl.setTextFormat(Qt.RichText)
         lbl.setWordWrap(True)
-        lbl.setStyleSheet("color:#8b949e")
+        lbl.setProperty("muted", True)
         self._lay.addWidget(lbl)
 
     def _open_gallery_item(self, item):
@@ -342,7 +344,7 @@ class DetailPane(QScrollArea):
 
         self._editor = QPlainTextEdit()
         self._editor.setPlainText(objects.read_journal_text(slug))
-        self._editor.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self._editor.setFont(theme.mono_font())
         self._editor.setMinimumHeight(360)
         self._editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)   # wrap to pane width
         self._lay.addWidget(self._editor)
@@ -350,7 +352,7 @@ class DetailPane(QScrollArea):
         hint = QLabel("Frontmatter between the <code>---</code> fences feeds the "
                       "gallery (name / hero_caption / hero); everything below is Markdown.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#8b949e; font-size:11px")
+        hint.setProperty("caption", True)
         self._lay.addWidget(hint)
 
         buttons = QHBoxLayout()

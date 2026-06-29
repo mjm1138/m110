@@ -143,7 +143,7 @@ class JournalPage(QWidget):
                 if totals.get("last_capture") else "",
             ]))
             sl = QLabel(stats)
-            sl.setStyleSheet("color: gray;")
+            sl.setProperty("muted", True)
             right.addWidget(sl)
 
         _, raw_body = objects.read_journal(slug)

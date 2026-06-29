@@ -100,7 +100,7 @@ class ProcessingDialog(QDialog):
 
         lay = QVBoxLayout(self)
         self._path_lbl = QLabel()
-        self._path_lbl.setStyleSheet("color:#8b949e")
+        self._path_lbl.setProperty("muted", True)
         self._path_lbl.setWordWrap(True)
         lay.addWidget(self._path_lbl)
 

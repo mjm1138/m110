@@ -69,7 +69,7 @@ class AddObjectDialog(QDialog):
         lay.addLayout(form)
 
         self._status = QLabel("")
-        self._status.setStyleSheet("color:#8b949e")
+        self._status.setProperty("muted", True)
         lay.addWidget(self._status)
 
         # Buttons.

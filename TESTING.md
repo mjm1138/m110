@@ -131,6 +131,18 @@ re-run when its area changes and you want eyes on the visuals).
       relaunch reads the new folder.
 - [ ] `M110_DATA_ROOT` env var overrides the saved preference.
 
+### A2. Appearance / theme (UI Phase 0)  ⚙ *(tokens/qss/manager/restyle automated — `test_theme_*.py`)*
+- [ ] **Preferences → Appearance → Theme**: switch **Light / Dark / Follow system** →
+      the whole app (tables, nav rail, menus, dialogs, status chips, muted labels,
+      scrollbars) restyles **live** (no restart); status colors + muted text stay legible
+      in both.
+- [ ] With **Follow system**, flip the OS appearance (macOS System Settings →
+      Appearance) → M110 tracks it — immediately on Qt ≥ 6.8, on next window focus on 6.6.
+- [ ] The Publish / Import / Ingest dialogs + the fullscreen image viewer inherit the
+      theme (global stylesheet).
+- [ ] The journal editor (object **Notes → Edit**) uses the bundled **JetBrains Mono**.
+- [ ] Chosen theme **persists** across relaunch (`ui_theme` in `~/.m110/settings.json`).
+
 ### B. Library  ⚙ *(natural sort, status colours, gallery presence automated — `test_ui_*.py` / `test_catalog.py`)*
 - [ ] The Library (5d) is the **captured/annotated collection** — a fresh root
       starts **empty** and grows by ingest / Add-object; the stat row reads

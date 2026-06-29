@@ -61,8 +61,20 @@ file owns *look & feel*.
 
 ## Phases
 
-### Phase 0 — Design tokens + theming foundation  *(the design system)*
-The de-risking foundation everything else builds on.
+### Phase 0 — Design tokens + theming foundation  *(the design system)* — **done 2026-06-29**
+The de-risking foundation everything else builds on. **Shipped:** `m110/ui/theme/`
+(`tokens` light+dark semantic palette + scales · `qss.build_qss` · `manager.ThemeManager`
+follow-system + manual override + live re-apply · `fonts` bundled **JetBrains Mono** +
+`mono_font()` · façade `install/set_mode/active_tokens/status_color/muted_color`).
+Installed in `main()`; **Preferences → Appearance** (System/Light/Dark, live);
+`widgets.py` status/muted colors + the ~15 inline `#8b949e` labels migrated to tokens
+(`QLabel[muted="true"]`/`[caption="true"]`); journal editor uses the bundled mono. Tests:
+`test_theme_{tokens,qss,manager,fonts}.py` + a catalog restyle check (299 pass).
+**Decisions resolved:** accent = neutral desaturated blue token (brand swap-point);
+mono = JetBrains Mono (OFL, bundled); Qt floor stays **6.6** with feature-detected
+`colorSchemeChanged` + focus-in fallback for follow-system.
+
+Original scope (as built):
 - **`theme/tokens.py`** — semantic tokens with **light + dark** values: surfaces
   (window/surface/raised), text (primary/secondary/disabled), `accent` (neutral for
   now), borders/dividers, **status colors** (deep-stack / initial / none / processing

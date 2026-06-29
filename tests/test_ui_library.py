@@ -17,16 +17,21 @@ def _png(path, color=(40, 80, 160)):
     Image.new("RGB", (200, 120), color).save(path)
 
 
-# ── status label + colours (widgets.status_label / STATUS_COLOR) ─────────────
+# ── status label + colours (widgets.status_label / theme status_color) ───────
 
 def test_status_label_and_colours():
     from m110.ui import widgets
+    from m110.ui.theme import tokens
     assert widgets.status_label("deep_stack", True) == "Deep Stack"
     assert widgets.status_label("initial", True) == "Initial"
     assert widgets.status_label("deep_stack", False) == "—"      # uncaptured → muted dash
     assert widgets.status_label(None, True) == "—"
-    assert widgets.STATUS_COLOR["deep_stack"].name() == "#3fb950"  # green
-    assert widgets.STATUS_COLOR["initial"].name() == "#d29922"     # amber
+    # status_color now follows the active theme palette
+    tokens.set_active(tokens.DARK)
+    assert widgets.status_color("deep_stack").name() == tokens.DARK.status_deep
+    tokens.set_active(tokens.LIGHT)
+    assert widgets.status_color("deep_stack").name() == tokens.LIGHT.status_deep
+    assert widgets.status_color("initial").name() == tokens.LIGHT.status_initial
 
 
 def test_numitem_sorts_by_key_not_lexically():

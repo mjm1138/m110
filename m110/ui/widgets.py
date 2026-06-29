@@ -1,14 +1,12 @@
 """Shared UI helpers used across the Library pages."""
 from __future__ import annotations
 
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from m110 import derived
+from m110.ui.theme import muted_color, status_color  # theme-driven (re-exported)
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
-STATUS_COLOR = {"deep_stack": QColor("#3fb950"), "initial": QColor("#d29922")}
-MUTED = QColor("#8b949e")
 
 
 def status_label(status: str | None, captured: bool) -> str:

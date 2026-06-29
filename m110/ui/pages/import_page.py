@@ -67,7 +67,7 @@ class ImportPage(QWidget):
         tv.addLayout(src_row)
 
         self._path_lbl = QLabel()
-        self._path_lbl.setStyleSheet("color:#8b949e")
+        self._path_lbl.setProperty("muted", True)
         tv.addWidget(self._path_lbl)
 
         self.table = QTableWidget(0, 7)
@@ -265,7 +265,7 @@ class ImportPage(QWidget):
         box = QGroupBox("Holding area")
         v = QVBoxLayout(box)
         self._holding_header = QLabel()
-        self._holding_header.setStyleSheet("color:#8b949e")
+        self._holding_header.setProperty("muted", True)
         v.addWidget(self._holding_header)
         self.holding_table = QTableWidget(0, 6)
         self.holding_table.setHorizontalHeaderLabels(

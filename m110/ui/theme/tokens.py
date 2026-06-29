@@ -1,0 +1,95 @@
+"""Design tokens — the single source of truth for color, spacing, type.
+
+Semantic **roles** (not raw colors), with a light + dark instance. Everything in
+`m110/ui/` pulls color/spacing from here (via `theme` / QSS) rather than hardcoding,
+so the app stays coherent across themes and a future brand accent is a one-line swap.
+
+The currently-applied palette is a module global (`active()` / `set_active`) so
+programmatic call sites (e.g. table-item foreground, which QSS can't reach) read the
+same source the stylesheet does.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, fields
+
+# ── scales (plain constants; px) ──────────────────────────────────────────────
+SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32}
+RADIUS = {"sm": 4, "md": 6, "lg": 10}
+FONT_SIZE = {"caption": 11, "small": 12, "body": 13, "section": 15, "title": 20}
+
+
+@dataclass(frozen=True)
+class Tokens:
+    name: str                 # "light" | "dark"
+    # surfaces
+    window: str
+    surface: str
+    surface_alt: str          # alternating rows / subtle fills
+    raised: str               # menus / popups / tooltips
+    # lines
+    border: str
+    divider: str
+    # text
+    text_primary: str
+    text_secondary: str       # = muted
+    text_disabled: str
+    # accent
+    accent: str
+    accent_text: str          # on-accent foreground
+    accent_hover: str
+    # selection / focus
+    selection_bg: str
+    selection_text: str
+    focus_ring: str
+    # status (capture)
+    status_deep: str
+    status_initial: str
+    # spare semantic set (processing states map onto these later)
+    ok: str
+    warn: str
+    danger: str
+    neutral: str
+
+    @property
+    def is_dark(self) -> bool:
+        return self.name == "dark"
+
+
+LIGHT = Tokens(
+    name="light",
+    window="#f5f6f7", surface="#ffffff", surface_alt="#f0f1f3", raised="#ffffff",
+    border="#d8dbdf", divider="#e3e5e8",
+    text_primary="#1c1e21", text_secondary="#6b7077", text_disabled="#a0a4a9",
+    accent="#2f6fd0", accent_text="#ffffff", accent_hover="#285fb4",
+    selection_bg="#d7e6fb", selection_text="#1c1e21", focus_ring="#2f6fd0",
+    status_deep="#2f9e44", status_initial="#b9770a",
+    ok="#2f9e44", warn="#b9770a", danger="#c33b3b", neutral="#6b7077",
+)
+
+DARK = Tokens(
+    name="dark",
+    window="#1e1f22", surface="#26282c", surface_alt="#2b2e33", raised="#303338",
+    border="#3a3d42", divider="#34373c",
+    text_primary="#e6e7e9", text_secondary="#9aa0a6", text_disabled="#6b7077",
+    accent="#5a93e6", accent_text="#ffffff", accent_hover="#6ea2ee",
+    selection_bg="#34465e", selection_text="#e6e7e9", focus_ring="#5a93e6",
+    status_deep="#3fb950", status_initial="#d29922",
+    ok="#3fb950", warn="#d29922", danger="#e5534b", neutral="#9aa0a6",
+)
+
+THEMES = {"light": LIGHT, "dark": DARK}
+
+# Roles a complete Tokens must define (used by tests to catch a missing field).
+ROLE_FIELDS = [f.name for f in fields(Tokens) if f.name != "name"]
+
+_active: Tokens = LIGHT
+
+
+def active() -> Tokens:
+    """The currently-applied palette (defaults to LIGHT until a theme is installed)."""
+    return _active
+
+
+def set_active(tokens: Tokens) -> None:
+    global _active
+    _active = tokens

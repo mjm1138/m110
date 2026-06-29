@@ -29,6 +29,7 @@ from m110.ui.pages.sessions import SessionsPage
 from m110.ui.pages.journal import JournalPage
 from m110.ui.pages.media import MediaPage
 from m110.ui.pages.import_page import ImportPage
+from m110.ui import theme
 
 
 class RefreshWorker(QThread):
@@ -139,6 +140,10 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self._stop_worker)
+
+        # Theme: repaint programmatic (non-QSS) colors when the palette changes.
+        if theme.manager() is not None:
+            theme.manager().changed.connect(self._restyle_pages)
 
         # Toolbar + menu (global).
         toolbar = self.addToolBar("Main")
@@ -314,10 +319,21 @@ class MainWindow(QMainWindow):
     # ---- auto-sync ----
     def changeEvent(self, event):
         super().changeEvent(event)
-        if (event.type() == QEvent.ActivationChange and self.isActiveWindow()
-                and self._ready and not self._refreshing
-                and time.monotonic() - self._last_refresh > 2.0):
-            self._do_refresh()
+        if event.type() == QEvent.ActivationChange and self.isActiveWindow():
+            # Fallback for Qt < 6.8 (no colorSchemeChanged signal): re-check the OS
+            # appearance on focus-in so "follow system" still tracks a theme flip.
+            if theme.manager() is not None:
+                theme.manager().refresh_system()
+            if (self._ready and not self._refreshing
+                    and time.monotonic() - self._last_refresh > 2.0):
+                self._do_refresh()
+
+    def _restyle_pages(self):
+        """Theme changed — re-apply programmatic colors QSS can't reach (table-item
+        status/muted foregrounds). QSS-styled widgets repaint themselves."""
+        for p in self.pages:
+            if hasattr(p, "restyle"):
+                p.restyle()
 
     def _do_refresh(self):
         if not self._ready or self._refreshing or self.catalog.is_editing():
@@ -372,6 +388,8 @@ class MainWindow(QMainWindow):
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("M110")
+    app.setOrganizationName("M110")
+    theme.install(app)                  # design-system: tokens → QSS, follow system
     config.ensure_data_root()
     win = MainWindow()
     win.show()
