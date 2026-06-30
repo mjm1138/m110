@@ -46,10 +46,9 @@ archived in **[`DONE.md`](DONE.md)**.
 > (tokens + hand-rolled QSS, light/dark follow-system, Library list/grid, thumbnails
 > everywhere, upgraded viewer). Cross-cuts the pages below.
 
-0. **Site-parity multi-page UI** *(done)* — nav rail + stacked pages (Summary ·
-   Catalog · Processing · Sessions · Journal · Media), Summary as the landing page,
-   one shared Object detail reachable from every object link. Plus the Media page
-   (BUGS #11). Details in **[`DONE.md`](DONE.md)**.
+0. **Site-parity multi-page UI** *(done)* — nav rail + stacked pages, Summary as the
+   landing page, one shared Object detail, plus the Media page (BUGS #11). Details in
+   **[`DONE.md`](DONE.md)**.
 
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
@@ -238,96 +237,32 @@ archived in **[`DONE.md`](DONE.md)**.
    engine," not a bespoke agent framework.
 
 5. **Library, catalogs & goals — multi-list tracking + arbitrary objects** *(done; catalog library still growing)*.
-   Four concepts shipped — **Object** (intrinsic reference data; season derived),
-   **Catalog/List** (bundled, immutable membership sets), **Goal** (a catalog being
-   actively pursued, with progress), **Library** (the user's mutable corpus =
-   captured/annotated collection). Phases 5a–5d landed: per-store `library.toml`,
-   the bundled object reference + catalog lists, the Goals nav page (select/create/
-   edit custom goals), reference + online (Simbad) enrichment, and the
-   Library-=-collection reframe. **Six catalogs ship** (Messier, Caldwell, RASC
-   Finest, Best-of-Sharpless, Bennett, Lacaille). Full detail in **[`DONE.md`](DONE.md)**.
-   *Remaining (growth, not blocking):* more bundled catalogs from
-   `next_catalog_lists.md` — **Herschel 400**, **Arp**, **Lunar 100**, AL Double Star
+   Four concepts shipped — **Object** / **Catalog/List** / **Goal** / **Library** (the
+   user's mutable corpus = captured/annotated collection). Phases 5a–5d landed (per-store
+   `library.toml`, bundled reference + catalog lists, the Goals nav page with custom
+   goals, Simbad enrichment, the Library-=-collection reframe). **Six catalogs ship**
+   (Messier, Caldwell, RASC Finest, Best-of-Sharpless, Bennett, Lacaille). Full detail
+   in **[`DONE.md`](DONE.md)**. *Remaining (growth, not blocking):* more bundled catalogs
+   from `next_catalog_lists.md` — **Herschel 400**, **Arp**, **Lunar 100**, AL Double Star
    (data-generation in `tools/gen_catalogs.py`).
 
 6. **Import — robust, layout-flexible, multi-source** *(6a–6c done 2026-06-26/27;
-   6d deferred)* (BUGS **#16**; ingest →
-   *Import*). Today's ingest is fixed to two special-cased sources (the `Inbox/`
-   staging area it *moves* from, a mounted Seestar `MyWorks` it *copies* from) and
-   classifies purely by **folder-name convention** (`<obj>_sub/` → lights, `<obj>/`
-   of `Stacked_*` → seestar-stacks, `*_photo`/`*_video` → media); a one-level scan
-   that **silently ignores** anything else (a flat FITS pile, a ZWO ASIAIR tree, an
-   arbitrary directory, calibration frames). The "Lightroom for smart telescopes"
-   target: **point the importer at any directory**, recurse, recognize the source,
-   classify by **FITS header**, present the familiar select/deselect preview, and
-   give unrecognized files a **holding area + manual assign** instead of dropping
-   them. **Copy** by default (leave the source alone), preserving original filenames.
+   6d deferred)* (BUGS **#16**). Point the importer at **any directory**, recurse,
+   recognize the source, classify by **FITS header**, preview/select/confirm, and route
+   unrecognized files to a **holding area + manual assign** — **copy** by default
+   (source untouched). **6a–6c shipped** (Import nav page + any-directory recursive scan;
+   header-based classification + the `ingest.LAYOUTS` registry; the holding area) —
+   full detail in **[`DONE.md`](DONE.md)**.
 
-   **Decided** (2026-06-26): rename **Ingest → Import** (user-facing strings, nav,
-   menu/shortcut; engine module `ingest.py` keeps its internal names). Promote to a
-   **top-level Import nav page**. The special-cased Inbox/Seestar *sources* go away —
-   they're just directories you browse to (a **directory chooser + Favorites/Recent
-   places** makes `/Volumes/Seestar`, `~/Astronomy/Images` one click); `Inbox/` is
-   repurposed on-disk as the **holding area / import queue**. **Lazy
-   device-under-target** for source differentiation (see [`DATA_MODEL.md`](DATA_MODEL.md)):
-   flat `Images/<target>/` stays the implicit **default device**, the
-   `Images/<target>/<device>/` level appears only when a 2nd device shows up — no
-   forced migration. Phases:
+   - **6d — Lazy device-under-target + source differentiation** *(open, deferred)*.
+     Record device/source per session; introduce the optional `Images/<target>/<device>/`
+     path level only when a **2nd device** appears (flat = default device). A device
+     registry keyed to planning device-profiles (`planning_config.load_device`). This is
+     the phase that bumps `.store_version` + adds a `migrate.py` step — defer until a real
+     2nd device exists. See [`DATA_MODEL.md`](DATA_MODEL.md).
 
-   - **6a — Import view + any-directory source** *(done 2026-06-26)*. Top-level
-     **Import** nav page (the old modal Ingest dialog superseded; `Ctrl+I`/toolbar
-     repointed to it). Directory chooser + **Favorites/Recent places** (the
-     special-cased Inbox/Seestar source entries removed; recents persist in settings,
-     a mounted Seestar + the Inbox auto-appear). **Recursive** `ingest.scan_directory_plan`
-     walks an arbitrary tree (Seestar-shaped folders found at any depth). Always
-     **copy** (source untouched), preserving filenames, with content-aware **collision
-     handling** in `apply_ops` — on a dest name clash a **checksum/size** compare →
-     *duplicate*→skip vs. *distinct*→minimal `_N` suffix (replaces skip-by-name-only;
-     header compare wasn't needed). Preview/select/confirm + pointing-remap unchanged.
-     Classification is still **folder-name** based — header-based sorting is 6b.
-   - **6b — Header-based classification + layout registry** *(done 2026-06-27)*.
-     Classification now reads the FITS header (`ingest.frame_info` →
-     OBJECT/IMAGETYP/FILTER/RA/DEC, header-only via `fits.getheader`) so unstructured
-     dumps sort and **calibration frames** (`IMAGETYP=DARK/FLAT/BIAS`, folded from
-     ZWO/INDI variants by `_normalize_imagetyp`) route to `darks/`/`flats/`/`biases/`
-     (new `config.{darks,flats,biases}_dir`). New op **kinds** `dark`/`flat`/`bias`/
-     `siril-stack`/`finished` join `light`/`stack`/`media`; **header wins** over folder
-     name (a stray DARK in `_sub` → `darks/`). A **layout-recognizer registry**
-     (`ingest.LAYOUTS`, mirrors `processing.py`'s workflow registry) names the detected
-     source per group — **seestar** (folder conventions), **m110-store** (the
-     `~/Astronomy/Images` precursor: `FITS/<obj>/{lights,darks,…,stacks}`, `Finished
-     Images/<obj>`, `Seestar_stacks/<obj>`; `process/`+`siril/` sandboxes skipped),
-     **raw-fits** (loose FITS header-sorted), **finished-render** (a loose
-     `*_processed/final/finished` raster in an object folder → that object's
-     `finished/`), and **asiair** (registered-disabled
-     placeholder). The app's own `Images/` content tree is never re-imported into
-     itself (`_in_own_store`). The Import preview shows the kind + detected layout
-     (tooltip). Pairs with #12's pointing logic (`frame_radec`).
-   - **6c — Holding area + manual assign** *(done 2026-06-27)*. **Nothing is silently
-     ignored:** `_classify_dir` now **sweeps** every unclaimed content file (headerless
-     FITS, stray images/video — junk/hidden/`*_thn.` excluded via `_is_content_file`)
-     into the repurposed `Inbox/` **holding area** as `kind="unassigned"` ops. The
-     Import view gained an always-visible **Holding area panel** (a vertical splitter
-     below the scan preview) listing held files grouped per source folder with an
-     editable **Object** dropdown + a **Kind** dropdown (`ASSIGNABLE_KINDS`) + **Assign**;
-     `ingest.assign(group, object, kind)` rebuilds the group as **move** ops and
-     `apply_ops` moves them out of `Inbox/` into the content tree (`Images/<obj>/<kind>`
-     or `Media/`), with the same alias-learning prompt (`ingest.add_alias`). Engine
-     adds `scan_holding`/`holding_count`/`assign`; `Inbox/` is no longer a user-facing
-     *source*. Off-catalog assigns just create `Images/<obj>/…` (the refresh
-     auto-adds them to the Library).
-   - **6d — Lazy device-under-target + source differentiation.** Record device/source
-     per session; introduce the optional `Images/<target>/<device>/` path level only
-     when a 2nd device appears (flat = default device). A **device registry** keyed to
-     planning device-profiles (`planning_config.load_device` is the existing seam).
-     This is the phase that bumps `.store_version` + adds a `migrate.py` step — defer
-     until a real 2nd device exists.
-
-   Foundational for everything multi-scope; 6a–6c have no hard gate (build on #12
-   pointing, #9/#10 grouped+selectable preview, the two-axis store). The **full import
-   triage toolkit** — FITS header inspector, in-app viewer/annotator for headerless
-   files, plate-solving — is deferred to its own later item (pulls in a solver
-   dependency).
+   The **full import triage toolkit** (FITS header inspector, viewer/annotator,
+   plate-solving) is split out as **item 9** (pulls in a solver dependency).
 
 7. **Processing & curation UX** (BUGS **#17/#18/#19**). Generalize processing-prep
    past one user's habits and add curation:
@@ -357,19 +292,12 @@ archived in **[`DONE.md`](DONE.md)**.
    renders selected derived data + journals + renders into the chosen artifact; the
    UI just picks sections + target + triggers it.
 
-   - **8a — Static-site export + registry** *(done 2026-06-29)*. New Qt-free
-     `m110/publish/` package: a publisher **registry** (`PUBLISHERS`, `run_publish`,
-     `enabled_target_ids`) mirroring `processing.WORKFLOWS` — `static-site` available,
-     `github-pages`/`netlify` registered-disabled placeholders. `site.py` (ported from
-     `build_site.py`) renders Jinja2 templates → a user-chosen **local folder** from
-     the existing derived JSON + `build_images` derivatives + journals; `select.py` is
-     the testable selection/privacy core; `images.py` reuses `build_images` for web
-     thumb/full derivatives. Per-object `publish` flag (`catalog.set_publish_flag`,
-     right-click in the Library) + journal `private` frontmatter. **Library → Publish /
-     share…** dialog (section/target/output pickers) runs on a threaded worker behind a
-     modal progress+Cancel. Optional `publish` extra (jinja2 + markdown; degrades via
-     `PublishDepsMissing`).
-   - *Deferred:* GitHub Pages / git-push deploy target, Netlify/S3/CMS targets,
+   - **8a — Static-site export + registry** *(done 2026-06-29)*. Qt-free `m110/publish/`
+     package: a publisher **registry** mirroring `processing.WORKFLOWS` (`static-site`
+     available; `github-pages`/`netlify` placeholders), a Jinja2 site renderer, the
+     testable selection/privacy core, per-object `publish` flag + journal `private`, and
+     a **Library → Publish / share…** dialog. Detail in **[`DONE.md`](DONE.md)**.
+   - *Deferred (BUGS #27):* GitHub Pages / git-push deploy, Netlify/S3/CMS targets,
      per-list publish flags, cross-publish image-cache reuse, auto-publish on refresh.
 
 9. **Full import triage toolkit** (extends item 6's holding area). Deeper tools for

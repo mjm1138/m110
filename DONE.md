@@ -135,3 +135,130 @@ ROADMAP slot so cross-references (`item 5`, `item 0`, …) still resolve.
      (`catalog.remove_library_entry`; non-destructive).
    - **Resolved:** annotated-but-uncaptured targets live in the **Library**.
    - Goal management moved **fully to the Goals page** (removed from Preferences).
+
+---
+
+## Later phase 6 — Import, robust/layout-flexible *(6a–6c done 2026-06-26/27)*
+
+Ingest renamed **Import** + promoted to a top-level nav page; **6d** (lazy
+device-under-target) is still open in [`ROADMAP.md`](ROADMAP.md) item 6.
+
+- **6a — Import view + any-directory source.** Directory chooser + Favorites/Recent
+  places (Seestar + Inbox auto-appear); **recursive** `ingest.scan_directory_plan`
+  walks an arbitrary tree; always **copy** (source untouched), preserving filenames,
+  with content-aware **collision handling** (`apply_ops`: checksum/size → duplicate-skip
+  vs. distinct `_N` suffix). The old modal Ingest dialog superseded (`Ctrl+I` repointed).
+- **6b — Header-based classification + layout registry.** Classifies by FITS header
+  (`ingest.frame_info` → OBJECT/IMAGETYP/FILTER/RA/DEC); calibration frames route to
+  `darks/`/`flats/`/`biases/`; **header wins over folder name**. The **layout registry**
+  (`ingest.LAYOUTS`, mirrors `processing.WORKFLOWS`) names the detected source per group:
+  **seestar**, **m110-store** (the `~/Astronomy/Images` precursor; `process/`+`siril/`
+  skipped), **raw-fits**, **finished-render** (a loose `*_processed/final/finished`
+  raster → the object's `finished/`), **asiair** (disabled placeholder). The app's own
+  `Images/` is never re-imported (`_in_own_store`).
+- **6c — Holding area + manual assign.** Nothing is silently ignored: `_classify_dir`
+  **sweeps** every unclaimed content file into the `Inbox/` holding area
+  (`kind="unassigned"`), surfaced in an always-visible **Holding area panel** with
+  per-folder Object+Kind **Assign** (`ingest.scan_holding`/`assign` → move into the
+  content tree; alias learning). `Inbox/` is no longer a user-facing source.
+
+---
+
+## Later phase 8 — Publishing, static-site export *(8a done 2026-06-29)*
+
+New Qt-free `m110/publish/` package — a publisher **registry** (`PUBLISHERS`,
+`run_publish`, `enabled_target_ids`) mirroring `processing.WORKFLOWS`: `static-site`
+available, `github-pages`/`netlify` registered-disabled. `site.py` (ported from the
+Astronomy `build_site.py`) renders Jinja2 templates → a user-chosen **local folder**
+from the derived JSON + `build_images` derivatives + journals; `select.py` =
+testable selection/privacy; `images.py` reuses `build_images`. Per-object `publish`
+flag (`catalog.set_publish_flag`, Library right-click) + journal `private` frontmatter.
+**Library → Publish / share…** dialog (sections/target/output) on a threaded worker.
+Optional `publish` extra (jinja2 + markdown; degrades via `PublishDepsMissing`).
+*Deferred follow-ups (BUGS #27):* GitHub Pages deploy, Netlify/S3/CMS targets, per-list
+flags, cross-publish cache reuse, auto-publish.
+
+---
+
+## UI design system — Phase 0 + Phase 1 *(done 2026-06-29/30)*
+
+Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
+- **Phase 0 — tokens + theming.** `m110/ui/theme/` = `tokens` (light+dark semantic
+  palette + spacing/type scales), `qss.build_qss`, `manager.ThemeManager` (follow OS
+  appearance + manual `ui_theme` override + live re-apply), `fonts` (bundled JetBrains
+  Mono). Installed in `main()`; **Preferences → Appearance**. Migrated all hardcoded
+  status/muted colors onto tokens.
+- **Phase 1 — restyle surfaces.** Status **pill chips** (sort-safe delegate),
+  alternating rows, **tabular numerals** (mono numeric columns), uniform page padding,
+  nav-rail polish, DetailPane status pill, dialog spacing. Removed the redundant Import
+  toolbar button. **Live-store test seal** (`tests/conftest.py`) so no test can read/
+  write the real `~/Documents/M110`.
+
+---
+
+## Fixed bugs & shipped improvements *(archive)*
+
+Concise log; full root-cause writeups are in git history. Lessons that constrain
+future work live in `CLAUDE.md` "Gotchas / lessons learned".
+
+**Data store**
+- **#13 — Two-axis store (architectural).** Split the data root into `Objects/`
+  (catalog-object axis) + `Images/` (capture-target axis), with all machine state in a
+  hidden `.m110_internal_data/` — because objects and capture targets are many-to-many.
+  In-place, idempotent, version-stamped migration (`migrate.py`, `migrate_store`); landed
+  before 0.1e/0.1f. `scan_sessions`/`build_derived` read `config.*` dynamically.
+- **#14 — Orphan-render pruning.** `render_images` now unlinks `renders/<hash>.jpg`
+  thumbnails + `hero/<slug>.jpg` heroes the manifest no longer references (full renders
+  only; returns a `pruned` count) — the cache no longer grows when a source reprocesses.
+- **#20 — Data Model documented** → canonical [`DATA_MODEL.md`](DATA_MODEL.md).
+- **M42_mosaic / `library.toml` corruption** — duplicate `[catalog.<slug>]` blocks
+  (from concurrent leaked test refreshes, now sealed) bricked the app. Hardened:
+  `_append_library_entries` never writes a duplicate slug; `load_library` self-heals a
+  duplicate-block file.
+
+**Import / ingest**
+- **#9 — Group preview by object** (Object · Files · Size · → dest); ops carry `size_bytes`.
+- **#10 — Per-object import checkboxes** (select all/none; live size total).
+- **#11 — Media page** displays non-catalog `Media/` (photo viewer + video open).
+- **#12 — Name canonicalization + RA/Dec pointing check** (alias table; `⚠ → M82?` remap).
+- **#15 — Working folders self-heal on refresh** (`processing.prepare_missing`).
+- **#22 — Siril autoprep race** (`SameFileError`): `_link_or_copy` idempotent;
+  `_do_refresh` skips while Import is busy.
+- **Recursive-import grouping** — `group_ops` keyed on the resolved object, not the bare
+  folder name (a precursor store's per-object `lights/` no longer collapse into one row).
+- **Loose finished render → holding** — new `finished-render` recognizer routes a loose
+  `*_processed` raster to the object's `finished/`.
+- **Copy modal** didn't close / crash-on-cancel / "Copying files…" label + progress bar.
+- **Holding area** (#63–66): filenames on hover; Assign-button legibility; selections
+  survive a focus/modal refresh; a just-imported object lists in the dropdown; the
+  summary line wraps instead of forcing window width.
+
+**Catalog / Library**
+- **#23 — Messier 108/110 → 110/110** (hand-authored M40 + M73, which don't resolve in Simbad).
+- **#24 — Goals page redundant label** "M51 (m51)" → "M51".
+- **Season-column sort** by first month (Jan→Dec; Year-round last).
+
+**Detail view / processing**
+- **No images for FITS-only stacks** — thumbnails/heroes now render from FITS (percentile
+  stretch); ingest also copies device preview JPGs.
+- **NGC 6992 finished work not picked up** — `siril._classify` was vetoing pipeline-step
+  tokens (`_spcc_processed`); only star layers (`starless`/`starmask`) veto now.
+- **Detail pane:** gallery un-truncated + click-to-view (`ImageViewer`), hero scales to
+  pane (`ScalableImage`), journal renders Markdown wrapped to width, Object-Notes edit
+  re-renders the Journal feed + wraps at width, stale-button crash + over-large viewer fixed.
+- **Preferences** is a live panel (workflows persist on toggle, theme live, single
+  **Close** button; no redundant "saved" modal).
+
+---
+
+## Design notes & feedback (historical)
+
+Brainstorm that drove the import improvements above (kept for rationale):
+
+- **#9 group-by-object** was the keystone — the per-frame table was slow
+  (1,500+ items over SMB), unreadable, and worsened modal churn; `stat()` for sizes
+  must stay on the scan worker. **#10 select-to-import** pairs naturally. **#11
+  "display everything"** needed a new surface → the Media page.
+- **Resumability** is already good (skip-if-present + atomic temp+rename), so a
+  cancelled/failed import just re-runs — worth surfacing in the UI (see the open
+  "surface skipped files" backlog item).
