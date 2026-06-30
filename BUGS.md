@@ -45,7 +45,7 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 - [x] **BUG**: **Text doesn’t wrap at view width in the “Editing Journal” view** (edit window showed a horizontal scroll bar). *Done — the Object Notes editor uses `QPlainTextEdit.WidgetWidth` wrap instead of `NoWrap`.*
 - [ ] Import: Folder scanner does not recurse well (~/Astronomy/Images/FITS selected as the directory. Produces very inconsistent results)
 - [ ] Import: M42_mosaic problem and no method to fix it
-- [ ] “inbox” holding area: at least list the filenames so I can guess at file type
+- [ ] “inbox” holding area: at least list the filenames so I can guess at file type (I know there’s a backlog item for tools here)
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
