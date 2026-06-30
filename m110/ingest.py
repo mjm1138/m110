@@ -685,19 +685,24 @@ def _object_label(op: IngestOp) -> str:
 
 
 def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
-    """Aggregate a flat op list into one IngestGroup per (source folder, kind) — the
-    unit the preview shows and the user selects. Keying on kind lets a header-sorted
-    pile split into separate lights/darks/… rows. Order: objects A→Z, media last."""
+    """Aggregate a flat op list into one IngestGroup per (object, kind) — the unit
+    the preview shows and the user selects. Keying on the **resolved object** (not the
+    bare source-folder name) is essential for a recursive import (6a): a precursor
+    store has a `lights/` (and `stacks/`) folder under *every* object, so keying on the
+    folder name collapsed M51/lights + "M81 M82"/lights + … into one bogus row.
+    Unassigned/holding ops carry no object, so they fall back to their source folder
+    (keeps the holding area per-folder). Order: objects A→Z, media last."""
     by_group: dict[tuple, list[IngestOp]] = {}
     for op in ops:
-        by_group.setdefault((op.group, op.kind), []).append(op)
+        key = (op.object or str(Path(op.src).parent), op.kind)
+        by_group.setdefault(key, []).append(op)
 
     groups: list[IngestGroup] = []
-    for (name, kind), gops in by_group.items():
+    for (_key, kind), gops in by_group.items():
         # destination dir = parent of the first op's destination
         dest_dir = str(Path(gops[0].dest_rel).parent)
         groups.append(IngestGroup(
-            group=name,
+            group=gops[0].group,        # display label = source folder name (not the key)
             object=_object_label(gops[0]),
             kind=kind,
             frames=len(gops),

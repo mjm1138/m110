@@ -43,9 +43,9 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   
 - [x] **BUG**: **Edit object journal entry should trigger refresh in Journal view**. If I add notes to an object and return to the Journal view, the new content doesn’t appear until I do a manual refresh. *Done — saving Object Notes emits `DetailPane.saved` → `CatalogPage.notes_saved` → the shell reloads the other views (lightweight, no scan/derive/render). `test_ui_pages.test_object_notes_edit_wraps_and_signals_reload` + `test_catalog_page_reemits_notes_saved`.*
 - [x] **BUG**: **Text doesn’t wrap at view width in the “Editing Journal” view** (edit window showed a horizontal scroll bar). *Done — the Object Notes editor uses `QPlainTextEdit.WidgetWidth` wrap instead of `NoWrap`.*
-- [ ] Import: Folder scanner does not recurse well (~/Astronomy/Images/FITS selected as the directory. Produces very inconsistent results)
-- [ ] Import: M42_mosaic problem and no method to fix it
-- [ ] “inbox” holding area: at least list the filenames so I can guess at file type (I know there’s a backlog item for tools here)
+- [x] Import: Folder scanner does not recurse well (~/Astronomy/Images/FITS selected as the directory. Produces very inconsistent results). *Done — the recursion was fine; `ingest.group_ops` keyed the preview on the bare **folder name**, so a precursor store's `lights/`/`stacks/` folder under every object collapsed into one bogus merged row. Now keyed on the **resolved object** (unassigned/holding ops fall back to source folder). Regression: `test_ingest.test_group_ops_splits_per_object_in_recursive_store`.*
+- [x] Import: M42_mosaic problem and no method to fix it. *Done — the symptom was an invalid `library.toml` with duplicate `[catalog.m42-mosaic]` blocks (from concurrent leaked test refreshes; now sealed off). Hardened so it can't recur or brick the app: `_append_library_entries` never writes a duplicate slug, and `load_library` self-heals a duplicate-block file. Tests in `test_catalog`.*
+- [x] “inbox” holding area: at least list the filenames so I can guess at file type. *Done — each holding-area row now has a tooltip listing the held filenames (hover the Source folder / Files cell).*
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
@@ -55,11 +55,11 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   - [x] Detail view: Clicking on a thumbnail doesn’t do anything, should launch an image viewer view with nav buttons to view other images in the gallery of the detail view. *Done — double-click opens `ui/image_viewer.ImageViewer` (full-res for rasters via a new `images.json` `full` field; FITS falls back to the thumb) with Prev/Next + ←/→ + Esc.*
   - [x] Detail view: Hero image should scale to be viewable in the current view *Done — `ui/image_viewer.ScalableImage` fits the pane width and rescales on resize (capped height).*
   - [x] Detail view: Journal entry renders as poorly formatted text. It should render the markdown correctly including line breaks, and limit width to the view width *Done — `objects.journal_to_markdown` strips editor-only HTML comments and preserves single line breaks; `QTextBrowser` wraps to the pane width.*
-  - [ ] **Summary view**: current integrations table has a weird dead column space on the right
+  - [x] **Summary view**: current integrations table has a weird dead column space on the right. *Done — the table now stretches its last section like the others.*
   - [x] **Pref window**: Modal “preferences saved” dialog is unnecessary. *Done (UI
     Phase 1) — closing the dialog is the confirmation; a message now appears only when
     the data folder changed (restart needed).*
-  - [ ] **Pref window**: Is “Save” the right label on the button? Aren’t preferences persisted before the “Save” button is pressed? Maybe it should just be “OK”?
+  - [x] **Pref window**: Is “Save” the right label on the button? *Done — preferences now persist live (workflows on toggle, like the theme control); the data folder applies on Close. Replaced Save/Cancel with a single **Close** button — nothing to "Save".*
 
 
 ### Questions

@@ -448,6 +448,25 @@ def test_m110_store_layout_routes_subdirs(tmp_path, monkeypatch):
     assert not any(s.endswith("process/lights.fit") for s in all_srcs)  # sandbox skipped
 
 
+def test_group_ops_splits_per_object_in_recursive_store(tmp_path, monkeypatch):
+    """Regression (#46): a precursor store has a `lights/` folder under *every*
+    object, so grouping by the bare folder name collapsed them into one bogus row.
+    group_ops must key on the resolved object → one group per object+kind."""
+    _make_staging(tmp_path, monkeypatch)
+    fits = tmp_path / "Astro" / "FITS"
+    _fits_hdr(fits / "M51" / "lights" / "Light_M51_a.fit", imagetyp="Light")
+    _fits_hdr(fits / "M51" / "lights" / "Light_M51_b.fit", imagetyp="Light")
+    (fits / "M51" / "stacks").mkdir(parents=True)
+    (fits / "M51" / "stacks" / "M51_processed.tif").write_text("t")
+    _fits_hdr(fits / "M81 M82" / "lights" / "Light_a.fit", imagetyp="Light")
+    _fits_hdr(fits / "NGC 7000" / "lights" / "Light_a.fit", imagetyp="Light")
+
+    groups = ingest.group_ops(ingest.scan_directory_plan(fits))
+    light = {g.object: g.frames for g in groups if g.kind == "light"}
+    assert light == {"M51": 2, "M81 M82": 1, "NGC 7000": 1}   # not one merged "lights"
+    assert any(g.kind == "siril-stack" and g.object == "M51" for g in groups)
+
+
 def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
     """Loose mixed FITS in one dir sort by IMAGETYP; the object comes from OBJECT."""
     _make_staging(tmp_path, monkeypatch)
