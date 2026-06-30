@@ -60,6 +60,10 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
     Phase 1) — closing the dialog is the confirmation; a message now appears only when
     the data folder changed (restart needed).*
   - [x] **Pref window**: Is “Save” the right label on the button? *Done — preferences now persist live (workflows on toggle, like the theme control); the data folder applies on Close. Replaced Save/Cancel with a single **Close** button — nothing to "Save".*
+  - [x] Import view (possibly other views): summary line below the selection list forces window width. *Done — the Import summary + path labels use `setWordWrap(True)`, so their text wraps instead of forcing a wider window (#63).*
+  - [x] Import view: In the “Inbox” holding area, if I’ve just imported an object and it leaves a file in Inbox, I can’t select that object in the object drop-down. *Done — the object dropdown was built from a one-time catalog cache; `refresh_holding` now re-reads the library so a just-added object lists (#64).*
+  - [x] Import view: In the “Inbox” holding area, the button on the right side of each row is not legible (looks like “ssiq”?). *Done — it was the **Assign** button clipped: `resizeColumnsToContents` ignores cell widgets, so the Object/Kind/Assign columns collapsed. They now get explicit widths (#65).*
+  - [x] Import view: In the “Inbox” holding area, if I make object and kind selections, click away and back (or Assign→Cancel), the selections reset. *Done — the benign focus/modal-close refresh rebuilt the table and lost the combos; `refresh_holding` now captures and restores each row's Object/Kind picks across the rebuild (#66).*
 
 
 ### Questions

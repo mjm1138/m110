@@ -68,6 +68,7 @@ class ImportPage(QWidget):
 
         self._path_lbl = QLabel()
         self._path_lbl.setProperty("muted", True)
+        self._path_lbl.setWordWrap(True)       # a long path mustn't force window width (#63)
         tv.addWidget(self._path_lbl)
 
         self.table = QTableWidget(0, 7)
@@ -80,6 +81,7 @@ class ImportPage(QWidget):
         tv.addWidget(self.table, 1)
 
         self._summary = QLabel()
+        self._summary.setWordWrap(True)        # don't let a long line force window width (#63)
         tv.addWidget(self._summary)
 
         row = QHBoxLayout()
@@ -278,14 +280,34 @@ class ImportPage(QWidget):
 
     def refresh_holding(self):
         """Rescan the Inbox/ holding area and repopulate the panel (synchronous —
-        the holding area is local + small)."""
+        the holding area is local + small). Surviving rows **keep their in-progress
+        Object/Kind picks** across the rebuild, so a benign refresh (window focus, a
+        modal closing) can't wipe them (#66); the object dropdown is rebuilt from a
+        fresh catalog read so a just-imported object shows up (#64)."""
+        self._cat = {}                      # refresh so a just-imported object lists (#64)
+        prev = self._capture_holding_selections()
         try:
             self._holding_groups = ingest.group_ops(ingest.scan_holding())
         except Exception:
             self._holding_groups = []
-        self._populate_holding()
+        self._populate_holding(prev)
 
-    def _populate_holding(self):
+    def _capture_holding_selections(self) -> dict:
+        """Current per-folder (object text, kind id) picks, so a rebuild can restore
+        them for rows that survive."""
+        out = {}
+        for r in range(self.holding_table.rowCount()):
+            if r >= len(self._holding_groups):
+                break
+            obj_w = self.holding_table.cellWidget(r, 3)
+            kind_w = self.holding_table.cellWidget(r, 4)
+            if obj_w is not None and kind_w is not None:
+                out[self._holding_groups[r].group] = (
+                    obj_w.currentText().strip(), kind_w.currentData())
+        return out
+
+    def _populate_holding(self, prev: dict | None = None):
+        prev = prev or {}
         groups = self._holding_groups
         n = sum(g.frames for g in groups)
         if not groups:
@@ -297,6 +319,7 @@ class ImportPage(QWidget):
                 f"{n} file(s) awaiting assignment — hover a row to see filenames, "
                 "then pick an object + kind and Assign.")
         from pathlib import Path
+        ids = self._catalog_ids()
         self.holding_table.setRowCount(len(groups))
         for r, g in enumerate(groups):
             names = [Path(op.src).name for op in g.ops]
@@ -310,20 +333,34 @@ class ImportPage(QWidget):
             files_item.setToolTip(tip)
             self.holding_table.setItem(r, 1, files_item)
             self.holding_table.setItem(r, 2, QTableWidgetItem(_fmt_size(g.size_bytes)))
+            prev_obj, prev_kind = prev.get(g.group, ("", None))
             obj = QComboBox()
             obj.setEditable(True)               # allow new / off-catalog objects
             obj.addItem("— choose —")
-            obj.addItems(self._catalog_ids())
+            obj.addItems(ids)
+            if prev_obj and prev_obj != "— choose —":
+                obj.setCurrentText(prev_obj)    # restore an in-progress pick (#66)
             self.holding_table.setCellWidget(r, 3, obj)
             kind = QComboBox()
             for k in ASSIGNABLE_KINDS:
                 kind.addItem(KIND_LABEL.get(k, k), k)
+            if prev_kind is not None:
+                ki = kind.findData(prev_kind)
+                if ki >= 0:
+                    kind.setCurrentIndex(ki)
             self.holding_table.setCellWidget(r, 4, kind)
             btn = QPushButton("Assign")
             btn.clicked.connect(lambda _=False, idx=r: self._on_assign(idx))
             self.holding_table.setCellWidget(r, 5, btn)
+        # resizeColumnsToContents ignores cell *widgets*, so the Object/Kind/Assign
+        # columns would collapse (the "Assign" button clipped to "ssig", #65) — give
+        # them explicit widths.
         self.holding_table.resizeColumnsToContents()
-        self.holding_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        hdr = self.holding_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
+        self.holding_table.setColumnWidth(3, 150)   # Object
+        self.holding_table.setColumnWidth(4, 130)   # Kind
+        self.holding_table.setColumnWidth(5, 88)    # Assign button
 
     def _on_assign(self, row):
         if row >= len(self._holding_groups) or self.is_busy():

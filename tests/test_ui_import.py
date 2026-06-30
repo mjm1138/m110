@@ -58,6 +58,54 @@ def test_import_page_recurses_and_populates(tmp_path, monkeypatch, qtbot):
     assert "copy" in page._summary.text().lower()
 
 
+def _held_page(tmp_path, monkeypatch, qtbot):
+    """An ImportPage with one file waiting in the Inbox holding area."""
+    from m110 import config
+    root = seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    held = config.STAGING_DIR / "M94"
+    held.mkdir(parents=True)
+    (held / "mystery.fit").write_text("x" * 64)
+    from m110.ui.pages.import_page import ImportPage
+    page = ImportPage()
+    qtbot.addWidget(page)
+    return page
+
+
+def test_holding_assign_column_is_legible(tmp_path, monkeypatch, qtbot):
+    """#65: the Object/Kind/Assign columns are cell widgets, which
+    resizeColumnsToContents ignores — they get explicit widths so the Assign button
+    isn't clipped to "ssig"."""
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    assert page.holding_table.rowCount() == 1
+    assert page.holding_table.columnWidth(5) >= 80          # Assign button column
+    assert page.holding_table.cellWidget(0, 5).text() == "Assign"
+
+
+def test_holding_selections_survive_benign_refresh(tmp_path, monkeypatch, qtbot):
+    """#66: a focus/modal-close refresh must not wipe the user's in-progress picks."""
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    page.holding_table.cellWidget(0, 3).setCurrentText("M94")
+    kind = page.holding_table.cellWidget(0, 4)
+    kind.setCurrentIndex(kind.findData("stack"))
+    page.refresh_holding()                                   # the benign refresh
+    assert page.holding_table.cellWidget(0, 3).currentText() == "M94"
+    assert page.holding_table.cellWidget(0, 4).currentData() == "stack"
+
+
+def test_holding_dropdown_picks_up_new_object(tmp_path, monkeypatch, qtbot):
+    """#64: a just-added object appears in the holding object dropdown (the catalog
+    cache is refreshed on rescan, not cached for the page's lifetime)."""
+    from m110 import catalog
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    assert "M51" not in page._catalog_ids()
+    catalog._append_library_entries(
+        {"m51": {"id": "M51", "name": "Whirlpool", "type": "galaxy"}})
+    page.refresh_holding()
+    combo = page.holding_table.cellWidget(0, 3)
+    assert "M51" in [combo.itemText(i) for i in range(combo.count())]
+
+
 def test_import_page_browse_remembers_recents(tmp_path, monkeypatch, qtbot):
     seed_root(tmp_path, monkeypatch)
     _no_device(monkeypatch)
