@@ -7,3 +7,34 @@ Reusable store/builder helpers live in `tests/_helpers.py`.
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seal_live_store(tmp_path_factory):
+    """Hard safety net: for the whole test session, point M110 at a throwaway data
+    root (env + config path globals + settings) so **no test — nor a worker thread
+    that leaks past its per-test monkeypatch — can ever read or write the real
+    ~/Documents/M110 store**. Per-test `seed_root` monkeypatches over this and unwinds
+    back *to it*, never to the live default. (Regression net for the leaked
+    RefreshWorker that once corrupted a live `library.toml`.)"""
+    from m110 import config
+    base = tmp_path_factory.mktemp("m110_live_seal")
+    os.environ["M110_DATA_ROOT"] = str(base)        # any _resolve_data_root → throwaway
+    config._apply(base)                             # all DATA_ROOT/* path globals → base
+    config.SETTINGS_FILE = base / "settings.json"   # never touch ~/.m110/settings.json
+    config.ensure_data_root(base)
+    yield base
+    os.environ.pop("M110_DATA_ROOT", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_to_seal(_seal_live_store):
+    """Before each test, reset config to the throwaway baseline so a per-test
+    `monkeypatch` records *that* as its restore target (not whatever a previous test
+    left, and never the live root)."""
+    from m110 import config
+    config._apply(_seal_live_store)
+    config.SETTINGS_FILE = _seal_live_store / "settings.json"
+    yield

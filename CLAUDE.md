@@ -223,7 +223,13 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 - **Tests run on temp fixtures, never live data.** Engine functions take
   `config.*` paths dynamically or accept injected paths so tests can
   `monkeypatch` `config.IMAGES_DIR` / `DERIVED_DIR` / etc. Don't point tests (or
-  ad-hoc validation) at a real data root.
+  ad-hoc validation) at a real data root. **A session-autouse seal in
+  `tests/conftest.py` (`_seal_live_store`/`_reset_to_seal`) hard-points
+  `M110_DATA_ROOT` + the `config.*` globals + `SETTINGS_FILE` at a throwaway dir for
+  the whole run** — so even a `QThread` worker that leaks past its per-test
+  `monkeypatch` (which once corrupted a live `library.toml`) can never read/write
+  `~/Documents/M110`. Keep per-test `seed_root` + the MainWindow `_ready = False`
+  guard anyway (defense in depth).
 - **Dependencies:** core = PySide6, astropy, numpy, pillow, tifffile (FITS
   stack-metadata reads + image rendering). Optional `online` extra = astroquery
   (Simbad lookups for Add object / Enrich online — runtime stays offline unless
