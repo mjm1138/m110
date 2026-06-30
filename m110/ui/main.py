@@ -111,6 +111,7 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(p)
 
         self.nav = QListWidget()
+        self.nav.setObjectName("navRail")
         self.nav.addItems(self.NAV)
         self.nav.setMaximumWidth(160)
         self.nav.setMinimumWidth(130)

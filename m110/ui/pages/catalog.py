@@ -17,7 +17,7 @@ from m110.catalog import (
 from m110.ui.detail import DetailPane
 from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
-    StatusPillDelegate, STATUS_ROLE,
+    StatusPillDelegate, STATUS_ROLE, make_numeric,
 )
 
 
@@ -209,8 +209,8 @@ class CatalogPage(QWidget):
             table.setItem(row, 3, NumItem(season, season_sort_key(season)))
 
             mag = e.get("magnitude")
-            table.setItem(row, 4, NumItem("" if mag is None else f"{mag}",
-                                          float(mag) if mag is not None else 99.0))
+            table.setItem(row, 4, make_numeric(NumItem("" if mag is None else f"{mag}",
+                                          float(mag) if mag is not None else 99.0)))
             table.setItem(row, 5, QTableWidgetItem(str(e.get("size") or "")))
             table.setItem(row, 6, QTableWidgetItem(str(e.get("filter") or "")))
 
@@ -220,9 +220,11 @@ class CatalogPage(QWidget):
             table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)
-            table.setItem(row, 8, NumItem(t.get("integration_hms", "") if captured else "", integ_min))
+            table.setItem(row, 8, make_numeric(
+                NumItem(t.get("integration_hms", "") if captured else "", integ_min)))
             sc = int(t.get("session_count", 0) or 0)
-            table.setItem(row, 9, NumItem(str(sc) if captured else "", float(sc)))
+            table.setItem(row, 9, make_numeric(
+                NumItem(str(sc) if captured else "", float(sc))))
 
             if not captured:
                 for c in range(len(self.HEADERS)):

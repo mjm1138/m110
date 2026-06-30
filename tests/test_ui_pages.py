@@ -306,6 +306,8 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
     seed_root(tmp_path, monkeypatch)
     from m110.ui.main import MainWindow
     w = MainWindow()
+    w._ready = False    # neuter the deferred launch-refresh worker (else it can run
+                        # after monkeypatch unwinds → writes the LIVE store)
     try:
         # Library menu carries Refresh + Add object + Fill + Enrich online
         labels = [a.text() for a in w.lib_menu.actions()]

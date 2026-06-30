@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import derived
-from m110.ui.widgets import make_table
+from m110.ui.widgets import make_table, make_numeric
 
 _GROUPS = [
     ("out_of_date", "Out of date — restack to incorporate new lights"),
@@ -76,15 +76,15 @@ class ProcessingPage(QScrollArea):
                 if f.get("slugs"):
                     obj.setData(Qt.UserRole, f["slugs"][0])
                 tbl.setItem(r, 0, obj)
-                tbl.setItem(r, 1, QTableWidgetItem(
-                    f"{f.get('integration_hms', '')} ({f.get('frames', 0)} fr)"))
+                tbl.setItem(r, 1, make_numeric(QTableWidgetItem(
+                    f"{f.get('integration_hms', '')} ({f.get('frames', 0)} fr)")))
                 sm = f.get("stack_meta")
-                tbl.setItem(r, 2, QTableWidgetItem(
-                    f"{sm['stack_integration_hms']} ({sm['stack_frames']} fr)" if sm else "—"))
-                tbl.setItem(r, 3, QTableWidgetItem(
-                    f"{sm['stack_rejection_pct']}%" if sm and 'stack_rejection_pct' in sm else "—"))
+                tbl.setItem(r, 2, make_numeric(QTableWidgetItem(
+                    f"{sm['stack_integration_hms']} ({sm['stack_frames']} fr)" if sm else "—")))
+                tbl.setItem(r, 3, make_numeric(QTableWidgetItem(
+                    f"{sm['stack_rejection_pct']}%" if sm and 'stack_rejection_pct' in sm else "—")))
                 nl = f.get("new_lights_since_stack", 0)
-                tbl.setItem(r, 4, QTableWidgetItem(f"+{nl}" if nl else "—"))
+                tbl.setItem(r, 4, make_numeric(QTableWidgetItem(f"+{nl}" if nl else "—")))
                 latest = f.get("latest_processed")
                 tbl.setItem(r, 5, QTableWidgetItem(
                     f"{latest} · {f.get('latest_processed_at', '')}" if latest else "—"))

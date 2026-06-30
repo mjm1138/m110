@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import derived
-from m110.ui.widgets import make_table, NumItem
+from m110.ui.widgets import make_table, NumItem, make_numeric
 
 _COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount"]
 
@@ -59,12 +59,12 @@ class SessionsPage(QWidget):
             if s.get("slugs"):
                 obj.setData(Qt.UserRole, s["slugs"][0])
             t.setItem(r, 1, obj)
-            t.setItem(r, 2, NumItem(str(s.get("frames", 0)), s.get("frames", 0)))
+            t.setItem(r, 2, make_numeric(NumItem(str(s.get("frames", 0)), s.get("frames", 0))))
             exp = s.get("exposure_s", 0)
-            t.setItem(r, 3, NumItem(str(exp), exp))
+            t.setItem(r, 3, make_numeric(NumItem(str(exp), exp)))
             t.setItem(r, 4, QTableWidgetItem(s.get("filter", "")))
             mins = s.get("integration_min", 0.0)
-            t.setItem(r, 5, NumItem(_fmt_hm(mins), mins))
+            t.setItem(r, 5, make_numeric(NumItem(_fmt_hm(mins), mins)))
             t.setItem(r, 6, QTableWidgetItem(s.get("mount_mode", "")))
         t.resizeColumnsToContents()
         t.setSortingEnabled(True)

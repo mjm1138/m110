@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import derived
-from m110.ui.theme import muted_color, status_color  # theme-driven (re-exported)
+from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
 # Per-cell role carrying the raw status key (e.g. "deep_stack") so the pill delegate
@@ -73,6 +73,15 @@ class NumItem(QTableWidgetItem):
         if isinstance(other, NumItem):
             return self._key < other._key
         return super().__lt__(other)
+
+
+def make_numeric(item: QTableWidgetItem, mono: bool = True) -> QTableWidgetItem:
+    """Right-align a numeric/data cell and (default) give it the bundled tabular
+    monospace, so columns of numbers line up. Returns the item for chaining."""
+    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    if mono:
+        item.setFont(mono_font())
+    return item
 
 
 def targets_for_slug(slug: str) -> list[str]:

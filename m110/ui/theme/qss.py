@@ -30,15 +30,27 @@ QToolTip {{
 QLabel[muted="true"] {{ color: {t.text_secondary}; }}
 QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}
 
-/* ── nav rail ── */
+/* ── lists (galleries, pickers) ── */
 QListWidget {{
     background-color: {t.surface};
     border: none;
     outline: 0;
 }}
-QListWidget::item {{ padding: {SPACE['sm']}px {SPACE['md']}px; border-radius: {r['sm']}px; }}
 QListWidget::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
 QListWidget::item:hover:!selected {{ background-color: {t.surface_alt}; }}
+
+/* ── nav rail (left) ── */
+QListWidget#navRail {{
+    background-color: {t.surface};
+    border: none;
+    border-right: 1px solid {t.border};
+    padding-top: {SPACE['sm']}px;
+}}
+QListWidget#navRail::item {{
+    padding: {SPACE['sm']}px {SPACE['md']}px;
+    margin: 1px {SPACE['xs']}px;
+    border-radius: {r['sm']}px;
+}}
 
 /* ── tables ── */
 QTableView, QTableWidget {{

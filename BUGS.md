@@ -43,6 +43,9 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   
 - [x] **BUG**: **Edit object journal entry should trigger refresh in Journal view**. If I add notes to an object and return to the Journal view, the new content doesn’t appear until I do a manual refresh. *Done — saving Object Notes emits `DetailPane.saved` → `CatalogPage.notes_saved` → the shell reloads the other views (lightweight, no scan/derive/render). `test_ui_pages.test_object_notes_edit_wraps_and_signals_reload` + `test_catalog_page_reemits_notes_saved`.*
 - [x] **BUG**: **Text doesn’t wrap at view width in the “Editing Journal” view** (edit window showed a horizontal scroll bar). *Done — the Object Notes editor uses `QPlainTextEdit.WidgetWidth` wrap instead of `NoWrap`.*
+- [ ] Import: Folder scanner does not recurse well (~/Astronomy/Images/FITS selected as the directory. Produces very inconsistent results)
+- [ ] Import: M42_mosaic problem and no method to fix it
+- [ ] “inbox” holding area: at least list the filenames so I can guess at file type
 
 ### UI
 - [x] **UI**: Copy modal should say "Copying Files" / show progress.
@@ -52,6 +55,11 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   - [x] Detail view: Clicking on a thumbnail doesn’t do anything, should launch an image viewer view with nav buttons to view other images in the gallery of the detail view. *Done — double-click opens `ui/image_viewer.ImageViewer` (full-res for rasters via a new `images.json` `full` field; FITS falls back to the thumb) with Prev/Next + ←/→ + Esc.*
   - [x] Detail view: Hero image should scale to be viewable in the current view *Done — `ui/image_viewer.ScalableImage` fits the pane width and rescales on resize (capped height).*
   - [x] Detail view: Journal entry renders as poorly formatted text. It should render the markdown correctly including line breaks, and limit width to the view width *Done — `objects.journal_to_markdown` strips editor-only HTML comments and preserves single line breaks; `QTextBrowser` wraps to the pane width.*
+  - [ ] Summary view: current integrations table has a weird dead column space on the right
+
+
+### Questions
+- [ ] Are there royalty-free sources for object images we can use to populate thumbnails for non-captured objects? We could credit the source on the object page. I also want to build a library of images that can be used in-app from my collection. Let me know what image formats are needed for in-app use cases (size, aspect ratio, format, bit depth, etc.)
 
 #### Follow-up fixes (detail view)
 - [x] **Crash / duplicate buttons / persistent Save+Cancel.** Re-rendering the

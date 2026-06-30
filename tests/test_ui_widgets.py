@@ -47,3 +47,19 @@ def test_pill_delegate_paints_uncaptured_dash(qapp):
 def test_make_table_has_alternating_rows(qapp):
     t = make_table(["A", "B"])
     assert t.alternatingRowColors() is True
+
+
+def test_make_numeric_right_aligns_and_mono(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QTableWidgetItem
+    from m110.ui.theme import fonts
+    from m110.ui.widgets import make_numeric
+    theme.install(qapp)
+    it = make_numeric(QTableWidgetItem("42"))
+    assert it.textAlignment() & Qt.AlignmentFlag.AlignRight
+    fam = fonts.load_fonts()
+    if fam:
+        assert it.font().family() == fam
+    # mono=False → right-aligned but no font override
+    plain = make_numeric(QTableWidgetItem("7"), mono=False)
+    assert plain.textAlignment() & Qt.AlignmentFlag.AlignRight

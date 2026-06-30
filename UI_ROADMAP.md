@@ -119,14 +119,15 @@ structural changes yet.
 
 ### Phase 1 — Restyle existing surfaces  *(apply the system)* — **in progress**
 Apply tokens across the current pages; no new views.
-- **Landed (2026-06-30, first slice):** **status pill chips** (`widgets.StatusPillDelegate`
-  — tasteful tinted rounded chip from the theme `status_*` color, sort-safe) on the
-  Library Status column; **alternating row colors** on all shared tables
-  (`make_table` + the catalog table); **uniform page padding** (token-driven margins on
-  the page stack); removed the redundant **Import toolbar button** (nav rail + `Ctrl+I`
-  remain). Headings already use theme-aware `<h2>`/`<h3>` rich text (inherit palette).
-- **Remaining:** nav-rail treatment, header/sortable-affordance polish, right-aligned
-  **tabular numerals** (mono on numeric columns), `DetailPane` header/meta refinement,
+- **Landed (2026-06-30):** **status pill chips** (`widgets.StatusPillDelegate` — tinted
+  rounded chip from the theme `status_*` color, sort-safe) on the Library Status column;
+  **alternating row colors** on all shared tables; **uniform page padding** (token-driven
+  margins on the page stack); removed the redundant **Import toolbar button** (nav rail +
+  `Ctrl+I` remain); **tabular numerals** — right-aligned bundled-mono numeric columns
+  (`widgets.make_numeric`) on the catalog / sessions / processing tables; **nav-rail
+  polish** (object-named `#navRail`: accent-rounded selected item, hover, right divider,
+  padding). Headings already use theme-aware `<h2>`/`<h3>` rich text (inherit palette).
+- **Remaining:** `DetailPane` header/meta refinement, header sort-indicator polish,
   dialog spacing pass.
 - **Responsive hero**: `ScalableImage` already scales aspect-correct + non-upscaling +
   height-capped — revisit only if heroes need more presence per real use.
