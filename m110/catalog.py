@@ -46,17 +46,47 @@ class LibraryParseError(Exception):
 def load_library() -> dict[str, dict]:
     """Return the user's Library as {slug: entry} (from `library.toml`).
 
-    Raises `LibraryParseError` (with the file + line) on a malformed file rather
-    than the bare tomllib traceback — `library.toml` is user-editable, and the most
-    common mistake is a TOML slip (e.g. `True` instead of lowercase `true`)."""
+    **Self-heals duplicate object blocks** (e.g. from an interrupted/concurrent
+    append) by keeping the first block per slug and rewriting the file — so a
+    duplicate can never brick the app. Other malformed TOML raises
+    `LibraryParseError` (with the file + line), since `library.toml` is
+    user-editable and the most common mistake is a `True` instead of `true`."""
     try:
         with open(config.LIBRARY_TOML, "rb") as f:
             return tomllib.load(f).get("catalog", {})   # {} for an empty Library
     except tomllib.TOMLDecodeError as e:
+        healed = _dedupe_catalog_text(config.LIBRARY_TOML.read_text())
+        if healed is not None:
+            try:
+                data = tomllib.loads(healed).get("catalog", {})
+            except tomllib.TOMLDecodeError:
+                data = None
+            if data is not None:
+                config.LIBRARY_TOML.write_text(healed)   # persist the repair
+                print("  library.toml: removed duplicate object blocks (self-healed)")
+                return data
         raise LibraryParseError(
             f"{config.LIBRARY_TOML} is not valid TOML: {e}\n"
             "Fix the hand-edit in that file (note: TOML booleans are lowercase "
             "`true`/`false`, not `True`/`False`) and try again.") from e
+
+
+def _dedupe_catalog_text(text: str) -> str | None:
+    """Drop duplicate `[catalog.<slug>]` blocks (keep the first of each). Returns
+    the repaired text, or None if there were no duplicates to remove."""
+    header = re.compile(r"^\[catalog\.([^\]]+)\]\s*$")
+    out, seen, skip, changed = [], set(), False, False
+    for ln in text.splitlines(keepends=True):
+        m = header.match(ln)
+        if m:
+            if m.group(1) in seen:
+                skip, changed = True, True
+                continue
+            seen.add(m.group(1))
+            skip = False
+        if not skip:
+            out.append(ln)
+    return "".join(out) if changed else None
 
 
 def object_count() -> int:
@@ -191,17 +221,28 @@ def set_publish_flag(slug: str, publish: bool) -> bool:
 
 def _append_library_entries(entries: dict[str, dict]) -> None:
     """Append `[catalog.<slug>]` blocks to library.toml (the only writer besides
-    config seeding + add_captured_objects)."""
+    config seeding + add_captured_objects). **Never writes a slug that's already in
+    the file** — a duplicate block is invalid TOML, so this guard (re-read just
+    before append, tolerant regex so it works even on an already-dup'd file) is the
+    last line of defense against bricking the store."""
+    existing: set[str] = set()
+    if config.LIBRARY_TOML.is_file():
+        existing = set(re.findall(r"^\[catalog\.([^\]]+)\]",
+                                  config.LIBRARY_TOML.read_text(), re.M))
     lines = []
     for slug, e in entries.items():
+        if slug in existing:
+            continue                       # already present → skip (no duplicate)
+        existing.add(slug)
         lines.append(f"\n[catalog.{slug}]")
         for k in _LIB_ORDER:
             v = e.get(k)
             if v is None:
                 continue
             lines.append(f"{k} = {_toml_value(v)}")
-    with config.LIBRARY_TOML.open("a") as f:
-        f.write("\n".join(lines) + "\n")
+    if lines:
+        with config.LIBRARY_TOML.open("a") as f:
+            f.write("\n".join(lines) + "\n")
 
 
 def _q(s) -> str:

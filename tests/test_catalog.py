@@ -126,3 +126,38 @@ def test_set_publish_flag_roundtrips(tmp_path, monkeypatch):
     assert lib["m31"]["id"] == "M31"
     # unknown slug → no-op False
     assert catalog.set_publish_flag("nope", False) is False
+
+
+def test_append_library_entries_never_duplicates(tmp_path, monkeypatch):
+    """Defense in depth: appending a slug that's already in the file is a no-op,
+    so a (e.g. concurrent) double-append can't write invalid duplicate TOML."""
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)
+    e = {"id": "M42_mosaic", "name": "", "type": "unknown"}
+    catalog._append_library_entries({"m42-mosaic": e})
+    catalog._append_library_entries({"m42-mosaic": e})   # simulated race / re-run
+    txt = config.LIBRARY_TOML.read_text()
+    assert txt.count("[catalog.m42-mosaic]") == 1
+    assert list(catalog.load_library()) == ["m42-mosaic"]
+
+
+def test_load_library_self_heals_duplicate_blocks(tmp_path, monkeypatch):
+    """A duplicate [catalog.<slug>] file (legacy corruption) self-heals on read
+    instead of raising — keeps the first block and rewrites the file."""
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)
+    config.LIBRARY_TOML.write_text(
+        '[catalog.m27]\nid = "M27"\ntype = "planetary"\n\n'
+        '[catalog.m27]\nid = "M27"\ntype = "planetary"\n')
+    lib = catalog.load_library()                     # must not raise
+    assert list(lib) == ["m27"]
+    assert config.LIBRARY_TOML.read_text().count("[catalog.m27]") == 1
+
+
+def test_load_library_still_raises_on_real_toml_error(tmp_path, monkeypatch):
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)
+    config.LIBRARY_TOML.write_text('[catalog.m1]\nmagnitude = True\n')  # invalid bool
+    import pytest
+    with pytest.raises(catalog.LibraryParseError):
+        catalog.load_library()

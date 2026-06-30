@@ -59,7 +59,7 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   - [x] **Pref window**: Modal “preferences saved” dialog is unnecessary. *Done (UI
     Phase 1) — closing the dialog is the confirmation; a message now appears only when
     the data folder changed (restart needed).*
-  - [ ] **Pref window**: Is “Save” the right 
+  - [ ] **Pref window**: Is “Save” the right label on the button? Aren’t preferences persisted before the “Save” button is pressed? Maybe it should just be “OK”?
 
 
 ### Questions
