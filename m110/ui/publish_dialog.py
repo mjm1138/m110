@@ -69,7 +69,11 @@ class PublishDialog(QDialog):
         self._cancel_event = None
         self.resize(520, 0)
 
+        from m110.ui.theme import tokens
+        s = tokens.SPACE
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
+        layout.setSpacing(s["md"])
         layout.addWidget(QLabel(
             "Render a static website of your collection to a local folder. "
             "Push or host the folder yourself."))

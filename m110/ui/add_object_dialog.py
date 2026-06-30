@@ -48,7 +48,11 @@ class AddObjectDialog(QDialog):
         self._slug = None
         self._worker = None
 
+        from m110.ui.theme import tokens
+        s = tokens.SPACE
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
+        lay.setSpacing(s["md"])
         # Identifier row.
         idrow = QHBoxLayout()
         idrow.addWidget(QLabel("Name / designation:"))

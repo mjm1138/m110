@@ -16,7 +16,11 @@ class PreferencesDialog(QDialog):
         self.setWindowTitle("Preferences")
         self.resize(620, 340)
 
+        from m110.ui.theme import tokens
+        s = tokens.SPACE
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
+        lay.setSpacing(s["md"])
         lay.addWidget(QLabel("Data folder — where M110 stores its catalog, "
                              "captures, and renders:"))
 
@@ -98,8 +102,11 @@ class PreferencesDialog(QDialog):
         root_changed = path != str(config.DATA_ROOT)
         config.save_data_root(path)
         config.ensure_data_root(path)   # create + seed now so it's ready on restart
-        msg = "Preferences saved."
+        # No "saved" confirmation modal for the common case (#59) — closing the
+        # dialog is the confirmation. Only surface a message when the data folder
+        # changed, since that needs a restart to take effect.
         if root_changed:
-            msg += f"\n\nData folder set to:\n{path}\nRestart M110 to use it."
-        QMessageBox.information(self, "Preferences saved", msg)
+            QMessageBox.information(
+                self, "Restart needed",
+                f"Data folder set to:\n{path}\n\nRestart M110 to use it.")
         self.accept()

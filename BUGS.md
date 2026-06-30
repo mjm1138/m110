@@ -55,7 +55,11 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
   - [x] Detail view: Clicking on a thumbnail doesn’t do anything, should launch an image viewer view with nav buttons to view other images in the gallery of the detail view. *Done — double-click opens `ui/image_viewer.ImageViewer` (full-res for rasters via a new `images.json` `full` field; FITS falls back to the thumb) with Prev/Next + ←/→ + Esc.*
   - [x] Detail view: Hero image should scale to be viewable in the current view *Done — `ui/image_viewer.ScalableImage` fits the pane width and rescales on resize (capped height).*
   - [x] Detail view: Journal entry renders as poorly formatted text. It should render the markdown correctly including line breaks, and limit width to the view width *Done — `objects.journal_to_markdown` strips editor-only HTML comments and preserves single line breaks; `QTextBrowser` wraps to the pane width.*
-  - [ ] Summary view: current integrations table has a weird dead column space on the right
+  - [ ] **Summary view**: current integrations table has a weird dead column space on the right
+  - [x] **Pref window**: Modal “preferences saved” dialog is unnecessary. *Done (UI
+    Phase 1) — closing the dialog is the confirmation; a message now appears only when
+    the data folder changed (restart needed).*
+  - [ ] **Pref window**: Is “Save” the right 
 
 
 ### Questions

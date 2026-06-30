@@ -20,6 +20,18 @@ from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import status_label, targets_for_slug, make_table
 
 
+def _status_pill(status) -> QLabel:
+    """A small tinted rounded status chip (matches the Library table pill), colored
+    from the active theme. Built per render, so it re-themes on reload."""
+    lbl = QLabel(status_label(status, True))
+    c = theme.status_color(status)
+    lbl.setStyleSheet(
+        f"color:{c.name()}; "
+        f"background-color: rgba({c.red()},{c.green()},{c.blue()},0.16); "
+        f"border-radius: 9px; padding: 1px 9px;")
+    return lbl
+
+
 def _section_label(text: str) -> QLabel:
     lbl = QLabel(f"<b>{text}</b>")
     lbl.setTextFormat(Qt.RichText)
@@ -73,6 +85,9 @@ class DetailPane(QScrollArea):
         self._content = QWidget()
         self._lay = QVBoxLayout(self._content)
         self._lay.setAlignment(Qt.AlignTop)
+        s = theme.tokens.SPACE
+        self._lay.setContentsMargins(s["md"], s["md"], s["md"], s["md"])
+        self._lay.setSpacing(s["sm"])
         self.setWidget(self._content)
         self._current = None        # (slug, e, t) of the shown object
         self._editing = False
@@ -138,11 +153,16 @@ class DetailPane(QScrollArea):
         self._lay.addWidget(meta)
 
         if captured:
-            self._lay.addWidget(QLabel(
-                f"<b>{status_label(t.get('status'), True)}</b> · "
-                f"{t.get('integration_hms', '')} · "
-                f"{t.get('session_count', '')} sessions · "
-                f"{t.get('frames', '')} frames"))
+            stat_row = QHBoxLayout()
+            stat_row.setSpacing(theme.tokens.SPACE["sm"])
+            stat_row.addWidget(_status_pill(t.get("status")))
+            stats = QLabel(f"{t.get('integration_hms', '')} · "
+                           f"{t.get('session_count', '')} sessions · "
+                           f"{t.get('frames', '')} frames")
+            stats.setProperty("muted", True)
+            stat_row.addWidget(stats)
+            stat_row.addStretch(1)
+            self._lay.addLayout(stat_row)
             # Processing-prep happens automatically (per the Preferences workflow
             # setting), so no manual "Prepare" button — only offer import when a
             # sandbox has finished output to bring back.

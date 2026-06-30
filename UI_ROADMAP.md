@@ -117,7 +117,7 @@ Original scope (as built):
 *Exit:* the existing app looks coherent in light **and** dark, toggling live, with no
 structural changes yet.
 
-### Phase 1 — Restyle existing surfaces  *(apply the system)* — **in progress**
+### Phase 1 — Restyle existing surfaces  *(apply the system)* — **done 2026-06-30**
 Apply tokens across the current pages; no new views.
 - **Landed (2026-06-30):** **status pill chips** (`widgets.StatusPillDelegate` — tinted
   rounded chip from the theme `status_*` color, sort-safe) on the Library Status column;
@@ -127,8 +127,12 @@ Apply tokens across the current pages; no new views.
   (`widgets.make_numeric`) on the catalog / sessions / processing tables; **nav-rail
   polish** (object-named `#navRail`: accent-rounded selected item, hover, right divider,
   padding). Headings already use theme-aware `<h2>`/`<h3>` rich text (inherit palette).
-- **Remaining:** `DetailPane` header/meta refinement, header sort-indicator polish,
-  dialog spacing pass.
+- **Also landed (final slice):** `DetailPane` refinement — the captured status renders
+  as a tinted **pill** matching the table (`detail._status_pill`), a muted stats line,
+  and consistent section spacing/margins; **dialog spacing** pass (token margins/spacing
+  on Preferences / Publish / Add-object) + dropped the redundant "Preferences saved"
+  modal (BUGS #59 — only a restart notice when the data folder changes). Header
+  sort-indicator already renders natively (the ▲/▼ caret), so no extra work.
 - **Responsive hero**: `ScalableImage` already scales aspect-correct + non-upscaling +
   height-capped — revisit only if heroes need more presence per real use.
 
