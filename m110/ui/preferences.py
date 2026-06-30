@@ -34,11 +34,11 @@ class PreferencesDialog(QDialog):
 
         hint = QLabel(f"Default: {config.DEFAULT_DATA_ROOT}\n"
                       "The folder is created (with a starter catalog) if it doesn't exist. "
-                      "Changing it takes effect after you restart M110.")
+                      "Changing it applies on Close and takes effect after you restart M110.")
         hint.setProperty("caption", True)
         lay.addWidget(hint)
 
-        # ── processing-prep workflows ────────────────────────────────────────
+        # ── processing-prep workflows (persist live on toggle) ───────────────
         box = QGroupBox("Prepare objects for processing in:")
         bl = QVBoxLayout(box)
         bl.addWidget(QLabel(
@@ -54,6 +54,9 @@ class PreferencesDialog(QDialog):
                 cb.setToolTip("Support for this workflow is coming.")
             bl.addWidget(cb)
             self._wf_checks[w.id] = cb
+        # Wire after building so the initial setChecked() can't fire a half-built save.
+        for cb in self._wf_checks.values():
+            cb.toggled.connect(self._save_workflows)
         lay.addWidget(box)
 
         # ── appearance (theme) ───────────────────────────────────────────────
@@ -75,14 +78,15 @@ class PreferencesDialog(QDialog):
 
         # Goals (catalogs / custom lists) are managed on the Goals page, not here.
 
+        # Settings here persist live (workflows + theme); only the data folder is
+        # applied on Close (it needs a restart), so a single Close button suffices
+        # — no "Save" (#62).
         btns = QHBoxLayout()
         btns.addStretch(1)
-        save = QPushButton("Save")
-        save.clicked.connect(self._save)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        btns.addWidget(save)
-        btns.addWidget(cancel)
+        close = QPushButton("Close")
+        close.setDefault(True)
+        close.clicked.connect(self._close)
+        btns.addWidget(close)
         lay.addLayout(btns)
 
     def _browse(self):
@@ -90,22 +94,20 @@ class PreferencesDialog(QDialog):
         if d:
             self._edit.setText(d)
 
-    def _save(self):
-        path = self._edit.text().strip()
-        if not path:
-            return
-        # Workflows take effect immediately (read at ingest time) — no restart.
+    def _save_workflows(self, *_):
+        """Persist the processing-workflow selection immediately (read at ingest
+        time — no restart)."""
         chosen = [wid for wid, cb in self._wf_checks.items()
                   if cb.isEnabled() and cb.isChecked()]
         config.save_setting(processing.SETTING_KEY, chosen)
 
-        root_changed = path != str(config.DATA_ROOT)
-        config.save_data_root(path)
-        config.ensure_data_root(path)   # create + seed now so it's ready on restart
-        # No "saved" confirmation modal for the common case (#59) — closing the
-        # dialog is the confirmation. Only surface a message when the data folder
-        # changed, since that needs a restart to take effect.
-        if root_changed:
+    def _close(self):
+        """Apply a data-folder change (if any) on the way out, then close.
+        Workflows + theme were already persisted live."""
+        path = self._edit.text().strip()
+        if path and path != str(config.DATA_ROOT):
+            config.save_data_root(path)
+            config.ensure_data_root(path)   # create + seed now, ready on restart
             QMessageBox.information(
                 self, "Restart needed",
                 f"Data folder set to:\n{path}\n\nRestart M110 to use it.")

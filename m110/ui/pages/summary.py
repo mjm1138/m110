@@ -145,7 +145,7 @@ class SummaryPage(QScrollArea):
         # ── Current integrations (by capture target) ───────────────────────
         self._lay.addWidget(self._heading("Current integrations"))
         ci = make_table(["Object", "Sessions", "Frames", "Integration", "Filter",
-                         "Status"])
+                         "Status"], stretch_last=True)
         rows = sorted(by_folder.items(),
                       key=lambda kv: kv[1].get("integration_min", 0), reverse=True)
         for fname, t in rows:
