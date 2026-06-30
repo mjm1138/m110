@@ -15,7 +15,10 @@ from m110.catalog import (
     object_label, list_bundled_catalogs,
 )
 from m110.ui.detail import DetailPane
-from m110.ui.widgets import NumItem, status_label, status_color, muted_color, targets_for_slug
+from m110.ui.widgets import (
+    NumItem, status_label, status_color, muted_color, targets_for_slug,
+    StatusPillDelegate, STATUS_ROLE,
+)
 
 
 class _EnrichOneWorker(QThread):
@@ -189,6 +192,8 @@ class CatalogPage(QWidget):
         table.setSelectionMode(QTableWidget.SingleSelection)
         table.verticalHeader().setVisible(False)
         table.setSortingEnabled(False)
+        table.setAlternatingRowColors(True)
+        table.setItemDelegateForColumn(self._status_col, StatusPillDelegate(table))
 
         for row, (slug, e) in enumerate(items):
             t = totals.get(slug, {})
@@ -211,6 +216,7 @@ class CatalogPage(QWidget):
 
             status_item = QTableWidgetItem(status_label(t.get("status"), captured))
             status_item.setForeground(status_color(t.get("status")) if captured else muted_color())
+            status_item.setData(STATUS_ROLE, t.get("status") if captured else None)
             table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)

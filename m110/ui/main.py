@@ -103,6 +103,10 @@ class MainWindow(QMainWindow):
         self._import_index = self.pages.index(self.import_page)
 
         self.stack = QStackedWidget()
+        # Uniform breathing room around every page (token-driven), so content isn't
+        # flush against the nav rail / window edges.
+        s = theme.tokens.SPACE
+        self.stack.setContentsMargins(s["lg"], s["md"], s["lg"], s["lg"])
         for p in self.pages:
             self.stack.addWidget(p)
 
@@ -145,12 +149,12 @@ class MainWindow(QMainWindow):
         if theme.manager() is not None:
             theme.manager().changed.connect(self._restyle_pages)
 
-        # Toolbar + menu (global).
-        toolbar = self.addToolBar("Main")
+        # Global actions + menu. Import is reached via the nav rail (the toolbar
+        # button was redundant); the Ctrl+I shortcut stays, registered on the window.
         self.ingest_action = QAction("Import…", self)
         self.ingest_action.setShortcut("Ctrl+I")
         self.ingest_action.triggered.connect(self._open_ingest)
-        toolbar.addAction(self.ingest_action)
+        self.addAction(self.ingest_action)
 
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut("Ctrl+R")

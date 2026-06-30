@@ -59,6 +59,27 @@ file owns *look & feel*.
 
 ---
 
+## Tweaking theme colors (where to edit)
+
+**All colors live in one file: [`m110/ui/theme/tokens.py`](m110/ui/theme/tokens.py).**
+Edit the hex values in the **`LIGHT`** and **`DARK`** `Tokens(...)` instances. Each field
+is a *semantic role* (`window`, `surface`, `text_primary`, `text_secondary`, `accent`,
+`status_deep`, `status_initial`, `selection_bg`, …) used app-wide — change one hex and
+that role recolors everywhere (QSS + the status pills + muted labels), no other file to
+touch. `accent` is the single brand swap-point; `SPACE`/`RADIUS`/`FONT_SIZE` (same file)
+tune spacing/rounding/type scale.
+
+- **See a change:** relaunch M110, or just toggle **Preferences → Appearance** (the theme
+  re-applies live). For quick experimentation, `python -c "from m110.ui import theme; ..."`
+  isn't needed — editing the hex + relaunching is enough.
+- **Two palettes:** set the light value in `LIGHT` and the dark value in `DARK` (they're
+  independent; mind contrast in both).
+- **What maps where:** `qss.build_qss()` consumes these roles for the stylesheet;
+  `widgets.StatusPillDelegate` / `theme.status_color()` read `status_deep`/`status_initial`;
+  `QLabel[muted="true"]` uses `text_secondary`.
+
+---
+
 ## Phases
 
 ### Phase 0 — Design tokens + theming foundation  *(the design system)* — **done 2026-06-29**
@@ -96,16 +117,19 @@ Original scope (as built):
 *Exit:* the existing app looks coherent in light **and** dark, toggling live, with no
 structural changes yet.
 
-### Phase 1 — Restyle existing surfaces  *(apply the system)*
+### Phase 1 — Restyle existing surfaces  *(apply the system)* — **in progress**
 Apply tokens across the current pages; no new views.
-- Nav rail, page headers/section headers, the shared tables
-  (row height, alternating rows, header treatment, sortable affordance, **status as
-  pill chips**, right-aligned tabular numbers), `DetailPane` header/meta block,
-  buttons/inputs/search, dialogs (Ingest/Import/Publish), menus, status bar.
-- **Responsive hero**: tune `ScalableImage`/detail layout so heroes fill their pane
-  gracefully (aspect-correct letterboxing, sensible max sizes), per "better scaling,
-  not just larger."
-- Consistent spacing/padding/margins pass throughout.
+- **Landed (2026-06-30, first slice):** **status pill chips** (`widgets.StatusPillDelegate`
+  — tasteful tinted rounded chip from the theme `status_*` color, sort-safe) on the
+  Library Status column; **alternating row colors** on all shared tables
+  (`make_table` + the catalog table); **uniform page padding** (token-driven margins on
+  the page stack); removed the redundant **Import toolbar button** (nav rail + `Ctrl+I`
+  remain). Headings already use theme-aware `<h2>`/`<h3>` rich text (inherit palette).
+- **Remaining:** nav-rail treatment, header/sortable-affordance polish, right-aligned
+  **tabular numerals** (mono on numeric columns), `DetailPane` header/meta refinement,
+  dialog spacing pass.
+- **Responsive hero**: `ScalableImage` already scales aspect-correct + non-upscaling +
+  height-capped — revisit only if heroes need more presence per real use.
 
 ### Phase 2 — Imagery: thumbnails everywhere + viewer upgrade
 - **Thumbnails in rows** — Library / Sessions / Processing / search results get a small

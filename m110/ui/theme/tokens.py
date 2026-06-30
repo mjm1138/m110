@@ -55,6 +55,11 @@ class Tokens:
         return self.name == "dark"
 
 
+# ── the palette ───────────────────────────────────────────────────────────────
+# TO TWEAK THEME COLORS: edit the hex values in LIGHT / DARK below. Every role is a
+# semantic name used app-wide (via QSS + programmatic lookups), so changing one hex
+# here recolors that role everywhere — no other file needs editing. `accent` is the
+# single brand swap-point. After editing, relaunch (or toggle the theme) to see it.
 LIGHT = Tokens(
     name="light",
     window="#f5f6f7", surface="#ffffff", surface_alt="#f0f1f3", raised="#ffffff",
