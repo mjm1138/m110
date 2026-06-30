@@ -429,6 +429,30 @@ checklist, computed on the fly. Consequences:
   already lives there) or a small per-target manifest. Whichever wins, it's
   authored (mutable, persistent), and the galleries are *derived* from it.
 
+### Reference images for uncaptured objects + attribution (decided 2026-06-30)
+- **Goal:** show a thumbnail/hero for objects the user hasn't captured yet (and let
+  the user build an in-app image library), without confusing them with real captures.
+- **Sourcing (decided):** two tiers. **(A) Automatic, any object** — fetch a survey
+  cutout by the object's J2000 RA/Dec (`catalog.load_coords`) from **CDS hips2fits**
+  (SDSS where covered, **DSS2** all-sky fallback), **cached offline like Simbad coords**;
+  label it as survey data (not a capture). **(B) Curated heroes** for marquee objects —
+  **ESA/Hubble + ESO (CC BY 4.0)**, NASA (public domain). ⚠️ DSS is non-commercial +
+  needs acknowledgment; SDSS/CDS need acknowledgment; CC BY needs attribution.
+- **New data seam:** a **reference-image tier** distinct from the capture tiers
+  (`finished/ → stacks/ → seestar-stacks/`) — proposed `seed/object_images/<slug>.jpg`
+  (bundled) and/or a cached `.m110_internal_data/renders/ref/<slug>.jpg` (fetched).
+  `build_images._hero_source` consults it **only when there is no real capture**, so a
+  capture always wins. The Library/grid/detail must visibly distinguish a reference
+  image from the user's own data.
+- **Attribution is mandatory, authored/reference state:** per reference image, store
+  `source` · `license` · `credit` · `url` (e.g. a `seed/object_images.toml` sidecar or
+  fields on the `seed/objects.toml` reference) so the object page renders a credit line.
+- **In-app image spec (display path is 8-bit sRGB; `build_images` thumb 480px / hero
+  1200px):** display copies are **8-bit sRGB JPEG** (PNG only for lossless/transparency).
+  Provide **thumb source ≥960px** (crisp 480px @2×) and **hero source ~1600px**; aspect
+  is free (UI letterboxes — a ~square/3:2 crop only matters for grid tiles). Keep 16-bit
+  TIFF/FITS **masters** in the user's own archive; bundle/store only the 8-bit JPEGs.
+
 ### Custom processing workspaces (BUGS #18)
 - A named processing workspace **not bound to a single target** — combining lights
   from disparate sources (#16) and **multiple objects** (mosaics, e.g. M81 + M82 +

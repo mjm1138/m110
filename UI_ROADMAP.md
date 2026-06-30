@@ -145,6 +145,14 @@ Apply tokens across the current pages; no new views.
   keyboard-nav polish, smoother transitions.
 - **Compact object-page gallery** — denser, better-aligned contact-sheet grid in the
   detail pane.
+- **Reference images for uncaptured objects** *(decided 2026-06-30)* — populate
+  thumbnails/heroes for objects the user hasn't shot, from **CDS hips2fits** survey
+  cutouts by RA/Dec (SDSS/DSS2, cached offline) + curated **ESA/Hubble/ESO (CC BY)**
+  heroes, **clearly badged as survey/reference (not a capture)**, with per-image
+  attribution rendered on the object page. New reference-image tier + attribution
+  storage — see **[`DATA_MODEL.md`](DATA_MODEL.md)** "Reference images for uncaptured
+  objects". (Also lets the user build an in-app image library from their own collection
+  — export 8-bit sRGB JPEG ~1600px; keep 16-bit masters in their archive.)
 
 ### Phase 3 — Library list/grid toggle  *(object-grid)*
 - A **grid view** of the Library: one **tile per object** (hero thumbnail + id/name +

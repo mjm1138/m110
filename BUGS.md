@@ -63,7 +63,7 @@ Legend: `[x]` fixed · `[ ]` open · `[~]` partially done
 
 
 ### Questions
-- [ ] Are there royalty-free sources for object images we can use to populate thumbnails for non-captured objects? We could credit the source on the object page. I also want to build a library of images that can be used in-app from my collection. Let me know what image formats are needed for in-app use cases (size, aspect ratio, format, bit depth, etc.)
+- [x] Are there royalty-free sources for object images we can use to populate thumbnails for non-captured objects? *Answered + decision captured (2026-06-30).* **Sourcing:** (A) automatic survey cutouts by RA/Dec via **CDS hips2fits** (SDSS/DSS2, cached offline), (B) curated **ESA/Hubble + ESO (CC BY 4.0)** / NASA (PD) heroes — all credited, clearly badged as reference (not a capture). **In-app spec:** 8-bit sRGB JPEG; thumb source ≥960px, hero ~1600px; aspect free (UI letterboxes); keep 16-bit masters in the user's archive. Needs a reference-image tier + per-image attribution — full decision in **[`DATA_MODEL.md`](DATA_MODEL.md)** "Reference images for uncaptured objects"; scheduled as a **UI Phase 2** item (**[`UI_ROADMAP.md`](UI_ROADMAP.md)**). Execute later.
 
 #### Follow-up fixes (detail view)
 - [x] **Crash / duplicate buttons / persistent Save+Cancel.** Re-rendering the
