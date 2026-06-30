@@ -83,10 +83,11 @@ class Layout:
 
 
 LAYOUTS = [
-    Layout("seestar",    "Seestar",    True),   # folder-name conventions (_sub/Stacked_/_photo)
-    Layout("m110-store", "M110 store", True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
-    Layout("raw-fits",   "Raw FITS",   True),    # loose FITS sorted by header
-    Layout("asiair",     "ZWO ASIAIR", False),   # registered placeholder
+    Layout("seestar",         "Seestar",         True),   # folder-name conventions (_sub/Stacked_/_photo)
+    Layout("m110-store",      "M110 store",      True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
+    Layout("raw-fits",        "Raw FITS",        True),    # loose FITS sorted by header
+    Layout("finished-render", "Finished render", True),    # a loose *_processed/final raster in an object folder
+    Layout("asiair",          "ZWO ASIAIR",      False),   # registered placeholder
 ]
 LAYOUTS_BY_ID = {l.id: l for l in LAYOUTS}
 
@@ -153,6 +154,21 @@ def _content_files(d: Path) -> list[str]:
         return []
     return sorted(f.name for f in d.iterdir()
                   if f.is_file() and _is_content_file(f.name))
+
+
+_RASTER_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+# A finished/processed deliverable bakes its provenance into the filename (e.g. a
+# Siril/Naztronomy "…_drizzle…_processed.png"). Same vocabulary as
+# `build_images._FINAL_FIT_RE` / `siril`.
+_FINISHED_HINT_RE = re.compile(r"(processed|final|finished)", re.IGNORECASE)
+
+
+def _is_finished_raster(name: str) -> bool:
+    """A loose viewable raster whose name marks it a finished render."""
+    if "_thn." in name or "." not in name:
+        return False
+    ext = "." + name.rsplit(".", 1)[-1].lower()
+    return ext in _RASTER_EXTS and bool(_FINISHED_HINT_RE.search(name))
 
 
 # ── name canonicalization + alias table (#12a, #12c) ──────────────────────────
@@ -605,12 +621,33 @@ def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
         ops = _classify_raw_dir(src_dir, name, action, handled)
     else:
         ops = []
+    # Claim a loose finished/processed raster (a Siril export dropped in an object
+    # folder) the recognizer above didn't take → finished/ for the object. Only for
+    # leaf dirs (m110-store/seestar already route their finished outputs); object from
+    # the folder name. Without this, such a file falls through to the holding area.
+    ops += _claim_loose_finished(src_dir, name, action, handled, layout)
     # Sweep: any content file the recognizer didn't claim → holding area. `handled`
     # (not the emitted ops) is the authority, so files skipped as already-present
     # don't get mistaken for unclassifiable and re-held.
     leftover = [f for f in _content_files(src_dir) if f not in handled]
     ops += _emit_unassigned(src_dir, leftover, name, action, layout or "unknown")
     return ops
+
+
+def _claim_loose_finished(src_dir: Path, name: str, action: str, handled: set,
+                          layout: str | None) -> list[IngestOp]:
+    """Route unclaimed loose `*_processed/final/finished` rasters to the object's
+    `finished/` tier (object = folder name). Skips dirs already handled by the
+    multi-file recognizers (m110-store/seestar handle their own finished outputs)."""
+    if layout not in (None, "raw-fits"):
+        return []
+    files = [f for f in _content_files(src_dir)
+             if f not in handled and _is_finished_raster(f)]
+    if not files:
+        return []
+    obj = canonical_target(name)
+    handled.update(files)
+    return _emit_files(src_dir, files, "finished", obj, name, action, "finished-render")
 
 
 def _in_own_store(src_dir: Path) -> bool:

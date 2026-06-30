@@ -467,6 +467,35 @@ def test_group_ops_splits_per_object_in_recursive_store(tmp_path, monkeypatch):
     assert any(g.kind == "siril-stack" and g.object == "M51" for g in groups)
 
 
+def test_loose_finished_raster_routes_to_finished(tmp_path, monkeypatch):
+    """A loose *_processed/final raster (a Siril export dropped in an object folder)
+    is recognized as the object's finished render — not swept to the holding area."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "export" / "M5"
+    src.mkdir(parents=True)
+    fn = "M_5_674x10sec_2026-05-11_drizzle-1-5x_processed.png"
+    (src / fn).write_text("x" * 64)
+
+    ops = ingest.scan_directory_plan(tmp_path / "export")
+    assert len(ops) == 1
+    op = ops[0]
+    assert op.kind == "finished"
+    assert op.object == "M5"
+    assert op.layout == "finished-render"
+    assert op.dest_rel == f"Images/M5/finished/{fn}"
+
+
+def test_loose_non_finished_raster_still_held(tmp_path, monkeypatch):
+    """A loose raster *without* a finished hint isn't over-claimed — it still goes to
+    the holding area for manual assignment."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "export" / "randoms"
+    src.mkdir(parents=True)
+    (src / "screenshot.png").write_text("z" * 32)
+    ops = ingest.scan_directory_plan(tmp_path / "export")
+    assert [o.kind for o in ops] == ["unassigned"]
+
+
 def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
     """Loose mixed FITS in one dir sort by IMAGETYP; the object comes from OBJECT."""
     _make_staging(tmp_path, monkeypatch)

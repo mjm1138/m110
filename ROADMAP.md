@@ -297,7 +297,9 @@ archived in **[`DONE.md`](DONE.md)**.
      source per group — **seestar** (folder conventions), **m110-store** (the
      `~/Astronomy/Images` precursor: `FITS/<obj>/{lights,darks,…,stacks}`, `Finished
      Images/<obj>`, `Seestar_stacks/<obj>`; `process/`+`siril/` sandboxes skipped),
-     **raw-fits** (loose FITS header-sorted), and **asiair** (registered-disabled
+     **raw-fits** (loose FITS header-sorted), **finished-render** (a loose
+     `*_processed/final/finished` raster in an object folder → that object's
+     `finished/`), and **asiair** (registered-disabled
      placeholder). The app's own `Images/` content tree is never re-imported into
      itself (`_in_own_store`). The Import preview shows the kind + detected layout
      (tooltip). Pairs with #12's pointing logic (`frame_radec`).
