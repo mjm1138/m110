@@ -300,18 +300,17 @@ Library MVP. (Planetary from the ETX/ASI662 would also land here eventually.)
   - Done **before 0.1e/0.1f** so journal editing + processing-prep build against
     the final layout (no double migration).
 
-- [ ] **#14**: **`build_images.render_images` never prunes orphaned renders.**
-  *Logged 2026-06-18 from the Astronomy session (engine-parity audit).* When a
-  source image changes (reprocess, new mtime/size → new `img_hash` → new
-  thumbnail/full filename), the **old** derivative is left behind in
-  `.m110_internal_data/renders/`. `render_images` only *writes* derivatives +
-  `images.json`; there's no cleanup pass, so the renders cache grows unbounded
-  over time. Gallery correctness is unaffected (`images.json` references current
-  hashes), so this is **disk hygiene, not a display bug** — low priority.
-  - **Fix pattern:** port Astronomy's `build_site._cleanup_orphaned_images` —
-    after rendering, compute the active hash set from the rendered manifest and
-    `unlink` any `renders/*.{jpg,png}` (and hero sidecars) whose stem isn't
-    active. (Astronomy `scripts/build_site.py`.)
+- [x] **#14**: **`build_images.render_images` never prunes orphaned renders.**
+  *Logged 2026-06-18; done 2026-06-30.* When a source image changes (reprocess →
+  new `img_hash` → new thumbnail filename), the **old** derivative was left behind
+  in `.m110_internal_data/renders/`, growing the cache unbounded (disk hygiene, not
+  a display bug). *Fix:* `render_images` now calls `_cleanup_orphaned_renders` after
+  writing `images.json` — it unlinks `renders/<hash>.jpg` thumbnails and
+  `hero/<slug>.jpg` heroes the manifest no longer references. Guarded to **full
+  renders only** (a `slugs=` subset writes a partial manifest, so pruning is skipped
+  to avoid removing other slugs' live derivatives). Returns a `pruned` count. Tests:
+  `test_build_images.test_orphaned_thumb_pruned_on_reprocess` /
+  `…_orphaned_hero_pruned_when_slug_drops` / `…_partial_render_does_not_prune`.
   - **Note on the parent bug:** the Astronomy *dry-run* mis-reported phantom
     thumbnail create/remove counts because it had a **second, drifting** copy of
     `img_hash`/discovery. **M110 is not exposed to that** — it has a single

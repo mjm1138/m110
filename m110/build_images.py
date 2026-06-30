@@ -266,4 +266,33 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
 
     config.DERIVED_DIR.mkdir(parents=True, exist_ok=True)
     (config.DERIVED_DIR / "images.json").write_text(json.dumps(manifest, indent=2))
-    return {"slugs": len(manifest)}
+    # Prune orphaned derivatives — only on a FULL render (a `slugs=` subset would
+    # make the manifest partial, so its "active" set is incomplete). Content-hashed
+    # thumbnail names change when a source reprocesses, leaving the old file behind
+    # (#14: disk hygiene — gallery correctness is unaffected since images.json points
+    # at current hashes).
+    pruned = _cleanup_orphaned_renders(manifest) if slugs is None else 0
+    return {"slugs": len(manifest), "pruned": pruned}
+
+
+def _cleanup_orphaned_renders(manifest: dict) -> int:
+    """Delete thumbnails (`RENDERS_DIR/<hash>.jpg`) and heroes (`HERO_DIR/<slug>.jpg`)
+    that the just-written manifest no longer references. `manifest` must be the FULL
+    render (every captured slug), or live derivatives would be wrongly removed."""
+    active_thumbs = {im["thumb"] for ims in manifest.values()
+                     for im in ims if im.get("thumb")}
+    active_heroes = set(manifest)            # one hero per slug that has images
+    removed = 0
+    renders = config.RENDERS_DIR
+    if renders.is_dir():
+        for f in renders.iterdir():          # HERO_DIR is a subdir → skipped by is_file
+            if f.is_file() and f.suffix.lower() == ".jpg" and f.name not in active_thumbs:
+                f.unlink()
+                removed += 1
+    hero_dir = config.HERO_DIR
+    if hero_dir.is_dir():
+        for f in hero_dir.iterdir():
+            if f.is_file() and f.suffix.lower() == ".jpg" and f.stem not in active_heroes:
+                f.unlink()
+                removed += 1
+    return removed

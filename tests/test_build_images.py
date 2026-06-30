@@ -56,6 +56,57 @@ def test_render_generates_thumb_hero_manifest(tmp_path, monkeypatch):
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()
 
 
+def test_orphaned_thumb_pruned_on_reprocess(tmp_path, monkeypatch):
+    """#14: a reprocessed source gets a new content-hash thumb; the stale one is
+    pruned (not left to grow the renders cache)."""
+    import time
+    root, internal = _setup(tmp_path, monkeypatch)
+    src = config.finished_dir("M99") / "M99_final.png"
+    _png(src)
+    catalog = {"m99": {"id": "M99"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}
+    build_images.render_images(catalog, totals)
+    renders = internal / "renders"
+    first = sorted(p.name for p in renders.glob("*.jpg"))
+    assert len(first) == 1
+    time.sleep(0.01)
+    _png(src, size=(240, 160), color=(200, 30, 30))      # reprocess → new hash
+    res = build_images.render_images(catalog, totals)
+    now = sorted(p.name for p in renders.glob("*.jpg"))
+    assert len(now) == 1 and now != first                # old pruned, new present
+    assert res["pruned"] == 1
+
+
+def test_orphaned_hero_pruned_when_slug_drops(tmp_path, monkeypatch):
+    root, internal = _setup(tmp_path, monkeypatch)
+    _png(config.finished_dir("M99") / "M99_final.png")
+    catalog = {"m99": {"id": "M99"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}
+    build_images.render_images(catalog, totals)
+    assert (internal / "renders" / "hero" / "m99.jpg").is_file()
+    # object no longer has images → not in the manifest → hero pruned
+    res = build_images.render_images(catalog, {"by_folder": {}, "by_slug": {}})
+    assert not (internal / "renders" / "hero" / "m99.jpg").exists()
+    assert res["pruned"] >= 1
+
+
+def test_partial_render_does_not_prune(tmp_path, monkeypatch):
+    """A targeted `slugs=` render writes a partial manifest, so it must NOT prune
+    other slugs' live derivatives."""
+    root, internal = _setup(tmp_path, monkeypatch)
+    _png(config.finished_dir("M99") / "M99_final.png")
+    _png(config.finished_dir("M81") / "M81_final.png")
+    catalog = {"m99": {"id": "M99"}, "m81": {"id": "M81"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}, "M81": {"slugs": ["m81"]}},
+              "by_slug": {}}
+    build_images.render_images(catalog, totals)                 # full
+    renders = internal / "renders"
+    assert len(list(renders.glob("*.jpg"))) == 2
+    res = build_images.render_images(catalog, totals, slugs=["m99"])  # partial
+    assert res["pruned"] == 0
+    assert len(list(renders.glob("*.jpg"))) == 2                # M81's thumb kept
+
+
 def test_thumb_is_cached(tmp_path, monkeypatch):
     root, internal = _setup(tmp_path, monkeypatch)
     src = config.finished_dir("M99") / "x.png"
