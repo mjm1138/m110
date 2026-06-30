@@ -294,11 +294,21 @@ class ImportPage(QWidget):
                 "manual assignment.")
         else:
             self._holding_header.setText(
-                f"{n} file(s) awaiting assignment — pick an object + kind, then Assign.")
+                f"{n} file(s) awaiting assignment — hover a row to see filenames, "
+                "then pick an object + kind and Assign.")
+        from pathlib import Path
         self.holding_table.setRowCount(len(groups))
         for r, g in enumerate(groups):
-            self.holding_table.setItem(r, 0, QTableWidgetItem(g.group))
-            self.holding_table.setItem(r, 1, QTableWidgetItem(str(g.frames)))
+            names = [Path(op.src).name for op in g.ops]
+            tip = "\n".join(names[:40])
+            if len(names) > 40:
+                tip += f"\n… +{len(names) - 40} more"
+            folder_item = QTableWidgetItem(g.group)
+            folder_item.setToolTip(tip)
+            self.holding_table.setItem(r, 0, folder_item)
+            files_item = QTableWidgetItem(str(g.frames))
+            files_item.setToolTip(tip)
+            self.holding_table.setItem(r, 1, files_item)
             self.holding_table.setItem(r, 2, QTableWidgetItem(_fmt_size(g.size_bytes)))
             obj = QComboBox()
             obj.setEditable(True)               # allow new / off-catalog objects
