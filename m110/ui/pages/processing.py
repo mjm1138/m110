@@ -2,13 +2,15 @@
 Mirrors the site's Processing page. Object rows double-click to the Catalog detail."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
 )
 
 from m110 import derived
-from m110.ui.widgets import make_table, make_numeric
+from m110.ui.widgets import (
+    make_table, make_numeric, ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
+)
 
 _GROUPS = [
     ("out_of_date", "Out of date — restack to incorporate new lights"),
@@ -30,6 +32,8 @@ class ProcessingPage(QScrollArea):
         self._lay = QVBoxLayout(self._content)
         self._lay.setAlignment(Qt.AlignTop)
         self.setWidget(self._content)
+        self._thumb_loader = ThumbnailLoader(self)
+        self._thumbs = RowThumbnails(self._thumb_loader)
         self.reload()
 
     def _clear(self):
@@ -50,6 +54,7 @@ class ProcessingPage(QScrollArea):
         proc = derived.load_processing()
         counts = proc.get("counts", {})
         queue = proc.get("queue", [])
+        self._thumbs.reset()
 
         title = QLabel("<h2>Processing Queue</h2>")
         title.setTextFormat(Qt.RichText)
@@ -69,12 +74,15 @@ class ProcessingPage(QScrollArea):
             self._lay.addWidget(h)
             tbl = make_table(_COLS, stretch_last=True)
             tbl.setSortingEnabled(False)
+            tbl.setIconSize(QSize(ROW_THUMB_SIZE, ROW_THUMB_SIZE))
             for f in rows:
                 r = tbl.rowCount()
                 tbl.insertRow(r)
                 obj = QTableWidgetItem(f.get("folder", ""))
                 if f.get("slugs"):
-                    obj.setData(Qt.UserRole, f["slugs"][0])
+                    slug = f["slugs"][0]
+                    obj.setData(Qt.UserRole, slug)
+                    self._thumbs.add(slug, obj)
                 tbl.setItem(r, 0, obj)
                 tbl.setItem(r, 1, make_numeric(QTableWidgetItem(
                     f"{f.get('integration_hms', '')} ({f.get('frames', 0)} fr)")))

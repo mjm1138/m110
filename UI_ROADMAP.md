@@ -136,15 +136,44 @@ Apply tokens across the current pages; no new views.
 - **Responsive hero**: `ScalableImage` already scales aspect-correct + non-upscaling +
   height-capped — revisit only if heroes need more presence per real use.
 
-### Phase 2 — Imagery: thumbnails everywhere + viewer upgrade
-- **Thumbnails in rows** — Library / Sessions / Processing / search results get a small
-  hero/representative thumbnail (a `QStyledItemDelegate` or icon column) backed by the
-  renders cache, loaded **async**. Objects become visually identifiable at a glance.
-- **Fullscreen viewer upgrade** (`image_viewer.py`) — zoom/pan, **fit / 100%**, a
-  **metadata overlay** (filter, integration, date, filename from sessions/derived),
-  keyboard-nav polish, smoother transitions.
-- **Compact object-page gallery** — denser, better-aligned contact-sheet grid in the
-  detail pane.
+### Phase 2 — Imagery: thumbnails everywhere + viewer upgrade  *(core done 2026-07-01; reference-images item below still open)*
+- **Thumbnails in rows** *(done 2026-07-01)* — Library / Sessions / Processing (and
+  their search-filtered views) show a small hero thumbnail on the Object row, backed by
+  the existing renders cache (`objects.hero_path`), decoded **async** off the UI thread
+  and memo-cached by (path, size, mtime) so re-sorts/rebuilds don't redecode. Landed as
+  `widgets.ThumbnailLoader` (QThreadPool + QImageReader decode) + `widgets.RowThumbnails`
+  (per-page row↔slug↔icon-item bookkeeping, reset on every table rebuild). The decode
+  crops a **center square** (side = half the frame width, clamped to frame height) before
+  scaling down — smart-scope frames put the subject dead-center, and a full-frame squash
+  read as noise at icon size (user feedback 2026-07-01); the crop reads better but is still
+  size-limited at ~20px row icons — **acceptable for rows, revisit at Phase 3's larger grid
+  tile size**, which reuses this same loader/crop.
+- **Fullscreen viewer upgrade** *(done 2026-07-01)* — `image_viewer.ZoomableImage`
+  (a `QScrollArea`-based replacement for the viewer's old fit-only `ScalableImage`)
+  adds continuous **zoom** (Fit / 100% / ±, 0.05–8×) and **click-drag pan** once
+  content exceeds the viewport (event-filter on the viewport, the standard Qt
+  pattern). `ImageViewer` gained a zoom toolbar (Fit/100%/−/+/live %), a toggleable
+  themed **metadata overlay** (Source/Date/Size always; Integration when the image
+  matches a processing-queue `latest_processed` stack; Filter only when every
+  session for the object agrees on one — never guessed across a mixed-filter
+  object), and keyboard polish (Home/End jump, `+`/`-`/`0`/`1`/`I`). Item shape is
+  backward compatible (`(name, path)` tuples still work, e.g. the Media page —
+  the Info toggle just doesn't appear without `meta`). "Smoother transitions" was
+  deliberately scoped to **zoom always resets to Fit on navigate** (no animated
+  crossfade — low payoff for the effort here) so Prev/Next never lands on an
+  inherited zoomed crop of the next image. Metadata content lives in
+  `detail._gallery_meta()` (keeps `image_viewer.py` app-data-agnostic); sourced
+  from `derived.totals_by_slug()[slug]["filters"]` and the `processing` queue's
+  `stack_meta` — no new derived-data fields needed.
+- **Compact object-page gallery** *(done 2026-07-01)* — the `DetailPane` gallery
+  (`detail.show_object()`) drops from 160px letterboxed icons to a **120px
+  center-cropped-square** contact sheet (`detail._square_icon()` — same crop
+  instinct as row thumbnails, but `side = min(w, h)` rather than the row
+  icons' aggressive half-width crop, since a ~120px tile has room to keep more
+  of the frame). `setGridSize()` + `setUniformItemSizes(True)` fix the
+  ragged-row alignment a long filename used to cause; filenames now elide
+  (`Qt.ElideMiddle`) to one line with the full name as a tooltip — keeps
+  CLAUDE.md's "show real filenames" without letting them break the grid.
 - **Reference images for uncaptured objects** *(decided 2026-06-30)* — populate
   thumbnails/heroes for objects the user hasn't shot, from **CDS hips2fits** survey
   cutouts by RA/Dec (SDSS/DSS2, cached offline) + curated **ESA/Hubble/ESO (CC BY)**

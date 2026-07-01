@@ -3,7 +3,7 @@ shared per-object detail pane. Hosts object selection; other pages route here vi
 `select_object`. Sort persists across in-session rebuilds."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
     QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox, QCheckBox, QMenu,
@@ -18,6 +18,7 @@ from m110.ui.detail import DetailPane
 from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
+    ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
 )
 
 
@@ -56,6 +57,8 @@ class CatalogPage(QWidget):
         self._catalog_filter = None       # None = all objects; else a catalog id
         self._catalogs = list_bundled_catalogs()
         self._enrich_worker = None        # in-flight online enrichment (single)
+        self._thumb_loader = ThumbnailLoader(self)
+        self._thumbs = RowThumbnails(self._thumb_loader)
 
         self.table = self._build_table()
         self.table.itemSelectionChanged.connect(self._on_select)
@@ -63,6 +66,8 @@ class CatalogPage(QWidget):
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
         self.detail.saved.connect(self.notes_saved)      # re-emit to the shell
+        self.detail.closed.connect(self._on_detail_closed)
+        self.detail.hide()                                # nothing selected yet
 
         # Left side: catalog selector + search + stat row above the table.
         cat_row = QHBoxLayout()
@@ -194,6 +199,8 @@ class CatalogPage(QWidget):
         table.setSortingEnabled(False)
         table.setAlternatingRowColors(True)
         table.setItemDelegateForColumn(self._status_col, StatusPillDelegate(table))
+        table.setIconSize(QSize(ROW_THUMB_SIZE, ROW_THUMB_SIZE))
+        self._thumbs.reset()
 
         for row, (slug, e) in enumerate(items):
             t = totals.get(slug, {})
@@ -203,6 +210,8 @@ class CatalogPage(QWidget):
             obj = NumItem(object_label(oid), catalog_sort_key(oid[0] if oid else ""))
             obj.setData(Qt.UserRole, slug)
             table.setItem(row, 0, obj)
+            if captured:
+                self._thumbs.add(slug, obj)
             table.setItem(row, 1, QTableWidgetItem(str(e.get("name") or "")))
             table.setItem(row, 2, QTableWidgetItem(str(e.get("type") or "").replace("_", " ")))
             season = str(e.get("season") or "")
@@ -253,6 +262,7 @@ class CatalogPage(QWidget):
         self._apply_filter()
         if not (prev and self._select_slug(prev)):
             self.detail.placeholder()
+            self.detail.hide()
 
     def _selected_slug(self):
         items = self.table.selectedItems()
@@ -269,9 +279,14 @@ class CatalogPage(QWidget):
     def _on_select(self):
         items = self.table.selectedItems()
         if not items:
+            self.detail.hide()
             return
         slug = self.table.item(items[0].row(), 0).data(Qt.UserRole)
         self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
+        self.detail.show()
+
+    def _on_detail_closed(self):
+        self.table.clearSelection()
 
     def _refresh_open_detail(self):
         slug = self._selected_slug()

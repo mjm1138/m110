@@ -7,17 +7,23 @@ bring back.
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtGui import QPixmap, QIcon, QImageReader
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
+    QToolButton,
 )
 
 from m110 import config, derived, objects, siril
 from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import status_label, targets_for_slug, make_table
+
+
+_GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
 
 
 def _status_pill(status) -> QLabel:
@@ -42,6 +48,44 @@ def _section_label(text: str) -> QLabel:
 def _fmt_hm(minutes: float) -> str:
     m = int(round(minutes or 0))
     return f"{m // 60}:{m % 60:02d}"
+
+
+def _gallery_meta(slug: str, im: dict) -> dict[str, str]:
+    """Best-effort display metadata for one gallery image, for the viewer's
+    info overlay — derived only from what's already computed in derived.py,
+    never guessed beyond what the data model actually supports (e.g. filter
+    is only included when every session for this object agrees on one)."""
+    meta: dict[str, str] = {}
+    if im.get("label"):
+        meta["Source"] = im["label"]
+    if im.get("mtime"):
+        meta["Date"] = datetime.fromtimestamp(im["mtime"]).strftime("%Y-%m-%d")
+    if im.get("size_mb") is not None:
+        meta["Size"] = f"{im['size_mb']:.1f} MB"
+    for f in derived.load_processing().get("queue", []):
+        if slug in f.get("slugs", []) and f.get("latest_processed") == im.get("name"):
+            sm = f.get("stack_meta")
+            if sm:
+                meta["Integration"] = f"{sm['stack_integration_hms']} ({sm['stack_frames']} fr)"
+            break
+    filters = derived.totals_by_slug().get(slug, {}).get("filters", [])
+    if len(filters) == 1:
+        meta["Filter"] = filters[0]
+    return meta
+
+
+def _square_icon(path, size: int) -> QIcon:
+    """A center-cropped-to-square QIcon for the gallery grid. Cached thumbs
+    aren't square (aspect-preserved from the source frame), so letterboxing
+    them inside a square icon leaves dead space on two sides — crop first."""
+    img = QImageReader(str(path)).read()
+    if img.isNull():
+        return QIcon()
+    w, h = img.width(), img.height()
+    side = min(w, h)
+    crop = img.copy((w - side) // 2, (h - side) // 2, side, side)
+    scaled = crop.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    return QIcon(QPixmap.fromImage(scaled))
 
 
 # The bundled season strings are hand-set for ~40°N (the reference site). Real
@@ -78,6 +122,9 @@ class DetailPane(QScrollArea):
     import_requested = Signal(str)
     # Object Notes were saved → other views (e.g. the Journal feed) should reload.
     saved = Signal(str)
+    # The user dismissed the pane (✕) — the host page decides what that means
+    # (e.g. clear the table selection, go back to a full-width table).
+    closed = Signal()
 
     def __init__(self):
         super().__init__()
@@ -92,7 +139,7 @@ class DetailPane(QScrollArea):
         self._current = None        # (slug, e, t) of the shown object
         self._editing = False
         self._gallery = None
-        self._gallery_items = []    # parallel [(name, view_path)] for the viewer
+        self._gallery_items = []    # [{name, path, meta}, ...] for the viewer
         self.placeholder()
 
     def is_editing(self) -> bool:
@@ -139,7 +186,16 @@ class DetailPane(QScrollArea):
         ids = catalog.object_identifiers(slug, e)
         title = QLabel(f"<h2>{' · '.join(ids)} &mdash; {e.get('name') or ''}</h2>")
         title.setTextFormat(Qt.RichText)
-        self._lay.addWidget(title)
+        self._close_btn = QToolButton()
+        self._close_btn.setText("✕")
+        self._close_btn.setAutoRaise(True)
+        self._close_btn.setToolTip("Close")
+        self._close_btn.setCursor(Qt.PointingHandCursor)
+        self._close_btn.clicked.connect(self.closed.emit)
+        header_row = QHBoxLayout()
+        header_row.addWidget(title, 1)
+        header_row.addWidget(self._close_btn, 0, Qt.AlignTop)
+        self._lay.addLayout(header_row)
 
         bits = [str(e.get("type") or "").replace("_", " ")]
         if e.get("magnitude") is not None:
@@ -217,21 +273,30 @@ class DetailPane(QScrollArea):
                 f"{theme.active_tokens().text_secondary}'>double-click to view</span>"))
             gallery = QListWidget()
             gallery.setViewMode(QListWidget.IconMode)
-            gallery.setIconSize(QSize(160, 160))
+            gallery.setIconSize(QSize(_GALLERY_TILE, _GALLERY_TILE))
             gallery.setResizeMode(QListWidget.Adjust)
             gallery.setMovement(QListWidget.Static)
-            gallery.setMinimumHeight(360)
-            gallery.setSpacing(6)
+            gallery.setUniformItemSizes(True)
+            gallery.setTextElideMode(Qt.ElideMiddle)
+            pad = theme.tokens.SPACE["sm"]
+            cell_h = _GALLERY_TILE + pad * 2 + gallery.fontMetrics().height()
+            gallery.setGridSize(QSize(_GALLERY_TILE + pad * 2, cell_h))
+            gallery.setSpacing(4)
+            gallery.setMinimumHeight(cell_h * 2 + 16)
             self._gallery_items = []
             for im in imgs:
                 tp = config.RENDERS_DIR / im["thumb"]
                 if not tp.is_file():
                     continue
                 name = im.get("name") or ""
-                gallery.addItem(QListWidgetItem(QIcon(str(tp)), name))
+                item = QListWidgetItem(_square_icon(tp, _GALLERY_TILE), name)
+                item.setToolTip(name)
+                gallery.addItem(item)
                 full = im.get("full")
                 view = str(config.DATA_ROOT / full) if full else str(tp)
-                self._gallery_items.append((name, view))
+                self._gallery_items.append({
+                    "name": name, "path": view, "meta": _gallery_meta(slug, im),
+                })
             gallery.itemDoubleClicked.connect(self._open_gallery_item)
             self._gallery = gallery
             self._lay.addWidget(gallery)

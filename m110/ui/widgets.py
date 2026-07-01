@@ -1,14 +1,16 @@
 """Shared UI helpers used across the Library pages."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QRectF, QSize
-from PySide6.QtGui import QColor, QPainter
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, Signal
+from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem,
 )
 
-from m110 import derived
+from m110 import derived, objects
 from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
@@ -103,3 +105,118 @@ def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
     if stretch_last:
         t.horizontalHeader().setStretchLastSection(True)
     return t
+
+
+# ── async row thumbnails (Library / Sessions / Processing) ──────────────────
+
+ROW_THUMB_SIZE = 20   # matches StatusPillDelegate's sizeHint floor — no row growth
+
+_thumb_cache: dict[tuple[str, int], tuple[float, QImage]] = {}
+_THUMB_CACHE_CAP = 512
+
+
+class _ThumbSignals(QObject):
+    done = Signal(str, int, object)   # path, size, QImage | None
+
+
+class _ThumbLoadTask(QRunnable):
+    """Decodes one image at a target size off the UI thread, then crops to a
+    center square before the final scale-down. Smart-scope frames put the
+    subject dead-center, and heroes aren't square (often letterboxed) — at
+    icon size a full-frame squash reads as noise, while a tight center crop
+    reads as the object. Builds a QImage (thread-safe), never a QPixmap
+    (main-thread only)."""
+
+    def __init__(self, path: str, size: int, signals: _ThumbSignals):
+        super().__init__()
+        self._path, self._size, self._signals = path, size, signals
+
+    def run(self):
+        img = QImageReader(self._path).read()
+        if img.isNull():
+            self._signals.done.emit(self._path, self._size, None)
+            return
+        w, h = img.width(), img.height()
+        side = max(min(w // 2, h), 1)         # half-width square, clamped to frame height
+        crop = img.copy((w - side) // 2, (h - side) // 2, side, side)
+        scaled = crop.scaled(self._size, self._size,
+                              Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self._signals.done.emit(self._path, self._size, scaled)
+
+
+class ThumbnailLoader(QObject):
+    """Async, cached small-image loader for table icon cells. Decodes off the
+    UI thread and memo-caches by (path, size, mtime) so re-sorts/rebuilds don't
+    redecode; a re-render (mtime change) invalidates the cache entry."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._signals = _ThumbSignals()
+        self._signals.done.connect(self._on_done)
+        self._pending: dict[tuple[str, int], tuple[float, list]] = {}
+
+    def request(self, path: Path, size: int, callback):
+        """callback(QPixmap | None) — called immediately on a cache hit, else
+        once the background decode completes."""
+        key = (str(path), size)
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            callback(None)
+            return
+        cached = _thumb_cache.get(key)
+        if cached and cached[0] == mtime:
+            callback(QPixmap.fromImage(cached[1]))
+            return
+        pending = self._pending.get(key)
+        if pending is not None:
+            pending[1].append(callback)
+            return
+        self._pending[key] = (mtime, [callback])
+        QThreadPool.globalInstance().start(_ThumbLoadTask(key[0], size, self._signals))
+
+    def _on_done(self, path: str, size: int, img):
+        key = (path, size)
+        entry = self._pending.pop(key, None)
+        if entry is None:
+            return
+        mtime, callbacks = entry
+        pm = None
+        if img is not None:
+            if len(_thumb_cache) > _THUMB_CACHE_CAP:
+                _thumb_cache.clear()
+            _thumb_cache[key] = (mtime, img)
+            pm = QPixmap.fromImage(img)
+        for cb in callbacks:
+            cb(pm)
+
+
+class RowThumbnails:
+    """Wires a table's rows to async hero thumbnails (`objects.hero_path`).
+    Call `reset()` at the start of each table (re)build, `add(slug, item)` per
+    captured row. A completed decode is applied to whichever item(s) are
+    current for that slug — since `reset()` replaces the tracking dict on every
+    rebuild, a callback that lands after a rebuild simply finds nothing (or the
+    current row) for a stale slug, never a deleted Qt item."""
+
+    def __init__(self, loader: ThumbnailLoader, size: int = ROW_THUMB_SIZE):
+        self._loader = loader
+        self._size = size
+        self._items: dict[str, list] = {}
+
+    def reset(self):
+        self._items = {}
+
+    def add(self, slug: str, item: QTableWidgetItem):
+        hp = objects.hero_path(slug)
+        if hp is None:
+            return
+        self._items.setdefault(slug, []).append(item)
+        self._loader.request(hp, self._size, lambda pm, slug=slug: self._apply(slug, pm))
+
+    def _apply(self, slug: str, pm):
+        if pm is None:
+            return
+        icon = QIcon(pm)
+        for item in self._items.get(slug, []):
+            item.setIcon(icon)

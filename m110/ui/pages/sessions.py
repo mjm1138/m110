@@ -3,13 +3,15 @@ Mirrors the site's Sessions page; a search box filters and object rows
 double-click to the Catalog detail."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit, QTableWidgetItem,
 )
 
 from m110 import derived
-from m110.ui.widgets import make_table, NumItem, make_numeric
+from m110.ui.widgets import (
+    make_table, NumItem, make_numeric, ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
+)
 
 _COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount"]
 
@@ -36,8 +38,12 @@ class SessionsPage(QWidget):
 
         self._table = make_table(_COLS)
         self._table.setSortingEnabled(True)
+        self._table.setIconSize(QSize(ROW_THUMB_SIZE, ROW_THUMB_SIZE))
         self._table.itemDoubleClicked.connect(self._go)
         lay.addWidget(self._table, 1)
+
+        self._thumb_loader = ThumbnailLoader(self)
+        self._thumbs = RowThumbnails(self._thumb_loader)
 
         self.reload()
 
@@ -51,13 +57,16 @@ class SessionsPage(QWidget):
         t = self._table
         t.setSortingEnabled(False)
         t.setRowCount(0)
+        self._thumbs.reset()
         for s in rows:
             r = t.rowCount()
             t.insertRow(r)
             t.setItem(r, 0, NumItem(s.get("date", ""), s.get("date", "")))
             obj = QTableWidgetItem(s.get("object_dir", ""))
             if s.get("slugs"):
-                obj.setData(Qt.UserRole, s["slugs"][0])
+                slug = s["slugs"][0]
+                obj.setData(Qt.UserRole, slug)
+                self._thumbs.add(slug, obj)
             t.setItem(r, 1, obj)
             t.setItem(r, 2, make_numeric(NumItem(str(s.get("frames", 0)), s.get("frames", 0))))
             exp = s.get("exposure_s", 0)

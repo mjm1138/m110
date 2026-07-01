@@ -1,4 +1,5 @@
 """Shared widgets — status pill delegate + table helpers."""
+import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import (
@@ -63,3 +64,52 @@ def test_make_numeric_right_aligns_and_mono(qapp):
     # mono=False → right-aligned but no font override
     plain = make_numeric(QTableWidgetItem("7"), mono=False)
     assert plain.textAlignment() & Qt.AlignmentFlag.AlignRight
+
+
+def test_thumbnail_loader_decodes_async_and_caches(tmp_path, qapp, qtbot):
+    PIL = pytest.importorskip("PIL")
+    from PIL import Image
+    from m110.ui.widgets import ThumbnailLoader
+
+    img_path = tmp_path / "hero.jpg"
+    Image.new("RGB", (200, 100), (10, 20, 30)).save(img_path)
+
+    loader = ThumbnailLoader()
+    results = []
+    loader.request(img_path, 20, results.append)
+    qtbot.waitUntil(lambda: len(results) == 1, timeout=2000)
+    assert results[0] is not None and not results[0].isNull()
+
+    # same (path, size) again → cache hit, callback fires synchronously
+    results2 = []
+    loader.request(img_path, 20, results2.append)
+    assert len(results2) == 1 and results2[0] is not None
+
+
+def test_thumbnail_loader_missing_file_calls_back_none(tmp_path, qapp):
+    from m110.ui.widgets import ThumbnailLoader
+
+    loader = ThumbnailLoader()
+    results = []
+    loader.request(tmp_path / "missing.jpg", 20, results.append)
+    assert results == [None]
+
+
+def test_row_thumbnails_reset_drops_stale_slug(tmp_path, qapp, monkeypatch):
+    from m110 import config
+    from m110.ui.widgets import ThumbnailLoader, RowThumbnails
+
+    monkeypatch.setattr(config, "HERO_DIR", tmp_path / "hero")
+    config.HERO_DIR.mkdir(parents=True)
+    PIL = pytest.importorskip("PIL")
+    from PIL import Image
+    Image.new("RGB", (40, 40), (1, 2, 3)).save(config.HERO_DIR / "m1.jpg")
+
+    thumbs = RowThumbnails(ThumbnailLoader())
+    item = QTableWidgetItem("M1")
+    thumbs.add("m1", item)
+    # a rebuild resets tracking before the slug reappears (or not) — an apply
+    # for a slug no longer tracked must be a no-op, not touch a stale item.
+    thumbs.reset()
+    thumbs._apply("m1", QPixmap(4, 4))   # simulate a late callback landing post-reset
+    assert item.icon().isNull()

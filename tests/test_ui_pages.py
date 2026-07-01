@@ -198,6 +198,143 @@ def test_image_viewer_close_and_quit_shortcuts(qapp):
         qapp.processEvents()
 
 
+def _viewer_png(path, size=(200, 100), color=(40, 80, 160)):
+    pytest.importorskip("PIL")
+    from PIL import Image
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color).save(path)
+
+
+def test_image_viewer_accepts_dict_items(qapp):
+    from m110.ui.image_viewer import ImageViewer
+    v = ImageViewer([{"name": "a", "path": "/no/such/file.png",
+                       "meta": {"Filter": "LP"}}], 0)
+    try:
+        v.show()
+        assert v.isVisible()
+        assert v._info_btn is not None            # meta present → toggle built
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
+def test_image_viewer_tuple_items_no_info_toggle(qapp):
+    from m110.ui.image_viewer import ImageViewer
+    v = ImageViewer([("a", "/no/such/file.png")], 0)
+    try:
+        assert v._info_btn is None                 # no meta → no toggle
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
+def test_image_viewer_zoom_fit_vs_100_percent_differ(tmp_path, qapp):
+    from m110.ui.image_viewer import ImageViewer
+    p = tmp_path / "a.png"
+    _viewer_png(p, size=(2000, 1000))
+    v = ImageViewer([("a", str(p))], 0)
+    try:
+        v.resize(400, 300)
+        qapp.processEvents()
+        assert v._image.is_fit()
+        fit_zoom = v._image.current_zoom()
+        v._image.set_zoom(1.0)
+        assert not v._image.is_fit()
+        assert v._image.current_zoom() == pytest.approx(1.0)
+        assert fit_zoom != pytest.approx(1.0)       # 2000px source, ~400px viewport
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
+def test_image_viewer_zoom_in_out_move_monotonically(tmp_path, qapp):
+    from m110.ui.image_viewer import ImageViewer
+    p = tmp_path / "a.png"
+    _viewer_png(p, size=(400, 300))
+    v = ImageViewer([("a", str(p))], 0)
+    try:
+        v._image.set_zoom(1.0)
+        base = v._image.current_zoom()
+        v._image.zoom_in()
+        assert v._image.current_zoom() > base
+        v._image.zoom_out()
+        v._image.zoom_out()
+        assert v._image.current_zoom() < base
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
+def test_image_viewer_fit_resets_on_navigate(tmp_path, qapp):
+    from m110.ui.image_viewer import ImageViewer
+    p1, p2 = tmp_path / "a.png", tmp_path / "b.png"
+    _viewer_png(p1, size=(400, 300))
+    _viewer_png(p2, size=(400, 300))
+    v = ImageViewer([("a", str(p1)), ("b", str(p2))], 0)
+    try:
+        v._image.set_zoom(2.0)
+        assert not v._image.is_fit()
+        v.next()
+        assert v._image.is_fit()                   # smoother transitions: no carried-over zoom
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
+def test_image_viewer_keyboard_shortcuts(tmp_path, qapp):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from m110.ui.image_viewer import ImageViewer
+    p1, p2 = tmp_path / "a.png", tmp_path / "b.png"
+    _viewer_png(p1, size=(400, 300))
+    _viewer_png(p2, size=(400, 300))
+    v = ImageViewer([{"name": "a", "path": str(p1), "meta": {"Filter": "LP"}},
+                      {"name": "b", "path": str(p2), "meta": {}}], 0)
+    try:
+        def press(key):
+            v.keyPressEvent(QKeyEvent(QEvent.KeyPress, key, Qt.NoModifier))
+
+        press(Qt.Key_End)
+        assert v._i == 1
+        press(Qt.Key_Home)
+        assert v._i == 0
+        press(Qt.Key_1)
+        assert v._image.current_zoom() == pytest.approx(1.0)
+        press(Qt.Key_0)
+        assert v._image.is_fit()
+        press(Qt.Key_Plus)
+        assert not v._image.is_fit()
+        assert v._info_btn is not None and not v._info_btn.isChecked()
+        press(Qt.Key_I)
+        assert v._info_btn.isChecked()
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
+def test_image_viewer_arrow_keys_navigate_via_real_focus(tmp_path, qapp, qtbot):
+    # Regression: calling keyPressEvent() directly (as above) always exercises
+    # the handler regardless of focus — it can't catch a widget upstream (the
+    # ZoomableImage scroll area) intercepting the key before ImageViewer ever
+    # sees it. Route a real Qt key event through qtbot instead, honoring focus.
+    from m110.ui.image_viewer import ImageViewer
+    p1, p2 = tmp_path / "a.png", tmp_path / "b.png"
+    _viewer_png(p1, size=(400, 300))
+    _viewer_png(p2, size=(400, 300))
+    v = ImageViewer([("a", str(p1)), ("b", str(p2))], 0)
+    qtbot.addWidget(v)
+    try:
+        v.show()
+        qapp.processEvents()
+        qtbot.keyClick(v, Qt.Key_Right)
+        assert v._i == 1
+        qtbot.keyClick(v, Qt.Key_Left)
+        assert v._i == 0
+    finally:
+        v.deleteLater()
+        qapp.processEvents()
+
+
 def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     from m110.ui.pages.media import MediaPage
@@ -242,6 +379,27 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
         # back to all
         page._catalog_combo.setCurrentIndex(0)
         assert page.table.rowCount() == all_rows
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_detail_hidden_until_selection_then_closable(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {"m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"}})
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        assert page.detail.isHidden()                  # nothing selected on first nav
+
+        page.table.selectRow(0)
+        assert not page.detail.isHidden()
+        close_btn = page.detail._close_btn
+        assert close_btn is not None
+
+        close_btn.click()
+        assert page.detail.isHidden()                   # ✕ dismisses back to full width
+        assert not page.table.selectedItems()           # and clears the selection
     finally:
         page.deleteLater()
         qapp.processEvents()
