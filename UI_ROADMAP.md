@@ -49,7 +49,7 @@ file owns *look & feel*.
 | Imagery | Library **list/grid toggle** (object-grid first); more **compact** object-page galleries; **responsive hero scaling** (fit well, not just bigger); upgraded **fullscreen viewer**; **thumbnails everywhere** |
 | Grid scope | **Object-grid first** (one tile per object), built so a cross-object image browser can follow |
 | Sequencing | **Foundation first** (tokens + theming + restyle), then imagery |
-| Branding | **Shipped (Phase 4)** — hand-inked "M110" wordmark (theme-recolored), parchment app/dock icon, warm-ink/sepia accent, About dialog. *Astronomer's-notebook* aesthetic |
+| Branding | **Shipped (Phase 4)** — hand-inked "M110" wordmark (theme-recolored), parchment app/dock icon, About dialog. *Astronomer's-notebook* aesthetic. Accent stays the neutral blue for now (a sepia accent was tried + reverted — read poorly) |
 
 ## Architecture & principles
 
@@ -226,11 +226,11 @@ Apply tokens across the current pages; no new views.
 - **App/dock icon:** `brand.app_icon()` composes the ink on a **fixed parchment tile**
   (rounded, aged-paper gradient) at the standard sizes; set as the window/dock icon.
   `tools/gen_app_icon.py` exports a PNG master for future Developer-ID packaging.
-- **Accent:** swapped the single accent token from neutral blue to **warm ink/sepia**
-  (light `#8a5a2b`, dark `#c69a6b`) — the notebook aesthetic; affects selection/focus/
-  links app-wide via `qss.build_qss`.
 - **About dialog:** Help → About M110 (`about_dialog.py`) — themed logo, tagline
   ("Complete the catalog."), version, license.
+- **Accent:** a warm ink/sepia accent was tried to match the logo but **reverted** — it
+  read poorly; the accent stays the **neutral blue** for now (still a one-token swap in
+  `tokens.py` if revisited).
 
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
@@ -241,9 +241,9 @@ Apply tokens across the current pages; no new views.
 
 ## Open decisions (resolve as phases start)
 
-- ~~**Accent color**~~ *(resolved — Phase 4)*: shipped a **warm ink/sepia** brand accent
-  (light `#8a5a2b`, dark `#c69a6b`) to match the astronomer's-notebook logo, superseding
-  the neutral-blue-vs-system-accent question.
+- **Accent color:** stays the **neutral desaturated blue** token for now (a warm
+  ink/sepia brand accent was tried in Phase 4 to match the logo but reverted — read
+  poorly). Open: revisit a brand accent, or follow the macOS system accent.
 - **Bundled mono typeface** + its license (JetBrains Mono / IBM Plex Mono / Iosevka).
 - **Density default:** comfortable vs. compact rows (and whether to expose a density
   toggle) — Capture One/Lightroom lean compact.

@@ -37,6 +37,30 @@ def test_logo_cache_is_shared_but_dpr_isolated(qapp):
     assert b.devicePixelRatio() == 2.0
 
 
+def _inked(pm, threshold=40):
+    img = pm.toImage()
+    return sum(1 for x in range(img.width()) for y in range(img.height())
+               if ((img.pixel(x, y) >> 24) & 0xFF) > threshold)
+
+
+def test_logo_stroke_width_thickens_ink(qapp):
+    """The weight knob must actually change the ink. (QtSvg silently drops strokes on
+    the logo's complex path, so weight is applied by dilation — regression guard.)"""
+    from m110.ui.theme import brand
+    orig = brand.LOGO_STROKE_WIDTH
+    try:
+        brand.LOGO_STROKE_WIDTH = 0
+        brand._logo_cache.clear()
+        thin = _inked(brand.logo_pixmap(60, QColor("#000000")))
+        brand.LOGO_STROKE_WIDTH = 8
+        brand._logo_cache.clear()
+        thick = _inked(brand.logo_pixmap(60, QColor("#000000")))
+    finally:
+        brand.LOGO_STROKE_WIDTH = orig
+        brand._logo_cache.clear()
+    assert thick > thin * 1.2       # a clearly heavier mark
+
+
 def test_app_icon_renders_all_sizes(qapp):
     from m110.ui.theme import brand
     icon = brand.app_icon()

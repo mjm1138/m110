@@ -1,30 +1,65 @@
 """Brand assets — the M110 logo + app icon, theme-aware.
 
-The logo (`brand/m110-logo.svg`) is a single-color hand-inked "M110" wordmark (an
-astronomer's-notebook scrawl). Because the app follows the OS light/dark appearance,
-a fixed-black logo would vanish in dark mode — so it's **recolored to a caller-supplied
-ink at render time** (call sites pass the active theme's text color). The app/dock icon
-composes that ink on a **fixed parchment tile** — app icons don't theme.
+The logo (`brand/m110-logo.svg`) is a **monochrome black-ink** hand-drawn "M110"
+wordmark on a transparent background (an astronomer's-notebook scrawl). Because the
+app follows the OS light/dark appearance, a fixed-black logo would vanish in dark mode
+— so the ink is **recolored to a caller-supplied color** at render time (call sites
+pass the active theme's text color).
 
-All colors come from the caller / tokens; this module hardcodes only the parchment tile
-palette (which is intentionally theme-independent).
+Dropping in a **replacement SVG** needs no code changes as long as it stays *black ink
+(#000 / #000000) on transparent*: the recolor matches any near-black `fill` (style or
+attribute form) and the crop is by transparent-pixel bounds, so it doesn't depend on a
+specific element id. Weight is added by **alpha-dilating** the rendered ink
+(`LOGO_STROKE_WIDTH`) so thin lines still read when scaled down — Qt's SVG renderer
+silently ignores strokes on this path, so a real SVG stroke won't work. (Re-run
+`tools/gen_app_icon.py` to refresh the exported `app-icon.png`.)
+
+The app/dock icon composes the ink on a **fixed parchment tile** — app icons don't theme.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QLinearGradient, QPainter, QPixmap
+import math
+
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import (
+    QColor, QIcon, QImage, QLinearGradient, QPainter, QPixmap,
+)
 from PySide6.QtSvg import QSvgRenderer
 
 _BRAND_DIR = Path(__file__).resolve().parent / "brand"
 _LOGO_SVG = _BRAND_DIR / "m110-logo.svg"
-_PATH_ID = "path1"          # id of the single ink path in the source SVG
+_PATH_ID = "path1"          # fast-path crop id for the bundled logo (optional)
+
+# ── tunable ───────────────────────────────────────────────────────────────────
+# Extra weight added to the filled glyph so hairline ink stays legible when the
+# wordmark is scaled down (nav rail ~26px). It's an **alpha dilation** of the rendered
+# ink (in the SVG's viewBox units — the logo's viewBox is 210 tall), NOT an SVG stroke:
+# Qt's SVG renderer silently ignores strokes on this complex path, so dilation is the
+# reliable knob. Bump it up for a heavier mark; set it to 0 to disable entirely (e.g.
+# once a replacement SVG bakes in more weight).
+LOGO_STROKE_WIDTH = 1
+
+# Supersample factor: render bigger, dilate + downscale — gives sub-pixel dilation and
+# smoother edges on the thin ink at small sizes.
+_SUPERSAMPLE = 3
+
+# App-icon logo sizing (fractions of the parchment tile). The wordmark is wide, so it's
+# sized by **width** to fill the tile; `ICON_LOGO_MAX_HEIGHT` caps it so a taller logo
+# can't overflow vertically.
+ICON_LOGO_WIDTH = 0.88
+ICON_LOGO_MAX_HEIGHT = 0.72
 
 # Parchment tile palette for the app icon (fixed — icons don't follow the theme).
 _PARCHMENT_TOP = QColor("#f1e8d2")
 _PARCHMENT_BOT = QColor("#e2d4b6")
 _ICON_INK = QColor("#2b2118")     # deep sepia ink on the tile
+
+# Recolor targets: near-black fills in `style="fill:..."` and `fill="..."` forms.
+_FILL_STYLE_RE = re.compile(r"fill:\s*(?:#0{3}|#0{6}|black)\b", re.IGNORECASE)
+_FILL_ATTR_RE = re.compile(r'fill=(["\'])\s*(?:#0{3}|#0{6}|black)\s*\1', re.IGNORECASE)
 
 _svg_text: str | None = None
 _logo_cache: dict[tuple[int, int], QPixmap] = {}   # (px_height, rgba) -> pixmap
@@ -38,36 +73,89 @@ def _load_svg() -> str:
 
 
 def _renderer(color: QColor) -> QSvgRenderer:
-    """A QSvgRenderer for the logo with its ink recolored to `color`."""
-    svg = _load_svg().replace("fill:#000000", f"fill:{color.name()}")
+    """A QSvgRenderer for the logo, ink recolored to `color` (fill only; weight is
+    applied later by dilation — QtSvg won't stroke this path)."""
+    c = color.name()
+    svg = _FILL_STYLE_RE.sub(f"fill:{c}", _load_svg())
+    svg = _FILL_ATTR_RE.sub(f'fill="{c}"', svg)
     return QSvgRenderer(svg.encode("utf-8"))
 
 
+def _alpha_bounds(img: QImage, threshold: int = 8) -> QRect:
+    """Bounding box of the non-transparent pixels (id-independent crop)."""
+    w, h = img.width(), img.height()
+    minx, miny, maxx, maxy = w, h, -1, -1
+    for y in range(h):
+        for x in range(w):
+            if (img.pixel(x, y) >> 24) & 0xFF > threshold:
+                minx, maxx = min(minx, x), max(maxx, x)
+                miny, maxy = min(miny, y), max(maxy, y)
+    if maxx < 0:
+        return QRect(0, 0, w, h)
+    return QRect(minx, miny, maxx - minx + 1, maxy - miny + 1)
+
+
+def _dilate(src: QImage, grow_px: float) -> QImage:
+    """Grow the ink outward by ~`grow_px` — stamp the glyph around two concentric rings
+    (+ center). A reliable, renderer-independent 'bolder' that thickens any logo."""
+    if grow_px <= 0.4:
+        return src
+    steps = max(12, int(math.ceil(grow_px)) * 8)
+    out = QImage(src.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    out.fill(Qt.GlobalColor.transparent)
+    p = QPainter(out)
+    for radius in (grow_px, grow_px * 0.5):        # two rings avoid an interior gap
+        for i in range(steps):
+            ang = 2 * math.pi * i / steps
+            p.drawImage(QPointF(math.cos(ang) * radius, math.sin(ang) * radius), src)
+    p.drawImage(0, 0, src)                          # solid center on top
+    p.end()
+    return out
+
+
+def _render_cropped(r: QSvgRenderer, px_h: int) -> QPixmap:
+    """Render the ink recolored, weight-dilated, and tight-cropped to `px_h` px tall.
+    Renders the whole viewBox supersampled (its natural margin gives the dilation room),
+    dilates, crops to the ink (bundled path bounds fast-path, else transparent-pixel
+    autocrop so a replacement SVG with any ids still works), then scales down."""
+    vb = r.viewBoxF()
+    bounds = r.boundsOnElement(_PATH_ID)
+    if not bounds.isEmpty():
+        pad = bounds.height() * 0.06
+        bounds.adjust(-pad, -pad, pad, pad)
+        scale = (px_h * _SUPERSAMPLE) / bounds.height()    # px per viewBox unit
+    else:
+        scale = (px_h * _SUPERSAMPLE) / vb.height()
+    rw, rh = max(1, round(vb.width() * scale)), max(1, round(vb.height() * scale))
+    img = QImage(rw, rh, QImage.Format.Format_ARGB32_Premultiplied)
+    img.fill(Qt.GlobalColor.transparent)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    r.render(p, QRectF(0, 0, rw, rh))
+    p.end()
+
+    img = _dilate(img, LOGO_STROKE_WIDTH * scale)
+    if not bounds.isEmpty():
+        crop = QRect(round(bounds.x() * scale), round(bounds.y() * scale),
+                     round(bounds.width() * scale), round(bounds.height() * scale))
+        img = img.copy(crop.intersected(img.rect()))
+    else:
+        img = img.copy(_alpha_bounds(img))
+    img = img.scaledToHeight(px_h, Qt.TransformationMode.SmoothTransformation)
+    return QPixmap.fromImage(img)
+
+
 def logo_pixmap(height: int, color: QColor, dpr: float = 1.0) -> QPixmap:
-    """The wordmark recolored to `color`, tight-cropped to the ink, `height` logical
-    px tall (width follows the ink's aspect). Crisp on HiDPI when `dpr` is passed.
-    Cached by (pixel height, color)."""
+    """The wordmark recolored to `color`, tight-cropped to the ink, `height` logical px
+    tall (width follows the ink's aspect). Crisp on HiDPI when `dpr` is passed. Cached
+    by (pixel height, color)."""
     px_h = max(1, int(round(height * dpr)))
     key = (px_h, int(color.rgba()))
     pm = _logo_cache.get(key)
     if pm is None:
-        r = _renderer(color)
-        bounds = r.boundsOnElement(_PATH_ID)      # tight ink rect, in viewBox units
-        if bounds.isEmpty():
-            bounds = QRectF(r.viewBoxF())
-        pad = bounds.height() * 0.05               # a hair of breathing room
-        bounds.adjust(-pad, -pad, pad, pad)
-        aspect = bounds.width() / bounds.height() if bounds.height() else 1.0
-        px_w = max(1, round(px_h * aspect))
-        pm = QPixmap(px_w, px_h)
-        pm.fill(Qt.GlobalColor.transparent)
-        p = QPainter(pm)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        r.setViewBox(bounds)                       # map the ink rect onto the target → crop
-        r.render(p, QRectF(0, 0, px_w, px_h))
-        p.end()
+        pm = _render_cropped(_renderer(color), px_h)
         _logo_cache[key] = pm
-    pm = QPixmap(pm)          # shallow copy so per-caller dpr doesn't mutate the cache entry
+    pm = QPixmap(pm)          # shallow copy so per-caller dpr doesn't mutate the cache
     pm.setDevicePixelRatio(dpr)
     return pm
 
@@ -77,25 +165,30 @@ def logo_icon(height: int, color: QColor) -> QIcon:
 
 
 def _icon_pixmap(size: int) -> QPixmap:
-    """One square app-icon pixmap: ink logo centered on a rounded parchment tile."""
+    """One square app-icon pixmap: ink logo on a rounded parchment tile, inset with a
+    transparent margin so it matches the visual weight of other dock icons."""
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    # Rounded parchment tile with a subtle top→bottom aged gradient.
-    grad = QLinearGradient(0, 0, 0, size)
+    # Inset tile (~80% of the canvas — the macOS icon grid leaves breathing room).
+    margin = size * 0.10
+    tile = QRectF(margin, margin, size - 2 * margin, size - 2 * margin)
+    grad = QLinearGradient(tile.topLeft(), tile.bottomLeft())
     grad.setColorAt(0.0, _PARCHMENT_TOP)
     grad.setColorAt(1.0, _PARCHMENT_BOT)
     p.setBrush(grad)
     p.setPen(Qt.PenStyle.NoPen)
-    radius = size * 0.22
-    p.drawRoundedRect(QRectF(0, 0, size, size), radius, radius)
-    # Ink logo, fit within ~74% of the tile width.
-    logo = logo_pixmap(int(size * 0.44), _ICON_INK)
-    max_w = size * 0.74
-    if logo.width() > max_w:
-        logo = logo.scaledToWidth(int(max_w), Qt.TransformationMode.SmoothTransformation)
-    p.drawPixmap(int((size - logo.width()) / 2), int((size - logo.height()) / 2), logo)
+    radius = tile.width() * 0.2237                 # macOS squircle-ish corner
+    p.drawRoundedRect(tile, radius, radius)
+    # Ink logo sized by width to fill the tile (capped in height), rendered crisp at the
+    # final pixel size. Probe the aspect once (cached), then derive the target height.
+    aspect = logo_pixmap(100, _ICON_INK).width() / 100.0
+    target_h = (tile.width() * ICON_LOGO_WIDTH) / aspect
+    target_h = min(target_h, tile.height() * ICON_LOGO_MAX_HEIGHT)
+    logo = logo_pixmap(max(1, int(round(target_h))), _ICON_INK)
+    p.drawPixmap(int(tile.center().x() - logo.width() / 2),
+                 int(tile.center().y() - logo.height() / 2), logo)
     p.end()
     return pm
 
