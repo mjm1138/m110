@@ -25,6 +25,21 @@ def status_label(status: str | None, captured: bool) -> str:
     return STATUS_LABEL.get(status, status or "—")
 
 
+def paint_status_chip(painter: QPainter, rect: QRectF, text: str, color: QColor):
+    """Fill `rect` with the app's tasteful tinted-rounded status-chip look
+    (alpha-tinted background, colored text, fully rounded) — the caller sizes
+    and positions `rect`; this just paints into it. Shared by the Library
+    table's `StatusPillDelegate` and the grid's `TileDelegate`."""
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    bg = QColor(color); bg.setAlpha(38)
+    painter.setBrush(bg); painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2)
+    painter.setPen(color)
+    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+    painter.restore()
+
+
 class StatusPillDelegate(QStyledItemDelegate):
     """Paints the capture status as a tasteful tinted rounded chip (color from the
     active theme via `STATUS_ROLE`), keeping the cell sortable by its plain text."""
@@ -40,9 +55,8 @@ class StatusPillDelegate(QStyledItemDelegate):
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
 
         status = index.data(STATUS_ROLE)
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if not text or text == "—" or not status:
+            painter.save()
             painter.setPen(muted_color())
             painter.drawText(option.rect, Qt.AlignmentFlag.AlignCenter, text or "—")
             painter.restore()
@@ -52,12 +66,7 @@ class StatusPillDelegate(QStyledItemDelegate):
         h = fm.height() + 4
         w = fm.horizontalAdvance(text) + self._HPAD * 2
         rect = QRectF(option.rect.left() + 8, option.rect.center().y() - h / 2 + 1, w, h)
-        bg = QColor(color); bg.setAlpha(38)
-        painter.setBrush(bg); painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRoundedRect(rect, h / 2, h / 2)
-        painter.setPen(color)
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
-        painter.restore()
+        paint_status_chip(painter, rect, text, color)
 
     def sizeHint(self, option, index):
         s = super().sizeHint(option, index)
@@ -111,12 +120,18 @@ def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
 
 ROW_THUMB_SIZE = 20   # matches StatusPillDelegate's sizeHint floor — no row growth
 
-_thumb_cache: dict[tuple[str, int], tuple[float, QImage]] = {}
+# Two center-crop tunings, keyed alongside (path, size) in the cache since the
+# same source decoded for a tiny row icon vs. a bigger grid/gallery tile wants
+# a different crop. "row": aggressive half-width square, tuned for ~20px icons
+# where a full-frame squash reads as noise. "square": a milder min(w, h) crop
+# (matches detail._square_icon()'s tuning) for tiles big enough to keep more
+# of the frame.
+_thumb_cache: dict[tuple[str, int, str], tuple[float, QImage]] = {}
 _THUMB_CACHE_CAP = 512
 
 
 class _ThumbSignals(QObject):
-    done = Signal(str, int, object)   # path, size, QImage | None
+    done = Signal(str, int, str, object)   # path, size, crop, QImage | None
 
 
 class _ThumbLoadTask(QRunnable):
@@ -127,38 +142,39 @@ class _ThumbLoadTask(QRunnable):
     reads as the object. Builds a QImage (thread-safe), never a QPixmap
     (main-thread only)."""
 
-    def __init__(self, path: str, size: int, signals: _ThumbSignals):
+    def __init__(self, path: str, size: int, crop: str, signals: _ThumbSignals):
         super().__init__()
-        self._path, self._size, self._signals = path, size, signals
+        self._path, self._size, self._crop, self._signals = path, size, crop, signals
 
     def run(self):
         img = QImageReader(self._path).read()
         if img.isNull():
-            self._signals.done.emit(self._path, self._size, None)
+            self._signals.done.emit(self._path, self._size, self._crop, None)
             return
         w, h = img.width(), img.height()
-        side = max(min(w // 2, h), 1)         # half-width square, clamped to frame height
+        side = max(min(w, h) if self._crop == "square" else min(w // 2, h), 1)
         crop = img.copy((w - side) // 2, (h - side) // 2, side, side)
         scaled = crop.scaled(self._size, self._size,
                               Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self._signals.done.emit(self._path, self._size, scaled)
+        self._signals.done.emit(self._path, self._size, self._crop, scaled)
 
 
 class ThumbnailLoader(QObject):
-    """Async, cached small-image loader for table icon cells. Decodes off the
-    UI thread and memo-caches by (path, size, mtime) so re-sorts/rebuilds don't
-    redecode; a re-render (mtime change) invalidates the cache entry."""
+    """Async, cached small-image loader for table/grid icon cells. Decodes off
+    the UI thread and memo-caches by (path, size, crop, mtime) so re-sorts/
+    rebuilds don't redecode; a re-render (mtime change) invalidates the entry."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._signals = _ThumbSignals()
         self._signals.done.connect(self._on_done)
-        self._pending: dict[tuple[str, int], tuple[float, list]] = {}
+        self._pending: dict[tuple[str, int, str], tuple[float, list]] = {}
 
-    def request(self, path: Path, size: int, callback):
+    def request(self, path: Path, size: int, callback, crop: str = "row"):
         """callback(QPixmap | None) — called immediately on a cache hit, else
-        once the background decode completes."""
-        key = (str(path), size)
+        once the background decode completes. `crop`: "row" (aggressive,
+        tiny row icons) or "square" (milder, bigger tiles)."""
+        key = (str(path), size, crop)
         try:
             mtime = path.stat().st_mtime
         except OSError:
@@ -173,10 +189,10 @@ class ThumbnailLoader(QObject):
             pending[1].append(callback)
             return
         self._pending[key] = (mtime, [callback])
-        QThreadPool.globalInstance().start(_ThumbLoadTask(key[0], size, self._signals))
+        QThreadPool.globalInstance().start(_ThumbLoadTask(key[0], size, crop, self._signals))
 
-    def _on_done(self, path: str, size: int, img):
-        key = (path, size)
+    def _on_done(self, path: str, size: int, crop: str, img):
+        key = (path, size, crop)
         entry = self._pending.pop(key, None)
         if entry is None:
             return

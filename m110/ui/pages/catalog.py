@@ -1,25 +1,34 @@
-"""Catalog page — the catalog joined with capture status (master table) + the
-shared per-object detail pane. Hosts object selection; other pages route here via
-`select_object`. Sort persists across in-session rebuilds."""
+"""Catalog page — the catalog joined with capture status (master table +
+grid), toggleable, + the shared per-object detail pane. Hosts object
+selection; other pages route here via `select_object`. Sort persists across
+in-session rebuilds; list/grid choice and grid zoom persist across launches."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTableWidget, QTableWidgetItem,
-    QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox, QCheckBox, QMenu,
+    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QTableWidget,
+    QTableWidgetItem, QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
+    QMenu, QListView, QSlider, QToolButton,
 )
 
-from m110 import config, derived, siril, catalog as catalog_mod
+from m110 import config, derived, objects, siril, catalog as catalog_mod
 from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
 )
 from m110.ui.detail import DetailPane
+from m110.ui.image_grid import TileItem, TileModel, TileDelegate, KEY_ROLE
 from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
 )
+
+LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid"
+LIBRARY_ZOOM_KEY = "library_grid_zoom"   # int px
+GRID_ZOOM_MIN = 80
+GRID_ZOOM_MAX = 220
+GRID_ZOOM_DEFAULT = 140
 
 
 class _EnrichOneWorker(QThread):
@@ -59,9 +68,35 @@ class CatalogPage(QWidget):
         self._enrich_worker = None        # in-flight online enrichment (single)
         self._thumb_loader = ThumbnailLoader(self)
         self._thumbs = RowThumbnails(self._thumb_loader)
+        self._all_tile_items: list[TileItem] = []
+
+        view_mode = config.get_setting(LIBRARY_VIEW_KEY, "list")
+        self._view_mode = view_mode if view_mode in ("list", "grid") else "list"
+        zoom = config.get_setting(LIBRARY_ZOOM_KEY, GRID_ZOOM_DEFAULT)
+        self._zoom = max(GRID_ZOOM_MIN, min(GRID_ZOOM_MAX, int(zoom)))
 
         self.table = self._build_table()
-        self.table.itemSelectionChanged.connect(self._on_select)
+        self.table.itemSelectionChanged.connect(self._on_table_select)
+
+        self._grid_model = TileModel(self)
+        self.grid_view = QListView()
+        self.grid_view.setViewMode(QListView.IconMode)
+        self.grid_view.setResizeMode(QListView.Adjust)
+        self.grid_view.setMovement(QListView.Static)
+        self.grid_view.setUniformItemSizes(True)
+        self.grid_view.setModel(self._grid_model)
+        self._grid_delegate = TileDelegate(self._zoom, self.grid_view)
+        self.grid_view.setItemDelegate(self._grid_delegate)
+        self.grid_view.selectionModel().selectionChanged.connect(self._on_grid_select)
+        self.grid_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.grid_view.customContextMenuRequested.connect(self._on_context_menu)
+
+        self._view_stack = QStackedWidget()
+        self._view_stack.addWidget(self.table)
+        self._view_stack.addWidget(self.grid_view)
+        self._view_stack.setCurrentWidget(
+            self.table if self._view_mode == "list" else self.grid_view)
+
         self.detail = DetailPane()
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
@@ -69,7 +104,7 @@ class CatalogPage(QWidget):
         self.detail.closed.connect(self._on_detail_closed)
         self.detail.hide()                                # nothing selected yet
 
-        # Left side: catalog selector + search + stat row above the table.
+        # Left side: catalog selector + view toggle + zoom + search + stat row.
         cat_row = QHBoxLayout()
         cat_row.addWidget(QLabel("Catalog:"))
         self._catalog_combo = QComboBox()
@@ -78,9 +113,44 @@ class CatalogPage(QWidget):
             self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
         self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
         cat_row.addWidget(self._catalog_combo, 1)
-        self._captured_chk = QCheckBox("Captured only")
-        self._captured_chk.toggled.connect(self._apply_filter)
-        cat_row.addWidget(self._captured_chk)
+
+        # A single grid toggle (checked = grid). One control, one meaning:
+        # click to switch to grid, click again to go back to list — nothing
+        # relocates, and the "off" state IS list view (no separate list icon
+        # that reads like an unrelated hamburger menu). Kept minimal on
+        # purpose — see the "restrained main-window chrome" note in CLAUDE.md.
+        self._grid_btn = QToolButton()
+        self._grid_btn.setText("⊞")
+        self._grid_btn.setToolTip("Grid view")
+        self._grid_btn.setCheckable(True)
+        self._grid_btn.setAutoRaise(True)
+        self._grid_btn.setCursor(Qt.PointingHandCursor)
+        self._grid_btn.setChecked(self._view_mode == "grid")
+        self._grid_btn.toggled.connect(
+            lambda on: self._set_view_mode("grid" if on else "list"))
+        cat_row.addWidget(self._grid_btn)
+
+        # Its own bottom row (not cat_row) — a fixed-width slider appearing/
+        # disappearing inline next to the stretchy catalog combo shifted every
+        # widget after it (the toggle button included) each time grid mode
+        # switched on/off. A status-bar-style row below the views is immune
+        # to that: nothing else lives in it, so nothing else can move.
+        self._zoom_slider = QSlider(Qt.Horizontal)
+        self._zoom_slider.setMinimum(GRID_ZOOM_MIN)
+        self._zoom_slider.setMaximum(GRID_ZOOM_MAX)
+        self._zoom_slider.setValue(self._zoom)
+        self._zoom_slider.setFixedWidth(120)
+        self._zoom_slider.setToolTip("Tile size")
+        self._zoom_slider.valueChanged.connect(self._on_zoom_changing)
+        self._zoom_slider.sliderReleased.connect(self._on_zoom_released)
+        zoom_row = QHBoxLayout()
+        zoom_row.setContentsMargins(0, 2, 0, 2)   # a thin status-bar strip
+        zoom_row.addStretch(1)
+        zoom_row.addWidget(QLabel("Tile size:"))
+        zoom_row.addWidget(self._zoom_slider)
+        self._zoom_row_widget = QWidget()
+        self._zoom_row_widget.setLayout(zoom_row)
+        self._zoom_row_widget.setVisible(self._view_mode == "grid")
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search…")
@@ -95,7 +165,8 @@ class CatalogPage(QWidget):
         self._left_lay.addLayout(cat_row)
         self._left_lay.addWidget(self._search)
         self._left_lay.addWidget(self._stat)
-        self._left_lay.addWidget(self.table)
+        self._left_lay.addWidget(self._view_stack)
+        self._left_lay.addWidget(self._zoom_row_widget)
 
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(left)
@@ -104,6 +175,9 @@ class CatalogPage(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self.splitter)
+
+        self._all_tile_items = self._build_tile_items()
+        self._apply_filter()               # first grid population
         self._update_stat()
 
     @property
@@ -116,6 +190,7 @@ class CatalogPage(QWidget):
 
     def set_locked(self, locked: bool):
         self.table.setEnabled(not locked)
+        self.grid_view.setEnabled(not locked)
 
     def select_object(self, slug: str):
         # Ensure the target row isn't filtered out (clear search + catalog filter).
@@ -126,12 +201,12 @@ class CatalogPage(QWidget):
 
     def _on_catalog_changed(self, _idx: int):
         self._catalog_filter = self._catalog_combo.currentData()
-        self._rebuild_table()
+        self._rebuild_views()
         self._update_stat()
 
     def restyle(self):
-        """Theme changed — repaint table foregrounds (status/muted) from new tokens."""
-        self._rebuild_table()
+        """Theme changed — repaint views (status/muted colors) from new tokens."""
+        self._rebuild_views()
 
     def reload(self):
         new_cat = load_library()
@@ -139,7 +214,7 @@ class CatalogPage(QWidget):
         changed = (new_cat != self._cat) or (new_totals != self._totals)
         self._cat, self._totals = new_cat, new_totals
         if changed:
-            self._rebuild_table()          # preserves selection + sort
+            self._rebuild_views()          # preserves selection + sort
             self._update_stat()
         else:
             self._refresh_open_detail()    # cheap: pick up image-only changes
@@ -160,14 +235,37 @@ class CatalogPage(QWidget):
 
     def _apply_filter(self, *_):
         q = self._search.text().strip().lower()
-        cap_only = self._captured_chk.isChecked()
+
         for r in range(self.table.rowCount()):
-            slug = self.table.item(r, 0).data(Qt.UserRole)
-            hide = cap_only and slug not in self._totals
-            if not hide and q:
+            hide = False
+            if q:
                 hay = " ".join(self.table.item(r, c).text() for c in (0, 1, 2)).lower()
                 hide = q not in hay
             self.table.setRowHidden(r, hide)
+
+        def keep(ti: TileItem) -> bool:
+            if q:
+                e = self._cat.get(ti.key, {})
+                hay = f"{ti.title} {e.get('name', '')} " \
+                      f"{str(e.get('type', '')).replace('_', ' ')}".lower()
+                if q not in hay:
+                    return False
+            return True
+
+        # QAbstractListModel.set_items() resets the model (Qt clears the
+        # attached selection model's state on any reset, but does NOT
+        # reliably re-emit selectionChanged for it) — QListView has no
+        # setRowHidden equivalent, so narrowing the grid means rebuilding its
+        # data, not hiding rows like the table. Preserve + restore the
+        # selection across that reset so typing in the search box doesn't
+        # silently drop it on every keystroke; if the selected object no
+        # longer matches, explicitly hide the (now stale) detail pane rather
+        # than relying on a selectionChanged signal that may not fire.
+        prev = self._selected_slug() if self._view_mode == "grid" else None
+        self._grid_model.set_items([ti for ti in self._all_tile_items if keep(ti)])
+        self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        if prev and not self._select_slug(prev):
+            self._show_selection(None)
 
     def _filter_members(self) -> set | None:
         """Slugs of the selected catalog, or None for 'All objects'."""
@@ -178,17 +276,43 @@ class CatalogPage(QWidget):
                 return set(c["members"])
         return set()
 
-    # ---- table ----
-    def _build_table(self) -> QTableWidget:
-        cat, totals = self._cat, self._totals
+    # ---- shared data (table + grid both build from this) ----
+    def _current_items(self):
+        """Catalog-filtered + naturally sorted (slug, entry) pairs, plus the
+        per-slug identifier list — the source both views build from."""
+        cat = self._cat
         members = self._filter_members()
         pc = self._catalog_filter
         items = [(slug, e) for slug, e in cat.items()
                  if members is None or slug in members]
-        # primary identifier per row (context: the selected catalog)
         ids = {slug: object_identifiers(slug, e, primary_catalog=pc)
                for slug, e in items}
         items.sort(key=lambda kv: catalog_sort_key(ids[kv[0]][0] if ids[kv[0]] else ""))
+        return items, ids
+
+    def _build_tile_items(self) -> list[TileItem]:
+        totals = self._totals
+        items, ids = self._current_items()
+        out = []
+        for slug, e in items:
+            t = totals.get(slug, {})
+            captured = bool(t)
+            subtitle = (f"{t.get('integration_hms', '')} · "
+                        f"{t.get('session_count', '')} sessions") if captured else ""
+            out.append(TileItem(
+                key=slug,
+                thumb_path=objects.hero_path(slug) if captured else None,
+                title=object_label(ids[slug]),
+                subtitle=subtitle,
+                status=t.get("status") if captured else None,
+                muted=not captured,
+            ))
+        return out
+
+    # ---- table ----
+    def _build_table(self) -> QTableWidget:
+        totals = self._totals
+        items, ids = self._current_items()
 
         table = QTableWidget(len(items), len(self.HEADERS))
         table.setHorizontalHeaderLabels(self.HEADERS)
@@ -252,58 +376,116 @@ class CatalogPage(QWidget):
         self._sort_col = col
         self._sort_order = order
 
-    def _rebuild_table(self):
+    def _rebuild_views(self):
         prev = self._selected_slug()
         new_table = self._build_table()
-        new_table.itemSelectionChanged.connect(self._on_select)
-        self._left_lay.replaceWidget(self.table, new_table)
+        new_table.itemSelectionChanged.connect(self._on_table_select)
+        self._view_stack.removeWidget(self.table)
         self.table.deleteLater()
         self.table = new_table
+        self._view_stack.insertWidget(0, self.table)
+        self._view_stack.setCurrentWidget(
+            self.table if self._view_mode == "list" else self.grid_view)
+        self._all_tile_items = self._build_tile_items()
         self._apply_filter()
         if not (prev and self._select_slug(prev)):
             self.detail.placeholder()
             self.detail.hide()
 
+    # ---- view-agnostic selection ----
     def _selected_slug(self):
-        items = self.table.selectedItems()
-        return self.table.item(items[0].row(), 0).data(Qt.UserRole) if items else None
+        if self._view_mode == "list":
+            items = self.table.selectedItems()
+            return self.table.item(items[0].row(), 0).data(Qt.UserRole) if items else None
+        sel = self.grid_view.selectionModel().selectedIndexes()
+        return sel[0].data(KEY_ROLE) if sel else None
 
     def _select_slug(self, slug) -> bool:
-        for r in range(self.table.rowCount()):
-            if self.table.item(r, 0).data(Qt.UserRole) == slug:
-                self.table.selectRow(r)
-                self.table.scrollToItem(self.table.item(r, 0))
-                return True
-        return False
+        if self._view_mode == "list":
+            for r in range(self.table.rowCount()):
+                if self.table.item(r, 0).data(Qt.UserRole) == slug:
+                    self.table.selectRow(r)
+                    self.table.scrollToItem(self.table.item(r, 0))
+                    return True
+            return False
+        idx = self._grid_model.index_of(slug)
+        if not idx.isValid():
+            return False
+        self.grid_view.setCurrentIndex(idx)
+        self.grid_view.selectionModel().select(
+            idx, self.grid_view.selectionModel().SelectionFlag.ClearAndSelect)
+        self.grid_view.scrollTo(idx)
+        return True
 
-    def _on_select(self):
-        items = self.table.selectedItems()
-        if not items:
+    def _on_table_select(self):
+        if self._view_mode != "list":
+            return
+        self._show_selection(self._selected_slug())
+
+    def _on_grid_select(self, *_args):
+        if self._view_mode != "grid":
+            return
+        self._show_selection(self._selected_slug())
+
+    def _show_selection(self, slug):
+        if not slug:
             self.detail.hide()
             return
-        slug = self.table.item(items[0].row(), 0).data(Qt.UserRole)
         self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
         self.detail.show()
 
     def _on_detail_closed(self):
-        self.table.clearSelection()
+        if self._view_mode == "list":
+            self.table.clearSelection()
+        else:
+            self.grid_view.clearSelection()
 
     def _refresh_open_detail(self):
         slug = self._selected_slug()
         if slug and slug in self._cat:
             self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
 
+    # ---- view toggle + zoom ----
+    def _set_view_mode(self, mode: str):
+        if mode == self._view_mode:
+            return
+        prev_slug = self._selected_slug()
+        self._view_mode = mode
+        self._view_stack.setCurrentWidget(self.table if mode == "list" else self.grid_view)
+        self._zoom_row_widget.setVisible(mode == "grid")
+        config.save_setting(LIBRARY_VIEW_KEY, mode)
+        if prev_slug:
+            self._select_slug(prev_slug)
+        else:
+            (self.table if mode == "list" else self.grid_view).clearSelection()
+
+    def _on_zoom_changing(self, value: int):
+        self._zoom = value
+        self._grid_delegate.set_tile_size(value)
+        self.grid_view.doItemsLayout()
+
+    def _on_zoom_released(self):
+        self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        config.save_setting(LIBRARY_ZOOM_KEY, self._zoom)
+
     # ---- editing lock ----
     def _on_detail_editing(self, editing: bool):
         self.table.setEnabled(not editing)
+        self.grid_view.setEnabled(not editing)
         self.editing_changed.emit(editing)
 
     # ---- context menu: fill / enrich metadata ----
+    def _slug_at(self, pos):
+        if self._view_mode == "list":
+            item = self.table.itemAt(pos)
+            return self.table.item(item.row(), 0).data(Qt.UserRole) if item else None
+        idx = self.grid_view.indexAt(pos)
+        return idx.data(KEY_ROLE) if idx.isValid() else None
+
     def _on_context_menu(self, pos):
-        item = self.table.itemAt(pos)
-        if item is None:
+        slug = self._slug_at(pos)
+        if slug is None:
             return
-        slug = self.table.item(item.row(), 0).data(Qt.UserRole)
         entry = self._cat.get(slug, {})
         missing = bool(catalog_mod._compute_fill(entry, catalog_mod.load_reference().get(slug, {})))
         has_gaps = catalog_mod._has_gaps({**entry,
@@ -318,7 +500,8 @@ class CatalogPage(QWidget):
         publish_act = menu.addAction(
             "Exclude from publishing" if published else "Include in publishing")
         remove_act = menu.addAction("Remove from Library")
-        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        viewport = self.table.viewport() if self._view_mode == "list" else self.grid_view.viewport()
+        chosen = menu.exec(viewport.mapToGlobal(pos))
         if chosen is fill_act and missing:
             self._fill_one(slug)
         elif chosen is online_act and has_gaps:
@@ -331,7 +514,7 @@ class CatalogPage(QWidget):
     def _toggle_publish(self, slug: str, publish: bool):
         if catalog_mod.set_publish_flag(slug, publish):
             self._cat = load_library()
-            self._rebuild_table()
+            self._rebuild_views()
             self._select_slug(slug)
 
     def _fill_one(self, slug: str):
@@ -345,7 +528,7 @@ class CatalogPage(QWidget):
                                    "This object already has all available metadata.")
             return
         self._cat = load_library()
-        self._rebuild_table()
+        self._rebuild_views()
         self._select_slug(slug)
         fields = ", ".join(sorted(filled))
         QMessageBox.information(self, "Metadata filled",
@@ -370,7 +553,7 @@ class CatalogPage(QWidget):
             return
         if catalog_mod.remove_library_entry(slug):
             self._cat = load_library()
-            self._rebuild_table()
+            self._rebuild_views()
             self._update_stat()
 
     def _enrich_one_online(self, slug: str):
@@ -388,7 +571,7 @@ class CatalogPage(QWidget):
                                    "Simbad had nothing to add for this object.")
             return
         self._cat = load_library()
-        self._rebuild_table()
+        self._rebuild_views()
         self._select_slug(slug)
         QMessageBox.information(self, "Enriched online",
                                f"Filled from Simbad: {', '.join(sorted(filled))}.")

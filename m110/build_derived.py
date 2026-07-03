@@ -29,6 +29,11 @@ except ImportError:
 
 DEEP_STACK_MIN = 60  # threshold per CLAUDE.md
 PROCESSED_EXTS = (".fit", ".tif", ".tiff")
+# Hand-finished renders (finished/) are raster exports, not FITS stacks — but
+# they're still processed output. An imported library (e.g. the Astronomy
+# sibling) often carries only a finished render with no raw Siril stack, and
+# must not read as "not processed".
+FINISHED_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".fit")
 SKIP_DIRS = {"M42 copy", "M81 M82 orig", "Template"}
 
 
@@ -393,24 +398,35 @@ def recommend_star_removal_for_folder(slugs: list[str],
 
 
 def build_processing(totals: dict, overrides: dict | None,
-                     catalog: dict | None = None) -> dict:
-    """For each captured FITS folder, derive processing status by comparing
-    the newest processed-file mtime against the newest light-frame mtime.
+                     catalog: dict | None = None,
+                     sessions: list[dict] | None = None) -> dict:
+    """For each captured FITS folder, derive processing status.
 
     Statuses:
-      not_processed — no .tif/.fit in folder root
-      out_of_date   — newest light is newer than newest processed file
-      up_to_date    — newest processed file is at least as new as newest light
+      not_processed — no processed output (stack or finished render) yet
+      out_of_date   — frames were captured after the latest stack (unintegrated)
+      up_to_date    — the latest stack already includes everything captured
       dismissed     — explicitly dismissed in overrides
 
-    The comparison is mtime-based — same logic as
-    scripts/check_processing_status.py but computed per folder and joined
-    against the totals so the page can render a real queue.
+    Freshness is judged by **capture date vs. the stack's FITS `DATE`** — the
+    frames shot after the stack was made are the unintegrated ones. Capture
+    dates come from the FITS headers (via `scan_sessions`), so this is reliable
+    even when file mtimes were flattened by a bulk import (e.g. the Astronomy
+    port copied lights + renders with fresh/clustered mtimes, which defeated the
+    older mtime comparison). When no stack `DATE` is available (finished-render-
+    only objects, or a stack whose header lacks DATE) it falls back to the
+    newest-light-vs-newest-processed mtime comparison.
     """
     overrides = (overrides or {}).get("folder", {}) if isinstance(overrides, dict) else {}
     by_folder = totals["by_folder"]
     now_iso = datetime.now().isoformat(timespec="seconds")
     out: dict[str, dict] = {}
+
+    # Per-folder capture (date, frames) from sessions — the basis for splitting
+    # frames into "present when stacked" vs. "captured since".
+    sess_by_folder: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    for s in (sessions or []):
+        sess_by_folder[s["object_dir"]].append((s["date"], s["frames"]))
 
     if not config.IMAGES_DIR.is_dir():
         return {"folders": {}, "queue": [], "generated_at": now_iso}
@@ -428,19 +444,23 @@ def build_processing(totals: dict, overrides: dict | None,
         newest_light_mtime = (max(f.stat().st_mtime for f in light_files)
                               if light_files else 0.0)
 
-        # Processed files = .fit / .tif / .tiff in the folder root OR in
-        # the stacks/ subdir (newer location — see migrate_to_stacks.py).
-        # Excludes anything inside lights/, darks/, biases/, flats/, process/.
+        # Processed output = .fit / .tif / .tiff in the folder root OR in the
+        # stacks/ subdir (newer location — see migrate_to_stacks.py), PLUS any
+        # hand-finished render in finished/ (raster or FITS). Excludes anything
+        # inside lights/, darks/, biases/, flats/, process/, seestar-stacks/.
         processed = []
-        search_dirs = [folder]
+        search_dirs = [(folder, PROCESSED_EXTS)]
         stacks_subdir = folder / "stacks"
         if stacks_subdir.is_dir():
-            search_dirs.append(stacks_subdir)
-        for d in search_dirs:
+            search_dirs.append((stacks_subdir, PROCESSED_EXTS))
+        finished_subdir = folder / "finished"
+        if finished_subdir.is_dir():
+            search_dirs.append((finished_subdir, FINISHED_EXTS))
+        for d, exts in search_dirs:
             for f in d.iterdir():
                 if not f.is_file():
                     continue
-                if f.suffix.lower() not in PROCESSED_EXTS:
+                if f.suffix.lower() not in exts:
                     continue
                 m = f.stat().st_mtime
                 processed.append({
@@ -451,25 +471,48 @@ def build_processing(totals: dict, overrides: dict | None,
         processed.sort(key=lambda p: -p["mtime"])
         newest_processed_mtime = processed[0]["mtime"] if processed else 0.0
 
+        # Read STACKCNT / LIVETIME / DATE from the most recent stack file's
+        # FITS header (post-Siril). DATE = when the stack was made; the frames
+        # captured after it are the unintegrated ones.
+        stack_meta = read_latest_stack_metadata(folder) if processed else None
+        stack_date = (stack_meta.get("stacked_at") or "")[:10] if stack_meta else ""
+
+        # Split captured frames by the stack's DATE. `frames_before` = frames
+        # available when the stack was made (the rejection denominator);
+        # `frames_after` = frames captured since (the unintegrated backlog).
+        frames_before = frames_after = 0
+        have_date_signal = bool(stack_date) and bool(sess_by_folder.get(fname))
+        if have_date_signal:
+            for date, fr in sess_by_folder[fname]:
+                if date <= stack_date:
+                    frames_before += fr
+                else:
+                    frames_after += fr
+
         # Determine status
         ov = overrides.get(fname, {})
         if ov.get("dismissed"):
             status = "dismissed"
         elif not processed:
             status = "not_processed"
+        elif have_date_signal:
+            # Authoritative: any frames shot after the latest stack are unintegrated.
+            status = "out_of_date" if frames_after > 0 else "up_to_date"
         elif newest_light_mtime > newest_processed_mtime:
-            status = "out_of_date"
+            status = "out_of_date"       # fallback: no stack DATE to compare against
         else:
             status = "up_to_date"
 
-        # Estimate "new lights since last stack" — lights with mtime newer
-        # than the newest processed file. For not_processed folders, this
-        # equals the total light count.
-        new_lights = (
-            sum(1 for f in light_files
-                if f.stat().st_mtime > newest_processed_mtime)
-            if processed else len(light_files)
-        )
+        # "New lights since last stack": prefer the capture-date frame count
+        # (frames shot after the stack); else the mtime-based light-file count.
+        if have_date_signal:
+            new_lights = frames_after
+        else:
+            new_lights = (
+                sum(1 for f in light_files
+                    if f.stat().st_mtime > newest_processed_mtime)
+                if processed else len(light_files)
+            )
 
         # Format helpers
         def fmt_mtime(m):
@@ -477,19 +520,20 @@ def build_processing(totals: dict, overrides: dict | None,
                 return None
             return datetime.fromtimestamp(m).strftime("%Y-%m-%d")
 
-        # Read STACKCNT / LIVETIME from the most recent stack file's
-        # FITS header (post-Siril). This captures the "actual" integration
-        # in the published image vs. the raw-light total.
-        stack_meta = read_latest_stack_metadata(folder) if processed else None
-        if stack_meta and t["frames"] > 0:
-            rejection_pct = round(
-                (1 - stack_meta["stack_frames"] / t["frames"]) * 100
-            )
-            # Clip to [0, 100] in case of weird inputs (multi-session
-            # stacks where STACKCNT exceeds the raw frame count for that
-            # folder, etc.). Treat negative as 0 (over-counted stack).
-            rejection_pct = max(0, min(100, rejection_pct))
-            stack_meta = {**stack_meta, "stack_rejection_pct": rejection_pct}
+        # Rejection% = frames dropped by Siril's quality filters, measured
+        # against the frames available *when the stack was made* (frames_before)
+        # — NOT the running capture total, which would miscount later,
+        # unintegrated frames as "rejected" (the ~/Astronomy bug).
+        if stack_meta:
+            denom = frames_before if (have_date_signal and frames_before > 0) else t["frames"]
+            if denom > 0:
+                rejection_pct = round((1 - stack_meta["stack_frames"] / denom) * 100)
+                # Clip to [0, 100] in case of weird inputs (multi-session stacks
+                # where STACKCNT exceeds the denominator, etc.).
+                rejection_pct = max(0, min(100, rejection_pct))
+                stack_meta = {**stack_meta,
+                              "stack_rejection_pct": rejection_pct,
+                              "frames_at_stack": denom}
 
         out[fname] = {
             "folder": fname,
@@ -609,7 +653,7 @@ def main():
     totals = build_totals(catalog, sessions)
     priority_progress = build_priorities(priorities, totals, catalog)
     summary = build_summary(catalog, totals)
-    processing = build_processing(totals, overrides, catalog)
+    processing = build_processing(totals, overrides, catalog, sessions)
     goals = build_goals(totals, goals_mod.active_goal_ids())
 
     out_dir = config.DERIVED_DIR

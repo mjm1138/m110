@@ -21,6 +21,20 @@ file owns *look & feel*.
   thumbnails appear wherever objects do, galleries read like a contact sheet.
 - **Professional, efficient, calm:** restrained accent, consistent spacing, aligned
   numbers, no decoration for its own sake.
+- **Minimal main-window chrome (a core principle, 2026-07-01).** A common failing of
+  astro software is a cluttered, control-dense interface. M110 pushes hard the other
+  way: the **main window's** primary views (Summary · Goals · Library · Processing ·
+  Sessions · Journal · Media) carry as **few visible controls as possible**, presented
+  **unobtrusively but legibly** — prefer one control with one clear meaning over several
+  redundant ones; prefer a sensible default over a toggle nobody switches; don't let a
+  control's show/hide relocate its neighbours. Complexity is allowed to grow in
+  **special-purpose / editing surfaces** (the object detail pane, processing-queue
+  management, dialogs, a future assistant) where the extra density earns its keep.
+  *Examples of this in practice:* the Library list/grid switch is a **single** toggle
+  (its "off" state is list view — no second icon); the grid's zoom slider sits in a thin
+  status-strip row so toggling it can't shove other controls; a "Captured only" checkbox
+  was **removed** rather than kept "just in case" (reintroduce as a preference only if a
+  real need surfaces).
 
 ## Decisions (from the interview)
 
@@ -35,7 +49,7 @@ file owns *look & feel*.
 | Imagery | Library **list/grid toggle** (object-grid first); more **compact** object-page galleries; **responsive hero scaling** (fit well, not just bigger); upgraded **fullscreen viewer**; **thumbnails everywhere** |
 | Grid scope | **Object-grid first** (one tile per object), built so a cross-object image browser can follow |
 | Sequencing | **Foundation first** (tokens + theming + restyle), then imagery |
-| Branding | **Neutral now, brand later** (restrained neutral/system accent; logo + app icon deferred) |
+| Branding | **Shipped (Phase 4)** — hand-inked "M110" wordmark (theme-recolored), parchment app/dock icon, warm-ink/sepia accent, About dialog. *Astronomer's-notebook* aesthetic |
 
 ## Architecture & principles
 
@@ -183,17 +197,42 @@ Apply tokens across the current pages; no new views.
   objects". (Also lets the user build an in-app image library from their own collection
   — export 8-bit sRGB JPEG ~1600px; keep 16-bit masters in their archive.)
 
-### Phase 3 — Library list/grid toggle  *(object-grid)*
+### Phase 3 — Library list/grid toggle  *(object-grid)* — **done 2026-07-01**
 - A **grid view** of the Library: one **tile per object** (hero thumbnail + id/name +
   status chip + integration), **zoomable** tile size, toggling with the current table;
   shares the existing **search / catalog filter / captured-only** state and routes to
   the same `DetailPane`.
-- Build it as a **reusable image-grid component** (model + delegate + zoom) so a future
-  cross-object image browser can reuse it.
+- Built as a **reusable image-grid component**, `m110/ui/image_grid.py` — `TileItem`
+  (plain dataclass) + `TileModel(QAbstractListModel)` + `TileDelegate
+  (QStyledItemDelegate)`, with zero imports from `m110.catalog`/`objects`/`derived` so
+  a future cross-object image browser (Phase 4+) can reuse it for a different dataset.
+  `CatalogPage` (`pages/catalog.py`) adapts Library rows into `TileItem`s and hosts both
+  views in a `QStackedWidget`, toggled by two `QToolButton`s + a `QSlider` (80–220px,
+  persisted via `config.get_setting`/`save_setting`, same precedent as the theme-mode
+  setting). Filtering narrows the model's data (`QListView` has no `setRowHidden`
+  equivalent — a proxy model would be premature for a few-hundred-row list), with an
+  explicit selection-preserve/restore step across each reset so typing in the search
+  box doesn't silently drop the grid's selection. Thumbnails reuse `widgets.
+  ThumbnailLoader` (extended with a `crop="square"` option — tiles are big enough to
+  keep more of the frame than the row-icon crop) and the status chip reuses a
+  `paint_status_chip()` helper extracted from `StatusPillDelegate`.
+
+### Phase 4 — Branding pass  *(done 2026-07-03)*
+- **Logo:** the uploaded hand-inked `m110-logo.svg` "M110" wordmark, moved into the
+  package (`m110/ui/theme/brand/`). A new `theme/brand.py` **recolors the ink to the
+  active theme's text color** at render time (`logo_pixmap` — SVG fill-swap + tight crop
+  via `QSvgRenderer.boundsOnElement`) so it reads in both light and dark; placed at the
+  **top of the nav rail** (re-renders on theme change).
+- **App/dock icon:** `brand.app_icon()` composes the ink on a **fixed parchment tile**
+  (rounded, aged-paper gradient) at the standard sizes; set as the window/dock icon.
+  `tools/gen_app_icon.py` exports a PNG master for future Developer-ID packaging.
+- **Accent:** swapped the single accent token from neutral blue to **warm ink/sepia**
+  (light `#8a5a2b`, dark `#c69a6b`) — the notebook aesthetic; affects selection/focus/
+  links app-wide via `qss.build_qss`.
+- **About dialog:** Help → About M110 (`about_dialog.py`) — themed logo, tagline
+  ("Complete the catalog."), version, license.
 
 ### Phase 4+ — Later  *(deferred)*
-- **Branding pass:** signature accent, logo, app/dock icon, naming/typography
-  treatment (swap the neutral accent token).
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
   across the whole collection (not grouped by object) — a bigger feature + data work;
   the Phase 3 grid component is its foundation.
@@ -202,8 +241,9 @@ Apply tokens across the current pages; no new views.
 
 ## Open decisions (resolve as phases start)
 
-- **Accent color** for the neutral phase: a restrained desaturated blue token vs.
-  **following the macOS system accent** — pick in Phase 0.
+- ~~**Accent color**~~ *(resolved — Phase 4)*: shipped a **warm ink/sepia** brand accent
+  (light `#8a5a2b`, dark `#c69a6b`) to match the astronomer's-notebook logo, superseding
+  the neutral-blue-vs-system-accent question.
 - **Bundled mono typeface** + its license (JetBrains Mono / IBM Plex Mono / Iosevka).
 - **Density default:** comfortable vs. compact rows (and whether to expose a density
   toggle) — Capture One/Lightroom lean compact.

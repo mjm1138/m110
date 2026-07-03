@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QDialog, QMessageBox  # noqa: E402
 
 from m110 import config  # noqa: E402
+from m110.ui.image_grid import KEY_ROLE, MUTED_ROLE  # noqa: E402
 from tests._helpers import add_library, seed_capture, seed_root, seed_sandbox  # noqa: E402
 
 
@@ -405,31 +406,162 @@ def test_library_detail_hidden_until_selection_then_closable(tmp_path, monkeypat
         qapp.processEvents()
 
 
-def test_library_captured_only_filter(tmp_path, monkeypatch, qapp):
+# ── Library grid view (UI_ROADMAP Phase 3) ───────────────────────────────────
+
+def test_library_grid_model_matches_filtered_table(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
-    slug, tid = seed_capture(root)       # one captured object (m31)
-    # plus an uncaptured (e.g. added/annotated) object that the filter should hide
+    seed_capture(root)       # one captured object
     add_library(root, {"ngc-7000": {"id": "NGC 7000", "name": "NA", "type": "nebula"}})
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        total = page.table.rowCount()
-        assert total == 2                               # one captured + one not
-        # off (default): everything visible
-        assert not any(page.table.isRowHidden(r) for r in range(total))
-        # "Captured only" → only rows whose slug is in totals remain visible
-        page._captured_chk.setChecked(True)
-        visible = [r for r in range(total) if not page.table.isRowHidden(r)]
-        assert visible and all(
-            page.table.item(r, 0).data(Qt.UserRole) in page._totals for r in visible)
-        assert slug in {page.table.item(r, 0).data(Qt.UserRole) for r in visible}
-        # composes with search: a non-matching query hides even the captured row
+        def visible_rows():
+            return sum(1 for r in range(page.table.rowCount())
+                       if not page.table.isRowHidden(r))
+
+        assert page._grid_model.rowCount() == visible_rows() == 2
+        page._search.setText("ngc 7000")       # search filters both views alike
+        assert page._grid_model.rowCount() == visible_rows() == 1
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_view_toggle_preserves_selection(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page.table.selectRow(0)
+        assert not page.detail.isHidden()
+
+        page._grid_btn.setChecked(True)               # toggle to grid
+        assert page._view_mode == "grid"
+        sel = page.grid_view.selectionModel().selectedIndexes()
+        assert sel and sel[0].data(KEY_ROLE) == slug
+        assert not page.detail.isHidden()              # no hide/show flash
+
+        page._grid_btn.setChecked(False)               # toggle back
+        assert page._view_mode == "list"
+        row = page.table.selectedItems()[0].row()
+        assert page.table.item(row, 0).data(Qt.UserRole) == slug
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_grid_search_preserves_selection_when_still_matching(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._grid_btn.setChecked(True)
+        page._select_slug(slug)
+        assert not page.detail.isHidden()
+
+        page._search.setText(tid.lower())               # still matches this object
+        sel = page.grid_view.selectionModel().selectedIndexes()
+        assert sel and sel[0].data(KEY_ROLE) == slug
+        assert not page.detail.isHidden()
+
         page._search.setText("zzz-nomatch")
-        assert all(page.table.isRowHidden(r) for r in range(total))
-        page._search.clear()
-        # back off → all visible again
-        page._captured_chk.setChecked(False)
-        assert not any(page.table.isRowHidden(r) for r in range(total))
+        assert not page.grid_view.selectionModel().selectedIndexes()
+        assert page.detail.isHidden()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_grid_click_routes_to_detail_pane(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._grid_btn.setChecked(True)
+        idx = page._grid_model.index_of(slug)
+        assert idx.isValid()
+        page.grid_view.selectionModel().select(
+            idx, page.grid_view.selectionModel().SelectionFlag.ClearAndSelect)
+        assert not page.detail.isHidden()
+        assert page.detail._current[0] == slug
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_grid_zoom_changes_tile_size_and_persists(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._zoom_slider.setValue(200)
+        assert page._grid_delegate._tile_size == 200
+        page._zoom_slider.sliderReleased.emit()
+        assert config.get_setting("library_grid_zoom") == 200
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_grid_uncaptured_tile_renders_without_crash(tmp_path, monkeypatch, qapp):
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QPainter, QPixmap
+    from PySide6.QtWidgets import QStyleOptionViewItem
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {"ngc-7000": {"id": "NGC 7000", "name": "NA", "type": "nebula"}})
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._grid_btn.setChecked(True)
+        assert page._grid_model.rowCount() == 1
+        idx = page._grid_model.index(0)
+        assert page._grid_model.data(idx, MUTED_ROLE) is True
+        assert page._grid_model.data(idx, Qt.DecorationRole) is None
+
+        pm = QPixmap(200, 200)
+        p = QPainter(pm)
+        opt = QStyleOptionViewItem()
+        opt.rect = QRect(0, 0, 150, 190)
+        opt.widget = page.grid_view
+        page._grid_delegate.paint(p, opt, idx)          # must not raise
+        p.end()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_grid_context_menu_resolves_same_slug_as_table(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._grid_btn.setChecked(True)
+        page.grid_view.resize(400, 400)                 # force layout offscreen
+        idx = page._grid_model.index_of(slug)
+        rect = page.grid_view.visualRect(idx)
+        assert rect.isValid()
+        assert page._slug_at(rect.center()) == slug
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_select_object_works_in_grid_mode(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._grid_btn.setChecked(True)
+        page.select_object(slug)
+        assert not page.detail.isHidden()
+        sel = page.grid_view.selectionModel().selectedIndexes()
+        assert sel and sel[0].data(KEY_ROLE) == slug
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -473,8 +605,56 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
         assert any("Add object" in t for t in labels)
         assert any("Fill missing metadata" in t for t in labels)
         assert any("Enrich online" in t for t in labels)
+        assert any("Back up" in t for t in labels)
+        assert any("Restore" in t for t in labels)
     finally:
         w.close()
+        qapp.processEvents()
+
+
+def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatch, qapp):
+    from m110 import backup
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    dest = tmp_path / "backups"
+    backup.create_snapshot(backup.BackupOptions(destination=dest))
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        dlg._dest.setText(str(dest))          # triggers _refresh_status
+        qapp.processEvents()
+        assert "snapshot" in dlg._status.text()
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_restore_dialog_lists_snapshot_and_selects(tmp_path, monkeypatch, qapp):
+    from PySide6.QtCore import Qt
+    from m110 import backup
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    dest = tmp_path / "backups"
+    backup.create_snapshot(backup.BackupOptions(destination=dest))
+
+    from m110.ui.restore_dialog import RestoreDialog
+    dlg = RestoreDialog(str(dest))
+    try:
+        assert dlg._snap_combo.count() == 1
+        assert dlg._tree.topLevelItemCount() >= 1     # Objects/Images/… nodes
+        assert dlg._restore_btn.isEnabled()
+        # check every file node → selection resolves to real relpaths
+        def check_all(node):
+            for i in range(node.childCount()):
+                c = node.child(i)
+                c.setCheckState(0, Qt.Checked)
+                check_all(c)
+        check_all(dlg._tree.invisibleRootItem())
+        light_rel = f"Images/{tid}/lights/Light_{tid}_30.0s_LP_20260529-010101.fit"
+        assert light_rel in dlg._selected_relpaths()
+    finally:
+        dlg.deleteLater()
         qapp.processEvents()
 
 

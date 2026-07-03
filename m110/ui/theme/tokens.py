@@ -65,8 +65,8 @@ LIGHT = Tokens(
     window="#f5f6f7", surface="#ffffff", surface_alt="#f0f1f3", raised="#ffffff",
     border="#d8dbdf", divider="#e3e5e8",
     text_primary="#1c1e21", text_secondary="#6b7077", text_disabled="#a0a4a9",
-    accent="#2f6fd0", accent_text="#ffffff", accent_hover="#285fb4",
-    selection_bg="#d7e6fb", selection_text="#1c1e21", focus_ring="#2f6fd0",
+    accent="#8a5a2b", accent_text="#ffffff", accent_hover="#71491f",
+    selection_bg="#ece0c8", selection_text="#1c1e21", focus_ring="#8a5a2b",
     status_deep="#2f9e44", status_initial="#b9770a",
     ok="#2f9e44", warn="#b9770a", danger="#c33b3b", neutral="#6b7077",
 )
@@ -76,8 +76,8 @@ DARK = Tokens(
     window="#1e1f22", surface="#26282c", surface_alt="#2b2e33", raised="#303338",
     border="#3a3d42", divider="#34373c",
     text_primary="#e6e7e9", text_secondary="#9aa0a6", text_disabled="#6b7077",
-    accent="#5a93e6", accent_text="#ffffff", accent_hover="#6ea2ee",
-    selection_bg="#34465e", selection_text="#e6e7e9", focus_ring="#5a93e6",
+    accent="#c69a6b", accent_text="#241c12", accent_hover="#d6ab7c",
+    selection_bg="#4a3d2c", selection_text="#e6e7e9", focus_ring="#c69a6b",
     status_deep="#3fb950", status_initial="#d29922",
     ok="#3fb950", warn="#d29922", danger="#e5534b", neutral="#9aa0a6",
 )

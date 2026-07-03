@@ -10,13 +10,15 @@ sync with disk: it refreshes on launch, on window-focus, and after ingest
 from __future__ import annotations
 
 import sys
+import threading
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QHBoxLayout, QLabel, QListWidget,
-    QStackedWidget, QMessageBox,
+    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
+    QListWidget, QStackedWidget, QMessageBox,
 )
 
 from m110 import config, derived
@@ -50,6 +52,27 @@ class RefreshWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
+class _BackupBgWorker(QThread):
+    """Launch-time auto-backup, off the UI thread. Cancellable via a shared event
+    so quit doesn't hang on a large snapshot (create_snapshot aborts + cleans up)."""
+    done = Signal(dict)
+    failed = Signal(str)
+
+    def __init__(self, dest, cancel_event, parent=None):
+        super().__init__(parent)
+        self._dest = dest
+        self._cancel = cancel_event
+
+    def run(self):
+        try:
+            from m110 import backup
+            self.done.emit(backup.create_snapshot(
+                backup.options_from_settings(self._dest),
+                should_cancel=self._cancel.is_set))
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class _EnrichWorker(QThread):
     """Online (Simbad) bulk enrichment off the UI thread."""
     done = Signal(dict)
@@ -67,6 +90,22 @@ class _EnrichWorker(QThread):
                 self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
+class _LogoLabel(QLabel):
+    """Nav-rail brand mark — the M110 wordmark in the active theme's ink. Call
+    `refresh()` when the theme changes to recolor it."""
+    _HEIGHT = 26
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("navLogo")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.refresh()
+
+    def refresh(self):
+        dpr = self.devicePixelRatioF() or 1.0
+        self.setPixmap(theme.logo_pixmap(self._HEIGHT, theme.ink_color(), dpr))
+
+
 class MainWindow(QMainWindow):
     NAV = ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal",
            "Media", "Import"]
@@ -74,12 +113,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("M110")
+        self.setWindowIcon(theme.app_icon())
         self._worker = None
         self._enrich_worker = None
         self._ready = False
         self._refreshing = False
         self._last_refresh = 0.0
         self._prep_feedback = False
+        self._backup_worker = None
+        self._backup_cancel = None
+        self._auto_backup_checked = False
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
@@ -113,15 +156,25 @@ class MainWindow(QMainWindow):
         self.nav = QListWidget()
         self.nav.setObjectName("navRail")
         self.nav.addItems(self.NAV)
-        self.nav.setMaximumWidth(160)
-        self.nav.setMinimumWidth(130)
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+
+        # Left column: brand mark above the nav rail (a persistent mark on every screen).
+        self.logo = _LogoLabel()
+        left = QWidget()
+        left.setObjectName("navColumn")
+        left.setMaximumWidth(160)
+        left.setMinimumWidth(130)
+        col = QVBoxLayout(left)
+        col.setContentsMargins(0, s["md"], 0, 0)
+        col.setSpacing(s["sm"])
+        col.addWidget(self.logo)
+        col.addWidget(self.nav, 1)
 
         central = QWidget()
         row = QHBoxLayout(central)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
-        row.addWidget(self.nav)
+        row.addWidget(left)
         row.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
@@ -170,6 +223,10 @@ class MainWindow(QMainWindow):
         self.enrich_online_action.triggered.connect(self._enrich_online_all)
         self.publish_action = QAction("Publish / share…", self)
         self.publish_action.triggered.connect(self._open_publish)
+        self.backup_action = QAction("Back up…", self)
+        self.backup_action.triggered.connect(self._open_backup)
+        self.restore_action = QAction("Restore…", self)
+        self.restore_action.triggered.connect(self._open_restore)
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)
         prefs_action.triggered.connect(self._open_prefs)
@@ -184,6 +241,15 @@ class MainWindow(QMainWindow):
         self.lib_menu.addAction(self.enrich_online_action)
         self.lib_menu.addSeparator()
         self.lib_menu.addAction(self.publish_action)
+        self.lib_menu.addSeparator()
+        self.lib_menu.addAction(self.backup_action)
+        self.lib_menu.addAction(self.restore_action)
+        # Help menu — About folds into the application menu on macOS (AboutRole).
+        self.about_action = QAction("About M110", self)
+        self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
+        self.about_action.triggered.connect(self._open_about)
+        self.help_menu = self.menuBar().addMenu("Help")
+        self.help_menu.addAction(self.about_action)
 
         self.nav.setCurrentRow(0)          # Summary lands first
         self._update_status()
@@ -214,11 +280,65 @@ class MainWindow(QMainWindow):
         from m110.ui.preferences import PreferencesDialog
         PreferencesDialog(self).exec()
 
+    def _open_about(self):
+        from m110.ui.about_dialog import AboutDialog
+        AboutDialog(self).exec()
+
     def _open_publish(self):
         if self.catalog.is_editing() or self._refreshing:
             return
         from m110.ui.publish_dialog import PublishDialog
         PublishDialog(self).exec()
+
+    def _open_backup(self):
+        if self.catalog.is_editing():
+            return
+        from m110.ui.backup_dialog import BackupDialog
+        BackupDialog(self).exec()
+
+    def _open_restore(self):
+        if self.catalog.is_editing():
+            return
+        from m110 import backup
+        from m110.ui.restore_dialog import RestoreDialog
+        RestoreDialog(config.get_setting(backup.SETTING_DEST, ""), self).exec()
+
+    # ---- launch-time auto backup (opt-in; background; unobtrusive) ----
+    def _maybe_auto_backup(self):
+        if self._backup_worker is not None:
+            return
+        from m110 import backup
+        dest = config.get_setting(backup.SETTING_DEST)
+        if not dest:
+            return
+        try:
+            if not backup.due_for_auto_backup(Path(dest)):
+                return
+        except Exception:
+            return
+        self._backup_cancel = threading.Event()
+        self._update_status(extra="  ·  Backing up…")
+        self._backup_worker = _BackupBgWorker(Path(dest), self._backup_cancel, self)
+        self._backup_worker.done.connect(self._on_auto_backup_done)
+        self._backup_worker.failed.connect(self._on_auto_backup_failed)
+        self._backup_worker.start()
+
+    def _on_auto_backup_done(self, res: dict):
+        self._clear_backup_worker()
+        if res.get("cancelled"):
+            self._update_status()
+            return
+        self._update_status(
+            extra=f"  ·  Backed up {res.get('file_count', 0)} files")
+
+    def _on_auto_backup_failed(self, msg: str):
+        self._clear_backup_worker()
+        self._update_status(extra="  ·  Backup skipped")
+
+    def _clear_backup_worker(self):
+        if self._backup_worker is not None:
+            self._backup_worker.deleteLater()
+            self._backup_worker = None
 
     # ---- editing lock ----
     def _on_editing_changed(self, editing: bool):
@@ -335,7 +455,8 @@ class MainWindow(QMainWindow):
 
     def _restyle_pages(self):
         """Theme changed — re-apply programmatic colors QSS can't reach (table-item
-        status/muted foregrounds). QSS-styled widgets repaint themselves."""
+        status/muted foregrounds, the ink logo). QSS-styled widgets repaint themselves."""
+        self.logo.refresh()
         for p in self.pages:
             if hasattr(p, "restyle"):
                 p.restyle()
@@ -369,6 +490,10 @@ class MainWindow(QMainWindow):
                 self, "Prepare working folders",
                 f"{n} working folder(s) prepared." if n else
                 "All objects already have their working folders.")
+        # Once the store is consistent, consider a launch-time auto backup (opt-in).
+        if not self._auto_backup_checked:
+            self._auto_backup_checked = True
+            self._maybe_auto_backup()
 
     def _on_refresh_failed(self, msg: str):
         self._refreshing = False
@@ -384,6 +509,13 @@ class MainWindow(QMainWindow):
         w = self._worker
         if w is not None and w.isRunning():
             w.wait()
+        # Cancel + drain a background backup so teardown never destroys a live
+        # QThread (create_snapshot aborts promptly and cleans up its temp dir).
+        bw = self._backup_worker
+        if bw is not None and bw.isRunning():
+            if self._backup_cancel is not None:
+                self._backup_cancel.set()
+            bw.wait()
 
     def closeEvent(self, event):
         self._stop_worker()
@@ -393,8 +525,10 @@ class MainWindow(QMainWindow):
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("M110")
+    app.setApplicationDisplayName("M110")
     app.setOrganizationName("M110")
     theme.install(app)                  # design-system: tokens → QSS, follow system
+    app.setWindowIcon(theme.app_icon())  # dock / taskbar icon (parchment tile)
     config.ensure_data_root()
     win = MainWindow()
     win.show()

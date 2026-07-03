@@ -10,6 +10,32 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **Processing page fixes.** (1) Tables are now **sortable by column**
+  (click a header; numeric columns sort by value via `NumItem`, not string) —
+  the queue order is the initial view until a column is picked. (2) Each grouped
+  table now **sizes to fit all its rows** (page scrolls) instead of a capped
+  min-height that truncated the "out of date" table. (3) `build_processing` now
+  counts **finished/ renders** (raster or FITS) as processed output, so imported
+  objects (e.g. from the Astronomy library) whose only processed output is a
+  finished PNG — no raw Siril stack — no longer misclassify as **not processed**
+  (they read up-to-date / out-of-date). `FINISHED_EXTS` added; regression test in
+  `tests/test_build_derived.py`.
+
+- [x] **Processing freshness + rejection% audit (mtime → capture date).** Two
+  linked bugs surfaced on the imported ~/Astronomy library: (1) **Rejection%** was
+  `1 − STACKCNT / total_frames_captured`, so frames shot *after* the stack inflated
+  it (M64 read 67%, M5 52%) instead of Siril's real ~6–10%. (2) Objects with
+  hundreds of unintegrated frames read **up_to_date** because the mtime comparison
+  failed — the bulk import copied lights + renders with fresh/clustered mtimes, so
+  "newest light < newest processed" even though the stack predated the new lights.
+  Fixed by judging freshness on **capture date vs. the stack's FITS `DATE`**: frames
+  captured after the latest stack ⇒ `out_of_date`; rejection is measured against
+  `frames_at_stack` (frames present when stacked), now emitted in `stack_meta`.
+  Falls back to the mtime comparison only when no stack `DATE` exists. On the live
+  store this moved 14 objects from up_to_date → out_of_date and normalized every
+  rejection% to a plausible range. Tests in `tests/test_build_derived.py`;
+  `DATA_MODEL.md` updated.
+
 - [ ] **#17 — Intermediate / finished file hinting.** The naming patterns for
   intermediate and finished images are built on Mike's particular habits, and are
   probably not generalizable. Two enhancements can help:
@@ -21,6 +47,15 @@ Legend: `[ ]` open · `[~]` partially done
   - *Open questions:* Are "finished"/"unfinished" the right terms? Should there be a
     "favorites" designation alongside/instead of "hero"? How would multiple favorites
     display?
+  - ⚠️ **When adding an in-app "set as hero" action, fix the hero-render cache.**
+    `build_images._render_hero` currently skips regeneration when
+    `dst.stat().st_mtime >= src.stat().st_mtime` — it keys on the source's mtime,
+    not on *which* source. Today that's safe because imported renders are written
+    with a fresh (now) mtime, so a newly-picked hero is always newer than the prior
+    `hero/<slug>.jpg`. But picking an **existing, older** gallery image as hero
+    would leave the stale hero (and thus stale Library grid tiles + list-view row
+    thumbnails, which are both hero-backed). The fix: invalidate on the source
+    **identity** (frontmatter `hero:` value / source path), not just mtime.
 - [ ] **#18 — Advanced processing prep.** Create Siril (and other workflow) working
   directories populated with lights from **disparate sources** (see #16) and
   **disparate objects** (e.g. combine m81 + m82 + "m81 m82" as a mosaic), via hardlinks
@@ -57,7 +92,7 @@ Legend: `[ ]` open · `[~]` partially done
   a FITS-header view (OBJECT/IMAGETYP/FILTER/RA/DEC via `ingest.frame_info`); (c)
   **suggested identity** — for FITS with RA/DEC reuse #12 pointing (`frame_radec` +
   nearest-catalog); headerless → plate-solving (item 9). Start with (a) + the FITS-header
-  inspector — most of what's needed is already in `frame_info`.
+  inspector — most of what's needed is already in `frame_info`. There should be an option to discard a file in the Inbox holding area, with a confirmation modal.
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,

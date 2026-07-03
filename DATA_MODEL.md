@@ -157,6 +157,18 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 `out_of_date` / `up_to_date` / `dismissed` (`processing`). Summary categories come
 from the catalog object `type`.
 
+**Processing freshness & rejection are judged by capture date, not file mtime.**
+`build_processing` compares each session's **capture date** (from the FITS header,
+via `scan_sessions`) against the latest stack's FITS **`DATE`**: frames shot after
+the stack are the unintegrated backlog → `out_of_date`; a stack that already covers
+everything captured → `up_to_date`. Rejection% (`stack_meta.stack_rejection_pct`) is
+`1 − STACKCNT / frames_at_stack`, where `frames_at_stack` (also emitted in
+`stack_meta`) is the frames **present when the stack was made** — *not* the running
+capture total (which would miscount later frames as "rejected"). This is robust to a
+bulk import flattening file mtimes (e.g. the Astronomy port). When no stack `DATE` is
+available (finished-render-only, or a header lacking `DATE`), it falls back to the
+newest-light-vs-newest-processed mtime comparison.
+
 ---
 
 ## Mutability & enforcement policy
@@ -188,6 +200,25 @@ for integrity verification.
   first concrete retention task (open **#14**).
 - **Derived JSON + `sessions.jsonl`** — regenerable; safe to delete anytime
   (rebuilt on Refresh).
+
+## Backup
+
+`m110/backup.py` (ROADMAP item 10) writes the store to a user-chosen destination
+**outside** `<data_root>` as **hardlinked dated snapshots** —
+`<dest>/M110-Backups/<store-name>/<timestamp>/` mirrors the store, with files
+unchanged since the previous snapshot hardlinked to it (immutable raws cost nothing
+to keep across snapshots). Scope is a **denylist** aligned with the lifecycle classes
+above: everything is backed up **except** the regenerable Derived tier (`derived/`,
+`renders/`, `sessions.jsonl`) and the `Images/<target>/siril/` working sandboxes.
+Each snapshot has a `.m110-backup-manifest.json` (per-file `{size, mtime, sha256}` +
+metadata) enabling integrity/bit-rot **verify**. Restore extracts selected paths to a
+folder (default) or back into the store behind a conflict preview + confirm.
+Retention prunes whole oldest snapshots (keep-N / age / min-free), **explicit, never
+the last one** — consistent with the "user-gated, never automatic" rule above. Backup
+is an **external output** (like the published site): it reads the store and does not
+change its on-disk layout, so it has **no `.store_version` impact**. This partially
+realizes the "checksum manifest of raws for integrity verification" noted under
+*Optional future hardening*.
 
 ## Versioning & migration
 

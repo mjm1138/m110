@@ -39,6 +39,15 @@ QListWidget {{
 QListWidget::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
 QListWidget::item:hover:!selected {{ background-color: {t.surface_alt}; }}
 
+/* ── grid views (the Library grid, m110/ui/image_grid.py) ── */
+QListView {{
+    background-color: {t.surface};
+    border: none;
+    outline: 0;
+}}
+QListView::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
+QListView::item:hover:!selected {{ background-color: {t.surface_alt}; }}
+
 /* ── nav rail (left) ── */
 QListWidget#navRail {{
     background-color: {t.surface};
@@ -88,7 +97,7 @@ QPushButton:default {{ border-color: {t.accent}; }}
 QPushButton:disabled {{ color: {t.text_disabled}; border-color: {t.divider}; }}
 
 /* ── inputs ── */
-QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit {{
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
     background-color: {t.surface};
     color: {t.text_primary};
     border: 1px solid {t.border};
@@ -97,7 +106,8 @@ QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit {{
     selection-background-color: {t.selection_bg};
     selection-color: {t.selection_text};
 }}
-QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus, QTextEdit:focus {{
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {t.focus_ring};
 }}
 QComboBox QAbstractItemView {{

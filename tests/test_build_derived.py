@@ -32,6 +32,93 @@ def test_seestar_only_target_is_captured(tmp_path, monkeypatch):
     assert "Empty" not in totals["by_folder"]
 
 
+# ── build_processing: a finished/ render counts as processed output ──────────
+
+def test_finished_render_is_not_not_processed(tmp_path, monkeypatch):
+    """An object whose only processed output is a finished/ raster render (the
+    typical imported-Astronomy-library shape: no raw Siril stack) must classify
+    as up_to_date / out_of_date — never not_processed."""
+    images = tmp_path / "Images"
+    tgt = images / "NGC 7023"
+    (tgt / "lights").mkdir(parents=True)
+    (tgt / "lights" / "Light_a.fit").write_text("x")
+    (tgt / "finished").mkdir()
+    render = tgt / "finished" / "NGC_7023_processed.png"
+    render.write_text("img")
+    # make the finished render newer than the light so it reads up_to_date
+    import os, time
+    os.utime(tgt / "lights" / "Light_a.fit", (time.time() - 100, time.time() - 100))
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    totals = build_derived.build_totals({}, [{
+        "object_dir": "NGC 7023", "slugs": ["ngc-7023"], "frames": 1,
+        "integration_min": 1.0, "date": "2026-06-28", "filter": "IRCUT",
+        "exposure_s": 20,
+    }])
+    proc = build_derived.build_processing(totals, None, {})
+    assert proc["folders"]["NGC 7023"]["status"] == "up_to_date"
+    assert proc["counts"]["not_processed"] == 0
+
+
+# ── build_processing: rejection% + freshness use the stack DATE, not the total ──
+
+def _write_stack(folder, stackcnt, date, exp_s=20):
+    """Write a minimal FITS stack carrying STACKCNT / LIVETIME / DATE headers."""
+    from astropy.io import fits
+    import numpy as np
+    (folder / "stacks").mkdir(parents=True, exist_ok=True)
+    hdu = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    hdu.header["STACKCNT"] = stackcnt
+    hdu.header["LIVETIME"] = stackcnt * exp_s
+    hdu.header["EXPTIME"] = exp_s
+    hdu.header["DATE"] = date
+    hdu.writeto(folder / "stacks" / "stacked.fit", overwrite=True)
+
+
+def _sess(target, date, frames):
+    return {"object_dir": target, "slugs": [target.lower()], "frames": frames,
+            "integration_min": frames * 20 / 60, "date": date,
+            "filter": "IRCUT", "exposure_s": 20}
+
+
+def test_rejection_measured_against_frames_present_at_stack_time(tmp_path, monkeypatch):
+    """A stack of 90/100 pre-stack frames is 10% rejection — even after 200 more
+    frames are captured. The later frames are unintegrated backlog, not rejects
+    (the ~/Astronomy bug: rejection was computed against the running total)."""
+    images = tmp_path / "Images"
+    tgt = images / "M99"
+    (tgt / "lights").mkdir(parents=True)
+    _write_stack(tgt, stackcnt=90, date="2026-05-01T12:00:00")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M99", "2026-04-20", 100),   # present when stacked
+                _sess("M99", "2026-06-01", 200)]    # captured since
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    f = proc["folders"]["M99"]
+    sm = f["stack_meta"]
+    assert sm["frames_at_stack"] == 100            # only the pre-stack session
+    assert sm["stack_rejection_pct"] == 10         # 1 - 90/100, not 1 - 90/300
+    assert f["status"] == "out_of_date"            # 200 frames captured after the stack
+    assert f["new_lights_since_stack"] == 200
+
+
+def test_status_up_to_date_when_all_frames_precede_stack(tmp_path, monkeypatch):
+    images = tmp_path / "Images"
+    tgt = images / "M100"
+    (tgt / "lights").mkdir(parents=True)
+    _write_stack(tgt, stackcnt=180, date="2026-06-10T12:00:00")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M100", "2026-05-01", 100), _sess("M100", "2026-06-09", 100)]
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    f = proc["folders"]["M100"]
+    assert f["status"] == "up_to_date"
+    assert f["new_lights_since_stack"] == 0
+    assert f["stack_meta"]["frames_at_stack"] == 200   # both sessions preceded the stack
+
+
 # ── build_priorities: the track flag ─────────────────────────────────────────
 
 def _totals_with(folder, slug, minutes=300.0):

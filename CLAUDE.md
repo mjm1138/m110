@@ -156,6 +156,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync) |
 | `media.py` | **read** non-catalog media — `scan()` enumerates `Media/<Category>_photo\|_video/` (Qt-free; backs the Media page) |
+| `backup.py` | **Library backup engine** (item 10; Qt-free). Hardlinked dated snapshots to a user-chosen destination *outside* the store (`<dest>/M110-Backups/<store>/<ts>/` mirrors the store; unchanged files `os.link` to the prior snapshot — near-free incrementals). Denylist scope (skips `derived/`/`renders/`/`sessions.jsonl` + `siril/` sandboxes); byte-only copy (`.part`+`os.replace`, mtime-preserved) for new/changed files; per-snapshot `.m110-backup-manifest.json` (sha256) for **`verify`**; atomic (`.incomplete`→rename); hardlink-support probe + full-copy fallback. `create_snapshot`/`list_snapshots`/`verify`/`preview_restore`/`restore`/`apply_retention` + `options_from_settings`/`due_for_auto_backup`; `BackupError`/`BackupDestinationError`. External-output → no `.store_version` impact |
 | `planning.py` | **session-planning engine** (ROADMAP item 1; astropy, lazy-imported). `twilight`/`moon_summary`/`transit_altitude` + the seasonal/tonight **`observability()`** gate → `{observable, hours_clear, transit_alt, nights_to_close, season}` (continuous `hours_clear` so the scorer can *grade* short windows). Coords from `catalog.load_coords`, season from `catalog.season_from_ra`; glow-aware via `horizon.effective_floor`. Consumer = the auto-prioritizer (#21) |
 | `planning_config.py` | observing-**site** + **device** profiles loaded from `config.PROFILES_DIR/<name>.toml` (one profile = one location), in-code defaults when absent. `Site` carries lat/lon/elev/tz + the `[glow]` light-pollution layer (`bortle`/`sqm_zenith`/`glow_mask`/`glow_mask_narrowband`), `zoneinfo` DST, filter-aware `glow_path`; `list_profiles`/`load_site`/`load_device` |
 | `horizon.py` | local **horizon / obstruction mask** (`.hrz`/CSV parse + interpolation + 0/360 wrap; `load_mask`/`horizon_alt`/`is_obstructed`) + the **glow layer**: `effective_floor`/`is_below_floor` compose physical horizon with the light-dome floor as `max(physical, glow)` |
@@ -169,9 +170,10 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | Module | Role |
 |---|---|
 | `main.py` | **Shell**: left nav rail (`QListWidget`) → `QStackedWidget` of pages [Summary · Goals · Library · Processing · Sessions · Journal · Media]; **Summary is the landing page**. `goals` page's `dirty` → `_do_refresh`. Global Ingest (Ctrl+I) toolbar + **M110** menu (Prepare working folders, Preferences Cmd+,) + **Library** menu (Refresh Ctrl+R, Add object…, Fill missing metadata — bulk reference backfill, Enrich online… — bulk Simbad enrichment on a worker; room to grow: open/archive/export). `RefreshWorker` (scan→derive→render + `prepare_missing`) drives `page.reload()`; **auto-syncs** on launch / window-focus / after ingest. `open_object(slug)` routes any page's object link → Catalog + selects it. Journal-edit lock disables nav + global actions |
-| `widgets.py` | shared `NumItem` (sort-key cell), `status_label`/colors, `targets_for_slug`, `make_table`, async cached row-thumbnail loading (`ThumbnailLoader` + `RowThumbnails`, hero-backed; Library/Sessions/Processing row icons) |
+| `widgets.py` | shared `NumItem` (sort-key cell), `status_label`/colors, `targets_for_slug`, `make_table`, async cached row-thumbnail loading (`ThumbnailLoader` + `RowThumbnails`, hero-backed; Library/Sessions/Processing row icons; `ThumbnailLoader.request(..., crop=)` supports both the row-icon aggressive crop and a milder "square" crop for bigger tiles), `paint_status_chip()` (the tinted-rounded-chip paint primitive, shared by `StatusPillDelegate` and the Library grid's `TileDelegate`) |
+| `image_grid.py` | reusable tile-grid component (`TileItem`/`TileModel`/`TileDelegate` — `QAbstractListModel` + `QStyledItemDelegate`), app-data-agnostic (no imports from `catalog`/`objects`/`derived`) so a future cross-object image browser can reuse it; the Library grid (`pages/catalog.py`) is the first consumer |
 | `detail.py` | shared per-object `DetailPane`: header/status, hero (scales to pane), **Object Notes** **view/edit** (raw `journal.md` — the object's entry in the top-level Journal feed; labeled "Object Notes" to leave room for future Session/Processing Notes), gallery (double-click → image viewer, items carry `_gallery_meta()` display metadata — Source/Date/Size always, Integration/Filter when unambiguously derivable; compact center-cropped-square contact-sheet grid via `_square_icon()`, elided filenames with a full-name tooltip), **Import finished work** entry, + per-object **Processing** + **Sessions** tables and an **Object details** block (type/mag/size/season, RA/Dec in decimal + sexagesimal, filter rule, slug, capture targets, **Remarks** = the library `notes` field). Shows real filenames |
-| `pages/catalog.py` | the **Library** table (Object/Name/Type/Season/Mag/Size/Filter/Status/Integration/Sessions; Object shows all identifiers via `catalog.object_identifiers`, e.g. "C20 (NGC 7000)") + a **Catalog filter** selector (All / Messier / Caldwell …) + a **"Captured only"** checkbox (default off; composes with catalog + search) + **search** + captured/deep/total **stat row** (per-filter), hosting the shared `DetailPane`; `select_object`/`reload`; per-object import flow; **right-click → "Fill in missing metadata"** (reference) + **"Enrich online"** (Simbad, on a worker; `OnlineLookupError`→dialog) + **"Remove from Library"** (`catalog.remove_library_entry`; confirm, non-destructive); edit-lock |
+| `pages/catalog.py` | the **Library**: a table view (Object/Name/Type/Season/Mag/Size/Filter/Status/Integration/Sessions; Object shows all identifiers via `catalog.object_identifiers`, e.g. "C20 (NGC 7000)") **and** a **grid view** (`image_grid.TileModel`/`TileDelegate`, one tile per object — hero + id/name + status chip + integration), toggled by two `QToolButton`s + a zoom `QSlider` (persisted view mode + tile size) in a `QStackedWidget`; both views build from one shared `_current_items()`/filter pipeline so search/catalog-filter/captured-only and selection stay in sync across the toggle + a **Catalog filter** selector (All / Messier / Caldwell …) + a **"Captured only"** checkbox (default off; composes with catalog + search) + **search** + captured/deep/total **stat row** (per-filter), hosting the shared `DetailPane`; `select_object`/`reload` work identically regardless of active view; per-object import flow; **right-click → "Fill in missing metadata"** (reference) + **"Enrich online"** (Simbad, on a worker; `OnlineLookupError`→dialog) + **"Remove from Library"** (`catalog.remove_library_entry`; confirm, non-destructive); edit-lock |
 | `pages/summary.py` | landing dashboard — **goal progress** (per active catalog), category progress, processing-queue snapshot, current integrations, priority targets; object rows → `open_object` |
 | `pages/goals.py` | **Goals** page (5d): manage tracked goals (bundled + custom) — activate/deactivate checkboxes (→ `goals.set_active_goals`, emits `dirty`), **New custom goal…**/Edit/Delete (member identifiers resolved offline via `catalog.resolve_new_object`); per-active-goal **progress** + **in-progress captures** (clickable → `open_object`) + a **Remaining (uncaptured)** membership checklist. Goal management lives here, not Preferences |
 | `pages/processing.py` | Siril queue grouped by status with stack-meta columns; rows → `open_object` |
@@ -185,7 +187,10 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `image_viewer.py` | `ScalableImage` (pixmap that refits on resize — used for the hero) + `ZoomableImage` (`QScrollArea`-based Fit/explicit-zoom + click-drag pan) + `ImageViewer` (full-frame gallery viewer: Prev/Next, ←/→/Home/End, zoom toolbar, toggleable metadata overlay, Esc). Accepts `(name, path)` tuples or `{"name","path","meta"}` dicts; app-data-agnostic (metadata content built by callers) |
 | `preferences.py` | choose data folder (save + restart) + **"Prepare objects for processing in:"** workflow checkboxes → `processing_workflows`. (Goals moved to the Goals page in 5d.) |
 | `publish_dialog.py` | **Publish / share** dialog (item 8a, off the Library menu): section checkboxes + global "exclude journals" + target picker (`publish.PUBLISHERS`, "(soon)" for disabled) + site-title + output-folder chooser → threaded `_PublishWorker` running `publish.run_publish` behind modal progress+Cancel; persists the selection to settings; "Open folder" on success |
-| `theme/` | **design system** (UI Phase 0; `m110/ui/theme/`). `tokens.py` = light+dark semantic palette (`LIGHT`/`DARK` `Tokens`; roles like `window`/`surface`/`text_secondary`/`accent`/`status_deep`) + `SPACE`/`RADIUS`/`FONT_SIZE` scales + `active()`/`set_active`. `qss.build_qss(tokens)` generates the app-wide stylesheet. `manager.ThemeManager` applies it + **follows the OS appearance** (`QStyleHints.colorScheme()`, live via `colorSchemeChanged` on Qt≥6.8 else focus-in `refresh_system`) with a persisted `ui_theme` override. `fonts.py` bundles **JetBrains Mono** (`fonts/*.ttf`, OFL) + `mono_font()`. Façade: `install(app)` (in `main()`), `set_mode`, `active_tokens`, `status_color`/`muted_color`. **New UI code pulls color/spacing from tokens — never hardcode hex.** Programmatic (non-QSS) colors repaint via a page `restyle()` on `ThemeManager.changed`; muted labels use the `QLabel[muted="true"]`/`[caption="true"]` QSS rules |
+| `backup_dialog.py` | **Back up Library** dialog (item 10, Library menu): destination **pre-seeded from the saved setting** (Browse overrides ad-hoc; a run saves it back) + snapshot-status line + Automation/retention group (auto-on-launch · interval · keep-N/days/min-free) → threaded `_BackupWorker` running `backup.create_snapshot` behind modal progress+Cancel; "Open folder" on success; **Restore…** button opens the restore dialog |
+| `restore_dialog.py` | **Restore from backup** dialog (item 10): snapshot picker (by date) + a checkable file **tree** (from the snapshot manifest) + restore target (**extract to a folder** default, or **into the store** behind a create-vs-overwrite conflict preview + confirm) + **Verify integrity** (`backup.verify`); threaded `_Worker` (shared by verify + restore) behind modal progress+Cancel |
+| `about_dialog.py` | **About M110** dialog (UI Phase 4 branding; Help menu, `AboutRole` so macOS folds it into the app menu): theme-recolored logo + tagline ("Complete the catalog.") + version (`importlib.metadata`) + Apache-2.0 line |
+| `theme/` | **design system** (UI Phase 0; `m110/ui/theme/`). `tokens.py` = light+dark semantic palette (`LIGHT`/`DARK` `Tokens`; roles like `window`/`surface`/`text_secondary`/`accent`/`status_deep`) + `SPACE`/`RADIUS`/`FONT_SIZE` scales + `active()`/`set_active`. `qss.build_qss(tokens)` generates the app-wide stylesheet. `manager.ThemeManager` applies it + **follows the OS appearance** (`QStyleHints.colorScheme()`, live via `colorSchemeChanged` on Qt≥6.8 else focus-in `refresh_system`) with a persisted `ui_theme` override. `fonts.py` bundles **JetBrains Mono** (`fonts/*.ttf`, OFL) + `mono_font()`. Façade: `install(app)` (in `main()`), `set_mode`, `active_tokens`, `status_color`/`muted_color`/`ink_color`, plus the brand helpers `app_icon`/`logo_pixmap`/`logo_icon`. **The `accent` token is a warm ink/sepia (UI Phase 4 branding: light `#8a5a2b`, dark `#c69a6b`) matching the astronomer's-notebook logo.** `brand.py` = theme-aware branding: `logo_pixmap(height, color)` recolors the bundled `brand/m110-logo.svg` ink (single-path SVG fill-swap + tight crop via `QSvgRenderer.boundsOnElement`) so the wordmark reads in light **and** dark (nav-rail mark recolors on `ThemeManager.changed`); `app_icon()` composes that ink on a **fixed parchment tile** — app/dock icons intentionally **don't** follow the theme. **New UI code pulls color/spacing from tokens — never hardcode hex.** Programmatic (non-QSS) colors repaint via a page `restyle()` on `ThemeManager.changed`; muted labels use the `QLabel[muted="true"]`/`[caption="true"]` QSS rules |
 
 ---
 
@@ -212,6 +217,12 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 - **Slow ops run off the UI thread** on a `QThread` worker behind a modal
   `QProgressDialog` with a working Cancel (see Refresh and Ingest). A
   synchronous scan/copy will freeze the window — don't.
+- **Minimal main-window chrome.** Keep the main window's primary views' visible
+  controls to a minimum — one control per meaning, sensible defaults over
+  seldom-flipped toggles, unobtrusive but legible. Added UI density belongs in
+  special-purpose/editing surfaces (object detail, processing management,
+  dialogs), not the main pages. Full rationale + examples in
+  [`UI_ROADMAP.md`](UI_ROADMAP.md) → Vision.
 - **Ported modules: behavior-compat was consciously retired for the two-axis
   store** (#13). `scan_sessions` / `build_derived` / `build_images` no longer
   match the Astronomy byte-for-byte goldens (new paths + `scan_sessions`/
@@ -267,7 +278,10 @@ issues / improvement backlog live in [`BUGS.md`](BUGS.md).
 **The canonical roadmap lives in [`ROADMAP.md`](ROADMAP.md)** — foundational
 decisions (distribution, tech, processing model, data), the v0.1 build order
 with status, later phases, and open decisions. Keep `ROADMAP.md` current as work
-lands.
+lands. Completed milestones are archived to [`DONE.md`](DONE.md) (item numbers
+match their original ROADMAP slot) — **skim it when fixing a bug in or extending an
+existing subsystem**: it records *how and why* each piece shipped, which is often
+the missing context behind a "why is it built this way?" question.
 
 Current status at a glance: **v0.1 ("the Library") feature-complete — 0.1a–0.1f
 done**, plus the two-axis store reshape (#13), the image-rendering port, and the
@@ -297,6 +311,16 @@ control.
 - **`processing.json` isn't byte-stable across runs** — it stamps a
   `generated_at` timestamp (intentional). Everything else in `derived/` is
   deterministic. Don't be alarmed by a churning `processing.json` diff.
+- **Don't trust file mtime for provenance / freshness.** Ingest + import copy
+  bytes with `shutil.copyfile` (mtime = copy time), and a bulk import (e.g. the
+  Astronomy port) flattens every file's mtime to when it landed — so "is this
+  stack newer than these lights?" via mtime silently lies. Derive freshness from
+  **content the pipeline recorded**: capture dates live in the FITS headers
+  (surfaced by `scan_sessions` → `sessions.jsonl`), and a stack's own FITS `DATE`
+  is when it was made. `build_processing` compares those (frames captured after
+  the stack `DATE` = the unintegrated backlog; rejection% is `1 − STACKCNT /
+  frames_present_at_stack`, not `/ running_total`). Reach for mtime only as a
+  last-resort fallback when no such recorded timestamp exists.
 - **Never validate rendering/refresh against a live data root.** (A render
   pointed at the wrong root once clobbered a real `images.json`.) Use a temp
   copy or a throwaway root.
@@ -346,7 +370,8 @@ tools/                  dev utilities (make_test_corpus.py → synthetic manual-
 pyproject.toml          deps + entry point (gui-script: m110)
 README.md               user-facing quickstart
 CLAUDE.md               this file
-ROADMAP.md              canonical roadmap
+ROADMAP.md              canonical roadmap (open/active work + decisions)
+DONE.md                 archive of shipped work (how/why it landed) — read when touching an existing subsystem
 TESTING.md              manual / regression test runbook
 BUGS.md                 open issues + improvement backlog
 LICENSE / NOTICE        Apache-2.0

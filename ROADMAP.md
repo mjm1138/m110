@@ -308,6 +308,29 @@ archived in **[`DONE.md`](DONE.md)**.
    dependency; only worth it once real-world messy imports demand more than manual
    assign.
 
+10. **Library Backup** *(v1 done 2026-07-02)* — incremental backups to a user-defined
+    destination + selective restore + retention. Qt-free engine `m110/backup.py` writes
+    **hardlinked dated snapshots** (`rsync --link-dest` semantics in pure Python): each
+    snapshot is a full, browsable tree, but files unchanged since the previous snapshot
+    (all the immutable raws) are hardlinked, so incrementals cost only the changed bytes
+    (verified: a 2nd no-change snapshot of the test store added **0 new bytes**). Scope is
+    a **denylist** — everything under the store except regenerable derived data
+    (`derived/`, `renders/`, `sessions.jsonl`) and the `siril/` working sandboxes — so new
+    authored data is captured automatically. Each snapshot carries a **checksum manifest**
+    for integrity/bit-rot verification. **Restore** defaults to extracting selected paths
+    to a chosen folder (never touches the live store); restoring back into the store is
+    available behind a create-vs-overwrite conflict preview + confirm. **Retention**
+    (keep-N / older-than-days / min-free-GB) prunes whole oldest snapshots, explicitly,
+    never the last one. UI: Library → **Back up…** / **Restore…** (`backup_dialog.py` /
+    `restore_dialog.py`, mirroring the publish worker/progress pattern) + an opt-in
+    **launch-time auto-backup** (background, unobtrusive). It's an external-output feature
+    (writes outside `<data_root>`) → no `.store_version` impact. *Deferred:* cloud/remote
+    destinations, multiple destinations (3-2-1), quit-time auto-backup.
+
+11. **"Lights Table"** A view with tools to quickly examine large numbers of .fits files. Should be a direct view of files, with autostretch (not looking at derived jpgs). Users can flag files with clouds, satellite/aircraft trails, and other imperfections. User can delete the file on disk with confirmation, or just mark it so it won't be hardlinked into workflow (e.g. "Siril") directories. Future versions might support batched background extraction, plate solving, SPCC, or maybe image analysis (find frames with satellite trails, find frames with low star count, etc)
+
+12. 
+
 ---
 
 ## Decisions & open items
