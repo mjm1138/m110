@@ -150,6 +150,7 @@ Legend: `[ ]` open · `[~]` partially done
   reuse** (8a regenerates web derivatives each run; the publish analogue of #14); (e)
   optional **auto-publish on refresh**. `publish.PUBLISHERS` + `PublishOptions` are the
   stable seams; each target is an adapter.
+**Other Publishing Targets**: Astrobin, Cloudynights, Other fora?
 
 ## UI niceties (backlog)
 

@@ -427,30 +427,49 @@ checklist, computed on the fly. Consequences:
   timezone = "America/Denver"  # IANA; DST derived per-date
   [horizon]
   mask = "default.hrz"         # physical skyline (.hrz/.csv); "" = open
+  default = true               # one site marked default (Checkpoint A)
   [glow]                        # light-dome layer — empty until derived
-  bortle = 0                   # 0 = unset
+  bortle = 0                   # 0 = unset (optional observed-SQM/Bortle anchor)
   sqm_zenith = 0.0
-  mask = ""                    # broadband glow floor (.hrz)
+  radius_mi = 50               # light-dome search radius (Checkpoint A)
+  mask = ""                    # broadband glow floor (.hrz), computed + editable
   mask_narrowband = ""         # softer floor for ON/LP filters
+  # sources = [...]            # contributing towns (name/bearing/intensity) for display
   ```
 
   This is **additive authored config** under the hidden dir — **no `.store_version`
   bump / migration** (seeded idempotently, existing files unchanged). The `[glow]`
-  fields ship **empty**; the **next** phase populates them by looking up the
-  location online (Falchi **World Atlas** zenith brightness + **VIIRS** Day/Night
-  Band radiance over the surrounding ~30–50 mi → an azimuth-dependent floor),
-  caching the result into the profile so runtime stays offline.
+  fields ship **empty**; **Checkpoint A** (ROADMAP item 1) populates the `mask`
+  **offline** from a **bundled GeoNames** populated-places dataset — Walker's-Law
+  domes (skyglow ∝ population × distance⁻²·⁵) within `radius_mi` → an upper-envelope
+  azimuth floor — anchored by the optional observed Bortle/SQM and **hand-editable**;
+  the contributing `sources` are stored for inspection. (Falchi **World Atlas** /
+  **VIIRS** radiance is the **v2** precision upgrade.) **Equipment inventory stays
+  deferred** out of this arc (the device seam remains #16-6d).
 - **Generated plan files** (SSC schedule JSON, NINA sequences) are user-facing
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.
-- **Priorities flip from authored to computed** (auto-prioritizer, BUGS #21).
-  Today `priorities.toml` is hand-authored; with the scoring engine it becomes a
-  **derived** ranking (recomputed alongside the other rollups from goals +
-  capture state + the seasonal/positional math), leaving only a thin **authored**
-  input: a small prefs/overrides file (per-type weights, the new-vs-deep strategy
-  toggle, manual pins/excludes — the residue of today's list, incl. `track=false`
-  campaign entries). The strategy toggle + type weights are preferences alongside
-  `processing_workflows`. (Scoring rules + which knobs surface: TBD.)
+- **Priorities flip from authored to computed** (auto-prioritizer, BUGS #21;
+  Checkpoint A). Today `priorities.toml` is hand-authored; with the scoring engine
+  the **ranking** becomes **derived** (`derived/priorities.json`, recomputed with the
+  other rollups from goals + capture state + the seasonal/positional math), leaving
+  only thin **authored** inputs. Proposed persistence (refine when built):
+  - **Persistent strategy** — a small prefs file (or a `[priorities]` block alongside
+    `processing_workflows`): the capture-many↔go-deep **strategy slider**, **per-type
+    weights**, goal ranking, and the deep-stack threshold. *Authored, persistent.*
+  - **Manual overrides** — per-object **Pin / Mute** (+ optional numeric nudge),
+    keyed by slug/target, in a stable file that **survives regeneration** (computed
+    rank + overrides = final order). Absorbs today's `track=false` campaign entries.
+    *Authored, persistent.*
+  - **Night presets** — named **session-toggle** combinations (Site · Filter ·
+    Available-time · Brightness · Short-window · Moon) for one-click recall. *Authored,
+    persistent.* The session toggles themselves are **ephemeral UI state** (they
+    re-rank live, never mutate the saved strategy), persisted only when saved as a
+    preset.
+  All three are **additive authored config** under the hidden dir — **no
+  `.store_version` bump**; `derived/priorities.json` is regenerable/safe-to-delete
+  like the other rollups. (The item-1 "Decided design" block in ROADMAP is the source
+  of truth for the scoring rules; the assistant only *proposes*, never authors these.)
 
 ### Image curation state (BUGS #17)
 - A per-image **finished / unfinished / hero** designation, user-curatable

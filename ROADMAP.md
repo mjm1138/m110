@@ -88,8 +88,66 @@ archived in **[`DONE.md`](DONE.md)**.
    tonight shortlist; (f) **manual overrides** (pins/excludes + the current
    `track=false` campaign entries). Natural output: a season-level goal backlog +
    a tonight's-targets shortlist (which feeds the plan-file generator, item 2).
-   *Scoring weights + which knobs surface in a priorities preference pane: TBD —
-   to refine.*
+
+   **Decided design (2026-07-03) — build plan.** Fleshed out with the user;
+   supersedes the "TBD" note where it conflicts. The prioritizer and the session
+   planner (item 2) are one interdependent arc — the planner *consumes* the
+   prioritizer and both need the same site/glow foundation — shipped as **three
+   checkpoints** so value lands incrementally, with the assistant (item 4) as a
+   follow-on that layers over the deterministic tools.
+
+   - *Foundation — a **Profile** view + site profiles.* A new top-level page manages
+     named **site profiles** (Home, Dark-site A…), one marked **default**:
+     coordinates/elevation, timezone, an imported **`.hrz` horizon** (theo.rocks),
+     and the **light-dome layer** (below). Prioritizer + planner read the selected
+     site. **Equipment inventory is deferred** out of this arc (the profile carries
+     only what the scorer needs; multi-device stays #16-6d).
+   - *Light domes — bundled offline auto-map (v1, decided).* Build the
+     azimuth-dependent glow floor from a **bundled public-domain populated-places
+     dataset** (GeoNames): at setup, find towns within a radius (~50 mi, adjustable),
+     compute each town's **bearing** + a **glow intensity** via Walker's Law
+     (skyglow ∝ population × distance⁻²·⁵), map each to a dome (peak floor altitude +
+     angular half-width; brighter/closer ⇒ taller/wider), and take the **upper
+     envelope** as `glow_floor(az)`. Store it + the source list in the site profile
+     (inspectable, hand-editable). Calibrate via an optional observed **Bortle/SQM**
+     anchor. Fills the empty `[glow]` seam; composes as `max(physical, glow)`;
+     **filter-aware** (softened narrowband floor). VIIRS radiance stays the **v2**
+     precision upgrade.
+   - *Scoring — two refinements to the (a)–(f) sum above.* **Trajectory-aware
+     altitude:** beyond *how high* an object peaks in tonight's dark window, weight
+     *which side of its seasonal arc it's on* — the dark-window peak rises to a best
+     then declines over the weeks, so an object **past peak and falling** (closing
+     opportunity) is bumped over one **rising toward peak** (can wait) at the same
+     altitude; compute as the sign+slope of dark-window peak altitude sampled a few
+     nights out (a finer partner to `nights_to_close`). **Graded short-window:** the
+     prototype's hard `season_min_hours` gate becomes a scored/threshold knob so
+     opportunistic short windows aren't silently dropped.
+   - *Two-tier tuning (on the Planning surface).* **Persistent strategy** (saved
+     baseline): a **strategy slider** capture-many ↔ go-deep; **per-object-type
+     weights**; goal ranking; deep-stack threshold. **Session-time controls** (live,
+     non-destructive re-rank): **Site**, **Filter (broadband/NB)**, **Available
+     time**, **Brightness limit**, **Short-window threshold**, **Moon (auto/ignore)**
+     — a mix of hard **filters** (exclude) and soft **nudges** (re-weight). **Night
+     presets** save a toggle combo ("Backyard NB night", "Dark-site galaxy hunt",
+     "Quick 1-hour"). Model: `ranked = score(persistent_weights) → filtered/
+     re-weighted by session_toggles`; toggles never mutate the saved strategy
+     (presets are the explicit save path). *Deferred knobs:* sky-quadrant
+     constraint, framing/FOV (needs equipment), transparency, novelty/staleness.
+   - *Manual overrides.* Inline **Pin ▲ / Normal / Mute ▼** (+ optional numeric
+     nudge) on object rows in **Library, Goals, and Summary**, stored in a stable
+     prefs file that **survives regeneration** (computed rank + overrides = final
+     order) — resolving the "hand metadata is fragile" finding below.
+   - *Build order — three shippable checkpoints:*
+     - **A — Profiles + Prioritizer** *(standalone value)*: Profile view + site
+       profiles → light-dome auto-map → prioritizer engine + overrides → priority UI
+       (inline promote/demote + strategy slider + per-type weights).
+     - **B — Session Planner** *(depends on A)*: the Planning view (pick site + night
+       → observable & ranked tonight list with transit/altitude/moon → assemble an
+       ordered plan) + the **plan-file / field-guide emit** (item 2). The shared
+       "tonight feasibility" math is computed once and feeds both the scorer's factor
+       (e) and the planner, so B is mostly UI + plan emit.
+     - **C — Assistant** *(item 4; follows)*: the LLM layers over A+B's deterministic
+       tools (proposes toggles/weights/plans; the engine still computes).
 
    **Findings from the Astronomy prototype (reviewed 2026-06-22)** — the
    `scripts/prioritize.py` prototype ran and generated a real `priorities.toml`.
@@ -117,8 +175,9 @@ archived in **[`DONE.md`](DONE.md)**.
        lat/lon) for the site-class tag, and **VIIRS Day/Night Band** radiance
        (NOAA/EOG, public domain) for *where* the domes are → project nearby
        sources to az/alt with a scattering falloff. Bundle/cache like
-       `seed/objects.toml` to stay offline. *v1:* a hand- or semi-auto `glow.hrz`
-       sibling + a stored Bortle/SQM — cheap and immediately useful.
+       `seed/objects.toml` to stay offline. *v1 (decided):* a **bundled GeoNames
+       auto-map** (Walker's-Law domes within a radius) + optional Bortle/SQM anchor +
+       manual override — see "Decided design" above; VIIRS is the v2 upgrade.
    - **The season gate hard-drops short-window targets.** `season_min_hours`
      (1.5h above min-alt, unobstructed, minus a pre-dawn hour) gates out objects
      that only get 30–70 min of clean time from the home horizon mask
@@ -179,7 +238,11 @@ archived in **[`DONE.md`](DONE.md)**.
 
 4. **In-app assistant (bring-your-own LLM).** Put the LLM value that's proven out
    in this project — **session planning, image analysis, workflow coaching** —
-   *inside* the app, grounded in the user's own data.
+   *inside* the app, grounded in the user's own data. **This is "Checkpoint C" of
+   the item-1 arc: a follow-on that layers over the deterministic prioritizer +
+   planner** — the assistant *proposes* session toggles / weights / plans and
+   *explains* the ranking, but the engine still computes (it never authors the
+   priority list). Ships after A/B.
 
    **Why M110 is unusually well-positioned.** The three things that make an LLM
    genuinely useful here, the app already holds in structured form:
@@ -329,7 +392,43 @@ archived in **[`DONE.md`](DONE.md)**.
 
 11. **"Lights Table"** A view with tools to quickly examine large numbers of .fits files. Should be a direct view of files, with autostretch (not looking at derived jpgs). Users can flag files with clouds, satellite/aircraft trails, and other imperfections. User can delete the file on disk with confirmation, or just mark it so it won't be hardlinked into workflow (e.g. "Siril") directories. Future versions might support batched background extraction, plate solving, SPCC, or maybe image analysis (find frames with satellite trails, find frames with low star count, etc)
 
-12. 
+12. **DwarfLab (Dwarf II / Dwarf 3) import support** *(beta-reach; extends item 6).*
+    Add a second smart-telescope source alongside the Seestar so M110 reaches the #2
+    smart-telescope community (DwarfLab owners on r/seestar-adjacent forums + the Smart
+    Telescope Underworld Discord). This is **additive** — a new entry in the
+    `ingest.LAYOUTS` registry + a `_classify_dwarf_dir()` classifier, mirroring the
+    Seestar path; **no `.store_version` bump** (device stays flat per the 6d deferral —
+    record device per-session, don't introduce `Images/<target>/<device>/` until someone
+    actually shoots one target on both scopes).
+
+    **What the public docs already give us** (help.dwarflab.com "Files Stored in DWARF
+    3 / DWARF 2"): an `Astronomy/` root with well-documented subfolders —
+    `DWARF_RAW/` (per-session light-frame folders), `DWARF_DARK/`, `CALI_FRAME/`,
+    `Restacked/` (Mega Stack), `STARTRAILS/`, `Solving_Failed/`. Per-session folders are
+    self-identifying: `DWARF_RAW_<TARGET>_EXP_<n>_GAIN_<n>_<YYYY-MM-DD-HH-MM-SS-FFF>`, so
+    the **object name is parseable from the folder name** (cleaner than needing headers).
+    Each session folder holds the raw subs (FITS *or* TIFF — user choice on Dwarf 3), the
+    stacked outputs (8-bit JPG, 16-bit PNG, 16-bit FITS single+stacked), `*_thumbnail`
+    files, and a **`shotsInfo.json`** sidecar carrying RA/DEC + target + exposure/gain +
+    IR-filter status + stacking stats (a rich structured metadata source; also feeds the
+    #12 RA/Dec pointing check).
+
+    **Proposed mapping:** `DWARF_RAW_<target>_…/` subs → `Images/<target>/lights/`; the
+    in-folder stacked FITS/PNG → `stacks/` (or a `dwarf-stacks/` tier analogous to
+    `seestar-stacks/`); `DWARF_DARK/` → darks; `CALI_FRAME/` → calibration; ignore
+    `Solving_Failed/`, thumbnails, JPG previews. Importer 6a's any-directory recursive
+    scan means a Dwarf user can already point M110 at their SD card before auto-detection
+    exists — the classifier is the real work; **auto-detection** is a small add (probe a
+    volume/dir for `Astronomy/DWARF_RAW`, the analogue of the Seestar `MyWorks` probe).
+
+    **Two gaps to close with one real capture dump before shipping** (not blockers):
+    (1) the **exact raw-sub filename/extension** — the session folder mixes single subs
+    *and* the stacked FITS, so the classifier must tell them apart (Seestar solves this
+    via the `Light_*` prefix); (2) **whether individual subs carry RA/DEC/OBJECT in the
+    FITS header**, or only the stack — if subs lack pointing, fall back to the folder name
+    / `shotsInfo.json` for object + pointing (still fully workable). *Action:* recruit a
+    Dwarf II/3 owner from the same forums to share a real `Astronomy/` dump to confirm
+    both. Cross-ref: item 6 (import), 6d (multi-device), BETA.md §3.
 
 ---
 

@@ -229,13 +229,15 @@ class MainWindow(QMainWindow):
         self.restore_action.triggered.connect(self._open_restore)
         prefs_action = QAction("Preferences…", self)
         prefs_action.setShortcut(QKeySequence.Preferences)
+        prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)  # → app menu on macOS
         prefs_action.triggered.connect(self._open_prefs)
-        menu = self.menuBar().addMenu("M110")
-        menu.addAction(self.prep_action)
-        menu.addAction(prefs_action)
         # Library menu — store-level operations (room to grow: open / archive / export).
+        # (No separate "M110" menu: Preferences folds into the macOS app menu by role, and
+        # Prepare lives here with the other maintenance actions.)
         self.lib_menu = self.menuBar().addMenu("Library")
         self.lib_menu.addAction(self.refresh_action)
+        self.lib_menu.addAction(self.prep_action)
+        self.lib_menu.addSeparator()
         self.lib_menu.addAction(self.add_object_action)
         self.lib_menu.addAction(self.fill_meta_action)
         self.lib_menu.addAction(self.enrich_online_action)
@@ -244,6 +246,8 @@ class MainWindow(QMainWindow):
         self.lib_menu.addSeparator()
         self.lib_menu.addAction(self.backup_action)
         self.lib_menu.addAction(self.restore_action)
+        self.lib_menu.addSeparator()
+        self.lib_menu.addAction(prefs_action)          # macOS: hops to the app menu
         # Help menu — About folds into the application menu on macOS (AboutRole).
         self.about_action = QAction("About M110", self)
         self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
@@ -522,7 +526,32 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+def _set_macos_app_name(name: str) -> None:
+    """Make the macOS app menu + dock tooltip show `name` instead of "Python" when
+    running unbundled from source. The app-menu title comes from the bundle's
+    CFBundleName (patched on NSBundle's info dict before AppKit builds the menu); the
+    dock tooltip comes from the process name (NSProcessInfo). Qt can set neither. Needs
+    pyobjc (a macOS-only dep); a no-op if it's missing or off-macOS. The durable fix is a
+    packaged .app with CFBundleName=M110; this just bridges the run-from-source case.
+    Must run before QApplication is created."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from Foundation import NSBundle, NSProcessInfo
+    except Exception:
+        return
+    bundle = NSBundle.mainBundle()
+    info = bundle and (bundle.localizedInfoDictionary() or bundle.infoDictionary())
+    if info is not None:
+        info["CFBundleName"] = name           # app-menu title
+    try:
+        NSProcessInfo.processInfo().setProcessName_(name)   # dock tooltip
+    except Exception:
+        pass
+
+
 def main() -> None:
+    _set_macos_app_name("M110")         # app-menu / dock name (before QApplication)
     app = QApplication(sys.argv)
     app.setApplicationName("M110")
     app.setApplicationDisplayName("M110")
