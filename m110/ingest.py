@@ -416,6 +416,7 @@ _KIND_DIR = {
     "stack": config.seestar_stacks_dir,
     "siril-stack": config.stacks_dir,
     "finished": config.finished_dir,
+    "working": config.working_files_dir,
 }
 
 # M110-store-shaped sources (6b): a subdir named like this under an <object> dir
@@ -437,7 +438,28 @@ def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
                 action: str, layout: str) -> list[IngestOp]:
     """Ops routing `files` (names in `src_dir`) into the target subdir for `kind`
     under object `obj`, skipping ones already present at the dest. `group` is the
-    grouping/label key shown in the preview."""
+    grouping/label key shown in the preview.
+
+    **Lights guard (bug A):** ``lights/`` must hold only raw subs. Any file
+    routed as ``light`` that isn't a genuine sub (`config.is_light_frame` — a
+    processing by-product like ``M27_final.fit`` / ``starless_*.fit`` that a
+    flat/mixed source dir put next to the subs) is diverted to ``working_files/``
+    (kind ``working``) instead, so it never pollutes ``lights/`` nor gets
+    misread by Siril prep as an extra filter."""
+    if kind == "light":
+        subs = [f for f in files if config.is_light_frame(f)]
+        nonsubs = [f for f in files if not config.is_light_frame(f)]
+        ops = _emit_one_kind(src_dir, subs, "light", obj, group, action, layout)
+        if nonsubs:
+            ops += _emit_one_kind(src_dir, nonsubs, "working", obj, group,
+                                  action, layout)
+        return ops
+    return _emit_one_kind(src_dir, files, kind, obj, group, action, layout)
+
+
+def _emit_one_kind(src_dir: Path, files, kind: str, obj: str, group: str,
+                   action: str, layout: str) -> list[IngestOp]:
+    """Route `files` into the single target subdir for `kind` (skip already-present)."""
     root = config.DATA_ROOT
     dst_dir = _KIND_DIR[kind](obj)
     existing = set(_all_files(dst_dir))
@@ -905,3 +927,38 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
         if progress:
             progress(i, total)
     return {"moved": moved, "skipped": skipped, "cancelled": cancelled}
+
+
+def plan_lights_cleanup(targets: list[str] | None = None) -> list[IngestOp]:
+    """Read-only plan (bug C): find non-sub ``.fit`` files sitting in any target's
+    ``lights/`` and plan to **move** them to that target's ``working_files/``.
+
+    A ``lights/`` folder must contain only raw subs (`config.is_light_frame`); an
+    earlier import from a flat/mixed source (e.g. the ~/Astronomy ``FITS/<obj>/``
+    dirs that mingle subs with Siril/PixInsight by-products) can leave processing
+    products there. These moves are intra-store `os.rename`-cheap; `apply_ops` is
+    the only writer and callers must confirm. Idempotent — a file already present
+    in ``working_files/`` is skipped by `apply_ops`.
+    """
+    root = config.DATA_ROOT
+    images = config.IMAGES_DIR
+    if not images.is_dir():
+        return []
+    names = targets if targets is not None else [
+        d.name for d in sorted(images.iterdir()) if d.is_dir()]
+    ops: list[IngestOp] = []
+    for name in names:
+        ldir = config.lights_dir(name)
+        if not ldir.is_dir():
+            continue
+        for f in sorted(ldir.iterdir()):
+            if not (f.is_file() and f.suffix.lower() == ".fit"):
+                continue
+            if config.is_light_frame(f.name):
+                continue                        # genuine sub — leave it
+            dest = config.working_files_dir(name) / f.name
+            ops.append(IngestOp(str(f), str(dest), "working", name,
+                                str(dest.relative_to(root)), action="move",
+                                size_bytes=_size(f), layout="cleanup",
+                                object=name))
+    return ops

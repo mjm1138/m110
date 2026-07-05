@@ -36,6 +36,35 @@ Legend: `[ ]` open · `[~]` partially done
   rejection% to a plausible range. Tests in `tests/test_build_derived.py`;
   `DATA_MODEL.md` updated.
 
+- [x] **Lights/products classification (M27 phantom-`OTHER`-filter bug).** Processing
+  reported a huge "+ new" backlog that Siril didn't see. Root cause was **not** the count
+  (it was correct) but **processing by-products polluting `lights/`**: the ~/Astronomy
+  import (`Images/FITS/<obj>/` is a flat mix of subs + Siril/PixInsight outputs) filed
+  products like `M27_final.fit` / `starless_*` / `*_spcc` into `lights/` (19 objects, 179
+  files). Prep's `_lights()` then treated any `.fit` as a sub, so unparseable products fell
+  into a phantom **`OTHER`** filter → M27 looked multi-filter and spawned a bogus
+  per-filter job. Three components disagreed on "what is a sub." Fixed with **one shared
+  definition** — `config.is_light_frame` (a `.fit` that isn't a `config.is_processing_product`;
+  a *denylist* that fails toward "it's a light", so unknown-rig subs like a future Dwarf's
+  aren't misrouted): **(A)** import diverts non-sub `.fit` to a new `working_files/` tier
+  instead of `lights/` (`ingest._emit_files`); **(B)** `siril._lights()` ignores products,
+  killing phantom filters; **(C)** `ingest.plan_lights_cleanup()` relocates already-mis-filed
+  products out of `lights/` (preview-then-confirm via `apply_ops`). Tests in
+  `tests/test_lights_classification.py`; `working_files/` documented in `DATA_MODEL.md`.
+
+- [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
+  M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
+  that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
+  single-filter prep's `siril/lights/` (and any orphaned filter dir) is **not cleaned up**,
+  so the user can open a stale folder with a partial sub set (exactly what happened on M27:
+  stale `siril/lights/` had 461 while the live `siril/LP/lights/` had all 1223). Improvements:
+  (a) reconcile/clean orphan job dirs when the filter composition changes (carefully —
+  never nuke an in-progress run); (b) surface which sandbox dir is current (next-steps.md
+  already names it, but the stale dir shouldn't linger); (c) reconsider whether per-filter
+  split should be **opt-in** — a Seestar user is effectively single-filter (LP or none), so
+  the split mostly adds confusion. Edge case today (one object shot with mixed filter
+  settings), but the stale-dir cleanup is the generally-useful piece.
+
 - [ ] **#17 — Intermediate / finished file hinting.** The naming patterns for
   intermediate and finished images are built on Mike's particular habits, and are
   probably not generalizable. Two enhancements can help:

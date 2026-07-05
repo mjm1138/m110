@@ -171,11 +171,17 @@ class PrepPlan:
 
 
 def _lights(target: str) -> list[Path]:
+    """Raw subs in the target's ``lights/`` — only genuine light frames (the
+    shared `config.is_light_frame`). Any stray processing by-product that
+    happens to sit in ``lights/`` is ignored, so it can never
+    be misread as an extra filter (the phantom ``OTHER`` job) or padded into a
+    stack. Defense-in-depth partner to the import guard that keeps such files
+    out of ``lights/`` in the first place."""
     d = config.lights_dir(target)
     if not d.is_dir():
         return []
     return sorted(f for f in d.iterdir()
-                  if f.is_file() and f.suffix.lower() == ".fit")
+                  if f.is_file() and config.is_light_frame(f.name))
 
 
 def plan_prep(target: str, usable_frames: int | None = None,

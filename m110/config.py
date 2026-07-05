@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tomllib
 from pathlib import Path
@@ -186,6 +187,43 @@ def seestar_stacks_dir(name: str) -> Path:
 
 def finished_dir(name: str) -> Path:
     return IMAGES_DIR / name / "finished"
+
+
+def working_files_dir(name: str) -> Path:
+    """Processing by-products for a capture target (stacks' intermediates:
+    starless/starmask/crop/stretch/spcc/…). NOT raw subs and NOT the final
+    render — a quiet holding tier so these never pollute ``lights/`` (which
+    must contain only raw subs) or ``finished/`` (final renders only)."""
+    return IMAGES_DIR / name / "working_files"
+
+
+# A ``lights/`` folder must hold only raw subs. We identify the enemy — a
+# **processing by-product** (stack, starless, crop, …) — rather than trying to
+# whitelist every telescope's sub-naming (a Seestar ``Light_*`` allowlist would
+# wrongly divert a Dwarf/other-rig sub we don't yet know the naming of). So the
+# rule *fails toward "it's a light"*: a ``.fit`` is a sub unless it clearly reads
+# as a product. This single shared definition is used by import (route products
+# to ``working_files/`` instead of ``lights/``) and Siril prep (don't treat a
+# product as a light — the M27 phantom-``OTHER``-filter bug). A ``count×exposure``
+# token (``888x20sec``) is the tell-tale of a *stack*; the words are common
+# tool/step outputs. (ROADMAP #17 will make this an editable preference.)
+_STACK_SIG_RE = re.compile(r"\d+x\d+sec", re.IGNORECASE)
+_PRODUCT_MARKERS = (
+    "starless", "starmask", "stacked", "drizzle", "processed", "integration",
+    "master", "spcc", "denoise", "result", "final", "finished",
+)
+
+
+def is_processing_product(name: str) -> bool:
+    """True if ``name`` reads as a processing by-product, not a raw sub."""
+    low = name.lower()
+    return bool(_STACK_SIG_RE.search(low)) or any(m in low for m in _PRODUCT_MARKERS)
+
+
+def is_light_frame(name: str) -> bool:
+    """True if ``name`` is a raw light sub — a ``.fit`` that isn't a
+    processing by-product (`is_processing_product`)."""
+    return name.lower().endswith(".fit") and not is_processing_product(name)
 
 
 def darks_dir(name: str) -> Path:
