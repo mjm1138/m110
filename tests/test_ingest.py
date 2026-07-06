@@ -605,6 +605,42 @@ def test_scan_holding_groups_by_top_folder(tmp_path, monkeypatch):
     assert ingest.holding_count() == 3
 
 
+def test_discard_holding_deletes_and_prunes(tmp_path, monkeypatch):
+    """discard_holding removes a held group's files and prunes the emptied folder,
+    leaving other held groups untouched."""
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    (config.STAGING_DIR / "junk").mkdir(parents=True)
+    (config.STAGING_DIR / "junk" / "a.fit").write_text("a")
+    (config.STAGING_DIR / "junk" / "b.png").write_text("b")
+    (config.STAGING_DIR / "keep.jpg").write_text("k")            # loose, unrelated
+
+    groups = ingest.group_ops(ingest.scan_holding())
+    g = next(g for g in groups if g.group == "junk")
+    res = ingest.discard_holding(g)
+
+    assert res["deleted"] == 2
+    assert not (config.STAGING_DIR / "junk").exists()            # emptied dir pruned
+    assert (config.STAGING_DIR / "keep.jpg").exists()            # other group intact
+    assert ingest.holding_count() == 1
+
+
+def test_discard_holding_refuses_paths_outside_inbox(tmp_path, monkeypatch):
+    """Safety: an op whose src escapes Inbox/ is skipped, never deleted."""
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    outside = config.DATA_ROOT / "Images" / "precious.fit"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_text("do not delete")
+    g = ingest.IngestGroup(
+        group="spoof", object="", kind="unassigned", frames=1, size_bytes=0,
+        dest_dir="", new_object=False, action="move",
+        ops=[ingest.IngestOp(str(outside), str(outside), "unassigned", "spoof",
+                             "", False, "move", 0, "holding", "")])
+    res = ingest.discard_holding(g)
+
+    assert res["deleted"] == 0
+    assert outside.exists()                                      # untouched
+
+
 def test_assign_moves_held_files_into_target(tmp_path, monkeypatch):
     """assign() rebuilds a held group to move its files into Images/<obj>/<kind>;
     apply_ops actually moves them out of the holding area."""

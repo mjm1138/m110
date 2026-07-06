@@ -121,13 +121,16 @@ Legend: `[ ]` open · `[~]` partially done
   decide the destination + gallery interaction first.
 - [ ] **#26 — Holding-area identification aids.** The 6c holding-area panel lets you
   assign object + kind but offers no help *figuring out* what a held file is (now lists
-  filenames on hover, but no more). *Enhancements (overlap ROADMAP item 9):* (a)
-  **reveal the file location** — a "Reveal in Finder" / "Open folder" action and/or the
-  `Inbox/<folder>` path in the panel; (b) a **preview/inspector** — thumbnail for images,
-  a FITS-header view (OBJECT/IMAGETYP/FILTER/RA/DEC via `ingest.frame_info`); (c)
-  **suggested identity** — for FITS with RA/DEC reuse #12 pointing (`frame_radec` +
-  nearest-catalog); headerless → plate-solving (item 9). Start with (a) + the FITS-header
-  inspector — most of what's needed is already in `frame_info`. There should be an option to discard a file in the Inbox holding area, with a confirmation modal.
+  filenames on hover, but no more). *Enhancements (overlap ROADMAP item 9):* (a) ✅
+  **reveal the file location** — done (`feature/holding-discard-reveal`): a per-row
+  **Reveal** button opens the group's `Inbox/<folder>` in the OS file manager; (b) a
+  **preview/inspector** — thumbnail for images, a FITS-header view
+  (OBJECT/IMAGETYP/FILTER/RA/DEC via `ingest.frame_info`); (c) **suggested identity** —
+  for FITS with RA/DEC reuse #12 pointing (`frame_radec` + nearest-catalog); headerless →
+  plate-solving (item 9). Remaining: the FITS-header inspector — most of what's needed is
+  already in `frame_info`. ✅ **Discard** — done: a per-row **Discard** button deletes a
+  held group's files (confirmation modal; engine `ingest.discard_holding`, Inbox-scoped +
+  prunes emptied folders).
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,

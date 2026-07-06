@@ -72,14 +72,45 @@ def _held_page(tmp_path, monkeypatch, qtbot):
     return page
 
 
+def _action_buttons(page, row):
+    """The {label: QPushButton} in a holding row's Actions cell."""
+    from PySide6.QtWidgets import QPushButton
+    cell = page.holding_table.cellWidget(row, 5)
+    return {b.text(): b for b in cell.findChildren(QPushButton)}
+
+
 def test_holding_assign_column_is_legible(tmp_path, monkeypatch, qtbot):
-    """#65: the Object/Kind/Assign columns are cell widgets, which
-    resizeColumnsToContents ignores — they get explicit widths so the Assign button
-    isn't clipped to "ssig"."""
+    """#65: the Object/Kind/Actions columns are cell widgets, which
+    resizeColumnsToContents ignores — they get explicit widths so the buttons
+    aren't clipped."""
     page = _held_page(tmp_path, monkeypatch, qtbot)
     assert page.holding_table.rowCount() == 1
-    assert page.holding_table.columnWidth(5) >= 80          # Assign button column
-    assert page.holding_table.cellWidget(0, 5).text() == "Assign"
+    assert page.holding_table.columnWidth(5) >= 200         # Assign · Reveal · Discard
+    assert set(_action_buttons(page, 0)) == {"Assign", "Reveal", "Discard"}
+
+
+def test_holding_discard_removes_row(tmp_path, monkeypatch, qtbot):
+    """Discard deletes the held files (auto-confirmed) and the row drops out."""
+    from PySide6.QtWidgets import QMessageBox
+    from m110 import config
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: QMessageBox.Yes)
+    _action_buttons(page, 0)["Discard"].click()
+    assert page.holding_table.rowCount() == 0
+    assert not (config.STAGING_DIR / "M94").exists()
+
+
+def test_holding_reveal_opens_folder(tmp_path, monkeypatch, qtbot):
+    """Reveal hands the group's Inbox folder to the OS file manager."""
+    from PySide6.QtGui import QDesktopServices
+    from m110 import config
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    opened = []
+    monkeypatch.setattr(QDesktopServices, "openUrl",
+                        lambda url: opened.append(url.toLocalFile()))
+    _action_buttons(page, 0)["Reveal"].click()
+    assert opened == [str(config.STAGING_DIR / "M94")]
 
 
 def test_holding_selections_survive_benign_refresh(tmp_path, monkeypatch, qtbot):

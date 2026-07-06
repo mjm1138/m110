@@ -13,7 +13,8 @@ from __future__ import annotations
 import threading
 from collections import Counter
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QProgressDialog,
@@ -271,7 +272,7 @@ class ImportPage(QWidget):
         v.addWidget(self._holding_header)
         self.holding_table = QTableWidget(0, 6)
         self.holding_table.setHorizontalHeaderLabels(
-            ["Source folder", "Files", "Size", "Object", "Kind", ""])
+            ["Source folder", "Files", "Size", "Object", "Kind", "Actions"])
         self.holding_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.holding_table.verticalHeader().setVisible(False)
         self.holding_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -349,10 +350,8 @@ class ImportPage(QWidget):
                 if ki >= 0:
                     kind.setCurrentIndex(ki)
             self.holding_table.setCellWidget(r, 4, kind)
-            btn = QPushButton("Assign")
-            btn.clicked.connect(lambda _=False, idx=r: self._on_assign(idx))
-            self.holding_table.setCellWidget(r, 5, btn)
-        # resizeColumnsToContents ignores cell *widgets*, so the Object/Kind/Assign
+            self.holding_table.setCellWidget(r, 5, self._holding_actions(r))
+        # resizeColumnsToContents ignores cell *widgets*, so the Object/Kind/Actions
         # columns would collapse (the "Assign" button clipped to "ssig", #65) — give
         # them explicit widths.
         self.holding_table.resizeColumnsToContents()
@@ -360,7 +359,60 @@ class ImportPage(QWidget):
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
         self.holding_table.setColumnWidth(3, 150)   # Object
         self.holding_table.setColumnWidth(4, 130)   # Kind
-        self.holding_table.setColumnWidth(5, 88)    # Assign button
+        self.holding_table.setColumnWidth(5, 210)   # Assign · Reveal · Discard
+
+    def _holding_actions(self, row: int) -> QWidget:
+        """The per-row action cluster: Assign (route into the collection), Reveal
+        (open the folder in the OS file manager), Discard (delete the held files)."""
+        cell = QWidget()
+        h = QHBoxLayout(cell)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(4)
+        assign = QPushButton("Assign")
+        assign.clicked.connect(lambda _=False, idx=row: self._on_assign(idx))
+        reveal = QPushButton("Reveal")
+        reveal.setToolTip("Show this folder in the file manager")
+        reveal.clicked.connect(lambda _=False, idx=row: self._on_reveal(idx))
+        discard = QPushButton("Discard")
+        discard.setToolTip("Permanently delete these held files")
+        discard.clicked.connect(lambda _=False, idx=row: self._on_discard(idx))
+        for b in (assign, reveal, discard):
+            h.addWidget(b)
+        return cell
+
+    def _holding_folder(self, group) -> "Path":
+        """The Inbox/ folder a held group lives in (Inbox itself for loose files)."""
+        from pathlib import Path
+        base = config.STAGING_DIR
+        return base if group.group == "(loose)" else base / group.group
+
+    def _on_reveal(self, row):
+        if row >= len(self._holding_groups):
+            return
+        folder = self._holding_folder(self._holding_groups[row])
+        if not folder.is_dir():
+            QMessageBox.information(self, "Reveal", f"Folder no longer exists:\n{folder}")
+            self.refresh_holding()
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def _on_discard(self, row):
+        if row >= len(self._holding_groups) or self.is_busy():
+            return
+        g = self._holding_groups[row]
+        if QMessageBox.question(
+                self, "Discard held files",
+                f"Permanently delete {g.frames} held file(s) from “{g.group}”?\n\n"
+                f"This removes them from the Inbox/ holding area and cannot be "
+                f"undone.",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel) != QMessageBox.Yes:
+            return
+        res = ingest.discard_holding(g)
+        self.refresh_holding()
+        n = res.get("deleted", 0)
+        self._holding_header.setText(f"Discarded {n} file(s).  "
+                                     + self._holding_header.text())
 
     def _on_assign(self, row):
         if row >= len(self._holding_groups) or self.is_busy():

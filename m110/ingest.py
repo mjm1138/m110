@@ -830,6 +830,44 @@ def holding_count() -> int:
                if _is_content_file(f))
 
 
+def _prune_empty_dirs(base: Path) -> None:
+    """Remove now-empty subdirectories under `base`, bottom-up, keeping `base`
+    itself. Best-effort — a dir that isn't empty (or races) is left alone."""
+    for dirpath, _dn, _f in sorted(os.walk(base), key=lambda t: t[0], reverse=True):
+        d = Path(dirpath)
+        if d == base:
+            continue
+        try:
+            d.rmdir()          # succeeds only if empty
+        except OSError:
+            pass               # not empty / gone — leave it
+
+
+def discard_holding(group: IngestGroup) -> dict:
+    """Permanently delete a held group's files from the Inbox/ holding area, then
+    prune any now-empty subfolders (never Inbox/ itself). **Destructive — callers
+    MUST confirm.** Only ever deletes inside ``config.STAGING_DIR``; a path that
+    escapes it is skipped as a safety guard. Returns ``{"deleted": n}``."""
+    base = config.STAGING_DIR.resolve()
+    deleted = 0
+    for op in group.ops:
+        p = Path(op.src)
+        try:
+            rp = p.resolve()
+        except OSError:
+            rp = p
+        if base != rp and base not in rp.parents:
+            continue                       # safety: never delete outside Inbox/
+        try:
+            if p.is_file():
+                p.unlink()
+                deleted += 1
+        except OSError:
+            pass
+    _prune_empty_dirs(config.STAGING_DIR)
+    return {"deleted": deleted}
+
+
 def assign(group: IngestGroup, object: str, kind: str) -> IngestGroup:
     """Rebuild a held (unassigned) group's ops to **move** its files into the content
     tree under `object` as `kind` (6c manual assign). Mirrors `retarget` but sets the

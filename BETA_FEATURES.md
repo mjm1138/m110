@@ -81,11 +81,12 @@ of work).
   prefs file, inline on Library/Goals/Summary rows). Gives the view a reason to
   exist **without** building the scoring engine. Alternatively: a clear empty
   state. *(This is the surgical slice of item 1 that ships; the rest is T3.)*
-- [ ] **Holding-area: discard + reveal** *(BUGS #26, partial).* Strangers' messy
-  imports *will* land in the 6c holding area, which today offers no way to dismiss
-  junk. Ship: **discard-a-held-file with confirmation** + **reveal in Finder /
-  open containing folder**. *(The FITS-header inspector / thumbnail / suggested-
-  identity aids are T2.)*
+- [x] **Holding-area: discard + reveal** *(BUGS #26, partial).* ✅ Done
+  (`feature/holding-discard-reveal`). Strangers' messy imports *will* land in the 6c
+  holding area, which offered no way to dismiss junk. Shipped: per-row **Discard**
+  (confirmation modal → `ingest.discard_holding`, Inbox-scoped + prunes emptied
+  folders) + **Reveal** (opens the group's `Inbox/<folder>` in the OS file manager).
+  *(The FITS-header inspector / thumbnail / suggested-identity aids are T2.)*
 - [ ] **Multi-Seestar-model + newer capture modes** *(ingest robustness; overlaps
   [`BETA.md`](BETA.md) §3).* Validated on one telescope/firmware/layout only.
   Confirm/degrade for **S30 / S50** folder layouts and newer output modes
