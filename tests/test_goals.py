@@ -17,6 +17,29 @@ def test_caldwell_bundle_is_complete_and_disjoint_from_messier():
     assert not (set(cw["members"]) & set(mes["members"]))      # no Messier overlap
 
 
+def test_bundled_catalogs_carry_hemisphere_and_source():
+    cats = {c["id"]: c for c in catalog.list_bundled_catalogs()}
+    # every bundled catalog is tagged for the Goals-page grouping + has a link
+    valid = {"northern", "southern", "allsky"}
+    for cid, c in cats.items():
+        assert c["hemisphere"] in valid, cid
+        assert c["source_url"].startswith("https://"), cid
+    assert cats["caldwell"]["hemisphere"] == "allsky"
+    assert cats["messier"]["hemisphere"] == "northern"
+    assert cats["bennett"]["hemisphere"] == "southern"
+
+
+def test_list_goals_exposes_grouping_metadata():
+    listed = {g["id"]: g for g in goals.list_goals()}
+    assert listed["messier"]["hemisphere"] == "northern"
+    assert listed["messier"]["source_url"].startswith("https://")
+    assert listed["messier"]["description"]
+    # a custom goal buckets under "custom" with no bundled link/description
+    gid = goals.create_custom_goal("Grouping test", ["m1"])
+    cg = {g["id"]: g for g in goals.list_goals()}[gid]
+    assert cg["hemisphere"] == "custom" and cg["source_url"] == ""
+
+
 def test_list_and_membership():
     ids = {c["id"] for c in catalog.list_bundled_catalogs()}
     assert {"messier", "caldwell"} <= ids

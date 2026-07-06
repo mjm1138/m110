@@ -1,5 +1,7 @@
 name = "Caldwell"
 description = "Patrick Moore's 109 bright deep-sky objects the Messier list omits (no Messier overlap)."
+hemisphere = "allsky"
+source_url = "https://en.wikipedia.org/wiki/Caldwell_catalogue"
 
 [members]
 ngc-188 = "C1"

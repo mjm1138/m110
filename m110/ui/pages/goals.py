@@ -9,13 +9,61 @@ prunes uncaptured/un-noted/not-in-another-goal members) — so a toggle emits
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
-    QCheckBox, QPushButton, QInputDialog, QMessageBox, QFrame,
+    QCheckBox, QPushButton, QInputDialog, QMessageBox, QFrame, QToolButton,
+    QHeaderView,
 )
 
 from m110 import goals as goals_mod, derived, catalog
 from m110.ui.widgets import make_table
+from m110.ui.theme import status_color
+
+
+# Order + display label for the expandable goal groups. `hemisphere` values from
+# goals.list_goals() ("northern"/"southern"/"allsky"/"custom") map onto these.
+_GROUPS = [
+    ("allsky", "All-sky"),
+    ("northern", "Northern hemisphere"),
+    ("southern", "Southern hemisphere"),
+    ("custom", "Custom goals"),
+]
+
+
+class _CollapsibleSection(QWidget):
+    """A titled group whose body can be toggled open/closed via its header.
+
+    `on_toggle(expanded)` is invoked on every state change so the owning page can
+    persist the open/closed state across a rebuild (the page reloads on window
+    focus, which would otherwise reset every section to its default)."""
+
+    def __init__(self, title: str, expanded: bool = True, on_toggle=None, parent=None):
+        super().__init__(parent)
+        self._on_toggle = on_toggle
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._btn = QToolButton()
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(expanded)
+        self._btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self._btn.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
+        self._btn.toggled.connect(self._on_toggled)
+        lay.addWidget(self._btn)
+        self._body = QWidget()
+        self.body = QVBoxLayout(self._body)
+        self.body.setContentsMargins(18, 2, 0, 6)
+        lay.addWidget(self._body)
+        self._body.setVisible(expanded)
+
+    def _on_toggled(self, on: bool):
+        self._btn.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+        self._body.setVisible(on)
+        if self._on_toggle is not None:
+            self._on_toggle(on)
 
 
 class GoalsPage(QScrollArea):
@@ -30,6 +78,7 @@ class GoalsPage(QScrollArea):
         self._lay.setAlignment(Qt.AlignTop)
         self.setWidget(self._content)
         self._building = False
+        self._expanded: dict[str, bool] = {}   # group key → open state, kept across reloads
         self.reload()
 
     # ---- helpers ----
@@ -83,33 +132,78 @@ class GoalsPage(QScrollArea):
 
     def _build_tracking(self):
         self._lay.addWidget(self._heading("Tracking"))
-        all_goals = goals_mod.list_goals()
         self._checks = {}
-        for g in all_goals:
-            row = QHBoxLayout()
-            cb = QCheckBox(f"{g['name']}  ({g['total']})")
-            cb.setChecked(g["active"])
-            cb.toggled.connect(self._on_toggle)
-            self._checks[g["id"]] = cb
-            row.addWidget(cb)
-            if g["kind"] == "custom":
-                edit = QPushButton("Edit…")
-                edit.clicked.connect(lambda _=False, gid=g["id"]: self._edit_custom(gid))
-                delete = QPushButton("Delete")
-                delete.clicked.connect(lambda _=False, gid=g["id"]: self._delete_custom(gid))
-                row.addWidget(edit)
-                row.addWidget(delete)
-            row.addStretch(1)
-            self._lay.addLayout(row)
 
-        new_btn = QPushButton("New custom goal…")
-        new_btn.clicked.connect(self._new_custom)
-        self._lay.addWidget(new_btn)
+        by_group: dict[str, list[dict]] = {}
+        for g in goals_mod.list_goals():
+            by_group.setdefault(g["hemisphere"], []).append(g)
+
+        for key, label in _GROUPS:
+            goals_here = by_group.get(key, [])
+            if not goals_here and key != "custom":
+                continue  # hide empty hemispheres; always show Custom (holds "New…")
+            # Expand a group by default if it holds an active goal (or it's Custom);
+            # a state the user has toggled since launch wins (survives focus reloads).
+            default = key == "custom" or any(g["active"] for g in goals_here)
+            expand = self._expanded.get(key, default)
+            section = _CollapsibleSection(
+                label, expanded=expand,
+                on_toggle=lambda on, k=key: self._expanded.__setitem__(k, on))
+            for g in goals_here:
+                section.body.addWidget(self._goal_row(g))
+            if key == "custom":
+                new_btn = QPushButton("New custom goal…")
+                new_btn.clicked.connect(self._new_custom)
+                new_row = QHBoxLayout()
+                new_row.addWidget(new_btn)
+                new_row.addStretch(1)
+                section.body.addLayout(new_row)
+            self._lay.addWidget(section)
+
+    def _goal_row(self, g: dict) -> QWidget:
+        """One goal: checkbox + count, description caption, source link, and (for
+        custom goals) Edit/Delete buttons."""
+        w = QWidget()
+        col = QVBoxLayout(w)
+        col.setContentsMargins(0, 2, 0, 2)
+        col.setSpacing(1)
+
+        top = QHBoxLayout()
+        cb = QCheckBox(f"{g['name']}  ({g['total']})")
+        cb.setChecked(g["active"])
+        cb.toggled.connect(self._on_toggle)
+        self._checks[g["id"]] = cb
+        top.addWidget(cb)
+        top.addStretch(1)
+        if g["kind"] == "custom":
+            edit = QPushButton("Edit…")
+            edit.clicked.connect(lambda _=False, gid=g["id"]: self._edit_custom(gid))
+            delete = QPushButton("Delete")
+            delete.clicked.connect(lambda _=False, gid=g["id"]: self._delete_custom(gid))
+            top.addWidget(edit)
+            top.addWidget(delete)
+        col.addLayout(top)
+
+        desc = (g.get("description") or "").strip()
+        url = (g.get("source_url") or "").strip()
+        if desc or url:
+            meta = QLabel()
+            meta.setProperty("caption", True)
+            meta.setWordWrap(True)
+            meta.setOpenExternalLinks(True)
+            meta.setTextFormat(Qt.RichText)
+            parts = []
+            if desc:
+                parts.append(desc)
+            if url:
+                parts.append(f'<a href="{url}">Learn more ↗</a>')
+            meta.setText(" &nbsp;".join(parts))
+            col.addWidget(meta)
+        return w
 
     def _build_progress(self):
         goals_data = {g["id"]: g for g in derived.load_goals()}
         totals = derived.totals_by_slug()
-        ref = catalog.load_reference()
 
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
@@ -122,55 +216,61 @@ class GoalsPage(QScrollArea):
 
         for gid in active:
             g = goals_data.get(gid)
-            name = goals_mod.goal_name(gid)
-            self._lay.addWidget(self._heading(name))
-            if not g:
-                self._lay.addWidget(QLabel("<i>No progress data yet — Refresh.</i>"))
-                continue
-            self._lay.addWidget(QLabel(
-                f"{g['captured']} captured · {g['deep']} deep · {g['total']} total "
-                f"({g['percent']}%)"))
+            self._lay.addWidget(self._heading(goals_mod.goal_name(gid)))
+            if g:
+                self._lay.addWidget(QLabel(
+                    f"{g['captured']} captured · {g['deep']} deep · {g['total']} total "
+                    f"({g['percent']}%)"))
+            self._lay.addWidget(self._catalog_table(gid, totals))
 
-            # In-progress captures (captured but below the deep-stack target).
-            ip = g.get("in_progress", [])
-            if ip:
-                self._lay.addWidget(QLabel("<b>In progress</b> (below deep-stack target):"))
-                self._lay.addWidget(self._object_table(
-                    [(x["slug"], x.get("name", "")) for x in ip]))
-
-            # Remaining (uncaptured) members — the checklist.
-            members = goals_mod.goal_members(gid)
-            remaining = [(s, (ref.get(s, {}).get("name") or members[s]))
-                         for s in members if s not in totals]
-            if remaining:
-                self._lay.addWidget(QLabel(f"<b>Remaining</b> ({len(remaining)} uncaptured):"))
-                self._lay.addWidget(self._object_table(remaining, clickable=False))
-
-    def _object_table(self, rows, clickable: bool = True):
-        tbl = make_table(["Object", "Name"], stretch_last=True)
-        tbl.setSortingEnabled(False)
-        # Resolve each label from the object's real entry (Library, else the bundled
-        # reference) so the id shows as its proper designation — not the lowercase
-        # slug fabricated as `{"id": slug}`, which rendered "M51 (m51)".
+    def _catalog_table(self, gid: str, totals: dict):
+        """The catalog's full membership: Object · Name · Captured · Deep stack,
+        with a green check where the object has been captured / deep-stacked.
+        Double-click a row → open the object."""
+        members = goals_mod.goal_members(gid)   # {slug: designation}
         try:
             lib = catalog.load_library()
         except Exception:
             lib = {}
         ref = catalog.load_reference()
-        for slug, name in rows:
+
+        tbl = make_table(["Object", "Name", "Captured", "Deep stack"])
+        tbl.setSortingEnabled(False)            # keep natural catalog order
+        green = QBrush(status_color("deep_stack"))
+        slugs = sorted(members, key=lambda s: catalog.catalog_sort_key(members[s]))
+        for slug in slugs:
+            entry = lib.get(slug) or ref.get(slug)
+            label = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
+            name = (entry or {}).get("name") or members[slug]
+            t = totals.get(slug)
+            captured = t is not None
+            deep = captured and t.get("status") == "deep_stack"
+
             r = tbl.rowCount()
             tbl.insertRow(r)
-            entry = lib.get(slug) or ref.get(slug)
-            label = catalog.object_label(catalog.object_identifiers(slug, entry))
-            it = QTableWidgetItem(label or slug)
-            it.setData(Qt.UserRole, slug)
-            tbl.setItem(r, 0, it)
+            obj = QTableWidgetItem(label)
+            obj.setData(Qt.UserRole, slug)
+            tbl.setItem(r, 0, obj)
             tbl.setItem(r, 1, QTableWidgetItem(str(name or "")))
+            tbl.setItem(r, 2, self._check_item(captured, green))
+            tbl.setItem(r, 3, self._check_item(deep, green))
+
+        hdr = tbl.horizontalHeader()
         tbl.resizeColumnsToContents()
-        tbl.setMinimumHeight(min(280, 28 * (tbl.rowCount() + 1) + 8))
-        if clickable:
-            self._wire_open(tbl)
+        hdr.setSectionResizeMode(1, QHeaderView.Stretch)   # Name fills the row
+        h = min(380, 24 * (len(slugs) + 1) + 10)           # cap tall catalogs → scroll
+        tbl.setMinimumHeight(h)
+        tbl.setMaximumHeight(h)
+        self._wire_open(tbl)
         return tbl
+
+    @staticmethod
+    def _check_item(on: bool, brush: QBrush) -> QTableWidgetItem:
+        it = QTableWidgetItem("✓" if on else "")
+        it.setTextAlignment(Qt.AlignCenter)
+        if on:
+            it.setForeground(brush)
+        return it
 
     # ---- actions ----
     def _on_toggle(self, _checked: bool):

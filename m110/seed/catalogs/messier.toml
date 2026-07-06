@@ -1,5 +1,7 @@
 name = "Messier"
 description = "The 110 Messier objects — Charles Messier's catalogue of comet-like deep-sky objects."
+hemisphere = "northern"
+source_url = "https://en.wikipedia.org/wiki/Messier_object"
 
 [members]
 m31 = "M31"

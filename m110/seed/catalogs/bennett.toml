@@ -1,5 +1,7 @@
 name = "Bennett Catalogue"
 description = "Jack Bennett's 152 southern comet-like deep-sky objects — a southern-hemisphere complement to Messier."
+hemisphere = "southern"
+source_url = "https://en.wikipedia.org/wiki/Bennett_catalogue"
 
 [members]
 ngc-55 = "Ben 1"

@@ -115,7 +115,7 @@ def load_bundled_catalog(name: str) -> dict:
 
 def list_bundled_catalogs() -> list[dict]:
     """All bundled catalogs, by id (filename stem): `[{id, name, description,
-    members}]`, sorted by name."""
+    hemisphere, source_url, members}]`, sorted by name."""
     d = config.SEED_DIR / "catalogs"
     out = []
     if d.is_dir():
@@ -124,6 +124,8 @@ def list_bundled_catalogs() -> list[dict]:
             if data:
                 out.append({"id": p.stem, "name": data.get("name", p.stem),
                             "description": data.get("description", ""),
+                            "hemisphere": data.get("hemisphere", ""),
+                            "source_url": data.get("source_url", ""),
                             "members": data.get("members", {})})
     return sorted(out, key=lambda c: c["name"].lower())
 

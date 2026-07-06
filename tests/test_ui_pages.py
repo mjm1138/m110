@@ -61,6 +61,32 @@ def test_goals_page_lists_progress_and_links(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_goals_page_catalog_table_marks_captured_and_deep(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)       # m31 captured (shallow → not deep)
+    from m110.ui.pages.goals import GoalsPage
+    from PySide6.QtWidgets import QTableWidget
+    page = GoalsPage()
+    try:
+        # find the row for the captured object across the per-catalog tables
+        row = None
+        for tbl in page._content.findChildren(QTableWidget):
+            hdr = [tbl.horizontalHeaderItem(c).text() for c in range(tbl.columnCount())]
+            if hdr[:4] != ["Object", "Name", "Captured", "Deep stack"]:
+                continue
+            for r in range(tbl.rowCount()):
+                it = tbl.item(r, 0)
+                if it and it.data(Qt.UserRole) == slug:
+                    row = (tbl.item(r, 2).text(), tbl.item(r, 3).text())
+                    break
+            if row:
+                break
+        assert row == ("✓", ""), row     # captured checked, deep-stack unchecked
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_goals_page_toggle_emits_dirty(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     from m110 import goals

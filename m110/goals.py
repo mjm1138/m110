@@ -95,15 +95,22 @@ def goal_name(gid: str) -> str:
 
 def list_goals() -> list[dict]:
     """Every selectable goal — bundled catalogs + custom lists — as
-    `[{id, name, kind, active, total}]`, sorted bundled-first then by name."""
+    `[{id, name, kind, active, total, hemisphere, description, source_url}]`,
+    sorted bundled-first then by name. `hemisphere` is one of "northern",
+    "southern", "allsky" (bundled) or "custom" (custom goals); the Goals page
+    uses it to bucket goals into expandable groups."""
     active = set(active_goal_ids())
     out = []
     for c in catalog.list_bundled_catalogs():
         out.append({"id": c["id"], "name": c["name"], "kind": "bundled",
-                    "active": c["id"] in active, "total": len(c["members"])})
+                    "active": c["id"] in active, "total": len(c["members"]),
+                    "hemisphere": c.get("hemisphere", "") or "allsky",
+                    "description": c.get("description", ""),
+                    "source_url": c.get("source_url", "")})
     for c in custom_goals():
         out.append({"id": c["id"], "name": c["name"], "kind": "custom",
-                    "active": c["id"] in active, "total": len(c["members"])})
+                    "active": c["id"] in active, "total": len(c["members"]),
+                    "hemisphere": "custom", "description": "", "source_url": ""})
     out.sort(key=lambda g: (g["kind"] != "bundled", g["name"].lower()))
     return out
 

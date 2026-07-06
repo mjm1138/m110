@@ -1,5 +1,7 @@
 name = "Lacaille 1755"
 description = "Lacaille's 1755 catalogue of southern nebulae — the first systematic southern deep-sky list (deep-sky members)."
+hemisphere = "southern"
+source_url = "https://en.wikipedia.org/wiki/Nicolas-Louis_de_Lacaille"
 
 [members]
 ngc-104 = "Lac I.1"

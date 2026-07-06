@@ -1,5 +1,7 @@
 name = "Best of Sharpless"
 description = "A curated selection of the brightest, most photogenic Sharpless (Sh2) emission nebulae for smart-scope imaging."
+hemisphere = "northern"
+source_url = "https://en.wikipedia.org/wiki/Sharpless_catalog"
 
 [members]
 sh2-101 = "Sh2-101"

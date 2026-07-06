@@ -305,7 +305,11 @@ archived in **[`DONE.md`](DONE.md)**.
    `library.toml`, bundled reference + catalog lists, the Goals nav page with custom
    goals, Simbad enrichment, the Library-=-collection reframe). **Six catalogs ship**
    (Messier, Caldwell, RASC Finest, Best-of-Sharpless, Bennett, Lacaille). Full detail
-   in **[`DONE.md`](DONE.md)**. *Remaining (growth, not blocking):* more bundled catalogs
+   in **[`DONE.md`](DONE.md)**. The Goals page groups its catalog picker into
+   collapsible **All-sky / Northern / Southern / Custom** sections, each catalog
+   with a description caption + a "Learn more" link (per-catalog `hemisphere` +
+   `source_url` in `seed/catalogs/*.toml`, surfaced via `goals.list_goals`).
+   *Remaining (growth, not blocking):* more bundled catalogs
    from `next_catalog_lists.md` — **Herschel 400**, **Arp**, **Lunar 100**, AL Double Star
    (data-generation in `tools/gen_catalogs.py`).
 

@@ -1,5 +1,7 @@
 name = "RASC Finest NGC"
 description = "The RASC Observer's Handbook 'Finest NGC' list — 110 deep-sky objects curated as the finest beyond Messier."
+hemisphere = "northern"
+source_url = "https://en.wikipedia.org/wiki/Royal_Astronomical_Society_of_Canada"
 
 [members]
 ngc-7009 = "NGC 7009"
