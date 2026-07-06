@@ -68,10 +68,12 @@ class BackupDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
         layout.setSpacing(s["md"])
-        layout.addWidget(QLabel(
-            "Snapshot your Library to another drive or folder. Each backup is a "
+        intro = QLabel(
+            "Back up your Library to another drive or folder. Each backup is a "
             "full, browsable copy; unchanged files (your raw frames) are shared "
-            "with the previous snapshot, so repeat backups are fast and small."))
+            "with the previous backup, so repeat backups are fast and small.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
 
         # ── destination ──
         dest_row = QHBoxLayout()
@@ -96,7 +98,7 @@ class BackupDialog(QDialog):
         self._auto = QCheckBox("Back up automatically")
         self._auto.setChecked(bool(config.get_setting(backup.SETTING_AUTO, False)))
         self._auto.setToolTip(
-            "Snapshots in the background: at launch if the last one is older than the "
+            "Backs up in the background: at launch if the last one is older than the "
             "interval below, and daily at 02:00 while the app stays running.")
         auto_row.addWidget(self._auto)
         auto_row.addStretch(1)
@@ -127,7 +129,7 @@ class BackupDialog(QDialog):
         self._keep.setSpecialValueText("all")     # 0 → "all" (no limit)
         self._keep.setValue(int(config.get_setting(backup.SETTING_KEEP, 0) or 0))
         keep_row.addWidget(self._keep)
-        keep_row.addWidget(QLabel("snapshots"))
+        keep_row.addWidget(QLabel("backups"))
         keep_row.addStretch(1)
         sl.addLayout(keep_row)
 
@@ -138,7 +140,7 @@ class BackupDialog(QDialog):
         self._min_free.setDecimals(0)
         self._min_free.setSpecialValueText("off")     # 0 → disabled
         self._min_free.setFixedWidth(90)
-        self._min_free.setToolTip("Prune the oldest snapshots to maintain this much "
+        self._min_free.setToolTip("Prune the oldest backups to maintain this much "
                                   "free space on the destination. 0 = off.")
         self._min_free.setValue(float(config.get_setting(
             backup.SETTING_MIN_FREE, backup.DEFAULT_MIN_FREE_GB)))
@@ -178,9 +180,9 @@ class BackupDialog(QDialog):
             return
         newest = snaps[0]
         note = "" if newest.hardlinks else "  ⚠ this destination can't share files " \
-            "between snapshots — each backup will be a full copy."
+            "between backups — each backup will be a full copy."
         self._status.setText(
-            f"{len(snaps)} snapshot(s) · latest {newest.created:%Y-%m-%d %H:%M} · "
+            f"{len(snaps)} backup(s) · latest {newest.created:%Y-%m-%d %H:%M} · "
             f"{_fmt_bytes(newest.total_bytes)}{note}")
 
     def _persist_settings(self, dest: str):
@@ -250,7 +252,7 @@ class BackupDialog(QDialog):
         msg = QMessageBox(self)
         msg.setWindowTitle("Backed up")
         pruned = result.get("pruned", 0)
-        extra = f"\nPruned {pruned} old snapshot(s)." if pruned else ""
+        extra = f"\nPruned {pruned} old backup(s)." if pruned else ""
         msg.setText(f"Backed up {result.get('file_count', 0)} files "
                     f"({_fmt_bytes(new)} new) to:\n{result.get('snapshot', '')}{extra}")
         open_btn = msg.addButton("Open folder", QMessageBox.AcceptRole)

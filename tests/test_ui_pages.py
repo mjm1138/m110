@@ -624,7 +624,7 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
     try:
         dlg._dest.setText(str(dest))          # triggers _refresh_status
         qapp.processEvents()
-        assert "snapshot" in dlg._status.text()
+        assert "backup" in dlg._status.text()
     finally:
         dlg.deleteLater()
         qapp.processEvents()
