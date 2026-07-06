@@ -383,12 +383,18 @@ archived in **[`DONE.md`](DONE.md)**.
     for integrity/bit-rot verification. **Restore** defaults to extracting selected paths
     to a chosen folder (never touches the live store); restoring back into the store is
     available behind a create-vs-overwrite conflict preview + confirm. **Retention**
-    (keep-N / older-than-days / min-free-GB) prunes whole oldest snapshots, explicitly,
+    (keep-N snapshots, default all / min-free-GB, default 100) prunes whole oldest snapshots, explicitly,
     never the last one. UI: Library → **Back up…** / **Restore…** (`backup_dialog.py` /
     `restore_dialog.py`, mirroring the publish worker/progress pattern) + an opt-in
-    **launch-time auto-backup** (background, unobtrusive). It's an external-output feature
-    (writes outside `<data_root>`) → no `.store_version` impact. *Deferred:* cloud/remote
-    destinations, multiple destinations (3-2-1), quit-time auto-backup.
+    **auto-backup** (opt-in, background, unobtrusive): fires at **launch** when the last
+    snapshot is older than the interval (default **12h**), *and* on an **hourly tick** that
+    runs a **daily 02:00** snapshot while the app stays open (so a long-running session still
+    gets daily backups, not just launch ones) — the interval doubles as a min-age guard so a
+    fresh launch backup doesn't re-fire at 02:00 (`due_for_auto_backup` / `due_for_scheduled_backup`).
+    Both share one cancel-on-quit worker; an interrupted snapshot is atomic (`*.incomplete` →
+    rename, swept on next run) so quitting mid-backup never corrupts. It's an external-output
+    feature (writes outside `<data_root>`) → no `.store_version` impact. *Deferred:* cloud/remote
+    destinations, multiple destinations (3-2-1).
 
 11. **"Lights Table"** A view with tools to quickly examine large numbers of .fits files. Should be a direct view of files, with autostretch (not looking at derived jpgs). Users can flag files with clouds, satellite/aircraft trails, and other imperfections. User can delete the file on disk with confirmation, or just mark it so it won't be hardlinked into workflow (e.g. "Siril") directories. Future versions might support batched background extraction, plate solving, SPCC, or maybe image analysis (find frames with satellite trails, find frames with low star count, etc)
 

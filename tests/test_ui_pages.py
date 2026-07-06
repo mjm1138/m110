@@ -630,6 +630,32 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
         qapp.processEvents()
 
 
+def test_backup_dialog_save_persists_settings_without_backup(tmp_path, monkeypatch, qapp):
+    from m110 import backup, config
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    dest = tmp_path / "backups"
+    dest.mkdir()
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        dlg._dest.setText(str(dest))
+        dlg._auto.setChecked(True)
+        dlg._interval.setValue(6)
+        dlg._save_and_close()                     # Save, not "Back up now"
+        qapp.processEvents()
+        # Settings persisted…
+        assert config.get_setting(backup.SETTING_AUTO) is True
+        assert int(config.get_setting(backup.SETTING_INTERVAL)) == 6
+        assert config.get_setting(backup.SETTING_DEST) == str(dest)
+        # …but no snapshot was written.
+        assert backup.list_snapshots(dest) == []
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
 def test_restore_dialog_lists_snapshot_and_selects(tmp_path, monkeypatch, qapp):
     from PySide6.QtCore import Qt
     from m110 import backup

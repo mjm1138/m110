@@ -54,9 +54,11 @@ SETTING_DEST = "backup_destination"
 SETTING_AUTO = "backup_auto_on_launch"
 SETTING_INTERVAL = "backup_interval_hours"
 SETTING_KEEP = "backup_retention_keep"
-SETTING_DAYS = "backup_retention_days"
 SETTING_MIN_FREE = "backup_min_free_gb"
-DEFAULT_INTERVAL_HOURS = 24
+DEFAULT_MIN_FREE_GB = 100       # prune oldest snapshots to keep this much free
+SETTING_DAILY_HOUR = "backup_daily_hour"
+DEFAULT_INTERVAL_HOURS = 12
+DEFAULT_DAILY_HOUR = 2          # 02:00 local — the while-running daily backup time
 
 
 class BackupError(Exception):
@@ -70,8 +72,7 @@ class BackupDestinationError(BackupError):
 @dataclass
 class BackupOptions:
     destination: Path
-    retention_keep: int | None = None       # keep N newest snapshots
-    retention_days: int | None = None       # delete snapshots older than N days
+    retention_keep: int | None = None       # keep N newest snapshots (None = all)
     min_free_gb: float | None = None         # delete oldest until ≥ this free
 
 
@@ -310,7 +311,6 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
     _write_state(store_root, src_root)
 
     retention = apply_retention(dest, keep=options.retention_keep,
-                                days=options.retention_days,
                                 min_free_gb=options.min_free_gb)
     return {
         "snapshot": str(final), "timestamp": ts, "file_count": len(files_meta),
@@ -435,19 +435,21 @@ def restore(snapshot_dir: Path, relpaths: list[str], dest_dir: Path, *,
 # ── retention ───────────────────────────────────────────────────────────────
 
 def apply_retention(destination: Path, *, keep: int | None = None,
-                    days: int | None = None, min_free_gb: float | None = None,
+                    min_free_gb: float | None = None,
                     store_name: str | None = None) -> dict:
     """Delete whole oldest snapshots per policy. No-op unless a policy is set.
     Never deletes the last remaining snapshot. Because unchanged files are
-    hardlinked across snapshots, deleting one frees only its unique inodes."""
+    hardlinked across snapshots, deleting one frees only its unique inodes.
+
+    Policies are count-based (`keep` newest) and space-based (`min_free_gb` free
+    on the destination volume) — both prune the *oldest* first. There is
+    deliberately no age-based ("older than N days") policy: it would silently wipe
+    a whole backup history after a gap in use (e.g. a two-week vacation)."""
     snaps = list_snapshots(destination, store_name)   # newest first
     to_delete: list[SnapshotInfo] = []
 
     if keep is not None and keep >= 1 and len(snaps) > keep:
         to_delete.extend(snaps[keep:])
-    if days is not None and days >= 0:
-        cutoff = datetime.now().timestamp() - days * 86400
-        to_delete.extend(s for s in snaps if s.created.timestamp() < cutoff)
 
     survivors = [s for s in snaps if s not in to_delete]
     if min_free_gb is not None and min_free_gb > 0:
@@ -490,28 +492,72 @@ def options_from_settings(destination: Path) -> BackupOptions:
         v = config.get_setting(key)
         return int(v) if v not in (None, "", 0) else None
 
-    mf = config.get_setting(SETTING_MIN_FREE)
+    # Min-free defaults to 100 GB when never configured; an explicit 0 means "off".
+    # (Only an absent key gets the default — a stored 0/null is an intentional off.)
+    mf = config.get_setting(SETTING_MIN_FREE, DEFAULT_MIN_FREE_GB)
+    try:
+        min_free = float(mf)
+    except (TypeError, ValueError):
+        min_free = DEFAULT_MIN_FREE_GB
     return BackupOptions(
         destination=Path(destination),
         retention_keep=_int(SETTING_KEEP),
-        retention_days=_int(SETTING_DAYS),
-        min_free_gb=float(mf) if mf not in (None, "", 0) else None,
+        min_free_gb=min_free if min_free > 0 else None,
     )
+
+
+def _auto_enabled_and_reachable(destination: Path) -> Path | None:
+    """The destination path iff auto-backup is on and the folder is reachable, else
+    None (missing/unreachable → not due, no nag). Shared by both auto triggers."""
+    if not config.get_setting(SETTING_AUTO, False):
+        return None
+    dest = Path(destination)
+    return dest if dest.is_dir() else None
+
+
+def _interval_hours() -> float:
+    return float(config.get_setting(SETTING_INTERVAL, DEFAULT_INTERVAL_HOURS) or
+                 DEFAULT_INTERVAL_HOURS)
 
 
 def due_for_auto_backup(destination: Path) -> bool:
     """True iff auto-backup is enabled, the destination is reachable, and it's been
     at least the configured interval since the newest snapshot (drives the
     launch-time trigger). Missing/unreachable destination → not due (no nag)."""
-    if not config.get_setting(SETTING_AUTO, False):
+    dest = _auto_enabled_and_reachable(destination)
+    if dest is None:
         return False
-    dest = Path(destination)
-    if not dest.is_dir():
-        return False
-    interval = float(config.get_setting(SETTING_INTERVAL, DEFAULT_INTERVAL_HOURS) or
-                     DEFAULT_INTERVAL_HOURS)
     snaps = list_snapshots(dest)
     if not snaps:
         return True
     age_hours = (datetime.now() - snaps[0].created).total_seconds() / 3600.0
-    return age_hours >= interval
+    return age_hours >= _interval_hours()
+
+
+def due_for_scheduled_backup(destination: Path, now: datetime | None = None) -> bool:
+    """True iff auto-backup is enabled, the destination is reachable, the local clock
+    has reached the daily backup hour (default 02:00), we haven't already backed up
+    since that hour today, and the newest snapshot is at least `interval` hours old.
+
+    Drives the hourly while-running tick, so a long-lived session (the app left
+    running for days) still gets a daily snapshot rather than only backing up at
+    launch. The interval acts as a min-age guard here so a fresh launch backup
+    doesn't immediately re-fire at 02:00; the once-per-day guard keeps it from
+    repeating through the rest of the day."""
+    dest = _auto_enabled_and_reachable(destination)
+    if dest is None:
+        return False
+    now = now or datetime.now()
+    hour = int(config.get_setting(SETTING_DAILY_HOUR, DEFAULT_DAILY_HOUR) or
+               DEFAULT_DAILY_HOUR)
+    if now.hour < hour:
+        return False                        # before today's scheduled time
+    snaps = list_snapshots(dest)
+    if not snaps:
+        return True
+    newest = snaps[0].created
+    scheduled_today = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if newest >= scheduled_today:
+        return False                        # already backed up since 02:00 today
+    age_hours = (now - newest).total_seconds() / 3600.0
+    return age_hours >= _interval_hours()

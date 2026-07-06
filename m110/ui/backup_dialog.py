@@ -92,9 +92,22 @@ class BackupDialog(QDialog):
         # ── automation + retention ──
         settings_box = QGroupBox("Automation & retention")
         sl = QVBoxLayout(settings_box)
-        self._auto = QCheckBox("Back up automatically on launch")
+        auto_row = QHBoxLayout()
+        self._auto = QCheckBox("Back up automatically")
         self._auto.setChecked(bool(config.get_setting(backup.SETTING_AUTO, False)))
-        sl.addWidget(self._auto)
+        self._auto.setToolTip(
+            "Snapshots in the background: at launch if the last one is older than the "
+            "interval below, and daily at 02:00 while the app stays running.")
+        auto_row.addWidget(self._auto)
+        auto_row.addStretch(1)
+        self._backup_btn = QPushButton("Back up now")
+        self._backup_btn.clicked.connect(self._do_backup)
+        auto_row.addWidget(self._backup_btn)
+        sl.addLayout(auto_row)
+
+        auto_hint = QLabel("Runs at launch and daily at 02:00 while the app is open.")
+        auto_hint.setProperty("muted", True)
+        sl.addWidget(auto_hint)
 
         iv_row = QHBoxLayout()
         iv_row.addWidget(QLabel("…at most once every"))
@@ -114,13 +127,7 @@ class BackupDialog(QDialog):
         self._keep.setSpecialValueText("all")     # 0 → "all" (no limit)
         self._keep.setValue(int(config.get_setting(backup.SETTING_KEEP, 0) or 0))
         keep_row.addWidget(self._keep)
-        keep_row.addWidget(QLabel("snapshots · delete older than"))
-        self._days = QSpinBox()
-        self._days.setRange(0, 3650)
-        self._days.setSpecialValueText("never")
-        self._days.setValue(int(config.get_setting(backup.SETTING_DAYS, 0) or 0))
-        keep_row.addWidget(self._days)
-        keep_row.addWidget(QLabel("days"))
+        keep_row.addWidget(QLabel("snapshots"))
         keep_row.addStretch(1)
         sl.addLayout(keep_row)
 
@@ -133,18 +140,20 @@ class BackupDialog(QDialog):
         self._min_free.setFixedWidth(90)
         self._min_free.setToolTip("Prune the oldest snapshots to maintain this much "
                                   "free space on the destination. 0 = off.")
-        self._min_free.setValue(float(config.get_setting(backup.SETTING_MIN_FREE, 0) or 0))
+        self._min_free.setValue(float(config.get_setting(
+            backup.SETTING_MIN_FREE, backup.DEFAULT_MIN_FREE_GB)))
         free_row.addWidget(self._min_free)
         free_row.addWidget(QLabel("GB free on the destination volume"))
         free_row.addStretch(1)
         sl.addLayout(free_row)
         layout.addWidget(settings_box)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox()
         self._restore_btn = buttons.addButton("Restore…", QDialogButtonBox.ActionRole)
         self._restore_btn.clicked.connect(self._open_restore)
-        self._backup_btn = buttons.addButton("Back up now", QDialogButtonBox.AcceptRole)
-        self._backup_btn.clicked.connect(self._do_backup)
+        save_btn = buttons.addButton("Save", QDialogButtonBox.AcceptRole)
+        save_btn.clicked.connect(self._save_and_close)
+        buttons.addButton("Cancel", QDialogButtonBox.RejectRole)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
@@ -179,13 +188,21 @@ class BackupDialog(QDialog):
         config.save_setting(backup.SETTING_AUTO, self._auto.isChecked())
         config.save_setting(backup.SETTING_INTERVAL, self._interval.value())
         config.save_setting(backup.SETTING_KEEP, self._keep.value() or None)
-        config.save_setting(backup.SETTING_DAYS, self._days.value() or None)
-        config.save_setting(backup.SETTING_MIN_FREE, self._min_free.value() or None)
+        # Store 0 explicitly ("off"); an absent key is what triggers the 100 GB
+        # default, so we must persist the user's 0 rather than collapse it to None.
+        config.save_setting(backup.SETTING_MIN_FREE, self._min_free.value())
 
     def _open_restore(self):
         from m110.ui.restore_dialog import RestoreDialog
         RestoreDialog(self._dest.text().strip(), self).exec()
         self._refresh_status()
+
+    def _save_and_close(self):
+        """Persist the destination + automation/retention settings without running a
+        backup, then close. (A manual "Back up now" also persists, but the user must
+        be able to change the interval etc. without triggering a snapshot.)"""
+        self._persist_settings(self._dest.text().strip())
+        self.accept()
 
     # ---- run ----
     def _do_backup(self):

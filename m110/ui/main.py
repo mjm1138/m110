@@ -255,6 +255,14 @@ class MainWindow(QMainWindow):
         self.help_menu = self.menuBar().addMenu("Help")
         self.help_menu.addAction(self.about_action)
 
+        # Hourly tick for the daily (02:00) auto backup while the app stays running.
+        # Cheap: it only starts a snapshot when `due_for_scheduled_backup` says so.
+        self._backup_timer = QTimer(self)
+        self._backup_timer.setInterval(60 * 60 * 1000)   # 1 hour
+        self._backup_timer.timeout.connect(
+            lambda: self._maybe_auto_backup(scheduled=True))
+        self._backup_timer.start()
+
         self.nav.setCurrentRow(0)          # Summary lands first
         self._update_status()
         self.resize(1180, 740)
@@ -307,16 +315,22 @@ class MainWindow(QMainWindow):
         from m110.ui.restore_dialog import RestoreDialog
         RestoreDialog(config.get_setting(backup.SETTING_DEST, ""), self).exec()
 
-    # ---- launch-time auto backup (opt-in; background; unobtrusive) ----
-    def _maybe_auto_backup(self):
+    # ---- auto backup (opt-in; background; unobtrusive) ----
+    # Two triggers, both off the UI thread and cancel-on-quit: a launch check
+    # (back up if the last snapshot is older than the interval) and an hourly tick
+    # that fires the daily 02:00 backup so a long-running session still gets daily
+    # snapshots. Both share the single worker (guarded below).
+    def _maybe_auto_backup(self, *, scheduled: bool = False):
         if self._backup_worker is not None:
             return
         from m110 import backup
         dest = config.get_setting(backup.SETTING_DEST)
         if not dest:
             return
+        check = (backup.due_for_scheduled_backup if scheduled
+                 else backup.due_for_auto_backup)
         try:
-            if not backup.due_for_auto_backup(Path(dest)):
+            if not check(Path(dest)):
                 return
         except Exception:
             return
