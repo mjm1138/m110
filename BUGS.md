@@ -68,8 +68,14 @@ Legend: `[ ]` open · `[~]` partially done
 - [ ] **#17 — Intermediate / finished file hinting.** The naming patterns for
   intermediate and finished images are built on Mike's particular habits, and are
   probably not generalizable. Two enhancements can help:
-  - A **preference pane** to explicitly list intermediate and finished filename
-    hints, populated by a default set built on current preferences.
+  - ✅ **Preference pane hint set (done — `feature/finished-hints`).** The
+    finished/intermediate vocabulary is now a single user-editable keyword set in
+    `m110/hints.py` (defaults `processed/final/finished` + `starless/starmask`),
+    edited in Preferences → "Finished-image hints", persisted in `settings.json`
+    (`finished_hints`), read live. The three former hardcoded copies
+    (`siril._classify`, `ingest._is_finished_raster`, `build_images._is_intermediate_fit`)
+    now draw from it — a stranger can add their own keywords instead of silently
+    misclassifying. *(The gallery promote/demote/set-hero UI below is still open — T2.)*
   - An addition to the object view: below the gallery of "finished" images, a gallery
     of "unfinished" images, with right-click actions to **promote** unfinished →
     finished, **demote** finished → unfinished, and **set hero**.

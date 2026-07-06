@@ -66,12 +66,14 @@ of work).
   **empty-state guidance** ("Import from your Seestar to get started"); a **guided
   first import** happy path. Overlaps [`BETA.md`](BETA.md) §4 — that's the
   shippability angle; this is the feature work.
-- [ ] **#17 finished/intermediate hinting — generalization** *(ROADMAP 7 / BUGS
-  #17).* The finished-vs-intermediate classification is built on Mike's filename
-  habits (ROADMAP: "probably not generalizable"). A stranger's files **will**
-  misclassify. **Beta-blocking piece:** a preference-driven, user-editable hint set
-  seeded from sensible defaults (replaces the hardcoded `_classify` patterns).
-  *(The gallery promote/demote/set-hero UI in #17 is a T2 nicety on top.)*
+- [x] **#17 finished/intermediate hinting — generalization** *(ROADMAP 7 / BUGS
+  #17).* ✅ Done (`feature/finished-hints`). The finished-vs-intermediate
+  classification was built on Mike's filename habits (ROADMAP: "probably not
+  generalizable") — a stranger's files **would** misclassify. Now a
+  preference-driven, user-editable keyword hint set (`m110/hints.py`, edited in
+  Preferences → "Finished-image hints"), seeded from sensible defaults, replaces the
+  hardcoded `_classify` patterns; all three consumers draw from it.
+  *(The gallery promote/demote/set-hero UI in #17 is a T2 nicety on top — still open.)*
 - [ ] **Priority Targets view — degrade gracefully without the scorer.** The
   dashboard section reads a hand/LLM-edited `priorities.toml`; for a fresh user
   that's empty/confusing. **Pull *only* the manual Pin / Mute overrides forward**

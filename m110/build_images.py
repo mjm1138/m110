@@ -13,7 +13,7 @@ import json
 import re
 from pathlib import Path
 
-from . import config, objects
+from . import config, hints, objects
 
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".fit", ".fits")
 VIEWABLE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -25,7 +25,7 @@ _IMG_CACHE_VER = b"v5"
 _INTERMEDIATE_FIT_RE = re.compile(r"_(og|crop|stretch|stretched|spcc)(_|\.)", re.IGNORECASE)
 # A pipeline-step token doesn't make a FITS an intermediate if the name is also
 # marked final — the deliverable bakes its steps in (e.g. "…_spcc_processed.fit").
-_FINAL_FIT_RE = re.compile(r"(processed|final|finished)", re.IGNORECASE)
+# The finished vocabulary is user-editable and shared — see `hints.py`.
 # Hero source preference, best → fallback. Each entry maps to a per-target
 # subfolder via the matching config helper in `_tier_dir`.
 HERO_TIERS = ["finished", "stacks", "seestar-stacks"]
@@ -34,7 +34,7 @@ HERO_TIERS = ["finished", "stacks", "seestar-stacks"]
 def _is_intermediate_fit(path: Path) -> bool:
     if path.suffix.lower() not in (".fit", ".fits"):
         return False
-    if _FINAL_FIT_RE.search(path.name):
+    if hints.is_finished_name(path.name):
         return False
     return bool(_INTERMEDIATE_FIT_RE.search(path.name))
 

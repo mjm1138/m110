@@ -21,7 +21,7 @@ import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import catalog, config
+from . import catalog, config, hints
 
 try:
     import tomllib
@@ -158,17 +158,19 @@ def _content_files(d: Path) -> list[str]:
 
 _RASTER_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 # A finished/processed deliverable bakes its provenance into the filename (e.g. a
-# Siril/Naztronomy "…_drizzle…_processed.png"). Same vocabulary as
-# `build_images._FINAL_FIT_RE` / `siril`.
-_FINISHED_HINT_RE = re.compile(r"(processed|final|finished)", re.IGNORECASE)
+# Siril/Naztronomy "…_drizzle…_processed.png"). The finished/intermediate keyword
+# vocabulary is user-editable and shared across the app — see `hints.py`.
 
 
 def _is_finished_raster(name: str) -> bool:
-    """A loose viewable raster whose name marks it a finished render."""
+    """A loose viewable raster whose name marks it a finished render — but not a
+    star-layer / intermediate by-product (e.g. `starless.png`)."""
     if "_thn." in name or "." not in name:
         return False
+    if hints.is_intermediate_name(name):
+        return False
     ext = "." + name.rsplit(".", 1)[-1].lower()
-    return ext in _RASTER_EXTS and bool(_FINISHED_HINT_RE.search(name))
+    return ext in _RASTER_EXTS and hints.is_finished_name(name)
 
 
 # ── name canonicalization + alias table (#12a, #12c) ──────────────────────────

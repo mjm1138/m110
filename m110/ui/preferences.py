@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox,
 )
 
-from m110 import config, processing
+from m110 import config, hints, processing
 from m110.ui import theme
 
 
@@ -59,6 +59,34 @@ class PreferencesDialog(QDialog):
             cb.toggled.connect(self._save_workflows)
         lay.addWidget(box)
 
+        # ── finished-image hints (persist live on edit) ──────────────────────
+        hbox = QGroupBox("Finished-image hints")
+        hl = QVBoxLayout(hbox)
+        hl.addWidget(QLabel(
+            "When importing processed work, M110 recognizes finished renders/stacks "
+            "and skips intermediate by-products by keywords in the filename "
+            "(case-insensitive, comma-separated)."))
+        cur_hints = hints.get_hints()
+        frow = QHBoxLayout()
+        frow.addWidget(QLabel("Finished:"))
+        self._finished_edit = QLineEdit(", ".join(cur_hints["finished"]))
+        self._finished_edit.setToolTip(
+            "A file whose name contains any of these is treated as finished output.")
+        frow.addWidget(self._finished_edit, 1)
+        hl.addLayout(frow)
+        irow = QHBoxLayout()
+        irow.addWidget(QLabel("Intermediate:"))
+        self._intermediate_edit = QLineEdit(", ".join(cur_hints["intermediate"]))
+        self._intermediate_edit.setToolTip(
+            "A file whose name contains any of these is skipped as a by-product "
+            "(e.g. star layers), never imported as finished.")
+        irow.addWidget(self._intermediate_edit, 1)
+        hl.addLayout(irow)
+        # Persist live on edit (mirrors the workflows; read at classify time).
+        self._finished_edit.editingFinished.connect(self._save_hints)
+        self._intermediate_edit.editingFinished.connect(self._save_hints)
+        lay.addWidget(hbox)
+
         # ── appearance (theme) ───────────────────────────────────────────────
         appearance = QGroupBox("Appearance")
         al = QHBoxLayout(appearance)
@@ -100,6 +128,14 @@ class PreferencesDialog(QDialog):
         chosen = [wid for wid, cb in self._wf_checks.items()
                   if cb.isEnabled() and cb.isChecked()]
         config.save_setting(processing.SETTING_KEY, chosen)
+
+    def _save_hints(self, *_):
+        """Persist the finished/intermediate filename hints (read at classify
+        time — no restart)."""
+        def _split(text):
+            return [t.strip() for t in text.split(",") if t.strip()]
+        hints.set_hints(_split(self._finished_edit.text()),
+                        _split(self._intermediate_edit.text()))
 
     def _close(self):
         """Apply a data-folder change (if any) on the way out, then close.

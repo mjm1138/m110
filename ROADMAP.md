@@ -333,11 +333,14 @@ archived in **[`DONE.md`](DONE.md)**.
 
 7. **Processing & curation UX** (BUGS **#17/#18/#19**). Generalize processing-prep
    past one user's habits and add curation:
-   - *Configurable finished/intermediate hinting* (#17) — a preference-driven hint
-     set (replacing today's hardcoded `_classify` patterns, the source of the
-     NGC 6992 miss) + a per-object **finished vs. unfinished** gallery with
-     right-click promote/demote/set-hero. Persists a curation designation (data-model
-     impact — see DATA_MODEL future directions).
+   - *Configurable finished/intermediate hinting* (#17) — ✅ **hint set done**
+     (`feature/finished-hints`): a preference-driven, user-editable keyword set
+     (`m110/hints.py`, edited in Preferences) replaces the hardcoded `_classify`
+     patterns (the source of the NGC 6992 miss); the three consumers (siril import,
+     ingest loose-render, build_images hero-tier) all draw from it. **Still open (T2):**
+     a per-object **finished vs. unfinished** gallery with right-click
+     promote/demote/set-hero, persisting a curation designation (data-model impact —
+     see DATA_MODEL future directions).
    - *Advanced/custom workspaces* (#18) — named, on-disk-discoverable Siril (and
      other) working dirs that combine lights from disparate sources (#16) and
      **multiple objects** (mosaics, e.g. M81 + M82 + "M81 M82"), via hardlinks;

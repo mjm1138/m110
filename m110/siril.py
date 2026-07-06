@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import config, objects
+from . import config, hints, objects
 
 # Filter token in a Seestar light filename:
 #   Light_<object>_<exp>s_<FILTER>_<YYYYMMDD>-<HHMMSS>.fit
@@ -38,15 +38,15 @@ PRESET_NAME = "naztronomy_smart_scope_presets.json"
 
 _RASTER_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
 _FIT_EXTS = (".fit", ".fits")
-# A finished output looks "final"…
-_FINAL_HINT = re.compile(r"(processed|final|finished)", re.IGNORECASE)
+# The finished-deliverable / star-layer vocabulary is user-editable and shared —
+# see `hints.py` (finished = "processed/final/finished", intermediate =
+# "starless/starmask" by default). A finished output looks "final"…
 # …and is not a star *layer* (starless/starmask are always intermediates).
 # NB: pipeline-step tokens (_og/_crop/_stretch/_spcc/_graxpert) are NOT a veto on
 # their own — the Naztronomy/Siril deliverable bakes the steps it went through
 # into its name (e.g. "…_spcc_processed.png"). A bare step file is excluded
-# anyway because a .fit must carry a _FINAL_HINT to count as a stack, and those
+# anyway because a .fit must carry a finished hint to count as a stack, and those
 # rasters are rare; over-vetoing them silently dropped real finished output (#).
-_LAYER = re.compile(r"(starless|starmask)", re.IGNORECASE)
 
 
 class PrepCancelled(Exception):
@@ -415,12 +415,12 @@ def _classify(path: Path, target: str):
     name = path.name
     if "_thn." in name or name == "lights.fit":
         return None
-    if _LAYER.search(name):
+    if hints.is_intermediate_name(name):
         return None
     ext = path.suffix.lower()
     if ext in _RASTER_EXTS:
         return "render", config.finished_dir(target) / name
-    if ext in _FIT_EXTS and _FINAL_HINT.search(name):
+    if ext in _FIT_EXTS and hints.is_finished_name(name):
         return "stack", config.stacks_dir(target) / name
     return None
 
