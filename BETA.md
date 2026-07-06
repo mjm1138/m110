@@ -174,7 +174,10 @@ tracked only as a one-line "external presence" note in ROADMAP's decisions table
 
 - [ ] 🔴 **Public GitHub repo** — under a real org (ROADMAP notes `m110` is taken →
   `m110app`/`messier110`); make the repo public, pick the license display, add
-  Releases.
+  Releases. **Before flipping it public, land the contribution-readiness items in
+  §7** (branch protection, CONTRIBUTING, issue/PR templates, contribution-license
+  stance) — a public repo will start receiving issues and PRs immediately, and it's
+  easier to have the guardrails in place than to retrofit them mid-flood.
 - [ ] 🔴 **Landing page / website** — `m110.app` (ROADMAP flags "verify at
   registrar"). Even a one-pager: what it is, screenshots, download links, "how to
   give feedback." The Features.md / Why M110.md copy is written — it needs a home.
@@ -193,18 +196,39 @@ tracked only as a one-line "external presence" note in ROADMAP's decisions table
   Seestar Facebook groups, ZWO forums. Draft the post + lead with a screenshot/GIF
   and the "never touches your originals" promise.
 
-## 7. Repo hygiene / open-source basics 🟡
+## 7. Repo hygiene / accepting contributions 🟡
 
-*Standard "this is a real open-source project" table stakes. None present today.*
+*Standard "this is a real open-source project" table stakes **plus** being ready to
+receive pull requests and (eventually) onboard other contributors. None present
+today. A public repo receives issues/PRs from strangers on day one, so these are
+gating on §6's "make the repo public," not follow-up polish.*
 
 - [ ] 🟡 **CI** — no `.github/` exists. Add a GitHub Actions workflow running
   `pytest -q` on macOS/Windows/Linux (catches the §2 cross-platform breaks
-  automatically). Ideally also builds the packaged artifacts.
-- [ ] 🟡 **CONTRIBUTING.md** — how to set up, run tests, the branch/roadmap
-  convention from CLAUDE.md.
+  automatically). Ideally also builds the packaged artifacts. This is also the
+  status check that branch protection (below) requires on every PR.
+- [ ] 🟡 **CONTRIBUTING.md** — how to set up (`pip install -e ".[dev]"`), run tests
+  (`pytest -q`), and the **branch/roadmap discipline from CLAUDE.md** (feature
+  branch per unit of work; close out by updating ROADMAP/BUGS/DATA_MODEL/TESTING).
+  Point newcomers at the **architecture map** — CLAUDE.md (module map), DATA_MODEL.md,
+  and DONE.md (how/why each subsystem shipped) — so a contributor can orient without
+  a maintainer walkthrough.
 - [ ] 🟡 **Issue + PR templates** — bug report template that asks for OS / version
-  / Seestar model (feeds §3/§5).
+  / Seestar model (feeds §3/§5); a PR template with a short checklist (tests pass,
+  docs updated, targets a feature branch).
+- [ ] 🟡 **Branch protection on `main`** — require PRs (no direct pushes) + a
+  passing CI check + at least one review before merge. Matches the "never commit
+  feature work directly to `main`" rule and keeps an outside PR from landing red.
+- [ ] 🟡 **Contribution-license stance** — decide and state how inbound
+  contributions are licensed. Simplest for Apache-2.0: an "inbound = outbound"
+  line in CONTRIBUTING (contributions are under Apache-2.0), optionally backed by a
+  **DCO** (`Signed-off-by`, enforced by a bot) rather than a heavier CLA. Settle
+  this *before* accepting the first external PR so provenance is clean.
 - [ ] 🟡 **CODE_OF_CONDUCT.md** — standard for a public project inviting strangers.
+- [ ] 🟢 **Contributor onboarding depth** *(matures as contributors actually
+  arrive)* — a few `good-first-issue`-labeled issues, a stated review-turnaround
+  expectation, and a note on how forked-PR CI runs. Nice-to-have for the beta
+  itself; important once someone offers to help.
 - [ ] 🟢 **SECURITY.md** — how to report a vulnerability (low stakes for a local
   desktop app, but expected).
 - [ ] 🟢 **CHANGELOG.md** — even a terse one; beta users want to know what changed.
@@ -262,10 +286,14 @@ A defensible "invite strangers" bar is the 🔴 items only:
    rock-solid manual-folder fallback + 2–3 real tester dumps).
 4. **§5** global error handling + an in-app feedback/report path.
 5. **§6** public repo + a landing/download page + the Discord/Reddit feedback
-   venue wired up.
+   venue wired up. Flipping the repo public pulls in the **§7 contribution
+   guardrails** (branch protection, CONTRIBUTING, issue/PR templates, the
+   contribution-license stance) — tagged 🟡 but effectively gating on *this* step,
+   since a public repo takes issues and PRs from day one.
 
-🟡 items make the beta *good* (onboarding, docs, CI); 🟢 items can trail the
-first invites. Realistically **§1 + §2 for Windows is the long pole** — it's the
+🟡 items make the beta *good* (onboarding, docs, CI) — except the §7
+contribution-readiness ones noted above, which ride along with going public; 🟢
+items can trail the first invites. Realistically **§1 + §2 for Windows is the long pole** — it's the
 one platform never run, so packaging *and* first-time QE land together there.
 Linux is de-risked (Pi-5/ARM smoke pass), leaving mainly the x86_64 AppImage
 confirmation. Windows signing is explicitly **out of scope for the beta**
