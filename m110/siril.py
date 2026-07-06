@@ -75,12 +75,29 @@ def drizzle_for(usable_frames: int) -> tuple[bool, float, float]:
     return True, 2.0, 0.5
 
 
+def filter_quality_for(usable_frames: int) -> tuple[bool, float]:
+    """(filters_on, quality_pct) for the star-quality reject filters, by frame
+    count. More frames ⇒ afford to be pickier (keep a smaller top %); below the
+    drizzle floor there aren't enough to filter.
+      <100 → off; 100–500 → 98%; 501–1500 → 95%; >1500 → 90%.
+    Applied to all four percentile filters (roundness / fwhm / star_count / bg)."""
+    if usable_frames < 100:
+        return False, 98.0
+    if usable_frames <= 500:
+        return True, 98.0
+    if usable_frames <= 1500:
+        return True, 95.0
+    return True, 90.0
+
+
 def default_preset(usable_frames: int,
                    filter_label: str = "No Filter (Broadband)") -> dict:
     """A sensible *starting* Naztronomy Smart Scope preset (refined in the GUI).
     Constant keys are the empirical modal default across the reference presets;
-    drizzle is set by `usable_frames`."""
+    drizzle (`drizzle_for`) and the star-quality filters (`filter_quality_for`)
+    are set by `usable_frames`."""
     drizzle, amount, pixel_fraction = drizzle_for(usable_frames)
+    filters_on, quality = filter_quality_for(usable_frames)
     return {
         "telescope": "ZWO Seestar S50",
         "filter": filter_label,
@@ -93,11 +110,11 @@ def default_preset(usable_frames: int,
         "drizzle": drizzle,
         "drizzle_amount": amount,
         "pixel_fraction": pixel_fraction,
-        "filters": True,
-        "roundness": 95.0,
-        "fwhm": 95.0,
-        "star_count_filter": 100.0,
-        "bg_filter": 95.0,
+        "filters": filters_on,
+        "roundness": quality,
+        "fwhm": quality,
+        "star_count_filter": quality,
+        "bg_filter": quality,
         "feather": False,
         "feather_amount": 20,
         "stack_weighting": True,
@@ -105,6 +122,23 @@ def default_preset(usable_frames: int,
         "spcc": False,
         "compression": False,
     }
+
+
+# One representative frame count per (drizzle × filter) bucket. Because the
+# default preset is a step function of frame count, an *unedited* preset must
+# equal the canonical default at one of these — so this set is exactly "every
+# preset M110 could have generated" (for a given filter label). Update if the
+# `drizzle_for` / `filter_quality_for` breakpoints change.
+_DEFAULT_PRESET_REPS = (50, 200, 400, 800, 2000)
+
+
+def is_default_preset(preset: dict) -> bool:
+    """True if `preset` is an untouched M110-generated default (for its own
+    filter label) at *some* frame count — i.e. the user hasn't hand-edited it.
+    Lets `apply_prep` re-tune a pristine preset as the frame count grows while
+    never clobbering values the user changed."""
+    label = preset.get("filter", "No Filter (Broadband)")
+    return any(preset == default_preset(n, label) for n in _DEFAULT_PRESET_REPS)
 
 
 # ── guidance (bundled playbooks) ─────────────────────────────────────────────
@@ -281,6 +315,15 @@ def _next_steps_md(plan: PrepPlan) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _read_preset(path: Path) -> dict:
+    """On-disk preset as a dict, or {} if missing/unreadable (→ treated as
+    non-default, so `apply_prep` preserves rather than clobbers an odd file)."""
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
 def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
     """Create the sandbox, hardlink lights per job, write presets + next-steps.
     THE WRITER — callers confirm (or it runs via `autoprep` after ingest).
@@ -307,8 +350,13 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
         for job in plan.jobs:
             pp = Path(job.preset_path)
             pp.parent.mkdir(parents=True, exist_ok=True)
-            pp.write_text(json.dumps(job.preset, indent=4) + "\n")
+            # Re-tune only a pristine (unedited) preset as the frame count grows;
+            # never clobber a preset the user has hand-edited. First write always.
+            if not pp.exists() or is_default_preset(_read_preset(pp)):
+                pp.write_text(json.dumps(job.preset, indent=4) + "\n")
         Path(plan.siril_dir).mkdir(parents=True, exist_ok=True)
+        # next-steps.md is app guidance (not user-owned) — always refreshed so the
+        # recommended drizzle/filters for the current count stay visible.
         (Path(plan.siril_dir) / "next-steps.md").write_text(_next_steps_md(plan))
 
     return {"linked": linked, "skipped": skipped, "cancelled": cancelled}
