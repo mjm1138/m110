@@ -34,6 +34,7 @@ of work).
   you don't control. Get it in flight day one; slot the model-specific work in as
   dumps land, not on a fixed date. (Invisible in the tier lists because it's
   recruitment, not code — don't let it fall off the radar.)
+	  * Mike says: I am in contact with a Dwarf 3 owner, an S30 owner and an S30 Pro owner, discussing collecting some sample dumps from them. I will continue trying to recruit others as well.
 - **Phase 1 — Import / ingest hardening** *(one code cluster: `ingest.py` /
   `ingest_dialog.py` / holding area).* #6 surface-skipped-files → #4 holding-area
   discard + reveal → **#5 multi-Seestar-model** *(as Phase-0 dumps arrive)*. Highest-
