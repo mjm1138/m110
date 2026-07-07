@@ -114,12 +114,13 @@ Legend: `[ ]` open · `[~]` partially done
   carries model/firmware but **no** unit id. So device attribution must key off FITS
   `TELESCOP`; a JPEG-only import can't tell two same-model scopes apart. See
   [`DATA_MODEL.md`](DATA_MODEL.md) → "Import & multi-source / multi-telescope".
-- [ ] **#25 — Optional import of per-sub `.jpg` previews.** The Seestar saves a full-size
-  `.jpg` preview beside every `.fit` sub in a `_sub` folder; these are recognized-and-
-  ignored on import today. *Enhancement:* a preference (default **off**) to import them —
-  into `Images/<target>/lights/` or a dedicated `previews/` subdir. Cheap (the
-  `_classify_seestar_dir` `_sub` branch already enumerates the folder's non-FITS content);
-  decide the destination + gallery interaction first.
+- [x] **#25 — Optional import of per-sub `.jpg` previews** *(done — `feature/sub-previews`).*
+  The Seestar saves a full-size `.jpg` beside every `.fit` sub in a `_sub` folder; ignored
+  by default. A preference (**default off**, `import_sub_previews`, Preferences → Import)
+  now imports them into a dedicated **`Images/<target>/previews/`** archive (new `preview`
+  kind) — **decided:** kept out of `lights/` (sub-only invariant) and out of the gallery/hero
+  tiers (a long capture would otherwise flood the gallery with per-sub previews). The `_thn`
+  thumbnails stay ignored either way. Lazily created → no `.store_version` bump.
 - [x] **#26 — Holding-area identification aids** *(done — `feature/holding-aids`
   + earlier `feature/holding-discard-reveal`).* The 6c panel now helps *figure out* what
   a held file is: (a) ✅ **Reveal** the file location (per-row button → OS file manager);

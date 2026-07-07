@@ -420,7 +420,15 @@ _KIND_DIR = {
     "siril-stack": config.stacks_dir,
     "finished": config.finished_dir,
     "working": config.working_files_dir,
+    "preview": config.previews_dir,
 }
+
+# Setting key for the optional per-sub JPG preview import (#25; default off).
+IMPORT_SUB_PREVIEWS_KEY = "import_sub_previews"
+
+
+def _import_sub_previews() -> bool:
+    return bool(config.get_setting(IMPORT_SUB_PREVIEWS_KEY, False))
 
 # M110-store-shaped sources (6b): a subdir named like this under an <object> dir
 # (the ~/Astronomy/Images precursor: FITS/<obj>/lights, …), or an <object> dir
@@ -533,10 +541,17 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
         obj = canonical_target(name[:-4])      # strip "_sub"; fold case/aliases
         fits = _fit_files(src_dir)
         # A `_sub` folder is a lights folder: the `.fit` are lights; the Seestar's
-        # per-sub `.jpg` previews (one beside every sub) are recognized sidecars we
-        # intentionally don't import — mark the whole folder handled so they aren't
-        # swept into the holding area.
+        # per-sub `.jpg` previews (one beside every sub) are recognized sidecars.
+        # Mark the whole folder handled so they aren't swept into the holding area.
         handled.update(_content_files(src_dir))
+        # Optional (#25, default off): import those per-sub previews into a dedicated
+        # `previews/` archive (kept out of `lights/` + the gallery tiers).
+        preview_ops: list[IngestOp] = []
+        if _import_sub_previews():
+            previews = [f for f in _content_files(src_dir)
+                        if f.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")]
+            preview_ops = _emit_files(src_dir, previews, "preview", obj, name,
+                                      action, "seestar")
         # Bucket by kind, then emit per kind in ONE batch — `_emit_files` lists the
         # destination once per call, so a per-file loop is O(files × dest) (the
         # device-scan slowdown). Seestar lights are `Light_*` by convention, so trust
@@ -553,7 +568,7 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
         ops: list[IngestOp] = []
         for kind, fs in buckets.items():
             ops += _emit_files(src_dir, fs, kind, obj, name, action, "seestar")
-        return ops
+        return ops + preview_ops
 
     if is_media_dir(name):
         dst_dir = config.MEDIA_DIR / name

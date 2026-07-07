@@ -116,8 +116,10 @@ of work).
   beyond Seestar; additive `LAYOUTS` entry + classifier, no store-version bump.
   Ship-in-beta vs. fast-follow is gated on getting one real Dwarf capture dump
   (see ROADMAP 12 / [`BETA.md`](BETA.md) §3).
-- [ ] **#25 optional per-sub `.jpg` preview import** — cheap (default off); decide
-  destination + gallery interaction. Low priority.
+- [x] **#25 optional per-sub `.jpg` preview import** — ✅ Done (`feature/sub-previews`).
+  Preference (default off, Preferences → Import) imports the Seestar's per-sub previews
+  into a dedicated `Images/<target>/previews/` archive; **decided** to keep them out of
+  `lights/` and out of the gallery (avoids flooding it with per-sub previews).
 
 ## T3 — Deferred past the beta (deliberate cuts)
 

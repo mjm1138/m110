@@ -190,6 +190,13 @@ def finished_dir(name: str) -> Path:
     return IMAGES_DIR / name / "finished"
 
 
+def previews_dir(name: str) -> Path:
+    """Optional per-sub JPG previews (#25) — a review archive beside the raw subs,
+    kept out of ``lights/`` (sub-only) and out of the gallery tiers. Only populated
+    when the ``import_sub_previews`` preference is on."""
+    return IMAGES_DIR / name / "previews"
+
+
 def working_files_dir(name: str) -> Path:
     """Processing by-products for a capture target (stacks' intermediates:
     starless/starmask/crop/stretch/spcc/…). NOT raw subs and NOT the final

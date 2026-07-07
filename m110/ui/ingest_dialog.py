@@ -22,7 +22,7 @@ KIND_LABEL = {
     "light": "lights", "stack": "Seestar stack", "media": "media",
     "dark": "darks", "flat": "flats", "bias": "biases",
     "siril-stack": "Siril stack", "finished": "finished",
-    "unassigned": "→ holding area",
+    "preview": "sub previews", "unassigned": "→ holding area",
 }
 
 # Kinds a held file can be manually assigned to (6c), in dropdown order.

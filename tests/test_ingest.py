@@ -46,6 +46,37 @@ def test_ops_carry_source_size(tmp_path, monkeypatch):
     assert ops and ops[0].size_bytes == 123
 
 
+def test_sub_previews_ignored_by_default(tmp_path, monkeypatch):
+    """#25: a `_sub` folder's per-sub .jpg previews are recognized-and-ignored unless
+    the preference is on. The _thn thumbnail is always ignored."""
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")   # pref absent → off
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M13_sub"; sub.mkdir()
+    (sub / "Light_M13_1.fit").write_text("f")
+    (sub / "Light_M13_1.jpg").write_text("j")        # per-sub preview
+    (sub / "Light_M13_1_thn.jpg").write_text("t")    # thumbnail
+    ops = ingest.scan_staging_plan()
+    assert {op.kind for op in ops} == {"light"}      # only the raw sub imported
+    assert all(op.src.endswith(".fit") for op in ops)
+
+
+def test_sub_previews_imported_when_enabled(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    config.save_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, True)
+    sub = staging / "M13_sub"; sub.mkdir()
+    (sub / "Light_M13_1.fit").write_text("f")
+    (sub / "Light_M13_1.jpg").write_text("j")        # imported → previews/
+    (sub / "Light_M13_1_thn.jpg").write_text("t")    # thumbnail still ignored
+    ops = ingest.scan_staging_plan()
+    previews = [op for op in ops if op.kind == "preview"]
+    assert len(previews) == 1
+    assert previews[0].src.endswith("Light_M13_1.jpg")
+    assert "Images/M13/previews" in previews[0].dest_rel
+    assert any(op.kind == "light" and op.src.endswith(".fit") for op in ops)   # sub still → lights
+    assert not any("_thn." in op.src for op in ops)                            # thumbnail excluded
+
+
 def test_group_ops_aggregates_by_source_folder(tmp_path, monkeypatch):
     _root, staging = _make_staging(tmp_path, monkeypatch)
     for obj, n in [("M101", 3), ("M51", 2)]:

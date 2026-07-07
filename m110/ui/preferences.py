@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox,
 )
 
-from m110 import config, hints, processing
+from m110 import config, hints, ingest, processing
 from m110.ui import theme
 
 
@@ -86,6 +86,22 @@ class PreferencesDialog(QDialog):
         self._finished_edit.editingFinished.connect(self._save_hints)
         self._intermediate_edit.editingFinished.connect(self._save_hints)
         lay.addWidget(hbox)
+
+        # ── import options (persist live) ────────────────────────────────────
+        ibox = QGroupBox("Import")
+        il = QVBoxLayout(ibox)
+        self._sub_previews_cb = QCheckBox(
+            "Import per-sub JPG previews into a previews/ folder")
+        self._sub_previews_cb.setToolTip(
+            "The Seestar saves a full-size .jpg beside every raw sub. Off by default; "
+            "when on, they're archived under Images/<object>/previews/ (kept out of the "
+            "raw lights/ and out of the gallery).")
+        self._sub_previews_cb.setChecked(
+            bool(config.get_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, False)))
+        self._sub_previews_cb.toggled.connect(
+            lambda on: config.save_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, bool(on)))
+        il.addWidget(self._sub_previews_cb)
+        lay.addWidget(ibox)
 
         # ── appearance (theme) ───────────────────────────────────────────────
         appearance = QGroupBox("Appearance")
