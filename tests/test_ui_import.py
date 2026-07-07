@@ -155,3 +155,46 @@ def test_import_page_browse_remembers_recents(tmp_path, monkeypatch, qtbot):
     page.reload()
     datas = [page._source.itemData(i) for i in range(page._source.count())]
     assert "/some/place/A" in datas
+
+
+def _held_fits(folder, name, **headers):
+    import numpy as np
+    from astropy.io import fits
+    folder.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="float32"))
+    for k, v in headers.items():
+        h.header[k] = v
+    h.writeto(folder / name)
+
+
+def test_holding_prefills_suggested_object_and_kind(tmp_path, monkeypatch, qtbot):
+    """#26: a held FITS with an OBJECT header pre-selects the Object + Kind pickers."""
+    from m110 import config
+    seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    _held_fits(config.STAGING_DIR / "mystery", "a.fit", OBJECT="M 10", IMAGETYP="Light")
+    from m110.ui.pages.import_page import ImportPage
+    page = ImportPage()
+    qtbot.addWidget(page)
+    assert page.holding_table.rowCount() == 1
+    assert page.holding_table.cellWidget(0, 3).currentText() == "M10"     # Object
+    assert page.holding_table.cellWidget(0, 4).currentData() == "light"    # Kind
+
+
+def test_holding_inspect_dialog_shows_header_and_suggestion(tmp_path, monkeypatch, qtbot):
+    from m110 import config, ingest, catalog
+    seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    ra, dec = catalog.load_coords()["m10"]
+    _held_fits(config.STAGING_DIR / "blob", "x.fit",
+               OBJECT="M 10", IMAGETYP="Light", RA=ra, DEC=dec)
+    groups = ingest.group_ops(ingest.scan_holding())
+    info = ingest.annotate_holding(groups)
+    from m110.ui.holding_inspect_dialog import HoldingInspectDialog
+    from PySide6.QtWidgets import QLabel, QTableWidget
+    dlg = HoldingInspectDialog(groups[0], info[0])
+    qtbot.addWidget(dlg)
+    labels = " ".join(w.text() for w in dlg.findChildren(QLabel))
+    assert "Suggested" in labels and "M10" in labels
+    facts = dlg.findChildren(QTableWidget)
+    assert facts and facts[0].rowCount() >= 4        # Object/Type/Filter/RA/Dec

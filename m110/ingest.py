@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover - py<3.11
     import tomli as tomllib  # type: ignore
 
 POINTING_TOL_DEG = 0.15   # frame-vs-catalog separation that flags a name mismatch
+IDENTIFY_TOL_DEG = 1.0    # looser radius for *suggesting* a held file's identity (#26)
 
 
 class IngestCancelled(Exception):
@@ -866,6 +867,95 @@ def discard_holding(group: IngestGroup) -> dict:
             pass
     _prune_empty_dirs(config.STAGING_DIR)
     return {"deleted": deleted}
+
+
+# ── holding-area identification aids (#26) ─────────────────────────────────────
+
+_FITS_EXTS = (".fit", ".fits")
+
+
+def _representative_files(group: IngestGroup):
+    """(fits_path, sample_path) for a held group — the first FITS frame (for the
+    header read) and the first content file (for a thumbnail); either may be None."""
+    fits_path = sample = None
+    for op in group.ops:
+        p = Path(op.src)
+        if sample is None:
+            sample = p
+        if fits_path is None and p.suffix.lower() in _FITS_EXTS:
+            fits_path = p
+    return fits_path, sample
+
+
+def identify_holding(group: IngestGroup, coords: dict | None = None,
+                     cat: dict | None = None) -> dict:
+    """Best-effort identity aids for one held group (#26): the FITS header facts +
+    a suggested object (from the OBJECT header, else the nearest catalog object by
+    RA/Dec) + a suggested kind (from IMAGETYP). Reads at most one frame header.
+    Degrades to a mostly-empty dict when there's no FITS / no coords."""
+    if coords is None:
+        coords = catalog.load_coords()
+    if cat is None:
+        try:
+            cat = catalog.load_library()
+        except Exception:
+            cat = {}
+    ref = catalog.load_reference()
+
+    def _disp_id(slug: str) -> str:
+        return cat.get(slug, {}).get("id") or ref.get(slug, {}).get("id") or slug
+
+    fits_path, sample = _representative_files(group)
+    info = {"header": None, "suggested_id": None, "suggested_slug": None,
+            "suggested_kind": None, "reason": None,
+            "sample": str(sample) if sample else None}
+    if fits_path is None:
+        return info
+    hdr = frame_info(str(fits_path))
+    if hdr is None:
+        return info
+    info["header"] = hdr
+    info["sample"] = str(fits_path)      # a FITS previews better than a stray file
+
+    if hdr.get("imagetyp") in ("light", "dark", "flat", "bias"):
+        info["suggested_kind"] = hdr["imagetyp"]
+
+    # (a) the OBJECT header names a known object → high-confidence suggestion.
+    #     Try the raw header + its canonical folding ("M 10" → "M10").
+    obj = hdr.get("object")
+    slug = None
+    if obj:
+        for cand in (obj, canonical_target(obj), fits_object_name(obj)):
+            slug = _slug_for_object(cand, cat)
+            if slug:
+                break
+    if slug:
+        info.update(suggested_slug=slug, suggested_id=_disp_id(slug),
+                    reason=f"OBJECT header “{obj}”")
+        return info
+    # (b) else fall back to the nearest catalog object by the frame's RA/Dec.
+    if coords and hdr.get("ra_deg") is not None and hdr.get("dec_deg") is not None:
+        near, sep = _nearest(coords, hdr["ra_deg"], hdr["dec_deg"])
+        if near and sep <= IDENTIFY_TOL_DEG:
+            info.update(suggested_slug=near, suggested_id=_disp_id(near),
+                        reason=f"{sep:.2f}° from {_disp_id(near)}")
+    return info
+
+
+def annotate_holding(groups: list[IngestGroup], should_cancel=None) -> list[dict]:
+    """`identify_holding` for each group, sharing one coords/library load. Parallel
+    to `groups`. Reads one frame per group (cheap; the holding area is local)."""
+    coords = catalog.load_coords()
+    try:
+        cat = catalog.load_library()
+    except Exception:
+        cat = {}
+    out = []
+    for g in groups:
+        if should_cancel and should_cancel():
+            break
+        out.append(identify_holding(g, coords=coords, cat=cat))
+    return out
 
 
 def assign(group: IngestGroup, object: str, kind: str) -> IngestGroup:

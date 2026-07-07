@@ -107,9 +107,11 @@ of work).
   T1 hint-set). Shipped **with** the ⚠️ **hero-render cache fix** — hero now invalidates
   on source *identity* (a `.src` sidecar), not mtime, so picking an older image as hero
   re-renders instead of leaving a stale hero + row thumbnails.
-- [ ] **#26 holding-area identification aids** — FITS-header inspector
-  (OBJECT/IMAGETYP/FILTER/RA/DEC via `frame_info`), thumbnail preview, suggested
-  identity from RA/DEC (reuse #12 pointing). Most of the plumbing already exists.
+- [x] **#26 holding-area identification aids** — ✅ Done (`feature/holding-aids`).
+  `ingest.annotate_holding` pre-fills the Object/Kind pickers with a suggested identity
+  (OBJECT header → slug, else nearest catalog object by RA/Dec) + kind (IMAGETYP);
+  double-click a held row → `HoldingInspectDialog` with the FITS-header facts
+  (OBJECT/IMAGETYP/FILTER/RA·Dec via `frame_info`) + a thumbnail preview.
 - [ ] **DwarfLab (Dwarf II / 3) import** *(ROADMAP item 12).* Reach multiplier
   beyond Seestar; additive `LAYOUTS` entry + classifier, no store-version bump.
   Ship-in-beta vs. fast-follow is gated on getting one real Dwarf capture dump

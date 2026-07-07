@@ -120,18 +120,16 @@ Legend: `[ ]` open · `[~]` partially done
   into `Images/<target>/lights/` or a dedicated `previews/` subdir. Cheap (the
   `_classify_seestar_dir` `_sub` branch already enumerates the folder's non-FITS content);
   decide the destination + gallery interaction first.
-- [ ] **#26 — Holding-area identification aids.** The 6c holding-area panel lets you
-  assign object + kind but offers no help *figuring out* what a held file is (now lists
-  filenames on hover, but no more). *Enhancements (overlap ROADMAP item 9):* (a) ✅
-  **reveal the file location** — done (`feature/holding-discard-reveal`): a per-row
-  **Reveal** button opens the group's `Inbox/<folder>` in the OS file manager; (b) a
-  **preview/inspector** — thumbnail for images, a FITS-header view
-  (OBJECT/IMAGETYP/FILTER/RA/DEC via `ingest.frame_info`); (c) **suggested identity** —
-  for FITS with RA/DEC reuse #12 pointing (`frame_radec` + nearest-catalog); headerless →
-  plate-solving (item 9). Remaining: the FITS-header inspector — most of what's needed is
-  already in `frame_info`. ✅ **Discard** — done: a per-row **Discard** button deletes a
-  held group's files (confirmation modal; engine `ingest.discard_holding`, Inbox-scoped +
-  prunes emptied folders).
+- [x] **#26 — Holding-area identification aids** *(done — `feature/holding-aids`
+  + earlier `feature/holding-discard-reveal`).* The 6c panel now helps *figure out* what
+  a held file is: (a) ✅ **Reveal** the file location (per-row button → OS file manager);
+  (b) ✅ **preview/inspector** — double-click a held row → `HoldingInspectDialog`: FITS
+  header view (OBJECT/IMAGETYP/FILTER/RA/Dec via `ingest.frame_info`) + a thumbnail
+  preview; (c) ✅ **suggested identity** — `ingest.annotate_holding` suggests the object
+  (OBJECT header → slug, else nearest catalog by RA/Dec) + kind (IMAGETYP), **pre-filling
+  the Object/Kind pickers**. ✅ **Discard** — per-row button deletes a held group
+  (confirm modal; `ingest.discard_holding`, Inbox-scoped + prunes emptied folders).
+  *(Headerless plate-solving stays deferred → item 9.)*
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,

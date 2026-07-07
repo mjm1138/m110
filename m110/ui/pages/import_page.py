@@ -38,6 +38,7 @@ class ImportPage(QWidget):
         self._root = None            # the chosen source directory (str) or None
         self._groups = []
         self._holding_groups = []    # Inbox/ holding-area groups (6c)
+        self._holding_info = []      # per-group identification aids (#26)
         self._cat = {}               # catalog cache for the remap dropdown
         self._loading = False        # guards itemChanged while (re)populating
         self._worker = None
@@ -276,8 +277,17 @@ class ImportPage(QWidget):
         self.holding_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.holding_table.verticalHeader().setVisible(False)
         self.holding_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.holding_table.cellDoubleClicked.connect(self._on_holding_inspect)   # #26
         v.addWidget(self.holding_table, 1)
         return box
+
+    def _on_holding_inspect(self, row: int, _col: int):
+        """Double-click a held row → the FITS-header/thumbnail/suggestion inspector (#26)."""
+        if row >= len(self._holding_groups):
+            return
+        info = self._holding_info[row] if row < len(self._holding_info) else {}
+        from m110.ui.holding_inspect_dialog import HoldingInspectDialog
+        HoldingInspectDialog(self._holding_groups[row], info, parent=self).exec()
 
     def refresh_holding(self):
         """Rescan the Inbox/ holding area and repopulate the panel (synchronous —
@@ -291,6 +301,10 @@ class ImportPage(QWidget):
             self._holding_groups = ingest.group_ops(ingest.scan_holding())
         except Exception:
             self._holding_groups = []
+        try:
+            self._holding_info = ingest.annotate_holding(self._holding_groups)   # #26
+        except Exception:
+            self._holding_info = [{} for _ in self._holding_groups]
         self._populate_holding(prev)
 
     def _capture_holding_selections(self) -> dict:
@@ -317,12 +331,13 @@ class ImportPage(QWidget):
                 "manual assignment.")
         else:
             self._holding_header.setText(
-                f"{n} file(s) awaiting assignment — hover a row to see filenames, "
-                "then pick an object + kind and Assign.")
+                f"{n} file(s) awaiting assignment — double-click a row to inspect it; "
+                "suggested object/kind are pre-filled where M110 could read a header.")
         from pathlib import Path
         ids = self._catalog_ids()
         self.holding_table.setRowCount(len(groups))
         for r, g in enumerate(groups):
+            aid = self._holding_info[r] if r < len(self._holding_info) else {}
             names = [Path(op.src).name for op in g.ops]
             tip = "\n".join(names[:40])
             if len(names) > 40:
@@ -339,14 +354,23 @@ class ImportPage(QWidget):
             obj.setEditable(True)               # allow new / off-catalog objects
             obj.addItem("— choose —")
             obj.addItems(ids)
+            sug_id, reason = aid.get("suggested_id"), aid.get("reason")
             if prev_obj and prev_obj != "— choose —":
                 obj.setCurrentText(prev_obj)    # restore an in-progress pick (#66)
+            elif sug_id:
+                obj.setCurrentText(sug_id)      # #26: pre-fill the suggestion
+                obj.setToolTip(f"Suggested from {reason}")
             self.holding_table.setCellWidget(r, 3, obj)
             kind = QComboBox()
             for k in ASSIGNABLE_KINDS:
                 kind.addItem(KIND_LABEL.get(k, k), k)
+            sug_kind = aid.get("suggested_kind")
             if prev_kind is not None:
                 ki = kind.findData(prev_kind)
+                if ki >= 0:
+                    kind.setCurrentIndex(ki)
+            elif sug_kind:
+                ki = kind.findData(sug_kind)    # #26: pre-fill the suggested kind
                 if ki >= 0:
                     kind.setCurrentIndex(ki)
             self.holding_table.setCellWidget(r, 4, kind)

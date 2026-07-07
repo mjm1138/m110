@@ -605,6 +605,57 @@ def test_scan_holding_groups_by_top_folder(tmp_path, monkeypatch):
     assert ingest.holding_count() == 3
 
 
+def _held_fits(folder, name, **headers):
+    import numpy as np
+    folder.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="float32"))
+    for k, v in headers.items():
+        h.header[k] = v
+    h.writeto(folder / name)
+
+
+def test_identify_holding_from_object_header(tmp_path, monkeypatch):
+    """#26: a held FITS whose OBJECT header names a catalog object suggests it
+    (folding Seestar spacing 'M 10' → 'M10') + a kind from IMAGETYP."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    _held_fits(staging / "mystery", "a.fit", OBJECT="M 10", IMAGETYP="Light")
+    info = ingest.annotate_holding(ingest.group_ops(ingest.scan_holding()))
+    assert len(info) == 1
+    assert info[0]["suggested_slug"] == "m10"
+    assert info[0]["suggested_id"] == "M10"
+    assert "OBJECT" in (info[0]["reason"] or "")
+    assert info[0]["suggested_kind"] == "light"
+    assert info[0]["header"]["object"] == "M 10"
+
+
+def test_identify_holding_from_nearest_radec(tmp_path, monkeypatch):
+    """#26: no usable OBJECT header → suggest the nearest catalog object by RA/Dec."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    ra, dec = catalog.load_coords()["m10"]
+    _held_fits(staging / "blob", "x.fit", OBJECT="Unknown", RA=ra, DEC=dec)
+    info = ingest.annotate_holding(ingest.group_ops(ingest.scan_holding()))
+    assert info[0]["suggested_slug"] == "m10"
+    assert "from M10" in (info[0]["reason"] or "")
+
+
+def test_identify_holding_kind_only_from_calibration(tmp_path, monkeypatch):
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    _held_fits(staging / "cal", "d.fit", IMAGETYP="Dark")
+    info = ingest.annotate_holding(ingest.group_ops(ingest.scan_holding()))
+    assert info[0]["suggested_kind"] == "dark"
+    assert info[0]["suggested_id"] is None      # no object / coords → no id
+
+
+def test_identify_holding_non_fits_degrades(tmp_path, monkeypatch):
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    (staging / "misc").mkdir()
+    (staging / "misc" / "note.jpg").write_bytes(b"not a real jpg")
+    info = ingest.annotate_holding(ingest.group_ops(ingest.scan_holding()))
+    assert info[0]["header"] is None
+    assert info[0]["suggested_id"] is None
+    assert info[0]["sample"].endswith("note.jpg")
+
+
 def test_discard_holding_deletes_and_prunes(tmp_path, monkeypatch):
     """discard_holding removes a held group's files and prunes the emptied folder,
     leaving other held groups untouched."""
