@@ -226,6 +226,12 @@ class CatalogPage(QWidget):
         captured = sum(1 for s in slugs if s in self._totals)
         deep = sum(1 for s in slugs
                    if self._totals.get(s, {}).get("status") == "deep_stack")
+        # Fresh, unfiltered Library with nothing in it → an orienting hint instead
+        # of a bare "0 total" (#onboarding).
+        if not self._cat and self._catalog_filter is None and not self._search.text().strip():
+            self._stat.setText("Your Library is empty — Import from your telescope "
+                               "(Ctrl+I) or add an object from the Library menu.")
+            return
         prefix = ""
         if self._catalog_filter:
             name = next((c["name"] for c in self._catalogs

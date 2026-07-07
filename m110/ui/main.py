@@ -184,6 +184,7 @@ class MainWindow(QMainWindow):
         self.catalog.notes_saved.connect(self._on_notes_saved)
         self.catalog.pins_changed.connect(self._on_pins_changed)
         self.summary.open_object.connect(self.open_object)
+        self.summary.go_to_import.connect(self._open_ingest)   # empty-state CTA
         self.goals.open_object.connect(self.open_object)
         self.goals.dirty.connect(self._do_refresh)
         self.goals.pins_changed.connect(self._on_pins_changed)
@@ -589,7 +590,8 @@ def main() -> None:
     app.setOrganizationName("M110")
     theme.install(app)                  # design-system: tokens → QSS, follow system
     app.setWindowIcon(theme.app_icon())  # dock / taskbar icon (parchment tile)
-    config.ensure_data_root()
+    from m110.ui.first_run_dialog import run_first_run_if_needed
+    run_first_run_if_needed()            # first launch: prompt for a data folder
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

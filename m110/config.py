@@ -270,6 +270,20 @@ def data_root_ok() -> bool:
     return LIBRARY_TOML.is_file()
 
 
+def is_first_run() -> bool:
+    """True on a genuine first launch — no `M110_DATA_ROOT` env, no saved data-folder
+    preference, and no store already sitting at the default location. Lets the app
+    show a one-time "choose your data folder" prompt (rather than silently defaulting)
+    without ever re-prompting a returning user (who has a store but may not have an
+    explicit saved preference — e.g. anyone from before the prompt existed)."""
+    if os.environ.get("M110_DATA_ROOT"):
+        return False
+    if _read_settings().get("data_root"):
+        return False
+    default_lib = DEFAULT_DATA_ROOT / INTERNAL_DIRNAME / "library.toml"
+    return not default_lib.is_file()
+
+
 def ensure_data_root(root=None) -> Path:
     """Create the directory skeleton and seed catalog/priorities if missing.
 

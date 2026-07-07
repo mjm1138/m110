@@ -45,10 +45,9 @@ of work).
 - **Phase 3 — Manual Pin/Mute priorities (#3).** ✅ Done (`feature/manual-pins`).
   Self-contained (per-store `pins.toml` + right-click row controls on Library/Goals +
   Summary Priority-targets surfacing + empty-state).
-- **Phase 4 — Onboarding / first-run (#1), LAST.** Split it: the **data-folder
-  prompt** is independent and may land early, but the **empty-state + guided-first-
-  import** copy must be finalized *after* Phases 1–3, since it narrates flows those
-  phases are still changing. Building the guided tour first guarantees rework.
+- **Phase 4 — Onboarding / first-run (#1), LAST.** ✅ Done (`feature/onboarding`),
+  after Phases 1–3 settled the flows its copy narrates. Data-folder prompt +
+  Summary welcome/empty-state + Library empty hint + emptied seed priorities.
 - **Then T2 fast-follows** (they already mirror T1 dependencies): #17 gallery —
   with the ⚠️ hero-cache fix, **only** when set-hero ships → #26 aids → Dwarf (when
   its dump is ready) → #25.
@@ -61,12 +60,14 @@ of work).
 
 ## T1 — Must be online for the beta
 
-- [ ] **Onboarding / first-run experience** *(the #1 gap — not previously on the
-  feature list).* A stranger installs and lands in an empty Library with no
-  orientation. Needs: **first-launch data-folder prompt** (BUGS UI-niceties);
-  **empty-state guidance** ("Import from your Seestar to get started"); a **guided
-  first import** happy path. Overlaps [`BETA.md`](BETA.md) §4 — that's the
-  shippability angle; this is the feature work.
+- [x] **Onboarding / first-run experience** *(the #1 gap).* ✅ Done
+  (`feature/onboarding`). Shipped: a **first-launch data-folder prompt**
+  (`FirstRunDialog` + `config.is_first_run()`; persisted, no re-prompt); **empty-state
+  guidance** — a Summary **welcome card + "Import images…" CTA** (`go_to_import` → the
+  Import page) when nothing's captured, plus a Library "empty — Import or add an object"
+  hint; and the **guided first import** happy path (CTA lands on the existing Import
+  page). Also emptied the seed `priorities.toml` so a stranger doesn't inherit
+  hand-authored targets. Overlaps [`BETA.md`](BETA.md) §4 (shippability angle).
 - [x] **#17 finished/intermediate hinting — generalization** *(ROADMAP 7 / BUGS
   #17).* ✅ Done (`feature/finished-hints`). The finished-vs-intermediate
   classification was built on Mike's filename habits (ROADMAP: "probably not

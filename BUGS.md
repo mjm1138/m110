@@ -170,10 +170,14 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## UI niceties (backlog)
 
-- [ ] **Empty-state guidance.** When the Library is all-uncaptured (fresh data root),
-  show a hint like "Import from your Seestar to get started" to orient new users.
-- [ ] **First-launch data-folder prompt** — a one-time "choose your data folder" prompt
-  rather than silently defaulting to `~/Documents/M110`.
+- [x] **Empty-state guidance** *(done — `feature/onboarding`).* A fresh store (nothing
+  captured) shows a **welcome + "Import images…" CTA** on the Summary landing page
+  (`go_to_import` → Import page) instead of empty tables, and the Library stat row shows
+  an "empty — Import or add an object" hint. The seed `priorities.toml` now ships **empty**
+  so a stranger doesn't inherit hand-authored targets.
+- [x] **First-launch data-folder prompt** *(done — `feature/onboarding`).* `FirstRunDialog`
+  (`config.is_first_run()` + `ui/first_run_dialog.py`) prompts for a data folder on a genuine
+  first launch, persists it, and never re-prompts a returning user.
 - [ ] **Surface skipped files** after an import ("N already present, skipped") — copies
   are already skip-if-present + partial-safe, so this is just reporting.
 

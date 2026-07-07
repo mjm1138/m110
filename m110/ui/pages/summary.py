@@ -6,7 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
-    QHeaderView,
+    QHeaderView, QPushButton,
 )
 
 from m110 import catalog, derived, pins
@@ -28,6 +28,7 @@ _URGENT = ("out_of_date", "not_processed")
 
 class SummaryPage(QScrollArea):
     open_object = Signal(str)
+    go_to_import = Signal()       # empty-state CTA → shell switches to the Import page
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -75,26 +76,18 @@ class SummaryPage(QScrollArea):
         title.setTextFormat(Qt.RichText)
         self._lay.addWidget(title)
 
-        # ── Goals (active catalogs) ─────────────────────────────────────────
         goals = derived.load_goals()
-        if goals:
-            self._lay.addWidget(self._heading("Goals"))
-            g_tbl = make_table(["Goal", "Captured", "Deep", "Total", "Progress"],
-                               stretch_last=True)
-            g_tbl.setSortingEnabled(False)
-            for g in goals:
-                r = g_tbl.rowCount()
-                g_tbl.insertRow(r)
-                g_tbl.setItem(r, 0, QTableWidgetItem(g.get("name", g.get("id", ""))))
-                g_tbl.setItem(r, 1, QTableWidgetItem(str(g.get("captured", 0))))
-                g_tbl.setItem(r, 2, QTableWidgetItem(str(g.get("deep", 0))))
-                g_tbl.setItem(r, 3, QTableWidgetItem(str(g.get("total", 0))))
-                g_tbl.setItem(r, 4, QTableWidgetItem(
-                    f"{g.get('captured', 0)}/{g.get('total', 0)} "
-                    f"({g.get('percent', 0)}%)"))
-            g_tbl.resizeColumnsToContents()
-            g_tbl.setMinimumHeight(min(220, 28 * (len(goals) + 1) + 8))
-            self._lay.addWidget(g_tbl)
+
+        # Fresh store (nothing captured yet): a welcome + guided first-import CTA
+        # instead of a page of empty tables (#onboarding). Goals still show — the
+        # north-star progress is motivating even at 0%.
+        if not derived.totals_by_slug():
+            self._add_welcome()
+            self._add_goals_section(goals)
+            self._lay.addStretch(1)
+            return
+
+        self._add_goals_section(goals)
 
         # ── Progress by category ───────────────────────────────────────────
         self._lay.addWidget(self._heading("Progress by category"))
@@ -208,6 +201,53 @@ class SummaryPage(QScrollArea):
         self._lay.addWidget(pt)
 
         self._lay.addStretch(1)
+
+    def _add_welcome(self):
+        """First-run welcome card + guided-import CTA (shown until first capture)."""
+        card = QLabel(
+            "<b>Welcome to M110.</b><br>"
+            "Your library is empty. Import images from your smart telescope to get "
+            "started — M110 will organize them, track your catalog progress, and "
+            "prepare them for processing.")
+        card.setTextFormat(Qt.RichText)
+        card.setWordWrap(True)
+        self._lay.addWidget(card)
+
+        row = QHBoxLayout()
+        btn = QPushButton("Import images…")
+        btn.setDefault(True)
+        btn.clicked.connect(self.go_to_import.emit)
+        row.addWidget(btn)
+        row.addStretch(1)
+        self._lay.addLayout(row)
+
+        tip = QLabel("Tip: choose a goal on the Goals page, or add an object "
+                     "manually from the Library menu.")
+        tip.setProperty("caption", True)
+        tip.setWordWrap(True)
+        self._lay.addWidget(tip)
+
+    def _add_goals_section(self, goals):
+        # ── Goals (active catalogs) ─────────────────────────────────────────
+        if not goals:
+            return
+        self._lay.addWidget(self._heading("Goals"))
+        g_tbl = make_table(["Goal", "Captured", "Deep", "Total", "Progress"],
+                           stretch_last=True)
+        g_tbl.setSortingEnabled(False)
+        for g in goals:
+            r = g_tbl.rowCount()
+            g_tbl.insertRow(r)
+            g_tbl.setItem(r, 0, QTableWidgetItem(g.get("name", g.get("id", ""))))
+            g_tbl.setItem(r, 1, QTableWidgetItem(str(g.get("captured", 0))))
+            g_tbl.setItem(r, 2, QTableWidgetItem(str(g.get("deep", 0))))
+            g_tbl.setItem(r, 3, QTableWidgetItem(str(g.get("total", 0))))
+            g_tbl.setItem(r, 4, QTableWidgetItem(
+                f"{g.get('captured', 0)}/{g.get('total', 0)} "
+                f"({g.get('percent', 0)}%)"))
+        g_tbl.resizeColumnsToContents()
+        g_tbl.setMinimumHeight(min(220, 28 * (len(goals) + 1) + 8))
+        self._lay.addWidget(g_tbl)
 
     def _priority_rows(self, priorities) -> list[dict]:
         """Merge hand-edited priorities with manually pinned Library objects, drop

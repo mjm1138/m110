@@ -23,6 +23,41 @@ def test_resolve_saved_setting(monkeypatch, tmp_path):
     assert config._resolve_data_root() == (tmp_path / "saved")
 
 
+def test_is_first_run_true_when_nothing_set(monkeypatch, tmp_path):
+    """No env, no saved preference, no store at the default → a genuine first run."""
+    monkeypatch.delenv("M110_DATA_ROOT", raising=False)
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "absent.json")
+    monkeypatch.setattr(config, "DEFAULT_DATA_ROOT", tmp_path / "default")
+    assert config.is_first_run() is True
+
+
+def test_is_first_run_false_with_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("M110_DATA_ROOT", str(tmp_path / "x"))
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "absent.json")
+    monkeypatch.setattr(config, "DEFAULT_DATA_ROOT", tmp_path / "default")
+    assert config.is_first_run() is False
+
+
+def test_is_first_run_false_with_saved_pref(monkeypatch, tmp_path):
+    monkeypatch.delenv("M110_DATA_ROOT", raising=False)
+    sf = tmp_path / "settings.json"
+    sf.write_text(json.dumps({"data_root": str(tmp_path / "saved")}))
+    monkeypatch.setattr(config, "SETTINGS_FILE", sf)
+    monkeypatch.setattr(config, "DEFAULT_DATA_ROOT", tmp_path / "default")
+    assert config.is_first_run() is False
+
+
+def test_is_first_run_false_when_default_store_exists(monkeypatch, tmp_path):
+    """A returning user (store at the default, no explicit saved pref) isn't prompted."""
+    monkeypatch.delenv("M110_DATA_ROOT", raising=False)
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "absent.json")
+    default = tmp_path / "default"
+    monkeypatch.setattr(config, "DEFAULT_DATA_ROOT", default)
+    (default / config.INTERNAL_DIRNAME).mkdir(parents=True)
+    (default / config.INTERNAL_DIRNAME / "library.toml").write_text("")
+    assert config.is_first_run() is False
+
+
 def test_ensure_data_root_creates_and_seeds(tmp_path):
     root = tmp_path / "M110"
     config.ensure_data_root(root)
