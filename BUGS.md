@@ -112,7 +112,11 @@ Legend: `[ ]` open · `[~]` partially done
   the optional `Images/<target>/<device>/` path level (+ a `.store_version` bump + a
   `migrate.py` step) **only when a 2nd device appears** (flat = default device). A device
   registry keyed to planning device-profiles (`planning_config.load_device`). Deferred
-  until a real 2nd telescope exists.
+  until a real 2nd telescope exists. **Note (verified 2026-07-07):** the per-unit scope id
+  is in **FITS only** — `TELESCOP = S50_<8hex>` (e.g. `S50_15e7e390`); the S50 `.jpg` EXIF
+  carries model/firmware but **no** unit id. So device attribution must key off FITS
+  `TELESCOP`; a JPEG-only import can't tell two same-model scopes apart. See
+  [`DATA_MODEL.md`](DATA_MODEL.md) → "Import & multi-source / multi-telescope".
 - [ ] **#25 — Optional import of per-sub `.jpg` previews.** The Seestar saves a full-size
   `.jpg` preview beside every `.fit` sub in a `_sub` folder; these are recognized-and-
   ignored on import today. *Enhancement:* a preference (default **off**) to import them —

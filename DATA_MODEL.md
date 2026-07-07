@@ -407,6 +407,18 @@ checklist, computed on the fly. Consequences:
 - The `<device>` id is a **device-profile key** (links to the planning profiles
   below, `planning_config.load_device`). Classification leans on FITS headers, not
   just folder names.
+- **Per-unit scope id lives in FITS only (verified 2026-07-07 against real S50
+  captures).** The FITS header carries `TELESCOP = S50_<8 hex>` (e.g.
+  `S50_15e7e390`) — the unique per-*unit* fingerprint (an 8-hex/32-bit id, likely
+  MAC-derived; **not** the full 48-bit MAC), plus `INSTRUME`/`CREATOR` for the
+  model. The device's **`.jpg` EXIF does *not*** carry it: only `Make=ZWO` /
+  `Model=Seestar S50` / `Software=<firmware>` (model + firmware, not the unit) and a
+  rich `MakerNote`/`CameraOwnerName` JSON (`obj_name`, `ra_dec_j2000`, `ra_dec`,
+  `is_solved`, `stack_num`, `tot_exp_sec`, `eqmode`, `bayer_pat`, `lon_lat`). So
+  **device-under-target attribution must key off FITS `TELESCOP`** — a JPEG-only
+  import can classify by target + pointing but can never distinguish two same-model
+  scopes. (The JSON is still useful for *identification* — feeds the #12 pointing
+  check and the #26 holding-area aids.)
 
 ### Session planning & plan files (ROADMAP items 1–2)
 - **Profiles** *(landed — site profile + planning engine)* — observing **site**,
