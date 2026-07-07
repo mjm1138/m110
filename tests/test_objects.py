@@ -92,3 +92,43 @@ def test_write_journal_overwrites_existing(tmp_path, monkeypatch):
     objects.write_journal("m42", "first\n")
     objects.write_journal("m42", "second\n")   # edit replaces prior content
     assert objects.read_journal_text("m42") == "second\n"
+
+
+# ── list-valued frontmatter + per-image curation (#17) ────────────────────────
+
+def _objects_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "OBJECTS_DIR", tmp_path / "Objects")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "absent.toml")
+
+
+def test_frontmatter_list_roundtrip_and_clear(tmp_path, monkeypatch):
+    _objects_root(tmp_path, monkeypatch)
+    objects.set_frontmatter_list("m99", "finished_extra", ["a.png", "b.png"])
+    assert objects.get_frontmatter_list("m99", "finished_extra") == ["a.png", "b.png"]
+    # other frontmatter keys survive alongside the list
+    objects.set_frontmatter_key("m99", "hero", "a.png")
+    assert objects.read_journal("m99")[0]["hero"] == "a.png"
+    assert objects.get_frontmatter_list("m99", "finished_extra") == ["a.png", "b.png"]
+    # empty list deletes the key
+    objects.set_frontmatter_list("m99", "finished_extra", [])
+    assert objects.get_frontmatter_list("m99", "finished_extra") == []
+    assert "finished_extra" not in objects.read_journal("m99")[0]
+
+
+def test_curation_set_get_and_single_list_invariant(tmp_path, monkeypatch):
+    _objects_root(tmp_path, monkeypatch)
+    objects.set_curation("m99", "img.png", "finished")
+    assert objects.get_curation("m99") == {"img.png": "finished"}
+    # flipping to working moves it out of finished_extra (only in one list)
+    objects.set_curation("m99", "img.png", "working")
+    assert objects.get_curation("m99") == {"img.png": "working"}
+    assert objects.get_frontmatter_list("m99", "finished_extra") == []
+    # clearing removes it entirely
+    objects.set_curation("m99", "img.png", None)
+    assert objects.get_curation("m99") == {}
+
+
+def test_curation_rejects_unknown_state(tmp_path, monkeypatch):
+    _objects_root(tmp_path, monkeypatch)
+    assert objects.set_curation("m99", "img.png", "bogus") is None
+    assert objects.get_curation("m99") == {}

@@ -14,10 +14,10 @@ from PySide6.QtGui import QPixmap, QIcon, QImageReader
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
-    QToolButton,
+    QToolButton, QMenu,
 )
 
-from m110 import config, derived, objects, siril
+from m110 import build_images, config, derived, objects, siril
 from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import status_label, targets_for_slug, make_table
@@ -139,6 +139,7 @@ class DetailPane(QScrollArea):
         self._current = None        # (slug, e, t) of the shown object
         self._editing = False
         self._gallery = None
+        self._galleries = []        # one QListWidget per finished/working group
         self._gallery_items = []    # [{name, path, meta}, ...] for the viewer
         self.placeholder()
 
@@ -151,6 +152,7 @@ class DetailPane(QScrollArea):
 
     def _clear(self):
         self._gallery = None
+        self._galleries = []
         self._clear_layout(self._lay)
 
     @staticmethod
@@ -268,38 +270,25 @@ class DetailPane(QScrollArea):
 
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
+            # Per-image state = the tier (finished/ folder → "finished", stacks /
+            # seestar-stacks → "working"), overridden by the user's curation (#17).
+            curation = objects.get_curation(slug)
+            self._gallery_items = []
+            self._galleries = []
+            finished = [im for im in imgs if self._img_state(im, curation) == "finished"]
+            working = [im for im in imgs if self._img_state(im, curation) == "working"]
             self._lay.addWidget(QLabel(
                 f"<b>Gallery</b> ({len(imgs)}) — <span style='color:"
-                f"{theme.active_tokens().text_secondary}'>double-click to view</span>"))
-            gallery = QListWidget()
-            gallery.setViewMode(QListWidget.IconMode)
-            gallery.setIconSize(QSize(_GALLERY_TILE, _GALLERY_TILE))
-            gallery.setResizeMode(QListWidget.Adjust)
-            gallery.setMovement(QListWidget.Static)
-            gallery.setUniformItemSizes(True)
-            gallery.setTextElideMode(Qt.ElideMiddle)
-            pad = theme.tokens.SPACE["sm"]
-            cell_h = _GALLERY_TILE + pad * 2 + gallery.fontMetrics().height()
-            gallery.setGridSize(QSize(_GALLERY_TILE + pad * 2, cell_h))
-            gallery.setSpacing(4)
-            gallery.setMinimumHeight(cell_h * 2 + 16)
-            self._gallery_items = []
-            for im in imgs:
-                tp = config.RENDERS_DIR / im["thumb"]
-                if not tp.is_file():
-                    continue
-                name = im.get("name") or ""
-                item = QListWidgetItem(_square_icon(tp, _GALLERY_TILE), name)
-                item.setToolTip(name)
-                gallery.addItem(item)
-                full = im.get("full")
-                view = str(config.DATA_ROOT / full) if full else str(tp)
-                self._gallery_items.append({
-                    "name": name, "path": view, "meta": _gallery_meta(slug, im),
-                })
-            gallery.itemDoubleClicked.connect(self._open_gallery_item)
-            self._gallery = gallery
-            self._lay.addWidget(gallery)
+                f"{theme.active_tokens().text_secondary}'>double-click to view · "
+                f"right-click to curate</span>"))
+            if finished:
+                self._add_gallery_group("Finished", finished, slug)
+            if working:
+                # Label the working group only when there's also a finished one to
+                # distinguish (a fresh object is all "working" — no need to shout).
+                self._add_gallery_group("Working files" if finished else None,
+                                        working, slug)
+            self._gallery = self._galleries[0] if self._galleries else None
 
         if captured:
             self._add_processing_section(slug)
@@ -407,12 +396,98 @@ class DetailPane(QScrollArea):
         lbl.setProperty("muted", True)
         self._lay.addWidget(lbl)
 
+    @staticmethod
+    def _img_state(im: dict, curation: dict) -> str:
+        """"finished" | "working" for a gallery image — the curation override wins
+        over the tier default (finished/ folder = finished, stacks = working)."""
+        name = im.get("name") or ""
+        if name in curation:
+            return curation[name]
+        return "finished" if im.get("label") == "Finished render" else "working"
+
+    def _add_gallery_group(self, title, imgs: list, slug: str):
+        """One labelled icon-grid of gallery images; items index into the shared
+        `_gallery_items` (so the viewer navigates across both groups)."""
+        if title:
+            lbl = QLabel(title)
+            lbl.setProperty("caption", True)
+            self._lay.addWidget(lbl)
+        gallery = QListWidget()
+        gallery.setViewMode(QListWidget.IconMode)
+        gallery.setIconSize(QSize(_GALLERY_TILE, _GALLERY_TILE))
+        gallery.setResizeMode(QListWidget.Adjust)
+        gallery.setMovement(QListWidget.Static)
+        gallery.setUniformItemSizes(True)
+        gallery.setTextElideMode(Qt.ElideMiddle)
+        pad = theme.tokens.SPACE["sm"]
+        cell_h = _GALLERY_TILE + pad * 2 + gallery.fontMetrics().height()
+        gallery.setGridSize(QSize(_GALLERY_TILE + pad * 2, cell_h))
+        gallery.setSpacing(4)
+        rows = (len(imgs) + 2) // 3
+        gallery.setMinimumHeight(cell_h * min(max(rows, 1), 3) + 16)
+        for im in imgs:
+            tp = config.RENDERS_DIR / im["thumb"]
+            if not tp.is_file():
+                continue
+            name = im.get("name") or ""
+            idx = len(self._gallery_items)         # global index across both groups
+            item = QListWidgetItem(_square_icon(tp, _GALLERY_TILE), name)
+            item.setToolTip(name)
+            item.setData(Qt.UserRole, idx)
+            gallery.addItem(item)
+            full = im.get("full")
+            view = str(config.DATA_ROOT / full) if full else str(tp)
+            self._gallery_items.append({
+                "name": name, "path": view, "meta": _gallery_meta(slug, im),
+                "_state": self._img_state(im, objects.get_curation(slug)),
+            })
+        gallery.itemDoubleClicked.connect(self._open_gallery_item)
+        gallery.setContextMenuPolicy(Qt.CustomContextMenu)
+        gallery.customContextMenuRequested.connect(
+            lambda pos, g=gallery: self._gallery_context_menu(g, pos))
+        self._galleries.append(gallery)
+        self._lay.addWidget(gallery)
+
     def _open_gallery_item(self, item):
-        if not self._gallery:
+        idx = item.data(Qt.UserRole)
+        if isinstance(idx, int) and 0 <= idx < len(self._gallery_items):
+            ImageViewer(list(self._gallery_items), idx, parent=self).exec()
+
+    def _gallery_context_menu(self, gallery, pos):
+        item = gallery.itemAt(pos)
+        if item is None or not self._current:
             return
-        row = self._gallery.row(item)
-        if 0 <= row < len(self._gallery_items):
-            ImageViewer(list(self._gallery_items), row, parent=self).exec()
+        idx = item.data(Qt.UserRole)
+        if not isinstance(idx, int) or idx >= len(self._gallery_items):
+            return
+        gi = self._gallery_items[idx]
+        name, state = gi["name"], gi.get("_state")
+        menu = QMenu(self)
+        hero_act = menu.addAction("Set as hero")
+        menu.addSeparator()
+        if state == "finished":
+            mark_act = menu.addAction("Mark as working")
+            target = "working"
+        else:
+            mark_act = menu.addAction("Mark as finished")
+            target = "finished"
+        chosen = menu.exec(gallery.viewport().mapToGlobal(pos))
+        if chosen is hero_act:
+            self._set_hero(name)
+        elif chosen is mark_act:
+            self._set_curation(name, target)
+
+    def _set_hero(self, name: str):
+        slug, e, t = self._current
+        objects.set_frontmatter_key(slug, "hero", name)
+        build_images.rebuild_hero(slug)          # re-render now (identity cache fix)
+        self.show_object(slug, e, t)             # reflect the new hero
+        self.saved.emit(slug)                    # shell reloads other views' thumbnails
+
+    def _set_curation(self, name: str, state):
+        slug, e, t = self._current
+        objects.set_curation(slug, name, state)
+        self.show_object(slug, e, t)             # regroup finished/working in place
 
     # ---- journal editing ----
     def _enter_edit(self):

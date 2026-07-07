@@ -75,22 +75,19 @@ Legend: `[ ]` open · `[~]` partially done
     (`finished_hints`), read live. The three former hardcoded copies
     (`siril._classify`, `ingest._is_finished_raster`, `build_images._is_intermediate_fit`)
     now draw from it — a stranger can add their own keywords instead of silently
-    misclassifying. *(The gallery promote/demote/set-hero UI below is still open — T2.)*
-  - An addition to the object view: below the gallery of "finished" images, a gallery
-    of "unfinished" images, with right-click actions to **promote** unfinished →
-    finished, **demote** finished → unfinished, and **set hero**.
-  - *Open questions:* Are "finished"/"unfinished" the right terms? Should there be a
-    "favorites" designation alongside/instead of "hero"? How would multiple favorites
-    display?
-  - ⚠️ **When adding an in-app "set as hero" action, fix the hero-render cache.**
-    `build_images._render_hero` currently skips regeneration when
-    `dst.stat().st_mtime >= src.stat().st_mtime` — it keys on the source's mtime,
-    not on *which* source. Today that's safe because imported renders are written
-    with a fresh (now) mtime, so a newly-picked hero is always newer than the prior
-    `hero/<slug>.jpg`. But picking an **existing, older** gallery image as hero
-    would leave the stale hero (and thus stale Library grid tiles + list-view row
-    thumbnails, which are both hero-backed). The fix: invalidate on the source
-    **identity** (frontmatter `hero:` value / source path), not just mtime.
+    misclassifying.
+  - ✅ **Gallery + curation done** (`feature/finished-gallery`). The detail pane splits
+    into **Finished** / **Working files** groups with right-click **Set as hero** /
+    **Mark as finished** / **Mark as working**. Per-image overrides persist in journal
+    frontmatter (`finished_extra`/`working_extra`; `objects.get_curation`/`set_curation`);
+    galleries derive from tier + overrides. Terminology settled on "finished"/"working".
+  - ✅ **Hero-render cache fixed** (shipped with the above). `build_images._render_hero`
+    now keys on source **identity** (a `renders/hero/<slug>.src` sidecar = source
+    rel-path + `img_hash`), not mtime — so picking an **older** image as hero re-renders
+    instead of leaving a stale hero. `rebuild_hero(slug)` re-renders one hero
+    synchronously for the interactive action.
+  - *Open question (deferred):* a "favorites" designation alongside "hero" (multiple
+    favorites display) — not needed for beta.
 - [ ] **#18 — Advanced processing prep.** Create Siril (and other workflow) working
   directories populated with lights from **disparate sources** (see #16) and
   **disparate objects** (e.g. combine m81 + m82 + "m81 m82" as a mosaic), via hardlinks

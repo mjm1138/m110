@@ -341,10 +341,12 @@ archived in **[`DONE.md`](DONE.md)**.
      (`feature/finished-hints`): a preference-driven, user-editable keyword set
      (`m110/hints.py`, edited in Preferences) replaces the hardcoded `_classify`
      patterns (the source of the NGC 6992 miss); the three consumers (siril import,
-     ingest loose-render, build_images hero-tier) all draw from it. **Still open (T2):**
-     a per-object **finished vs. unfinished** gallery with right-click
-     promote/demote/set-hero, persisting a curation designation (data-model impact —
-     see DATA_MODEL future directions).
+     ingest loose-render, build_images hero-tier) all draw from it. ✅ **Gallery done too**
+     (`feature/finished-gallery`): the detail pane splits into **Finished / Working files**
+     groups with right-click **promote/demote/set-hero**, persisting per-image curation in
+     journal frontmatter (`finished_extra`/`working_extra`) + the **hero-render
+     identity-cache fix** (set-hero to an older image now re-renders). See DATA_MODEL
+     "Image curation state".
    - *Advanced/custom workspaces* (#18) — named, on-disk-discoverable Siril (and
      other) working dirs that combine lights from disparate sources (#16) and
      **multiple objects** (mosaics, e.g. M81 + M82 + "M81 M82"), via hardlinks;

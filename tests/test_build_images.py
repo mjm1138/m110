@@ -156,3 +156,37 @@ def test_is_intermediate_fit_honors_final_hint():
     assert build_images._is_intermediate_fit(Path("M51_og.fit")) is True
     assert build_images._is_intermediate_fit(Path("M51_spcc_processed.fit")) is False
     assert build_images._is_intermediate_fit(Path("M51_processed.png")) is False  # raster
+
+
+def test_hero_rerenders_when_a_different_source_is_picked(tmp_path, monkeypatch):
+    """#17 hero-cache fix: choosing an *older* image as hero must re-render — the
+    old mtime-only cache left a stale hero when the pick was older than the current
+    hero.jpg."""
+    import os
+    root, internal = _setup(tmp_path, monkeypatch)
+    fin = config.finished_dir("M99")
+    _png(fin / "A_final.png", color=(200, 30, 30))     # red  (newest → auto hero)
+    _png(fin / "B_final.png", color=(30, 30, 200))     # blue (older, user's pick)
+    old = os.path.getmtime(fin / "A_final.png") - 1000
+    os.utime(fin / "B_final.png", (old, old))          # make B older than A
+
+    catalog = {"m99": {"id": "M99", "name": "Test"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}
+    build_images.render_images(catalog, totals)         # hero = A (newest raster)
+    hero = internal / "renders" / "hero" / "m99.jpg"
+
+    def dominant(p):
+        return Image.open(p).convert("RGB").resize((1, 1)).getpixel((0, 0))
+    assert dominant(hero)[0] > dominant(hero)[2]        # red-dominant (A)
+
+    # user sets the OLDER blue image as hero; rebuild must honour it
+    monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
+    (internal / "derived").mkdir(parents=True, exist_ok=True)
+    (internal / "derived" / "totals.json").write_text(
+        '{"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}')
+    from m110 import objects
+    objects.set_frontmatter_key("m99", "hero", "B_final.png")
+    assert build_images.rebuild_hero("m99") is True
+    assert dominant(hero)[2] > dominant(hero)[0]        # now blue-dominant (B)
+    # sidecar records the source identity
+    assert "B_final.png" in (hero.with_suffix(".src")).read_text()

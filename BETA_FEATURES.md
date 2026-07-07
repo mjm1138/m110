@@ -101,10 +101,12 @@ of work).
 
 ## T2 — Strongly wanted; acceptable fast-follow
 
-- [ ] **#17 finished/unfinished gallery** — right-click promote / demote / set-hero
-  in the object view (the curation UI atop the T1 hint-set). ⚠️ Ships with the
-  **hero-render cache fix** (invalidate on source *identity*, not mtime — BUGS #17
-  note), else picking an older image as hero leaves a stale hero + row thumbnails.
+- [x] **#17 finished/unfinished gallery** — ✅ Done (`feature/finished-gallery`).
+  The object view splits into **Finished / Working files** groups with right-click
+  **promote / demote / set-hero** (curation persisted in journal frontmatter, atop the
+  T1 hint-set). Shipped **with** the ⚠️ **hero-render cache fix** — hero now invalidates
+  on source *identity* (a `.src` sidecar), not mtime, so picking an older image as hero
+  re-renders instead of leaving a stale hero + row thumbnails.
 - [ ] **#26 holding-area identification aids** — FITS-header inspector
   (OBJECT/IMAGETYP/FILTER/RA/DEC via `frame_info`), thumbnail preview, suggested
   identity from RA/DEC (reuse #12 pointing). Most of the plumbing already exists.

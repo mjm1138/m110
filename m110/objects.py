@@ -113,13 +113,12 @@ def read_journal(slug: str) -> tuple[dict, str]:
     return fm, body
 
 
-def set_frontmatter_key(slug: str, key: str, value: str) -> Path:
-    """Upsert a single `key: "value"` into the journal's YAML-ish frontmatter,
-    preserving the other frontmatter lines and the Markdown body. Creates the
-    journal (with a frontmatter block) if it doesn't exist yet."""
+def _upsert_frontmatter(slug: str, key: str, new_line: str | None) -> Path:
+    """Upsert (or, when `new_line` is None, delete) a single frontmatter line by
+    key, preserving the other lines + the Markdown body. Creates the journal (with
+    a frontmatter block) if absent."""
     import re as _re
     text = read_journal_text(slug)
-    new_line = f'{key}: "{value}"'
 
     if text.startswith("---"):
         parts = text.split("---", 2)
@@ -134,15 +133,77 @@ def set_frontmatter_key(slug: str, key: str, value: str) -> Path:
     out, found = [], False
     for line in fm_lines:
         if _re.match(rf"\s*{_re.escape(key)}\s*:", line):
-            out.append(new_line)
             found = True
+            if new_line is not None:
+                out.append(new_line)          # else: drop it (delete)
         else:
             out.append(line)
-    if not found:
+    if not found and new_line is not None:
         out.append(new_line)
 
     new_text = "---\n" + "\n".join(out) + "\n---\n\n" + body
     return write_journal(slug, new_text)
+
+
+def set_frontmatter_key(slug: str, key: str, value: str) -> Path:
+    """Upsert a single `key: "value"` into the journal's YAML-ish frontmatter,
+    preserving the other frontmatter lines and the Markdown body. Creates the
+    journal (with a frontmatter block) if it doesn't exist yet."""
+    return _upsert_frontmatter(slug, key, f'{key}: "{value}"')
+
+
+def get_frontmatter_list(slug: str, key: str) -> list[str]:
+    """A list-valued frontmatter key (stored as a JSON array), or [] if absent /
+    unparseable. Pairs with :func:`set_frontmatter_list`."""
+    import json
+    fm, _ = read_journal(slug)
+    raw = fm.get(key)
+    if not raw:
+        return []
+    try:
+        val = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    return [str(v) for v in val] if isinstance(val, list) else []
+
+
+def set_frontmatter_list(slug: str, key: str, values: list[str]) -> Path:
+    """Upsert a list-valued frontmatter key as a JSON array; an empty list deletes
+    the key (keeps the frontmatter tidy)."""
+    import json
+    if values:
+        return _upsert_frontmatter(slug, key, f"{key}: {json.dumps(list(values))}")
+    return _upsert_frontmatter(slug, key, None)
+
+
+# ── per-image curation overrides (#17): finished / working, on top of the tier ──
+_CURATION_KEYS = {"finished": "finished_extra", "working": "working_extra"}
+
+
+def get_curation(slug: str) -> dict[str, str]:
+    """`{filename: "finished"|"working"}` per-image overrides for this object."""
+    out: dict[str, str] = {}
+    for state, key in _CURATION_KEYS.items():
+        for name in get_frontmatter_list(slug, key):
+            out[name] = state
+    return out
+
+
+def set_curation(slug: str, name: str, state: str | None) -> Path | None:
+    """Force `name` to "finished" or "working" (or None to clear the override).
+    A name is only ever in one list. Returns the written path, or None if nothing
+    changed."""
+    if state is not None and state not in _CURATION_KEYS:
+        return None
+    changed = None
+    for st, key in _CURATION_KEYS.items():
+        cur = get_frontmatter_list(slug, key)
+        want = [n for n in cur if n != name]
+        if st == state:
+            want.append(name)
+        if want != cur:
+            changed = set_frontmatter_list(slug, key, want)
+    return changed
 
 
 def hero_path(slug: str) -> Path | None:

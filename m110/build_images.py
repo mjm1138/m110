@@ -201,14 +201,33 @@ def _hero_source(slug: str, folders: list[str], imgs: list[dict]) -> Path | None
     return imgs[0]["path"] if imgs else None
 
 
-def _render_hero(src: Path, dst: Path) -> bool:
-    # Cache: skip if the hero is already up-to-date w.r.t. its source. Keeps
-    # auto-refresh (launch / focus) cheap when nothing changed.
+def _hero_identity(src: Path) -> str:
+    """Which source produced a hero: path (root-relative when possible) + content
+    hash. Changing the *chosen* source (set-hero — even to an older file) or its
+    content both change this string, so the cache invalidates on identity — not on
+    mtime ordering (an older pick used to leave a stale hero, BUGS #17)."""
     try:
-        if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
-            return True
+        key = str(src.relative_to(config.DATA_ROOT))
+    except ValueError:
+        key = src.name
+    return f"{key}\n{img_hash(src)}"
+
+
+def _render_hero(src: Path, dst: Path) -> bool:
+    # Cache: skip only when the hero was rendered from this exact source+content.
+    # A sidecar records that identity; auto-refresh (launch / focus) stays cheap
+    # when nothing changed, but a set-hero to a different image always re-renders.
+    sidecar = dst.with_suffix(".src")
+    try:
+        identity = _hero_identity(src)
     except OSError:
-        pass
+        identity = None
+    if identity is not None and dst.exists():
+        try:
+            if sidecar.read_text() == identity:
+                return True
+        except OSError:
+            pass
     img = _open_image(src)   # handles raster / TIF / FITS
     if img is None:
         return False
@@ -216,10 +235,32 @@ def _render_hero(src: Path, dst: Path) -> bool:
         img.thumbnail((HERO_SIZE, HERO_SIZE))
         dst.parent.mkdir(parents=True, exist_ok=True)
         img.save(dst, "JPEG", quality=90, optimize=True)
+        if identity is not None:
+            try:
+                sidecar.write_text(identity)
+            except OSError:
+                pass
         return True
     except Exception as e:
         print(f"  hero save failed for {src.name}: {e}")
         return False
+
+
+def rebuild_hero(slug: str) -> bool:
+    """Re-render just one object's hero from its current source (honoring a `hero`
+    frontmatter override). Fast, synchronous — for an interactive set-hero, so the
+    change shows without a full refresh. No-op (False) if the object has no images."""
+    from . import derived
+    by_folder = derived.load_totals().get("by_folder", {})
+    folders = folders_for_slug(slug, by_folder)
+    if not folders:
+        return False
+    imgs = discover_images(slug, folders, by_folder)
+    src = _hero_source(slug, folders, imgs)
+    if not src:
+        return False
+    config.HERO_DIR.mkdir(parents=True, exist_ok=True)
+    return _render_hero(src, config.HERO_DIR / f"{slug}.jpg")
 
 
 def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dict:
@@ -292,7 +333,8 @@ def _cleanup_orphaned_renders(manifest: dict) -> int:
     hero_dir = config.HERO_DIR
     if hero_dir.is_dir():
         for f in hero_dir.iterdir():
-            if f.is_file() and f.suffix.lower() == ".jpg" and f.stem not in active_heroes:
+            # Drop the hero .jpg and its .src identity sidecar for a now-orphaned slug.
+            if f.is_file() and f.suffix.lower() in (".jpg", ".src") and f.stem not in active_heroes:
                 f.unlink()
                 removed += 1
     return removed

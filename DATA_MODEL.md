@@ -488,15 +488,17 @@ checklist, computed on the fly. Consequences:
   like the other rollups. (The item-1 "Decided design" block in ROADMAP is the source
   of truth for the scoring rules; the assistant only *proposes*, never authors these.)
 
-### Image curation state (BUGS #17)
-- A per-image **finished / unfinished / hero** designation, user-curatable
-  (promote/demote/set-hero), replacing today's hardcoded `siril._classify` /
-  `build_images` filename heuristics. Two seams to settle when built: the **hint
-  set** (configurable finished/intermediate filename patterns) is an *authored*
-  preference; the **per-image override** is *authored* state that must persist
-  alongside the object — proposed in `Objects/<id>/journal.md` frontmatter (hero
-  already lives there) or a small per-target manifest. Whichever wins, it's
-  authored (mutable, persistent), and the galleries are *derived* from it.
+### Image curation state (BUGS #17) — *built 2026-07-07*
+- A per-image **finished / working / hero** designation, user-curatable
+  (promote/demote/set-hero). **Both seams shipped:** the **hint set** (configurable
+  finished/intermediate filename patterns) is authored preference in `settings.json`
+  (`m110/hints.py`); the **per-image override** is authored state in the object's
+  `Objects/<id>/journal.md` frontmatter — `finished_extra` / `working_extra` JSON-array
+  keys (`objects.get_curation`/`set_curation`, one list each; hero stays the existing
+  `hero:` key). The detail-pane galleries are *derived* from tier + these overrides.
+  Hero rendering keys on **source identity** (a `renders/hero/<slug>.src` sidecar), so
+  set-hero to an older image re-renders correctly. All authored (mutable, persistent),
+  no `.store_version` impact (journal frontmatter + settings only).
 
 ### Reference images for uncaptured objects + attribution (decided 2026-06-30)
 - **Goal:** show a thumbnail/hero for objects the user hasn't captured yet (and let
