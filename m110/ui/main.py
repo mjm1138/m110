@@ -255,7 +255,10 @@ class MainWindow(QMainWindow):
         self.about_action = QAction("About M110", self)
         self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
         self.about_action.triggered.connect(self._open_about)
+        self.report_action = QAction("Report a problem…", self)
+        self.report_action.triggered.connect(self._open_report)
         self.help_menu = self.menuBar().addMenu("Help")
+        self.help_menu.addAction(self.report_action)
         self.help_menu.addAction(self.about_action)
 
         # Hourly tick for the daily (02:00) auto backup while the app stays running.
@@ -298,6 +301,10 @@ class MainWindow(QMainWindow):
     def _open_about(self):
         from m110.ui.about_dialog import AboutDialog
         AboutDialog(self).exec()
+
+    def _open_report(self):
+        from m110.ui.error_report import ErrorReportDialog, build_report
+        ErrorReportDialog(build_report(), is_crash=False, parent=self).exec()
 
     def _open_publish(self):
         if self.catalog.is_editing() or self._refreshing:
@@ -530,6 +537,24 @@ class MainWindow(QMainWindow):
         if not self._auto_backup_checked:
             self._auto_backup_checked = True
             self._maybe_auto_backup()
+        self._maybe_backup_nudge()
+
+    def _maybe_backup_nudge(self):
+        """Once ever (and only once the user has captures worth losing), nudge a
+        fresh beta user to set up a backup — beta software + irreplaceable data."""
+        if config.get_setting("backup_nudge_seen", False):
+            return
+        if not derived.totals_by_slug():        # nothing captured yet → nothing to lose
+            return
+        config.save_setting("backup_nudge_seen", True)   # show at most once
+        resp = QMessageBox.question(
+            self, "Back up your library",
+            "M110 is beta software, and your captures are irreplaceable.\n\n"
+            "Set up a backup of your library now? (You can also do this any time "
+            "from the Library menu.)",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if resp == QMessageBox.Yes:
+            self._open_backup()
 
     def _on_refresh_failed(self, msg: str):
         self._refreshing = False
@@ -583,8 +608,12 @@ def _set_macos_app_name(name: str) -> None:
 
 
 def main() -> None:
+    from m110 import logsetup
+    logsetup.setup_logging()            # rotating log at ~/.m110/logs/ (before anything)
     _set_macos_app_name("M110")         # app-menu / dock name (before QApplication)
     app = QApplication(sys.argv)
+    from m110.ui import error_report
+    error_report.install_excepthook(app)  # crashes → dialog + log, not a hard abort
     app.setApplicationName("M110")
     app.setApplicationDisplayName("M110")
     app.setOrganizationName("M110")

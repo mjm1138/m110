@@ -156,14 +156,20 @@ empty/all-uncaptured Library with no orientation. (Partly in BUGS "UI niceties."
 *There's a `crash_dumps/` directory in the repo — crashes happen. A beta needs
 graceful failure and a way to hear about it.*
 
-- [ ] 🔴 **Global exception handling** — an unexpected error should show a "M110
-  hit a problem" dialog with a copyable report, not vanish or hard-crash.
-- [ ] 🔴 **In-app "Report a problem / feedback"** — a menu item pointing at the
-  issue tracker (or a form), ideally pre-filled with version + OS. Beta is
-  worthless without a feedback loop.
-- [ ] 🟡 **Log file** in a known location, surfaced in the report path.
-- [ ] 🟡 **Loud "back up your library" nudge** — beta software + irreplaceable
-  captures. Backup exists (ROADMAP #10); make sure new users discover it early.
+- [x] 🔴 **Global exception handling** *(done — `feature/stability-errors`).*
+  `error_report.install_excepthook` (wired in `main()`) replaces PySide6's
+  abort-on-uncaught-slot-error with an "M110 hit a problem" dialog carrying a
+  copyable report; the app **keeps running** (Continue) instead of hard-crashing.
+  Worker-thread exceptions marshal to the GUI thread; re-entrancy-guarded.
+- [x] 🔴 **In-app "Report a problem / feedback"** *(done).* **Help → "Report a
+  problem…"** opens the same report dialog (version + OS + Qt + log tail),
+  pre-filled, with a **Copy report** button and a **prefilled GitHub new-issue**
+  (`issue_url`; `REPO_URL` constant — repoint when the public repo name is settled).
+- [x] 🟡 **Log file** *(done).* `m110/logsetup.py` — rotating log at
+  `~/.m110/logs/m110.log`, surfaced in the report path (`read_log_tail`).
+- [x] 🟡 **Loud "back up your library" nudge** *(done).* `_maybe_backup_nudge`
+  prompts **once ever**, only once the user has captures worth losing
+  (`backup_nudge_seen` setting), pointing at the existing Back up dialog.
 - [ ] 🟢 **Opt-in anonymous telemetry** (crash counts / which OS) — decide yes/no;
   if yes it needs disclosure + consent. Defensible to skip for beta.
 
