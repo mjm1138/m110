@@ -133,10 +133,14 @@ archived in **[`DONE.md`](DONE.md)**.
      re-weighted by session_toggles`; toggles never mutate the saved strategy
      (presets are the explicit save path). *Deferred knobs:* sky-quadrant
      constraint, framing/FOV (needs equipment), transparency, novelty/staleness.
-   - *Manual overrides.* Inline **Pin ▲ / Normal / Mute ▼** (+ optional numeric
-     nudge) on object rows in **Library, Goals, and Summary**, stored in a stable
-     prefs file that **survives regeneration** (computed rank + overrides = final
-     order) — resolving the "hand metadata is fragile" finding below.
+   - *Manual overrides.* ✅ **Shipped** (`feature/manual-pins`, the beta slice):
+     **Pin ▲ / Mute ▼** on object rows in **Library** (right-click + ▲/▼ marker),
+     **Goals** (right-click on membership rows), and **Summary** (pins surface in
+     Priority targets, mutes excluded, empty-state), stored in a stable per-store
+     `pins.toml` (`m110/pins.py`) that **survives regeneration** — resolving the
+     "hand metadata is fragile" finding below. *Still to come with the scorer:* the
+     optional **numeric nudge** and composing `computed rank + overrides = final
+     order` (today overrides act standalone, ahead of the scoring engine).
    - *Build order — three shippable checkpoints:*
      - **A — Profiles + Prioritizer** *(standalone value)*: Profile view + site
        profiles → light-dome auto-map → prioritizer engine + overrides → priority UI

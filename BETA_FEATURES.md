@@ -42,8 +42,9 @@ of work).
 - **Phase 2 — #17 finished-hint generalization** *(processing/curation cluster;
   independent of Phase 1, can run in parallel).* A silent-misclassification
   landmine — derisk it before relying on strangers' output looking right.
-- **Phase 3 — Manual Pin/Mute priorities (#3).** Self-contained (prefs file +
-  inline row controls + dashboard); slots anywhere.
+- **Phase 3 — Manual Pin/Mute priorities (#3).** ✅ Done (`feature/manual-pins`).
+  Self-contained (per-store `pins.toml` + right-click row controls on Library/Goals +
+  Summary Priority-targets surfacing + empty-state).
 - **Phase 4 — Onboarding / first-run (#1), LAST.** Split it: the **data-folder
   prompt** is independent and may land early, but the **empty-state + guided-first-
   import** copy must be finalized *after* Phases 1–3, since it narrates flows those
@@ -74,13 +75,14 @@ of work).
   Preferences → "Finished-image hints"), seeded from sensible defaults, replaces the
   hardcoded `_classify` patterns; all three consumers draw from it.
   *(The gallery promote/demote/set-hero UI in #17 is a T2 nicety on top — still open.)*
-- [ ] **Priority Targets view — degrade gracefully without the scorer.** The
-  dashboard section reads a hand/LLM-edited `priorities.toml`; for a fresh user
-  that's empty/confusing. **Pull *only* the manual Pin / Mute overrides forward**
-  (the self-contained "manual overrides" sub-item of ROADMAP item 1 — a stable
-  prefs file, inline on Library/Goals/Summary rows). Gives the view a reason to
-  exist **without** building the scoring engine. Alternatively: a clear empty
-  state. *(This is the surgical slice of item 1 that ships; the rest is T3.)*
+- [x] **Priority Targets view — degrade gracefully without the scorer.** ✅ Done
+  (`feature/manual-pins`). The dashboard section read a hand/LLM-edited
+  `priorities.toml` — empty/confusing for a fresh user. Now the manual **Pin / Mute**
+  overrides are pulled forward (the self-contained "manual overrides" sub-item of
+  ROADMAP item 1): a stable per-store `pins.toml` (`m110/pins.py`), right-click
+  Pin/Mute on **Library** & **Goals** rows with a ▲/▼ marker, and **Summary** surfaces
+  pinned objects (mutes excluded) **plus a clear empty state**. Gives the view a
+  reason to exist **without** the scoring engine (T3).
 - [x] **Holding-area: discard + reveal** *(BUGS #26, partial).* ✅ Done
   (`feature/holding-discard-reveal`). Strangers' messy imports *will* land in the 6c
   holding area, which offered no way to dismiss junk. Shipped: per-row **Discard**

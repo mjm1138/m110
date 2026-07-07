@@ -838,3 +838,92 @@ def test_catalog_status_color_follows_theme(tmp_path, monkeypatch, qapp):
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+# ── manual Pin / Mute priorities (#3) ─────────────────────────────────────────
+
+def test_summary_empty_priority_state(tmp_path, monkeypatch, qapp):
+    """A fresh store (no priorities.toml, no pins) shows a guiding empty state, not
+    an empty table."""
+    seed_root(tmp_path, monkeypatch)
+    from PySide6.QtWidgets import QLabel
+    from m110.ui.pages.summary import SummaryPage
+    page = SummaryPage()
+    try:
+        caps = [w.text() for w in page._content.findChildren(QLabel)]
+        assert any("Pin an object" in t for t in caps)
+        assert page._priority_rows([]) == []
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_summary_surfaces_pinned_object(tmp_path, monkeypatch, qapp):
+    """A pinned Library object appears in the Priority-targets rows (with a ▲ mark)
+    and a muted one is excluded."""
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110 import pins
+    pins.set_state(slug, pins.PIN)
+    from m110.ui.pages.summary import SummaryPage
+    page = SummaryPage()
+    try:
+        rows = page._priority_rows([])
+        assert any(r["slug"] == slug and r["label"].startswith("▲") for r in rows)
+        # muting it drops it back out
+        pins.set_state(slug, pins.MUTE)
+        assert all(r["slug"] != slug for r in page._priority_rows([]))
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_catalog_set_pin_marks_and_emits(tmp_path, monkeypatch, qapp):
+    """_set_pin persists the override, marks the Library row, and emits pins_changed."""
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110 import pins
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        fired = []
+        page.pins_changed.connect(lambda: fired.append(True))
+        page._set_pin(slug, pins.PIN)
+        assert pins.get_state(slug) == "pin"
+        assert fired
+        # the list-view Object cell now carries the ▲ marker
+        marked = [page.table.item(r, 0).text()
+                  for r in range(page.table.rowCount())
+                  if page.table.item(r, 0).data(Qt.UserRole) == slug]
+        assert marked and marked[0].startswith("▲")
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_goals_member_pin_emits(tmp_path, monkeypatch, qapp):
+    """The Goals membership context-menu action persists a pin + emits pins_changed."""
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110 import pins
+    from m110.ui.pages.goals import GoalsPage
+    from PySide6.QtWidgets import QTableWidget
+    page = GoalsPage()
+    try:
+        fired = []
+        page.pins_changed.connect(lambda: fired.append(True))
+        pins.set_state(slug, pins.PIN)         # engine path used by the menu action
+        page.pins_changed.emit()
+        assert pins.get_state(slug) == "pin" and fired
+        page.reload()
+        # the member row shows the ▲ marker after reload
+        marked = False
+        for tbl in page._content.findChildren(QTableWidget):
+            for r in range(tbl.rowCount()):
+                it = tbl.item(r, 0)
+                if it and it.data(Qt.UserRole) == slug and it.text().startswith("▲"):
+                    marked = True
+        assert marked
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

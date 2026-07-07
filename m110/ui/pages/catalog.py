@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QMenu, QListView, QSlider, QToolButton,
 )
 
-from m110 import config, derived, objects, siril, catalog as catalog_mod
+from m110 import config, derived, objects, pins, siril, catalog as catalog_mod
 from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
@@ -56,6 +56,7 @@ class CatalogPage(QWidget):
     editing_changed = Signal(bool)   # journal editor open/close (shell locks nav)
     dirty = Signal()                 # disk changed (import) → shell should refresh
     notes_saved = Signal(str)        # Object Notes saved → shell reloads other views
+    pins_changed = Signal()          # Pin/Mute override toggled → lightweight reload (#3)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -281,6 +282,7 @@ class CatalogPage(QWidget):
         """Catalog-filtered + naturally sorted (slug, entry) pairs, plus the
         per-slug identifier list — the source both views build from."""
         cat = self._cat
+        self._pins = pins.load()          # slug → "pin"|"mute", for the row markers
         members = self._filter_members()
         pc = self._catalog_filter
         items = [(slug, e) for slug, e in cat.items()
@@ -289,6 +291,19 @@ class CatalogPage(QWidget):
                for slug, e in items}
         items.sort(key=lambda kv: catalog_sort_key(ids[kv[0]][0] if ids[kv[0]] else ""))
         return items, ids
+
+    def reload_pins(self):
+        """Re-read Pin/Mute state and refresh the row markers, preserving selection —
+        used when a pin is toggled elsewhere (e.g. the Goals page, #3)."""
+        prev = self._selected_slug()
+        self._rebuild_views()
+        if prev:
+            self._select_slug(prev)
+
+    def _pin_marker(self, slug: str) -> str:
+        """A ▲ (pinned) / ▼ (muted) prefix for an object label, or '' (#3)."""
+        st = getattr(self, "_pins", {}).get(slug)
+        return "▲ " if st == pins.PIN else "▼ " if st == pins.MUTE else ""
 
     def _build_tile_items(self) -> list[TileItem]:
         totals = self._totals
@@ -302,7 +317,7 @@ class CatalogPage(QWidget):
             out.append(TileItem(
                 key=slug,
                 thumb_path=objects.hero_path(slug) if captured else None,
-                title=object_label(ids[slug]),
+                title=self._pin_marker(slug) + object_label(ids[slug]),
                 subtitle=subtitle,
                 status=t.get("status") if captured else None,
                 muted=not captured,
@@ -331,7 +346,8 @@ class CatalogPage(QWidget):
             captured = bool(t)
 
             oid = ids[slug]
-            obj = NumItem(object_label(oid), catalog_sort_key(oid[0] if oid else ""))
+            obj = NumItem(self._pin_marker(slug) + object_label(oid),
+                          catalog_sort_key(oid[0] if oid else ""))
             obj.setData(Qt.UserRole, slug)
             table.setItem(row, 0, obj)
             if captured:
@@ -499,6 +515,12 @@ class CatalogPage(QWidget):
         published = entry.get("publish", True) is not False
         publish_act = menu.addAction(
             "Exclude from publishing" if published else "Include in publishing")
+        menu.addSeparator()
+        state = pins.get_state(slug)
+        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
+                                 else "Pin as priority")
+        mute_act = menu.addAction("Unmute" if state == pins.MUTE else "Mute")
+        menu.addSeparator()
         remove_act = menu.addAction("Remove from Library")
         viewport = self.table.viewport() if self._view_mode == "list" else self.grid_view.viewport()
         chosen = menu.exec(viewport.mapToGlobal(pos))
@@ -508,8 +530,19 @@ class CatalogPage(QWidget):
             self._enrich_one_online(slug)
         elif chosen is publish_act:
             self._toggle_publish(slug, not published)
+        elif chosen is pin_act:
+            self._set_pin(slug, None if state == pins.PIN else pins.PIN)
+        elif chosen is mute_act:
+            self._set_pin(slug, None if state == pins.MUTE else pins.MUTE)
         elif chosen is remove_act:
             self._remove_one(slug)
+
+    def _set_pin(self, slug: str, state):
+        """Apply a Pin/Mute/clear override, refresh the marker, keep selection (#3)."""
+        pins.set_state(slug, state)
+        self._rebuild_views()
+        self._select_slug(slug)
+        self.pins_changed.emit()
 
     def _toggle_publish(self, slug: str, publish: bool):
         if catalog_mod.set_publish_flag(slug, publish):

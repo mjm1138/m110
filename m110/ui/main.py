@@ -182,9 +182,11 @@ class MainWindow(QMainWindow):
         self.catalog.editing_changed.connect(self._on_editing_changed)
         self.catalog.dirty.connect(self._do_refresh)
         self.catalog.notes_saved.connect(self._on_notes_saved)
+        self.catalog.pins_changed.connect(self._on_pins_changed)
         self.summary.open_object.connect(self.open_object)
         self.goals.open_object.connect(self.open_object)
         self.goals.dirty.connect(self._do_refresh)
+        self.goals.pins_changed.connect(self._on_pins_changed)
         self.processing.open_object.connect(self.open_object)
         self.sessions.open_object.connect(self.open_object)
         self.journal.open_object.connect(self.open_object)
@@ -372,8 +374,23 @@ class MainWindow(QMainWindow):
         # Object Notes were edited in the detail pane — reload the other views (the
         # Journal feed especially) so the new text shows without a manual Refresh.
         # Lightweight: no scan/derive/render worker (a text edit adds no images).
+        self._reload_secondary_pages()
+
+    def _reload_secondary_pages(self):
+        # Lightweight reload of every page but the Catalog (which updates itself in
+        # place) — used for changes with no image impact (notes edit).
         for p in self.pages:
-            if p is not self.catalog:        # the detail pane already re-rendered
+            if p is not self.catalog:
+                p.reload()
+
+    def _on_pins_changed(self):
+        # A Pin/Mute override toggled (from Library or Goals). No scan/derive — just
+        # refresh the markers/priority list everywhere. Catalog.reload() would no-op
+        # (cat/totals unchanged), so refresh its markers explicitly (#3).
+        for p in self.pages:
+            if p is self.catalog:
+                self.catalog.reload_pins()
+            else:
                 p.reload()
 
     def _prepare_working_folders(self):

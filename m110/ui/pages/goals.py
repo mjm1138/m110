@@ -13,10 +13,10 @@ from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
     QCheckBox, QPushButton, QInputDialog, QMessageBox, QFrame, QToolButton,
-    QHeaderView,
+    QHeaderView, QMenu,
 )
 
-from m110 import goals as goals_mod, derived, catalog
+from m110 import goals as goals_mod, derived, catalog, pins
 from m110.ui.widgets import make_table
 from m110.ui.theme import status_color
 
@@ -69,6 +69,7 @@ class _CollapsibleSection(QWidget):
 class GoalsPage(QScrollArea):
     open_object = Signal(str)     # row → Catalog detail
     dirty = Signal()              # active set / custom goals changed → shell refresh
+    pins_changed = Signal()       # Pin/Mute override toggled on a member row (#3)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -234,6 +235,7 @@ class GoalsPage(QScrollArea):
             lib = {}
         ref = catalog.load_reference()
 
+        pin_state = pins.load()
         tbl = make_table(["Object", "Name", "Captured", "Deep stack"])
         tbl.setSortingEnabled(False)            # keep natural catalog order
         green = QBrush(status_color("deep_stack"))
@@ -241,6 +243,8 @@ class GoalsPage(QScrollArea):
         for slug in slugs:
             entry = lib.get(slug) or ref.get(slug)
             label = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
+            st = pin_state.get(slug)
+            marker = "▲ " if st == pins.PIN else "▼ " if st == pins.MUTE else ""
             name = (entry or {}).get("name") or members[slug]
             t = totals.get(slug)
             captured = t is not None
@@ -248,7 +252,7 @@ class GoalsPage(QScrollArea):
 
             r = tbl.rowCount()
             tbl.insertRow(r)
-            obj = QTableWidgetItem(label)
+            obj = QTableWidgetItem(marker + label)
             obj.setData(Qt.UserRole, slug)
             tbl.setItem(r, 0, obj)
             tbl.setItem(r, 1, QTableWidgetItem(str(name or "")))
@@ -262,7 +266,32 @@ class GoalsPage(QScrollArea):
         tbl.setMinimumHeight(h)
         tbl.setMaximumHeight(h)
         self._wire_open(tbl)
+        tbl.setContextMenuPolicy(Qt.CustomContextMenu)
+        tbl.customContextMenuRequested.connect(
+            lambda pos, t=tbl: self._member_context_menu(t, pos))
         return tbl
+
+    def _member_context_menu(self, tbl, pos):
+        """Right-click a membership row → Pin/Mute/clear the object (#3)."""
+        item = tbl.itemAt(pos)
+        if item is None:
+            return
+        slug = tbl.item(item.row(), 0).data(Qt.UserRole)
+        if not slug:
+            return
+        state = pins.get_state(slug)
+        menu = QMenu(self)
+        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
+                                 else "Pin as priority")
+        mute_act = menu.addAction("Unmute" if state == pins.MUTE else "Mute")
+        chosen = menu.exec(tbl.viewport().mapToGlobal(pos))
+        if chosen is pin_act:
+            pins.set_state(slug, None if state == pins.PIN else pins.PIN)
+        elif chosen is mute_act:
+            pins.set_state(slug, None if state == pins.MUTE else pins.MUTE)
+        else:
+            return
+        self.pins_changed.emit()
 
     @staticmethod
     def _check_item(on: bool, brush: QBrush) -> QTableWidgetItem:

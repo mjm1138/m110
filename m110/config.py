@@ -145,7 +145,7 @@ def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
     global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
-    global PROFILES_DIR
+    global PROFILES_DIR, PINS_TOML
     DATA_ROOT = root
     # Visible content axes
     OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
@@ -157,6 +157,7 @@ def _apply(root: Path) -> None:
     LIBRARY_TOML = INTERNAL_DIR / "library.toml"   # the user's object corpus
     GOALS_TOML = INTERNAL_DIR / "goals.toml"       # per-store active goals
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
+    PINS_TOML = INTERNAL_DIR / "pins.toml"         # manual Pin/Mute overrides (#3)
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
     DERIVED_DIR = INTERNAL_DIR / "derived"

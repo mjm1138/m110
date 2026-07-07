@@ -9,8 +9,19 @@ from PySide6.QtWidgets import (
     QHeaderView,
 )
 
-from m110 import derived
+from m110 import catalog, derived, pins
 from m110.ui.widgets import NumItem, status_label, make_table
+
+import re as _re
+
+
+def _priority_slug(p: dict) -> str | None:
+    """Best-effort Library slug for a hand-edited priority entry (for mute + click)."""
+    prog = p.get("progress")
+    if prog and prog.get("source") in ("slug", "folder"):
+        return prog.get("key")
+    base = _re.sub(r"\s*\(.*?\)\s*", "", p.get("id", "")).strip()
+    return base.lower().replace(" ", "-").replace("/", "-") or None
 
 _URGENT = ("out_of_date", "not_processed")
 
@@ -165,29 +176,82 @@ class SummaryPage(QScrollArea):
         self._wire_open(ci)
         self._lay.addWidget(ci)
 
-        # ── Priority targets ───────────────────────────────────────────────
+        # ── Priority targets (hand-edited priorities + manual pins; #3) ─────
         self._lay.addWidget(self._heading("Priority targets"))
+        rows = self._priority_rows(priorities)
+        if not rows:
+            hint = QLabel("No priority targets yet. Pin an object from your Library "
+                          "(right-click → Pin as priority) to build your list.")
+            hint.setProperty("caption", True)
+            hint.setWordWrap(True)
+            self._lay.addWidget(hint)
+            self._lay.addStretch(1)
+            return
         pt = make_table(["Object", "Type", "Season", "Priority", "Filter",
                          "Target", "Progress"], stretch_last=True)
         pt.setSortingEnabled(False)
-        for p in priorities:
+        for row in rows:
             r = pt.rowCount()
             pt.insertRow(r)
-            pt.setItem(r, 0, QTableWidgetItem(p.get("id", "")))
-            pt.setItem(r, 1, QTableWidgetItem(p.get("type_hint", "") or ""))
-            pt.setItem(r, 2, QTableWidgetItem(p.get("season", "") or ""))
-            pt.setItem(r, 3, QTableWidgetItem(str(p.get("priority", "") or "")))
-            pt.setItem(r, 4, QTableWidgetItem(p.get("filter", "") or ""))
-            pt.setItem(r, 5, QTableWidgetItem(str(p.get("target", "") or "")))
+            obj = QTableWidgetItem(row["label"])
+            obj.setData(Qt.UserRole, row.get("slug"))
+            pt.setItem(r, 0, obj)
+            pt.setItem(r, 1, QTableWidgetItem(row["type"]))
+            pt.setItem(r, 2, QTableWidgetItem(row["season"]))
+            pt.setItem(r, 3, QTableWidgetItem(row["priority"]))
+            pt.setItem(r, 4, QTableWidgetItem(row["filter"]))
+            pt.setItem(r, 5, QTableWidgetItem(row["target"]))
+            pt.setItem(r, 6, QTableWidgetItem(row["progress"]))
+        pt.resizeColumnsToContents()
+        pt.setMinimumHeight(min(480, 28 * (len(rows) + 1) + 8))
+        self._wire_open(pt)
+        self._lay.addWidget(pt)
+
+        self._lay.addStretch(1)
+
+    def _priority_rows(self, priorities) -> list[dict]:
+        """Merge hand-edited priorities with manually pinned Library objects, drop
+        muted ones, into uniform display rows (#3)."""
+        muted = pins.muted_slugs()
+        pinned = pins.pinned_slugs()
+        cat = catalog.load_library()
+        by_slug = derived.totals_by_slug()
+        rows, shown = [], set()
+
+        for p in priorities:
+            slug = _priority_slug(p)
+            if slug and slug in muted:
+                continue
             if p.get("progress"):
-                prog = f"{p['progress'].get('integration_hms', '')} ({p.get('percent_complete', 0)}%)"
+                prog = (f"{p['progress'].get('integration_hms', '')} "
+                        f"({p.get('percent_complete', 0)}%)")
             elif not p.get("track", True):
                 prog = "campaign — see strategy"
             else:
                 prog = "not started"
-            pt.setItem(r, 6, QTableWidgetItem(prog))
-        pt.resizeColumnsToContents()
-        pt.setMinimumHeight(min(480, 28 * (len(priorities) + 1) + 8))
-        self._lay.addWidget(pt)
+            rows.append({
+                "label": p.get("id", ""), "slug": slug,
+                "type": p.get("type_hint", "") or "", "season": p.get("season", "") or "",
+                "priority": str(p.get("priority", "") or ""),
+                "filter": p.get("filter", "") or "", "target": str(p.get("target", "") or ""),
+                "progress": prog,
+            })
+            if slug:
+                shown.add(slug)
 
-        self._lay.addStretch(1)
+        for slug in sorted(pinned):
+            if slug in shown:
+                continue
+            e = cat.get(slug)
+            if not e:
+                continue
+            t = by_slug.get(slug)
+            prog = t.get("integration_hms", "") if t else "not started"
+            rows.append({
+                "label": f"▲ {e.get('id') or slug}", "slug": slug,
+                "type": (e.get("type") or "").replace("_", " "),
+                "season": e.get("season") or "", "priority": "pinned",
+                "filter": e.get("filter") or "", "target": "",
+                "progress": prog or "not started",
+            })
+        return rows

@@ -138,6 +138,13 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Planning / prioritization
 
+- [x] **#3 — Manual Pin/Mute priorities** *(the self-contained slice of ROADMAP item 1;
+  `feature/manual-pins`).* Ships ahead of the scorer so the Summary **Priority targets**
+  view has a reason to exist for a fresh user (empty `priorities.toml`). Per-store
+  `pins.toml` (`m110/pins.py`, survives regeneration) + right-click **Pin/Mute** on
+  Library & Goals rows with a ▲/▼ marker; pinned objects surface in Priority targets
+  (mutes excluded) with an empty-state prompt. Standalone for now — the scorer will
+  compose over it (numeric nudge + `computed rank + overrides` deferred with the engine).
 - [~] **#21 — Auto-prioritizer / target scoring.** Promoted to **ROADMAP item 1**
   (a deterministic, testable scoring engine to replace the hand-edited/LLM-edited
   `priorities.toml`; dependency: multi-catalog goals, item 5 ✓). The vision: priorities
