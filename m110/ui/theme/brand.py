@@ -25,12 +25,17 @@ import math
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import (
-    QColor, QIcon, QImage, QLinearGradient, QPainter, QPixmap,
+    QColor, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap,
 )
 from PySide6.QtSvg import QSvgRenderer
 
 _BRAND_DIR = Path(__file__).resolve().parent / "brand"
 _LOGO_SVG = _BRAND_DIR / "m110-logo.svg"
+# Finished full-bleed app-icon artwork: the wordmark over a light equatorial grid
+# (with an easter-egg marker at M110's sky position). Used ONLY for the app/dock
+# icon tile — the nav-rail / About wordmark stays on the plain `_LOGO_SVG`. Unlike
+# the wordmark, this is rendered as-is (no dilation/crop); see `_icon_pixmap`.
+_ICON_SVG = _BRAND_DIR / "m110-logo-grid.svg"
 _PATH_ID = "path1"          # fast-path crop id for the bundled logo (optional)
 
 # ── tunable ───────────────────────────────────────────────────────────────────
@@ -55,7 +60,8 @@ ICON_LOGO_MAX_HEIGHT = 0.72
 # Parchment tile palette for the app icon (fixed — icons don't follow the theme).
 _PARCHMENT_TOP = QColor("#f1e8d2")
 _PARCHMENT_BOT = QColor("#e2d4b6")
-_ICON_INK = QColor("#2b2118")     # deep sepia ink on the tile
+_ICON_INK = QColor("#2b2118")     # deep sepia ink (wordmark) on the tile
+_ICON_GRID_INK = "#c2c2c2"        # equatorial grid + easter-egg marker (light grey)
 
 # Recolor targets: near-black fills in `style="fill:..."` and `fill="..."` forms.
 _FILL_STYLE_RE = re.compile(r"fill:\s*(?:#0{3}|#0{6}|black)\b", re.IGNORECASE)
@@ -63,6 +69,7 @@ _FILL_ATTR_RE = re.compile(r'fill=(["\'])\s*(?:#0{3}|#0{6}|black)\s*\1', re.IGNO
 
 _svg_text: str | None = None
 _logo_cache: dict[tuple[int, int], QPixmap] = {}   # (px_height, rgba) -> pixmap
+_icon_svg_cache: bytes | None = None               # recolored app-icon artwork
 
 
 def _load_svg() -> str:
@@ -164,9 +171,29 @@ def logo_icon(height: int, color: QColor) -> QIcon:
     return QIcon(logo_pixmap(height, color))
 
 
+def _icon_svg_bytes() -> bytes:
+    """The app-icon artwork recolored for the parchment tile (cached): near-black
+    wordmark fill+stroke → sepia ink; the light grid strokes (`#dcdcdc`) and the
+    easter-egg marker fill (`#f2f2f2`) → the grid grey. Rendered as-is (this is a
+    finished composition, not the adaptive wordmark), so no dilation/crop."""
+    global _icon_svg_cache
+    if _icon_svg_cache is None:
+        svg = _ICON_SVG.read_text(encoding="utf-8")
+        ink = _ICON_INK.name()
+        svg = re.sub(r"fill:\s*#0{6}", f"fill:{ink}", svg, flags=re.IGNORECASE)
+        svg = re.sub(r"stroke:\s*#0{6}", f"stroke:{ink}", svg, flags=re.IGNORECASE)
+        svg = re.sub(r"stroke:\s*#dcdcdc", f"stroke:{_ICON_GRID_INK}", svg, flags=re.IGNORECASE)
+        svg = re.sub(r"fill:\s*#f2f2f2", f"fill:{_ICON_GRID_INK}", svg, flags=re.IGNORECASE)
+        _icon_svg_cache = svg.encode("utf-8")
+    return _icon_svg_cache
+
+
 def _icon_pixmap(size: int) -> QPixmap:
-    """One square app-icon pixmap: ink logo on a rounded parchment tile, inset with a
-    transparent margin so it matches the visual weight of other dock icons."""
+    """One square app-icon pixmap: the finished icon artwork on a rounded parchment
+    tile, inset with a transparent margin so it matches the visual weight of other
+    dock icons. Uses `_ICON_SVG` (full-bleed grid + wordmark) as finished art —
+    rendered whole and clipped to the squircle — falling back to the composed plain
+    wordmark if that file is absent."""
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
@@ -181,14 +208,21 @@ def _icon_pixmap(size: int) -> QPixmap:
     p.setPen(Qt.PenStyle.NoPen)
     radius = tile.width() * 0.2237                 # macOS squircle-ish corner
     p.drawRoundedRect(tile, radius, radius)
-    # Ink logo sized by width to fill the tile (capped in height), rendered crisp at the
-    # final pixel size. Probe the aspect once (cached), then derive the target height.
-    aspect = logo_pixmap(100, _ICON_INK).width() / 100.0
-    target_h = (tile.width() * ICON_LOGO_WIDTH) / aspect
-    target_h = min(target_h, tile.height() * ICON_LOGO_MAX_HEIGHT)
-    logo = logo_pixmap(max(1, int(round(target_h))), _ICON_INK)
-    p.drawPixmap(int(tile.center().x() - logo.width() / 2),
-                 int(tile.center().y() - logo.height() / 2), logo)
+    if _ICON_SVG.exists():
+        # Finished art: render the whole viewBox into the tile, clipped to the
+        # squircle so the full-bleed grid respects the rounded corners.
+        clip = QPainterPath()
+        clip.addRoundedRect(tile, radius, radius)
+        p.setClipPath(clip)
+        QSvgRenderer(_icon_svg_bytes()).render(p, tile)
+    else:
+        # Legacy fallback: the plain wordmark sized by width to fill the tile.
+        aspect = logo_pixmap(100, _ICON_INK).width() / 100.0
+        target_h = (tile.width() * ICON_LOGO_WIDTH) / aspect
+        target_h = min(target_h, tile.height() * ICON_LOGO_MAX_HEIGHT)
+        logo = logo_pixmap(max(1, int(round(target_h))), _ICON_INK)
+        p.drawPixmap(int(tile.center().x() - logo.width() / 2),
+                     int(tile.center().y() - logo.height() / 2), logo)
     p.end()
     return pm
 
