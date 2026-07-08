@@ -535,11 +535,16 @@ class MainWindow(QMainWindow):
                 self, "Prepare working folders",
                 f"{n} working folder(s) prepared." if n else
                 "All objects already have their working folders.")
-        # Once the store is consistent, consider a launch-time auto backup (opt-in).
-        if not self._auto_backup_checked:
-            self._auto_backup_checked = True
-            self._maybe_auto_backup()
-        self._maybe_backup_nudge()
+        # Once the store is consistent, consider a launch-time auto backup (opt-in)
+        # and a one-time backup nudge. Both can pop a modal, so only fire them when
+        # there's a visible window to show it in — a refresh that completes with no
+        # window shown (headless tests) must not open a stray modal (it double-frees
+        # on Linux Qt). Production always show()s the window before events pump.
+        if self.isVisible():
+            if not self._auto_backup_checked:
+                self._auto_backup_checked = True
+                self._maybe_auto_backup()
+            self._maybe_backup_nudge()
 
     def _maybe_backup_nudge(self):
         """Once ever (and only once the user has captures worth losing), nudge a
