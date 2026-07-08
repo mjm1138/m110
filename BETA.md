@@ -81,14 +81,19 @@ for the beta (Windows just ships unsigned).*
   a low glibc floor); that packaged-AppImage run is also the §2 acceptance test.
   Flatpak still a follow-on. Watch: `libfuse2` on the user's box, `libxcb-cursor0`
   on newer distros.
-- [ ] 🔴 **Windows build + installer** — PyInstaller `.exe` + Inno Setup (or MSI).
-  Ships for the beta, but as a supported-not-lead platform.
-- [ ] 🟡 **Windows unsigned-launch docs** — unsigned binaries trip **SmartScreen**
-  ("Windows protected your PC"). For the beta this is **accepted**: ship unsigned
-  and document the "click More info → Run anyway" step prominently on the download
-  page / in the announce post. **Revisit an OV/EV code-signing cert only on
-  uptake** — don't buy one on spec. (EV clears SmartScreen instantly but is pricey
-  + hardware-token; OV builds reputation over time — a later decision.)
+- [~] 🔴 **Windows build + installer** — scaffold in `packaging/windows/`:
+  onedir PyInstaller spec + `make_ico.py` (Pillow → `M110.ico`) + Inno Setup
+  `M110.iss` (per-user install, stable AppId, Start-Menu/desktop shortcuts) +
+  `build_windows.ps1` orchestrator. Shares `packaging/common/`. **Build pending a
+  Windows host** — PyInstaller can't cross-compile + Inno Setup is Windows-only;
+  needs Inno Setup 6.3+. Ships unsigned (supported-not-lead platform).
+- [~] 🟡 **Windows unsigned-launch docs** — the SmartScreen "More info → Run
+  anyway" flow is documented in `packaging/windows/README.md`; still needs to land
+  on the **download page / announce post** (§6). Unsigned binaries trip
+  **SmartScreen** ("Windows protected your PC"); for the beta this is **accepted**.
+  **Revisit an OV/EV code-signing cert only on uptake** — don't buy one on spec.
+  (EV clears SmartScreen instantly but is pricey + hardware-token; OV builds
+  reputation over time — a later decision.)
 - [ ] 🟢 **Homebrew cask** (`brew install --cask m110`) / **winget** manifest —
   nice for the dev-y tail; not a substitute for the double-click installers.
 - [x] 🔴 **Real version number + scheme** — bumped to **`0.1.0b1`** (PEP 440
