@@ -1,14 +1,31 @@
 # Security Policy
 
 M110 is a **local desktop application**. It manages files on your own machine and
-does not run a server or store your data in the cloud. Its network use is limited
-and optional — object-metadata lookups against [Simbad](https://simbad.cds.unistra.fr/)
-for the "Add object" / "Enrich online" features, which are off by default and only
-active when the optional `online` extra is installed. It never uploads your images
-or library.
+does not run a server or store your data in the cloud. Today its network use is
+limited and optional — object-metadata lookups against
+[Simbad](https://simbad.cds.unistra.fr/) for the "Add object" / "Enrich online"
+features, which are off by default and only active when the optional `online` extra
+is installed. Publishing currently exports a **static site to a local folder**; it
+does not upload your images or library.
 
-Because of that, the security surface is small — but we still take reports
+Because of that, today's security surface is small — but we still take reports
 seriously.
+
+### Handling of secrets (forward-looking)
+
+Planned features will widen this surface, and we call it out here so the
+expectation is set early:
+
+- **Remote publishing targets** (GitHub Pages, Netlify, and similar — on the
+  roadmap) will require **credentials or auth tokens** to upload on your behalf.
+- When those land, secrets will be stored using the **OS-native secure store**
+  (macOS Keychain / Windows Credential Manager / Linux Secret Service via the
+  `keyring` library) rather than in plaintext config, will be **scoped to the
+  minimum permission** the target needs, and will **never** be written to the data
+  store, logs (`~/.m110/logs/`), crash reports, or the published output.
+
+If you spot a case where a secret could leak into any of those, that's exactly the
+kind of report we want.
 
 ## Supported versions
 
