@@ -229,8 +229,11 @@ gating on §6's "make the repo public," not follow-up polish.*
 - [ ] 🟡 **Issue + PR templates** — bug report template that asks for OS / version
   / Seestar model (feeds §3/§5); a PR template with a short checklist (tests pass,
   docs updated, targets a feature branch).
-- [ ] 🟡 **Branch protection on `main`** — require PRs (no direct pushes) + a
-  passing CI check + at least one review before merge. Matches the "never commit
+- [x] 🟡 **Branch protection on `main`** — live: PRs required (no direct pushes) +
+  both CI checks (`test (3.11)` / `test (3.14)`) must pass before merge. Reviews set
+  to **0** for now (a solo maintainer can't approve their own PR — bump to 1 when
+  other contributors arrive) and `enforce_admins` **off** (owner can bypass in a
+  pinch); `strict` off (no forced rebase-before-merge). Matches the "never commit
   feature work directly to `main`" rule and keeps an outside PR from landing red.
 - [ ] 🟡 **Contribution-license stance** — decide and state how inbound
   contributions are licensed. Simplest for Apache-2.0: an "inbound = outbound"
