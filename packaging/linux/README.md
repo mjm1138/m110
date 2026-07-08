@@ -53,7 +53,9 @@ chmod +x dist/M110-*.AppImage && ./dist/M110-*.AppImage
 - **First launch** writes the data store to `~/Documents/M110` (or `$M110_DATA_ROOT`),
   same as every platform.
 
-## CI (later)
+## CI
 
-Scripted so a `ubuntu-22.04` GitHub Actions job can build the AppImage on tag.
-Deferred until the local flow is proven on a real x86_64 desktop.
+Built automatically by `.github/workflows/release.yml` on a version tag
+(`ubuntu-22.04` runner) and attached to the GitHub Release — no local x86_64 host
+needed to *produce* the artifact. Use a local build for the §2 interactive
+acceptance test (X11 + Wayland).

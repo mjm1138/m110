@@ -1,0 +1,98 @@
+# Build the packaged Linux AppImage + Windows installer on GitHub's free x86_64
+# runners and attach them to a GitHub Release, triggered by a version tag (e.g.
+# `git tag v0.1.0-beta.1 && git push --tags`). Both ship UNSIGNED (per BETA §1), so
+# no signing secrets are needed.
+#
+# macOS is built + notarized locally (it needs the Developer ID cert). Adding a
+# macos job here would require importing the cert (base64 .p12) + notarytool creds
+# as encrypted repo secrets — a documented later step, intentionally not wired yet.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}     # manual run: builds + uploads artifacts, but no Release
+
+permissions:
+  contents: write           # the release job creates the Release and uploads assets
+
+jobs:
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-22.04    # low glibc floor → the AppImage also runs on newer distros
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install system libraries (Qt + AppImage tooling)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libdbus-1-3 desktop-file-utils
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[build]"
+      - name: Fetch appimagetool
+        run: |
+          wget -qO /tmp/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /tmp/appimagetool
+      - name: Build AppImage
+        env:
+          APPIMAGETOOL: /tmp/appimagetool
+          APPIMAGE_EXTRACT_AND_RUN: "1"    # run appimagetool without FUSE on the runner
+        run: ./packaging/linux/build_appimage.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/M110-*.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[build]"
+      - name: Build installer
+        shell: pwsh
+        run: ./packaging/windows/build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/M110-*setup.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/')    # only on a tag push, not manual runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          mapfile -t FILES < <(find artifacts -type f)
+          printf 'attaching: %s\n' "${FILES[@]}"
+          gh release create "$TAG" "${FILES[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "M110 $TAG" \
+            --prerelease \
+            --notes "Automated packaged builds — Linux AppImage + Windows installer (both **unsigned**: Windows trips SmartScreen → More info → Run anyway; the AppImage needs libfuse2, or run it with \`--appimage-extract-and-run\`). The macOS DMG is built + notarized separately."

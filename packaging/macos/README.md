@@ -69,8 +69,10 @@ Artifacts land in `dist/` (git-ignored).
   traceback: `./dist/M110.app/Contents/MacOS/M110`. A missing module → add it to
   `hiddenimports` in the spec; a missing data file → to `datas`.
 
-## CI (later)
+## CI
 
-This is scripted so a `macos-latest` GitHub Actions job can build + notarize on
-tag, with the cert + notary creds supplied via encrypted secrets. Deferred until
-the local flow is proven (BETA §1).
+The Linux + Windows artifacts build in CI on a version tag
+(`.github/workflows/release.yml`). macOS is **not** in that workflow yet: a
+`macos-latest` job would need the Developer ID cert (base64 `.p12`) + notarytool
+creds imported as encrypted repo secrets. Until then, produce the notarized DMG
+locally with `build_release.sh` and upload it to the tag's Release by hand.

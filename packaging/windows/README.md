@@ -56,7 +56,10 @@ Revisit only on uptake.)
 - The `.exe` version resource (CompanyName/ProductVersion in file properties) is not
   set yet — a later polish item (PyInstaller `version_file`).
 
-## CI (later)
+## CI
 
-Scripted so a `windows-latest` GitHub Actions job can build the installer on tag.
-Deferred until the local flow is proven on a real Windows machine.
+Built automatically by `.github/workflows/release.yml` on a version tag
+(`windows-latest` runner, installs Inno Setup via Chocolatey) and attached to the
+GitHub Release — no local Windows host needed to *produce* the installer. Use a
+local/VM build for the §2 interactive acceptance test (Seestar detection, file
+dialogs, path handling).
