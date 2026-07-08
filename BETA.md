@@ -54,22 +54,25 @@ the target persona outright. Nothing here is in ROADMAP/BUGS beyond a one-line
 *Build order follows priority: **macOS → Linux → Windows** — but all three ship
 for the beta (Windows just ships unsigned).*
 
-- [~] 🔴 **macOS `.app` bundle** *(lead platform)* — **PyInstaller** scaffold in
+- [x] 🔴 **macOS `.app` bundle** *(lead platform)* — **PyInstaller** pipeline in
   `packaging/macos/` (spec + entry shim + `.icns` gen + build script). Bundle id
   **`space.m110.M110`**, `Info.plist` with `CFBundleName=M110` (the durable fix for
   the NSBundle app/dock-name stopgap) + dark-mode + version from
-  `importlib.metadata`. **Unsigned build proven end-to-end** — `dist/M110.app`
-  builds and launches (offscreen smoke test: event loop up, store bootstraps, no
-  crash). Local astropy hook override needed (contrib hook's blanket
-  `collect_submodules` chokes on matplotlib-requiring `wcsaxes`).
-- [~] 🔴 **macOS notarization + Developer-ID signing** — **scripted** but not yet
-  run against a real cert: `sign_notarize.sh` does inside-out Developer-ID signing
+  `importlib.metadata`. Builds + launches; local astropy hook override needed
+  (contrib hook's blanket `collect_submodules` chokes on matplotlib-requiring
+  `wcsaxes`).
+- [x] 🔴 **macOS notarization + Developer-ID signing** — **done, produced a real
+  signed+notarized build.** `sign_notarize.sh` does inside-out Developer-ID signing
   (not `--deep`), hardened runtime + `entitlements.plist`, `notarytool` submit,
-  staple. Needs the one-time cert + `notarytool store-credentials` setup (see
-  `packaging/macos/README.md`), then execute on the build Mac.
-- [~] 🔴 **`.dmg` installer** (drag-to-Applications) — `make_dmg.sh` (hdiutil,
-  `/Applications` symlink, version-stamped name). Written, runs after signing;
-  produce + verify on the real signed build.
+  staple. Two gotchas hit + fixed: (1) needs a **Developer ID Application** cert
+  under the *paid* team (`8N7DP84NGU`), not the free-tier **Apple Development** cert;
+  (2) `entitlements.plist` must be **comment-free** — codesign's AMFI parser rejects
+  XML comments (`AMFIUnserializeXML: syntax error`). One-time setup (cert +
+  `notarytool store-credentials`) in `packaging/macos/README.md`.
+- [x] 🔴 **`.dmg` installer** (drag-to-Applications) — `make_dmg.sh` (hdiutil,
+  `/Applications` symlink, version-stamped name). **Produced `M110-0.1.0.dmg`; it
+  installs and runs.** *(Still worth the §2 fresh-machine test on a Mac without the
+  dev cert/tools — notarization should make Gatekeeper pass anywhere, but confirm.)*
 - [ ] 🔴 **Linux package** *(close second)* — **AppImage** (single-file,
   double-click, no install — best fit for a mixed-distro audience) as the primary;
   Flatpak as a follow-on. PySide6 + system Qt can be fiddly; test on Ubuntu LTS +
