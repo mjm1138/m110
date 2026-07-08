@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an idea or improvement for M110.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Before filing, a quick skim of
+        [ROADMAP.md](https://github.com/mjm1138/m110/blob/main/ROADMAP.md) and
+        [BUGS.md](https://github.com/mjm1138/m110/blob/main/BUGS.md) may show it's
+        already planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the workflow or pain point, not just the solution.
+      placeholder: "When I import from two nights of the same target, I have to…"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      description: Your proposed feature or change.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you've thought about.
+    validations:
+      required: false

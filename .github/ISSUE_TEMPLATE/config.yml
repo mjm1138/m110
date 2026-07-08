@@ -1,0 +1,12 @@
+# Allow blank issues too — a hobbyist audience shouldn't be forced through a form.
+blank_issues_enabled: true
+
+# TODO (BETA §6): once the public feedback venues are live, surface them here as
+# the lower-friction path for non-developers, e.g.:
+# contact_links:
+#   - name: Smart Telescope Underworld (Discord)
+#     url: https://discord.gg/REPLACE_ME
+#     about: Chat, share captures, and get help — often the fastest way to reach us.
+#   - name: r/seestar (Reddit)
+#     url: https://www.reddit.com/r/seestar/
+#     about: Community discussion for Seestar users.

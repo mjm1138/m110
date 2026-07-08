@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in M110 doesn't work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! The details below make it much faster to
+        triage — especially your OS and telescope model, since M110's ingest
+        varies by device.
+
+        💡 Tip: you can generate a pre-filled report from inside the app via
+        **Help → Report a problem…** (it captures version, OS, Qt, and a log tail).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        1. Went to Import and picked my Seestar…
+        2. Expected the previews to group by object…
+        3. Instead it showed…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: M110 version
+      description: See Help → About M110 (or the release you downloaded).
+      placeholder: "e.g. 0.1.0-beta.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other (note below)
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version / details
+      placeholder: "e.g. macOS 15.5 (Apple Silicon), Windows 11, Ubuntu 24.04 x86_64"
+    validations:
+      required: false
+  - type: dropdown
+    id: telescope
+    attributes:
+      label: Telescope (if the bug involves capture / import)
+      options:
+        - Not applicable
+        - Seestar S50
+        - Seestar S30
+        - Other Seestar
+        - Dwarf II
+        - Dwarf 3
+        - Other (note below)
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant lines from `~/.m110/logs/m110.log` (or the crash report from the
+        in-app dialog). Redact any file paths or personal details you'd rather not share.
+      render: shell
+    validations:
+      required: false
