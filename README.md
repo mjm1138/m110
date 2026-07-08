@@ -1,5 +1,7 @@
 # M110
 
+[![CI](https://github.com/mjm1138/m110/actions/workflows/ci.yml/badge.svg)](https://github.com/mjm1138/m110/actions/workflows/ci.yml)
+
 **Complete the catalog.**
 
 M110 is a cross-platform desktop app (PySide6, over a headless Python engine)
