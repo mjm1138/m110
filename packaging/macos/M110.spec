@@ -15,9 +15,9 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules  # no
 # --- project layout -------------------------------------------------------
 # SPECPATH is provided by PyInstaller = the directory holding this spec.
 ROOT = Path(SPECPATH).resolve().parents[1]          # repo root (…/m110)
-ENTRY = ROOT / "packaging" / "macos" / "m110_launch.py"
+ENTRY = ROOT / "packaging" / "common" / "m110_launch.py"     # shared entry shim
 ICNS = ROOT / "packaging" / "macos" / "M110.icns"    # produced by make_icns.sh
-HOOKS = ROOT / "packaging" / "macos" / "pyinstaller-hooks"  # local hook overrides
+HOOKS = ROOT / "packaging" / "common" / "pyinstaller-hooks"  # shared hook overrides
 
 # --- version (for the Info.plist) -----------------------------------------
 # CFBundleShortVersionString must be a plain numeric x.y.z — PEP 440 prerelease
