@@ -75,9 +75,12 @@ for the beta (Windows just ships unsigned).*
   + hardware-token; OV builds reputation over time — a later decision.)
 - [ ] 🟢 **Homebrew cask** (`brew install --cask m110`) / **winget** manifest —
   nice for the dev-y tail; not a substitute for the double-click installers.
-- [ ] 🔴 **Real version number + scheme** — still `0.0.1` in pyproject. Pick
-  `0.1.0-beta.1` (or similar) and wire `importlib.metadata` (About dialog already
-  reads it).
+- [x] 🔴 **Real version number + scheme** — bumped to **`0.1.0b1`** (PEP 440
+  canonical spelling of `0.1.0-beta.1`; setuptools normalizes the hyphenated form to
+  this anyway, so the source string matches what the About dialog shows) in both
+  `pyproject.toml` and `m110/__init__.py`. `about_dialog.app_version()` reads it via
+  `importlib.metadata`. Bump both on each release; cut the `CHANGELOG.md`
+  `[Unreleased]` section to a dated version when tagging a release.
 - [ ] 🟡 **Update story** — at minimum a "check for updates / you're on vN"
   pointer to a releases page so beta users don't run stale builds. Auto-update is
   a bonus, not required.
