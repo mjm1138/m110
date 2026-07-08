@@ -54,13 +54,22 @@ the target persona outright. Nothing here is in ROADMAP/BUGS beyond a one-line
 *Build order follows priority: **macOS → Linux → Windows** — but all three ship
 for the beta (Windows just ships unsigned).*
 
-- [ ] 🔴 **macOS `.app` bundle** *(lead platform)* — PyInstaller or Briefcase; the
-  durable fix for the app/dock name (CLAUDE.md already flags the NSBundle patch as
-  a stopgap).
-- [ ] 🔴 **macOS notarization + Developer-ID signing** — Dev ID in hand, so this
-  is a scripting/CI task (codesign → notarytool → staple), not a decision. macOS
-  ships signed from day one.
-- [ ] 🔴 **`.dmg` installer** (drag-to-Applications).
+- [~] 🔴 **macOS `.app` bundle** *(lead platform)* — **PyInstaller** scaffold in
+  `packaging/macos/` (spec + entry shim + `.icns` gen + build script). Bundle id
+  **`space.m110.M110`**, `Info.plist` with `CFBundleName=M110` (the durable fix for
+  the NSBundle app/dock-name stopgap) + dark-mode + version from
+  `importlib.metadata`. **Unsigned build proven end-to-end** — `dist/M110.app`
+  builds and launches (offscreen smoke test: event loop up, store bootstraps, no
+  crash). Local astropy hook override needed (contrib hook's blanket
+  `collect_submodules` chokes on matplotlib-requiring `wcsaxes`).
+- [~] 🔴 **macOS notarization + Developer-ID signing** — **scripted** but not yet
+  run against a real cert: `sign_notarize.sh` does inside-out Developer-ID signing
+  (not `--deep`), hardened runtime + `entitlements.plist`, `notarytool` submit,
+  staple. Needs the one-time cert + `notarytool store-credentials` setup (see
+  `packaging/macos/README.md`), then execute on the build Mac.
+- [~] 🔴 **`.dmg` installer** (drag-to-Applications) — `make_dmg.sh` (hdiutil,
+  `/Applications` symlink, version-stamped name). Written, runs after signing;
+  produce + verify on the real signed build.
 - [ ] 🔴 **Linux package** *(close second)* — **AppImage** (single-file,
   double-click, no install — best fit for a mixed-distro audience) as the primary;
   Flatpak as a follow-on. PySide6 + system Qt can be fiddly; test on Ubuntu LTS +
@@ -184,9 +193,13 @@ tracked only as a one-line "external presence" note in ROADMAP's decisions table
   §7** (branch protection, CONTRIBUTING, issue/PR templates, contribution-license
   stance) — a public repo will start receiving issues and PRs immediately, and it's
   easier to have the guardrails in place than to retrofit them mid-flood.
-- [ ] 🔴 **Landing page / website** — `m110.app` (ROADMAP flags "verify at
-  registrar"). Even a one-pager: what it is, screenshots, download links, "how to
-  give feedback." The Features.md / Why M110.md copy is written — it needs a home.
+- [ ] 🔴 **Landing page / website** — `m110.app` is **taken** (an unrelated foreign
+  betting site), so the plan is **`m110.space`** (on-theme for a deep-sky app;
+  appears available — verify at a registrar). Bundle id `space.m110.M110` assumes
+  keeping this domain long-term. Host on **GitHub Pages** (free, auto-HTTPS, and the
+  app's own `publish/` engine can generate the static site) or Cloudflare Pages.
+  Even a one-pager: what it is, screenshots, download links, "how to give feedback."
+  The Features.md / Why M110.md copy is written — it needs a home.
 - [ ] 🔴 **Download/Releases page** with the signed artifacts from §1 and clear
   per-OS install steps.
 - [ ] 🟡 **Screenshots / a short demo GIF or video** — the app is image-forward;

@@ -35,6 +35,8 @@ online = ["astroquery>=0.4"]
 # gracefully (PublishDepsMissing) when absent.
 publish = ["jinja2>=3", "markdown>=3"]
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3"]  # astroquery also build-time (tools/gen_caldwell.py)
+# Packaging the desktop app into native bundles/installers (see packaging/).
+build = ["pyinstaller>=6.6", "packaging>=23"]
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"
