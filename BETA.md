@@ -220,34 +220,38 @@ gating on §6's "make the repo public," not follow-up polish.*
   the macOS/Windows legs of the matrix (started ubuntu-only), and building packaged
   artifacts. This is the status check that branch protection (below) requires on
   every PR.
-- [ ] 🟡 **CONTRIBUTING.md** — how to set up (`pip install -e ".[dev]"`), run tests
-  (`pytest -q`), and the **branch/roadmap discipline from CLAUDE.md** (feature
-  branch per unit of work; close out by updating ROADMAP/BUGS/DATA_MODEL/TESTING).
-  Point newcomers at the **architecture map** — CLAUDE.md (module map), DATA_MODEL.md,
-  and DONE.md (how/why each subsystem shipped) — so a contributor can orient without
-  a maintainer walkthrough.
-- [ ] 🟡 **Issue + PR templates** — bug report template that asks for OS / version
-  / Seestar model (feeds §3/§5); a PR template with a short checklist (tests pass,
-  docs updated, targets a feature branch).
+- [x] 🟡 **CONTRIBUTING.md** — setup (`pip install -e ".[dev]"`), tests
+  (`pytest -q`, offscreen note + the Linux Qt libs), the **branch/roadmap discipline
+  from CLAUDE.md** (feature branch per unit; close out by updating
+  ROADMAP/BUGS/DATA_MODEL/TESTING), the PR flow, and the DCO sign-off. Points
+  newcomers at the **architecture map** — CLAUDE.md (module map), DATA_MODEL.md, and
+  DONE.md (how/why each subsystem shipped).
+- [x] 🟡 **Issue + PR templates** — `.github/ISSUE_TEMPLATE/` bug form (asks OS /
+  version / **telescope model** — Seestar S30/S50, Dwarf — feeding §3/§5) + feature
+  form + chooser `config.yml` (Discord/Reddit contact links stubbed for when §6
+  lands); `PULL_REQUEST_TEMPLATE.md` checklist (tests pass, engine stays Qt-free,
+  preview-then-confirm, docs updated, DCO sign-off).
 - [x] 🟡 **Branch protection on `main`** — live: PRs required (no direct pushes) +
   both CI checks (`test (3.11)` / `test (3.14)`) must pass before merge. Reviews set
   to **0** for now (a solo maintainer can't approve their own PR — bump to 1 when
   other contributors arrive) and `enforce_admins` **off** (owner can bypass in a
   pinch); `strict` off (no forced rebase-before-merge). Matches the "never commit
   feature work directly to `main`" rule and keeps an outside PR from landing red.
-- [ ] 🟡 **Contribution-license stance** — decide and state how inbound
-  contributions are licensed. Simplest for Apache-2.0: an "inbound = outbound"
-  line in CONTRIBUTING (contributions are under Apache-2.0), optionally backed by a
-  **DCO** (`Signed-off-by`, enforced by a bot) rather than a heavier CLA. Settle
-  this *before* accepting the first external PR so provenance is clean.
-- [ ] 🟡 **CODE_OF_CONDUCT.md** — standard for a public project inviting strangers.
+- [x] 🟡 **Contribution-license stance** — decided: **inbound = outbound (Apache-2.0)
+  + DCO**. CONTRIBUTING states contributions are under the project license and
+  documents the `git commit -s` `Signed-off-by` flow (full DCO 1.1 text included);
+  the PR template has a sign-off checkbox. No CLA. *Follow-on when public:* add a DCO
+  check bot to enforce sign-off on PRs.
+- [x] 🟡 **CODE_OF_CONDUCT.md** — Contributor Covenant 2.1, enforcement contact
+  `mjm1138@gmail.com`.
 - [ ] 🟢 **Contributor onboarding depth** *(matures as contributors actually
   arrive)* — a few `good-first-issue`-labeled issues, a stated review-turnaround
   expectation, and a note on how forked-PR CI runs. Nice-to-have for the beta
   itself; important once someone offers to help.
-- [ ] 🟢 **SECURITY.md** — how to report a vulnerability (low stakes for a local
-  desktop app, but expected).
-- [ ] 🟢 **CHANGELOG.md** — even a terse one; beta users want to know what changed.
+- [x] 🟢 **SECURITY.md** — private reporting (GitHub advisory or email), scoped to
+  the small local-app surface + the optional Simbad network use.
+- [x] 🟢 **CHANGELOG.md** — Keep a Changelog format, `Unreleased` seeded; points at
+  DONE.md for pre-`0.1.0` engineering history.
 - [ ] 🟢 **User-facing README rewrite** — today's README is developer-oriented
   (venv/pytest). The public repo needs a *user* README (what it is, screenshots,
   download link) with the dev instructions moved down or into CONTRIBUTING.
