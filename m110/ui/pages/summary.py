@@ -6,7 +6,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
-    QHeaderView, QPushButton,
+    QHeaderView, QPushButton, QMenu,
 )
 
 from m110 import catalog, derived, pins
@@ -29,6 +29,7 @@ _URGENT = ("out_of_date", "not_processed")
 class SummaryPage(QScrollArea):
     open_object = Signal(str)
     go_to_import = Signal()       # empty-state CTA → shell switches to the Import page
+    pins_changed = Signal()       # Pin/Deprioritize toggled from the priority view (#3)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -198,9 +199,35 @@ class SummaryPage(QScrollArea):
         pt.resizeColumnsToContents()
         pt.setMinimumHeight(min(480, 28 * (len(rows) + 1) + 8))
         self._wire_open(pt)
+        pt.setContextMenuPolicy(Qt.CustomContextMenu)
+        pt.customContextMenuRequested.connect(
+            lambda pos, t=pt: self._priority_context_menu(t, pos))
         self._lay.addWidget(pt)
 
         self._lay.addStretch(1)
+
+    def _priority_context_menu(self, tbl, pos):
+        """Right-click a priority row → Pin/Unpin or Deprioritize it in place (#3)."""
+        item = tbl.itemAt(pos)
+        if item is None:
+            return
+        slug = tbl.item(item.row(), 0).data(Qt.UserRole)
+        if not slug:                          # a hand-priority with no resolvable slug
+            return
+        state = pins.get_state(slug)
+        menu = QMenu(self)
+        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
+                                 else "Pin as priority")
+        depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
+                                   else "Deprioritize")
+        chosen = menu.exec(tbl.viewport().mapToGlobal(pos))
+        if chosen is pin_act:
+            pins.set_state(slug, None if state == pins.PIN else pins.PIN)
+        elif chosen is depri_act:
+            pins.set_state(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
+        else:
+            return
+        self.pins_changed.emit()
 
     def _add_welcome(self):
         """First-run welcome card + guided-import CTA (shown until first capture)."""
@@ -251,8 +278,8 @@ class SummaryPage(QScrollArea):
 
     def _priority_rows(self, priorities) -> list[dict]:
         """Merge hand-edited priorities with manually pinned Library objects, drop
-        muted ones, into uniform display rows (#3)."""
-        muted = pins.muted_slugs()
+        deprioritized ones, into uniform display rows (#3)."""
+        deprioritized = pins.deprioritized_slugs()
         pinned = pins.pinned_slugs()
         cat = catalog.load_library()
         by_slug = derived.totals_by_slug()
@@ -260,7 +287,7 @@ class SummaryPage(QScrollArea):
 
         for p in priorities:
             slug = _priority_slug(p)
-            if slug and slug in muted:
+            if slug and slug in deprioritized:
                 continue
             if p.get("progress"):
                 prog = (f"{p['progress'].get('integration_hms', '')} "

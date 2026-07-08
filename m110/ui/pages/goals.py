@@ -69,7 +69,7 @@ class _CollapsibleSection(QWidget):
 class GoalsPage(QScrollArea):
     open_object = Signal(str)     # row → Catalog detail
     dirty = Signal()              # active set / custom goals changed → shell refresh
-    pins_changed = Signal()       # Pin/Mute override toggled on a member row (#3)
+    pins_changed = Signal()       # Pin/Deprioritize override toggled on a member row (#3)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -244,7 +244,7 @@ class GoalsPage(QScrollArea):
             entry = lib.get(slug) or ref.get(slug)
             label = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
             st = pin_state.get(slug)
-            marker = "▲ " if st == pins.PIN else "▼ " if st == pins.MUTE else ""
+            marker = "▲ " if st == pins.PIN else "▼ " if st == pins.DEPRIORITIZE else ""
             name = (entry or {}).get("name") or members[slug]
             t = totals.get(slug)
             captured = t is not None
@@ -272,7 +272,7 @@ class GoalsPage(QScrollArea):
         return tbl
 
     def _member_context_menu(self, tbl, pos):
-        """Right-click a membership row → Pin/Mute/clear the object (#3)."""
+        """Right-click a membership row → Pin/Deprioritize/clear the object (#3)."""
         item = tbl.itemAt(pos)
         if item is None:
             return
@@ -283,12 +283,13 @@ class GoalsPage(QScrollArea):
         menu = QMenu(self)
         pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
                                  else "Pin as priority")
-        mute_act = menu.addAction("Unmute" if state == pins.MUTE else "Mute")
+        depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
+                                   else "Deprioritize")
         chosen = menu.exec(tbl.viewport().mapToGlobal(pos))
         if chosen is pin_act:
             pins.set_state(slug, None if state == pins.PIN else pins.PIN)
-        elif chosen is mute_act:
-            pins.set_state(slug, None if state == pins.MUTE else pins.MUTE)
+        elif chosen is depri_act:
+            pins.set_state(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
         else:
             return
         self.pins_changed.emit()

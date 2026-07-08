@@ -3,7 +3,7 @@
 # This file is user-owned: hand-edit it (or an LLM can) to call out targets you
 # want to prioritize, and M110 joins each entry with your capture totals in
 # build_derived.py to show progress on the Summary "Priority targets" view. You
-# can also Pin/Mute objects from the Library or Goals pages (that lives in
+# can also Pin/Deprioritize objects from the Library or Goals pages (that lives in
 # pins.toml) without touching this file.
 #
 # Fields for a [[priority]] entry:

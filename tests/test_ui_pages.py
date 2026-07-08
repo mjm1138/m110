@@ -840,7 +840,7 @@ def test_catalog_status_color_follows_theme(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
-# ── manual Pin / Mute priorities (#3) ─────────────────────────────────────────
+# ── manual Pin / Deprioritize priorities (#3) ─────────────────────────────────
 
 def test_summary_empty_priority_state(tmp_path, monkeypatch, qapp):
     """A store with captures but no priorities/pins shows a guiding priority
@@ -862,7 +862,7 @@ def test_summary_empty_priority_state(tmp_path, monkeypatch, qapp):
 
 def test_summary_surfaces_pinned_object(tmp_path, monkeypatch, qapp):
     """A pinned Library object appears in the Priority-targets rows (with a ▲ mark)
-    and a muted one is excluded."""
+    and a deprioritized one is excluded."""
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
     from m110 import pins
@@ -872,8 +872,38 @@ def test_summary_surfaces_pinned_object(tmp_path, monkeypatch, qapp):
     try:
         rows = page._priority_rows([])
         assert any(r["slug"] == slug and r["label"].startswith("▲") for r in rows)
-        # muting it drops it back out
-        pins.set_state(slug, pins.MUTE)
+        # deprioritizing it drops it back out
+        pins.set_state(slug, pins.DEPRIORITIZE)
+        assert all(r["slug"] != slug for r in page._priority_rows([]))
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_summary_priority_view_has_pin_controls(tmp_path, monkeypatch, qapp):
+    """The priority table is right-clickable and a pin change from it reloads the
+    view (#3 — pin/unpin available from within the priority view)."""
+    from PySide6.QtWidgets import QTableWidget
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110 import pins
+    pins.set_state(slug, pins.PIN)
+    from m110.ui.pages.summary import SummaryPage
+    page = SummaryPage()
+    try:
+        def headers(t):
+            return [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
+        pt = next(t for t in page._content.findChildren(QTableWidget)
+                  if {"Priority", "Target"} <= set(headers(t)))   # the priority table
+        assert any(pt.item(r, 0) and pt.item(r, 0).data(Qt.UserRole) == slug
+                   for r in range(pt.rowCount()))
+        assert pt.contextMenuPolicy() == Qt.CustomContextMenu   # right-click enabled
+        fired = []
+        page.pins_changed.connect(lambda: fired.append(True))
+        pins.set_state(slug, None)          # the engine path the menu's Unpin calls
+        page.pins_changed.emit()
+        assert fired
+        page.reload()                       # unpinned → drops off the list
         assert all(r["slug"] != slug for r in page._priority_rows([]))
     finally:
         page.deleteLater()

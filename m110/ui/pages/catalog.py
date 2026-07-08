@@ -56,7 +56,7 @@ class CatalogPage(QWidget):
     editing_changed = Signal(bool)   # journal editor open/close (shell locks nav)
     dirty = Signal()                 # disk changed (import) → shell should refresh
     notes_saved = Signal(str)        # Object Notes saved → shell reloads other views
-    pins_changed = Signal()          # Pin/Mute override toggled → lightweight reload (#3)
+    pins_changed = Signal()          # Pin/Deprioritize override toggled → lightweight reload (#3)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -288,7 +288,7 @@ class CatalogPage(QWidget):
         """Catalog-filtered + naturally sorted (slug, entry) pairs, plus the
         per-slug identifier list — the source both views build from."""
         cat = self._cat
-        self._pins = pins.load()          # slug → "pin"|"mute", for the row markers
+        self._pins = pins.load()          # slug → "pin"|"deprioritize", for the row markers
         members = self._filter_members()
         pc = self._catalog_filter
         items = [(slug, e) for slug, e in cat.items()
@@ -299,8 +299,8 @@ class CatalogPage(QWidget):
         return items, ids
 
     def reload_pins(self):
-        """Re-read Pin/Mute state and refresh the row markers, preserving selection —
-        used when a pin is toggled elsewhere (e.g. the Goals page, #3)."""
+        """Re-read Pin/Deprioritize state and refresh the row markers, preserving
+        selection — used when a pin is toggled elsewhere (Goals / Summary, #3)."""
         prev = self._selected_slug()
         self._rebuild_views()
         if prev:
@@ -309,7 +309,7 @@ class CatalogPage(QWidget):
     def _pin_marker(self, slug: str) -> str:
         """A ▲ (pinned) / ▼ (muted) prefix for an object label, or '' (#3)."""
         st = getattr(self, "_pins", {}).get(slug)
-        return "▲ " if st == pins.PIN else "▼ " if st == pins.MUTE else ""
+        return "▲ " if st == pins.PIN else "▼ " if st == pins.DEPRIORITIZE else ""
 
     def _build_tile_items(self) -> list[TileItem]:
         totals = self._totals
@@ -525,7 +525,8 @@ class CatalogPage(QWidget):
         state = pins.get_state(slug)
         pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
                                  else "Pin as priority")
-        mute_act = menu.addAction("Unmute" if state == pins.MUTE else "Mute")
+        depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
+                                   else "Deprioritize")
         menu.addSeparator()
         remove_act = menu.addAction("Remove from Library")
         viewport = self.table.viewport() if self._view_mode == "list" else self.grid_view.viewport()
@@ -538,13 +539,13 @@ class CatalogPage(QWidget):
             self._toggle_publish(slug, not published)
         elif chosen is pin_act:
             self._set_pin(slug, None if state == pins.PIN else pins.PIN)
-        elif chosen is mute_act:
-            self._set_pin(slug, None if state == pins.MUTE else pins.MUTE)
+        elif chosen is depri_act:
+            self._set_pin(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
         elif chosen is remove_act:
             self._remove_one(slug)
 
     def _set_pin(self, slug: str, state):
-        """Apply a Pin/Mute/clear override, refresh the marker, keep selection (#3)."""
+        """Apply a Pin/Deprioritize/clear override, refresh the marker, keep selection (#3)."""
         pins.set_state(slug, state)
         self._rebuild_views()
         self._select_slug(slug)

@@ -1,4 +1,4 @@
-"""Manual Pin / Mute priority overrides (#3): the stable per-store prefs file."""
+"""Manual Pin / Deprioritize priority overrides (#3): the stable per-store prefs file."""
 import pytest
 
 from m110 import config, pins
@@ -14,18 +14,18 @@ def test_empty_when_absent(store):
     assert pins.load() == {}
     assert pins.get_state("m101") is None
     assert pins.pinned_slugs() == set()
-    assert pins.muted_slugs() == set()
+    assert pins.deprioritized_slugs() == set()
     assert not config.PINS_TOML.exists()          # lazily created — no write on read
 
 
 def test_set_get_roundtrip_persists(store):
     pins.set_state("m101", pins.PIN)
-    pins.set_state("ngc-7000", pins.MUTE)
+    pins.set_state("ngc-7000", pins.DEPRIORITIZE)
     assert config.PINS_TOML.exists()
     # re-read from disk (fresh call, no in-memory cache)
     assert pins.get_state("m101") == "pin"
     assert pins.pinned_slugs() == {"m101"}
-    assert pins.muted_slugs() == {"ngc-7000"}
+    assert pins.deprioritized_slugs() == {"ngc-7000"}
 
 
 def test_clear_removes_key(store):
@@ -35,11 +35,19 @@ def test_clear_removes_key(store):
     assert pins.load() == {}
 
 
-def test_state_transition_pin_to_mute(store):
+def test_state_transition_pin_to_deprioritize(store):
     pins.set_state("m42", pins.PIN)
-    pins.set_state("m42", pins.MUTE)
-    assert pins.get_state("m42") == "mute"
+    pins.set_state("m42", pins.DEPRIORITIZE)
+    assert pins.get_state("m42") == "deprioritize"
     assert pins.pinned_slugs() == set()
+
+
+def test_legacy_mute_value_reads_as_deprioritize(store):
+    """A pre-rename pins.toml (value "mute") maps forward on read."""
+    config.PINS_TOML.parent.mkdir(parents=True, exist_ok=True)
+    config.PINS_TOML.write_text('[pins]\n"m81" = "mute"\n')
+    assert pins.get_state("m81") == "deprioritize"
+    assert pins.deprioritized_slugs() == {"m81"}
 
 
 def test_slug_with_apostrophe_and_space(store):

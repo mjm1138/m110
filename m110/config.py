@@ -157,7 +157,7 @@ def _apply(root: Path) -> None:
     LIBRARY_TOML = INTERNAL_DIR / "library.toml"   # the user's object corpus
     GOALS_TOML = INTERNAL_DIR / "goals.toml"       # per-store active goals
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
-    PINS_TOML = INTERNAL_DIR / "pins.toml"         # manual Pin/Mute overrides (#3)
+    PINS_TOML = INTERNAL_DIR / "pins.toml"         # manual Pin/Deprioritize overrides (#3)
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
     DERIVED_DIR = INTERNAL_DIR / "derived"

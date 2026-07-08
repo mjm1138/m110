@@ -185,6 +185,7 @@ class MainWindow(QMainWindow):
         self.catalog.pins_changed.connect(self._on_pins_changed)
         self.summary.open_object.connect(self.open_object)
         self.summary.go_to_import.connect(self._open_ingest)   # empty-state CTA
+        self.summary.pins_changed.connect(self._on_pins_changed)
         self.goals.open_object.connect(self.open_object)
         self.goals.dirty.connect(self._do_refresh)
         self.goals.pins_changed.connect(self._on_pins_changed)
@@ -392,7 +393,8 @@ class MainWindow(QMainWindow):
                 p.reload()
 
     def _on_pins_changed(self):
-        # A Pin/Mute override toggled (from Library or Goals). No scan/derive — just
+        # A Pin/Deprioritize override toggled (Library, Goals, or the Summary priority
+        # view). No scan/derive — just
         # refresh the markers/priority list everywhere. Catalog.reload() would no-op
         # (cat/totals unchanged), so refresh its markers explicitly (#3).
         for p in self.pages:
