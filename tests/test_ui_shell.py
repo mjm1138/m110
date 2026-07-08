@@ -47,6 +47,24 @@ def test_backup_nudge_fires_once_when_captured(tmp_path, monkeypatch, qapp):
         win.deleteLater(); qapp.processEvents()
 
 
+def test_backup_nudge_silent_when_backups_configured(tmp_path, monkeypatch, qapp):
+    """Regression: a returning user who already set up backups must not be nudged."""
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)                          # has captures…
+    from m110 import backup
+    config.save_setting(backup.SETTING_DEST, str(tmp_path / "dest"))  # …but backups configured
+    from PySide6.QtWidgets import QMessageBox
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: asked.append(1) or QMessageBox.No)
+    win = _window(qapp)
+    try:
+        win._maybe_backup_nudge()
+        assert asked == []                      # already backing up → no nag
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
 def test_backup_nudge_silent_without_captures(tmp_path, monkeypatch, qapp):
     seed_root(tmp_path, monkeypatch)            # empty store — nothing captured
     from PySide6.QtWidgets import QMessageBox

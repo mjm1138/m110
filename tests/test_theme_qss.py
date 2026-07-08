@@ -19,3 +19,11 @@ def test_qss_contains_key_selectors_and_palette():
         assert sel in qss, f"missing selector {sel}"
     assert tokens.DARK.window in qss
     assert tokens.DARK.accent in qss
+
+
+def test_pushbutton_has_min_height():
+    """QPushButton needs a min-height so a styled button in a tight layout doesn't
+    clip its label top-and-bottom (esp. on macOS)."""
+    qss = build_qss(tokens.LIGHT)
+    btn_block = qss.split("QPushButton {", 1)[1].split("}", 1)[0]
+    assert "min-height" in btn_block

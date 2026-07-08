@@ -541,8 +541,12 @@ class MainWindow(QMainWindow):
 
     def _maybe_backup_nudge(self):
         """Once ever (and only once the user has captures worth losing), nudge a
-        fresh beta user to set up a backup — beta software + irreplaceable data."""
+        fresh beta user to set up a backup — beta software + irreplaceable data.
+        Skipped when a backup destination is already configured (nothing to nudge)."""
         if config.get_setting("backup_nudge_seen", False):
+            return
+        from m110 import backup
+        if config.get_setting(backup.SETTING_DEST):   # backups already set up → no nudge
             return
         if not derived.totals_by_slug():        # nothing captured yet → nothing to lose
             return

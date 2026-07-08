@@ -90,6 +90,9 @@ QPushButton {{
     border: 1px solid {t.border};
     border-radius: {r['sm']}px;
     padding: {SPACE['xs']}px {SPACE['md']}px;
+    /* Guarantee vertical room for the label — a styled QPushButton in a tight
+       layout (esp. on macOS) otherwise clips its text top-and-bottom. */
+    min-height: {SPACE['xl'] - SPACE['xs']}px;
 }}
 QPushButton:hover {{ background-color: {t.surface_alt}; }}
 QPushButton:pressed {{ background-color: {t.selection_bg}; }}
