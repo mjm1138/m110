@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=M110
+GenericName=Deep-Sky Imaging Library
+Comment=Manage a smart-telescope deep-sky imaging collection
+Exec=M110
+Icon=m110
+Categories=Graphics;Photography;Science;
+Keywords=astronomy;astrophotography;telescope;seestar;deep-sky;messier;siril;
+Terminal=false
+StartupWMClass=M110

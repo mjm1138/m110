@@ -73,10 +73,14 @@ for the beta (Windows just ships unsigned).*
   `/Applications` symlink, version-stamped name). **Produced `M110-0.1.0.dmg`; it
   installs and runs.** *(Still worth the §2 fresh-machine test on a Mac without the
   dev cert/tools — notarization should make Gatekeeper pass anywhere, but confirm.)*
-- [ ] 🔴 **Linux package** *(close second)* — **AppImage** (single-file,
-  double-click, no install — best fit for a mixed-distro audience) as the primary;
-  Flatpak as a follow-on. PySide6 + system Qt can be fiddly; test on Ubuntu LTS +
-  one other.
+- [~] 🔴 **Linux package** *(close second)* — **AppImage** scaffold in
+  `packaging/linux/` (onedir PyInstaller spec + `build_appimage.sh`: onedir →
+  AppDir with AppRun/`.desktop`/icon → `appimagetool`). Shares the entry shim +
+  astropy hook via `packaging/common/`. **Build pending a Linux host** — PyInstaller
+  can't cross-compile, so it must run on x86_64 Linux (build on Ubuntu 22.04 LTS for
+  a low glibc floor); that packaged-AppImage run is also the §2 acceptance test.
+  Flatpak still a follow-on. Watch: `libfuse2` on the user's box, `libxcb-cursor0`
+  on newer distros.
 - [ ] 🔴 **Windows build + installer** — PyInstaller `.exe` + Inno Setup (or MSI).
   Ships for the beta, but as a supported-not-lead platform.
 - [ ] 🟡 **Windows unsigned-launch docs** — unsigned binaries trip **SmartScreen**
