@@ -209,10 +209,17 @@ receive pull requests and (eventually) onboard other contributors. None present
 today. A public repo receives issues/PRs from strangers on day one, so these are
 gating on §6's "make the repo public," not follow-up polish.*
 
-- [ ] 🟡 **CI** — no `.github/` exists. Add a GitHub Actions workflow running
-  `pytest -q` on macOS/Windows/Linux (catches the §2 cross-platform breaks
-  automatically). Ideally also builds the packaged artifacts. This is also the
-  status check that branch protection (below) requires on every PR.
+- [~] 🟡 **CI** — `.github/workflows/ci.yml` runs `pytest -q` on **ubuntu-latest**
+  across Python 3.11 (the `requires-python` floor) + 3.14 (dev target), for every
+  push to `main` and every PR. Installs the system libs PySide6's offscreen plugin
+  needs (`libegl1 libgl1 libxkbcommon0 libdbus-1-3`); `QT_QPA_PLATFORM=offscreen`
+  is already forced in `tests/conftest.py`. **Its first run immediately earned its
+  keep** — caught a Linux-only `SIGABRT` double-free where the launch-time backup
+  auto-nudge popped a modal from a headless (never-shown) window; fixed by gating
+  the automatic modals on `self.isVisible()` in `_on_refresh_done`. *Still open:*
+  the macOS/Windows legs of the matrix (started ubuntu-only), and building packaged
+  artifacts. This is the status check that branch protection (below) requires on
+  every PR.
 - [ ] 🟡 **CONTRIBUTING.md** — how to set up (`pip install -e ".[dev]"`), run tests
   (`pytest -q`), and the **branch/roadmap discipline from CLAUDE.md** (feature
   branch per unit of work; close out by updating ROADMAP/BUGS/DATA_MODEL/TESTING).
