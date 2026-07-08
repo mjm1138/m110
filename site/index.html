@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M110 — Complete the catalog</title>
+<meta name="description" content="M110 is a desktop app for managing a smart-telescope deep-sky imaging collection — a photo library for your telescope, with capture tracking, Seestar ingest, and Siril processing-prep.">
+<link rel="icon" type="image/png" href="assets/app-icon.png">
+
+<!-- Open Graph / social preview (Discord, Reddit link unfurls) -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="M110 — Complete the catalog">
+<meta property="og:description" content="A photo library for your smart telescope. Manage your Seestar deep-sky library, track captures, and prep for Siril — without ever touching your originals.">
+<meta property="og:image" content="assets/app-icon.png">
+<meta property="og:url" content="https://m110.space">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+  :root {
+    --parchment-1: #f4ecd8;
+    --parchment-2: #e7d9bb;
+    --ink: #2b2118;
+    --ink-soft: #5c4f3f;
+    --accent: #3b6ea5;
+    --accent-ink: #ffffff;
+    --card: #fffaf0;
+    --card-border: #d8c8a6;
+    --grid: rgba(43, 33, 24, 0.10);
+    --shadow: 0 1px 3px rgba(43, 33, 24, .12), 0 8px 24px rgba(43, 33, 24, .08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --parchment-1: #14171c;
+      --parchment-2: #0d0f13;
+      --ink: #ece3d0;
+      --ink-soft: #a99f8c;
+      --accent: #7aa7d6;
+      --accent-ink: #10151b;
+      --card: #1a1e25;
+      --card-border: #2c333d;
+      --grid: rgba(236, 227, 208, 0.06);
+      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background:
+      linear-gradient(135deg, var(--grid) 1px, transparent 1px) 0 0 / 44px 44px,
+      linear-gradient(45deg, var(--grid) 1px, transparent 1px) 0 0 / 44px 44px,
+      linear-gradient(180deg, var(--parchment-1), var(--parchment-2));
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 64px 0; }
+  h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; line-height: 1.2; }
+
+  /* Hero */
+  .hero { text-align: center; padding: 72px 0 56px; }
+  .hero img.mark { width: 132px; height: 132px; border-radius: 26px; box-shadow: var(--shadow); }
+  .hero h1 { font-size: clamp(2.6rem, 7vw, 4rem); margin: 24px 0 4px; letter-spacing: .5px; }
+  .tagline { font-style: italic; color: var(--ink-soft); font-size: 1.3rem; margin: 0 0 18px; }
+  .pitch { max-width: 620px; margin: 0 auto 28px; font-size: 1.15rem; }
+  .badge {
+    display: inline-block; font-size: .78rem; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--accent);
+    border: 1.5px solid var(--accent); border-radius: 999px; padding: 3px 12px; margin-bottom: 20px;
+  }
+  .btn {
+    display: inline-block; background: var(--accent); color: var(--accent-ink);
+    font-weight: 600; padding: 12px 26px; border-radius: 10px; box-shadow: var(--shadow);
+  }
+  .btn:hover { text-decoration: none; filter: brightness(1.06); }
+  .btn.secondary { background: transparent; color: var(--accent); box-shadow: none; border: 1.5px solid var(--card-border); }
+
+  /* Promise banner */
+  .promise {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 14px;
+    padding: 22px 26px; text-align: center; box-shadow: var(--shadow); max-width: 720px; margin: 0 auto;
+  }
+  .promise strong { color: var(--ink); }
+
+  /* Feature grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 14px;
+    padding: 22px; box-shadow: var(--shadow);
+  }
+  .feature .ico { font-size: 1.6rem; }
+  .feature h3 { margin: 10px 0 6px; font-size: 1.15rem; }
+  .feature p { margin: 0; color: var(--ink-soft); font-size: .97rem; }
+
+  /* Screenshots */
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .shot {
+    aspect-ratio: 16 / 10; border-radius: 12px; border: 1px dashed var(--card-border);
+    background: var(--card); display: flex; align-items: center; justify-content: center;
+    color: var(--ink-soft); font-size: .9rem; text-align: center; padding: 16px;
+  }
+
+  /* Downloads */
+  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+  .dl { background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; padding: 24px; box-shadow: var(--shadow); }
+  .dl h3 { margin: 0 0 4px; }
+  .dl .note { color: var(--ink-soft); font-size: .85rem; margin: 10px 0 0; }
+  .center { text-align: center; }
+  .muted { color: var(--ink-soft); }
+
+  footer { padding: 48px 0; border-top: 1px solid var(--card-border); color: var(--ink-soft); font-size: .9rem; }
+  footer a { color: var(--ink-soft); text-decoration: underline; }
+  .disclaimer { font-size: .82rem; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<header class="hero wrap">
+  <img class="mark" src="assets/app-icon.png" alt="M110 app icon">
+  <div class="badge">Public beta</div>
+  <h1>M110</h1>
+  <p class="tagline">Complete the catalog.</p>
+  <p class="pitch"><strong>A photo library for your smart telescope.</strong> A desktop
+  app that turns a growing pile of Seestar captures into an organized deep-sky library —
+  catalog, capture tracking, ingest, and Siril processing-prep, with a north-star goal
+  to chase.</p>
+  <p>
+    <a class="btn" href="#download">Download for macOS · Linux · Windows</a>
+  </p>
+</header>
+
+<section class="wrap" style="padding-top: 0;">
+  <div class="promise">
+    <p style="margin:0;">🔒 <strong>It never touches your originals.</strong> Ingest is
+    always preview-then-confirm and copies from your telescope — your capture files stay
+    exactly where they are.</p>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2 class="center">Everything your captures deserve</h2>
+  <div class="grid">
+    <div class="feature">
+      <div class="ico">🗂️</div>
+      <h3>A real library</h3>
+      <p>Every object you've shot, organized by catalog (Messier, Caldwell, and more)
+      with status, integration time, and a per-object journal.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">📥</div>
+      <h3>One-click ingest</h3>
+      <p>Point it at your Seestar or a folder; it groups, names, and files your subs,
+      stacks, and finished renders — you preview before anything is written.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">🔭</div>
+      <h3>Capture tracking</h3>
+      <p>Sessions, frames, filters, and integration roll up automatically from your
+      FITS headers, so you always know what's done and what needs another night.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">✨</div>
+      <h3>Siril processing-prep</h3>
+      <p>Automatically arranges a clean, contained Siril sandbox per target — lights
+      linked, a tuned preset ready — then imports your finished work back.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">🎯</div>
+      <h3>A goal to chase</h3>
+      <p>Track progress toward completing a catalog. See what's up tonight and what's
+      still missing. Named for the 110th and final Messier object.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">💾</div>
+      <h3>Safe by design</h3>
+      <p>Local-first, open source, and careful with your data — with built-in,
+      hardlinked backups so an irreplaceable library stays that way.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2 class="center">A look inside</h2>
+  <div class="shots">
+    <div class="shot">Library &amp; gallery<br><span class="muted">(screenshot coming)</span></div>
+    <div class="shot">Object detail &amp; journal<br><span class="muted">(screenshot coming)</span></div>
+    <div class="shot">Ingest preview<br><span class="muted">(screenshot coming)</span></div>
+  </div>
+</section>
+
+<section class="wrap" id="download">
+  <h2 class="center">Download the beta</h2>
+  <p class="center muted" style="max-width:640px;margin:0 auto 28px;">
+    M110 is free and open source (Apache-2.0). It's early beta software — expect rough
+    edges, and please share what you find.</p>
+  <div class="downloads">
+    <div class="dl">
+      <h3>🍎 macOS</h3>
+      <p class="muted">Signed &amp; notarized · Apple Silicon</p>
+      <p><a class="btn" href="https://github.com/mjm1138/m110/releases/latest">Download .dmg</a></p>
+      <p class="note">Drag M110 to Applications. Opens with no warning.</p>
+    </div>
+    <div class="dl">
+      <h3>🐧 Linux</h3>
+      <p class="muted">AppImage · x86_64</p>
+      <p><a class="btn" href="https://github.com/mjm1138/m110/releases/latest">Download AppImage</a></p>
+      <p class="note">Make it executable and run. Needs <code>libfuse2</code> (or run
+      with <code>--appimage-extract-and-run</code>).</p>
+    </div>
+    <div class="dl">
+      <h3>🪟 Windows</h3>
+      <p class="muted">Installer · x64 · unsigned (beta)</p>
+      <p><a class="btn" href="https://github.com/mjm1138/m110/releases/latest">Download installer</a></p>
+      <p class="note">SmartScreen will warn on an unsigned beta:
+      click <strong>More info → Run anyway</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap center">
+  <h2>Have a question or a bug?</h2>
+  <p class="muted" style="max-width:560px;margin:0 auto 24px;">
+    M110 is early beta software — feedback and bug reports are hugely helpful. The best
+    place to reach the project is GitHub.</p>
+  <p>
+    <a class="btn secondary" href="https://github.com/mjm1138/m110/issues">Report on GitHub</a>
+  </p>
+  <!-- TODO: add the project's own community venue (e.g. a dedicated Discord beta channel)
+       once it exists — deliberately NOT linking third-party subs/servers we don't run. -->
+</section>
+
+<footer class="wrap center">
+  <p>
+    <a href="https://github.com/mjm1138/m110">Open source on GitHub</a> ·
+    Apache-2.0 · Made for smart-telescope astrophotographers.
+  </p>
+  <p class="disclaimer">
+    "Seestar" is a trademark of ZWO. M110 is an independent, unaffiliated project and
+    is not endorsed by ZWO. It works <em>with</em> your Seestar; it isn't made by them.
+  </p>
+</footer>
+
+</body>
+</html>
