@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hardened-runtime entitlements for the notarized M110.app.
+
+  Notarization requires the hardened runtime (codesign --options runtime). A
+  frozen CPython + PySide6 app needs a few relaxations to run under it:
+
+  - allow-unsigned-executable-memory / allow-jit: CPython and some Qt paths
+    allocate executable memory; without these the app crashes under hardened
+    runtime.
+  - disable-library-validation: the bundle loads many nested .so/.dylib files.
+    Even when we sign them all with the same Developer ID (sign_notarize.sh does),
+    this avoids team-id/library-validation aborts for any that arrive ad-hoc
+    signed from upstream wheels.
+
+  This app uses Developer-ID distribution (NOT the App Store sandbox), so it needs
+  no file-access entitlements — it has normal user file access, which is what the
+  ~/Documents/M110 store relies on.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>
