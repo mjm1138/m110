@@ -33,15 +33,16 @@ Legend: 🔴 blocker (no beta without it) · 🟡 strongly wanted · 🟢 nice-t
 
 ## 0. The headline gap
 
-macOS is the strong platform (where dev happens). **Linux is smoke-confirmed** —
-runs from source on a Raspberry Pi 5 (`skywalker.local`, ARM64), UI looks fine,
-Seestar import works — but only shallowly, on ARM, not the packaged x86_64
-AppImage most desktop users would run. **Windows has never been run at all.**
-Every risk below flows from that. The two make-or-break tracks are **(1) a real
-installer a non-developer can double-click — macOS signed/notarized first, then a
-Linux AppImage, then an (unsigned) Windows build** and **(2) proving the Seestar
-ingest + cross-platform basics hold up on Windows and on real x86_64 Linux
-desktops, not just Mike's Mac + Pi.** Everything else is supporting.
+macOS is the strong platform (where dev happens) and is now **fully shipped** — a
+signed, notarized `.dmg` that installs Gatekeeper-clean on a fresh VM. Track **(1) a
+real double-click installer** is largely closed: the macOS DMG ships, and the Linux
+**AppImage** + unsigned **Windows** installer are scaffolded and build automatically
+in CI (`release.yml`) on the first version tag. That leaves track **(2)** as the real
+remaining gap: **Linux is only smoke-confirmed** (from source on a Raspberry Pi 5,
+ARM64 — UI fine, Seestar import works, shallow), and **Windows has never been run at
+all**. So the open risk is no longer packaging but **first-run QE on real x86_64
+Linux + Windows, and Seestar ingest on models beyond Mike's own** — best surfaced by
+the packaged builds (once tagged) and the first testers.
 
 ---
 
@@ -102,9 +103,10 @@ for the beta (Windows just ships unsigned).*
   `pyproject.toml` and `m110/__init__.py`. `about_dialog.app_version()` reads it via
   `importlib.metadata`. Bump both on each release; cut the `CHANGELOG.md`
   `[Unreleased]` section to a dated version when tagging a release.
-- [ ] 🟡 **Update story** — at minimum a "check for updates / you're on vN"
-  pointer to a releases page so beta users don't run stale builds. Auto-update is
-  a bonus, not required.
+- [~] 🟡 **Update story** — the GitHub **Releases page** (cut by `release.yml` on
+  each tag) + the landing page's download buttons pointing at `releases/latest` give
+  beta users a canonical "latest build" pointer. An in-app "you're on vN / check for
+  updates" nudge is still a nice-to-have; auto-update is a bonus, not required.
 
 ## 2. Cross-platform QE 🔴
 
@@ -122,9 +124,11 @@ source — runs, UI fine, Seestar import works, shallow only). **Windows unteste
 - [ ] 🟡 **Media "Open" launch** cross-platform (`pages/media.py` shells out to an
   OS player — verify on all three; this is exactly the cross-platform-launch risk
   ROADMAP #19 flags).
-- [ ] 🟡 **Fresh-machine install test** — install the *packaged* build on a clean
-  VM with no Python/dev tools and confirm it runs. This is the real acceptance
-  test for §1.
+- [~] 🟡 **Fresh-machine install test** — **macOS confirmed**: the notarized `.dmg`
+  installed and ran on a clean macOS VM with no dev tools, Gatekeeper-clean
+  (`spctl` → `source=Notarized Developer ID`, verified with the quarantine flag set).
+  Linux AppImage + Windows installer still need the same clean-machine pass once the
+  first tag builds them.
 
 ## 3. Seestar ingest robustness 🔴
 
@@ -202,23 +206,28 @@ graceful failure and a way to hear about it.*
 *You can't run a public beta with a private repo and no download page. Mostly
 tracked only as a one-line "external presence" note in ROADMAP's decisions table.*
 
-- [ ] 🔴 **Public GitHub repo** — under a real org (ROADMAP notes `m110` is taken →
-  `m110app`/`messier110`); make the repo public, pick the license display, add
-  Releases. **Before flipping it public, land the contribution-readiness items in
-  §7** (branch protection, CONTRIBUTING, issue/PR templates, contribution-license
-  stance) — a public repo will start receiving issues and PRs immediately, and it's
-  easier to have the guardrails in place than to retrofit them mid-flood.
-- [ ] 🔴 **Landing page / website** — `m110.app` is **taken** (an unrelated foreign
-  betting site), so the plan is **`m110.space`** (on-theme for a deep-sky app;
-  appears available — verify at a registrar). Bundle id `space.m110.M110` assumes
-  keeping this domain long-term. Host on **GitHub Pages** (free, auto-HTTPS, and the
-  app's own `publish/` engine can generate the static site) or Cloudflare Pages.
-  Even a one-pager: what it is, screenshots, download links, "how to give feedback."
-  The Features.md / Why M110.md copy is written — it needs a home.
-- [ ] 🔴 **Download/Releases page** with the signed artifacts from §1 and clear
-  per-OS install steps.
-- [ ] 🟡 **Screenshots / a short demo GIF or video** — the app is image-forward;
-  show it. Needed on both the site and the repo README.
+- [ ] 🔴 **Public GitHub repo** — **the last gating step; doing it at launch.** All
+  the §7 contribution guardrails it depends on (branch protection, CONTRIBUTING,
+  issue/PR templates, contribution-license stance, COC/SECURITY) are **already in
+  place**, so flipping `mjm1138/m110` public is now safe to do on launch day. (ROADMAP
+  notes the `m110` org name is taken → `m110app`/`messier110` if a rename is wanted;
+  not required to launch under the personal account.)
+- [x] 🔴 **Landing page / website** — **live at [m110.space](https://m110.space)**
+  (`m110.app` was taken by an unrelated betting site). A self-contained, theme-aware
+  one-pager in `site/` (hero, "never touches your originals" promise, feature grid,
+  real dark-mode screenshots, per-OS download cards, ZWO disclaimer) hosted on
+  **Cloudflare Pages** (Registrar + DNS + Pages all in Cloudflare; auto-HTTPS,
+  www→apex redirect, HSTS, TLS 1.2 floor; auto-deploys from `main`). Bundle id
+  `space.m110.M110` assumes keeping this domain long-term.
+- [~] 🔴 **Download/Releases page** — the landing page's per-OS download buttons
+  point at `releases/latest`; they light up once the repo is public + the first tag
+  cuts a Release. `release.yml` (see §1) builds the Linux/Windows artifacts and
+  creates the prerelease Release on tag; the notarized macOS DMG is uploaded by hand.
+- [~] 🟡 **Screenshots / a short demo GIF or video** — **three real dark-mode
+  screenshots** (Library grid, object detail with the Orion mosaic + notes, Summary
+  dashboard) are live on the landing page, rendered offscreen straight from the app.
+  A short demo GIF/video is still a nice-to-have; the README hero shot is a small
+  follow-on.
 - [ ] 🔴 **Feedback venue** — the audience already lives on **Discord (Smart
   Telescope Underworld)** and **r/seestar**, so meet them there: a pinned beta
   thread / dedicated Discord channel is lower-friction for a hobbyist than filing
@@ -237,17 +246,17 @@ receive pull requests and (eventually) onboard other contributors. None present
 today. A public repo receives issues/PRs from strangers on day one, so these are
 gating on §6's "make the repo public," not follow-up polish.*
 
-- [~] 🟡 **CI** — `.github/workflows/ci.yml` runs `pytest -q` on **ubuntu-latest**
-  across Python 3.11 (the `requires-python` floor) + 3.14 (dev target), for every
-  push to `main` and every PR. Installs the system libs PySide6's offscreen plugin
-  needs (`libegl1 libgl1 libxkbcommon0 libdbus-1-3`); `QT_QPA_PLATFORM=offscreen`
-  is already forced in `tests/conftest.py`. **Its first run immediately earned its
-  keep** — caught a Linux-only `SIGABRT` double-free where the launch-time backup
-  auto-nudge popped a modal from a headless (never-shown) window; fixed by gating
-  the automatic modals on `self.isVisible()` in `_on_refresh_done`. *Still open:*
-  the macOS/Windows legs of the matrix (started ubuntu-only), and building packaged
-  artifacts. This is the status check that branch protection (below) requires on
-  every PR.
+- [x] 🟡 **CI** — two workflows. **`ci.yml`** runs `pytest -q` on **ubuntu-latest**
+  across Python 3.11 (floor) + 3.14 (dev target) for every push to `main` and every
+  PR (installs the Qt libs the offscreen plugin needs; `QT_QPA_PLATFORM=offscreen`
+  forced in `tests/conftest.py`) — it's the check branch protection requires. Its
+  first run earned its keep: caught a Linux-only `SIGABRT` double-free (launch-time
+  backup nudge popping a modal from a headless window), fixed by gating the automatic
+  modals on `self.isVisible()`. **`release.yml`** builds the Linux AppImage +
+  Windows installer on GitHub's free x86_64 runners on a version tag and attaches
+  them to a prerelease Release (no secrets — both ship unsigned). *Later:* a macOS-in-CI
+  job (needs the Developer ID cert + notary creds as secrets); the test matrix is
+  ubuntu-only for now.
 - [x] 🟡 **CONTRIBUTING.md** — setup (`pip install -e ".[dev]"`), tests
   (`pytest -q`, offscreen note + the Linux Qt libs), the **branch/roadmap discipline
   from CLAUDE.md** (feature branch per unit; close out by updating
@@ -280,9 +289,11 @@ gating on §6's "make the repo public," not follow-up polish.*
   the small local-app surface + the optional Simbad network use.
 - [x] 🟢 **CHANGELOG.md** — Keep a Changelog format, `Unreleased` seeded; points at
   DONE.md for pre-`0.1.0` engineering history.
-- [ ] 🟢 **User-facing README rewrite** — today's README is developer-oriented
-  (venv/pytest). The public repo needs a *user* README (what it is, screenshots,
-  download link) with the dev instructions moved down or into CONTRIBUTING.
+- [x] 🟢 **User-facing README rewrite** — done: leads for the user (what it is →
+  download links to m110.space + Releases → features → the "never touches your
+  originals" promise → per-OS notes), dev setup condensed and pointed at
+  CONTRIBUTING.md, "Lightroom" dropped from the public copy, ZWO disclaimer added.
+  *(A README hero screenshot is a small follow-on.)*
 
 ## 8. User documentation 🟡
 
@@ -302,18 +313,22 @@ gating on §6's "make the repo public," not follow-up polish.*
   ships (glow-map data is item-1 future, so not a beta blocker yet).
 - [ ] 🟡 **Network-use disclosure** — the online Simbad lookups reach the internet;
   say so plainly (and it's optional/off by default — good story, just state it).
-- [ ] 🟢 **Trademark care** — "Seestar" is ZWO's; the naming already avoids it in
-  the product name. Keep marketing copy to "works with Seestar," not implying
-  endorsement.
+- [x] 🟢 **Trademark care** — the landing page + README carry a ZWO/"Seestar"
+  disclaimer ("works *with* your Seestar; independent, not affiliated/endorsed"), and
+  the **"Lightroom" comparison was removed from all public copy** (Adobe mark; kept
+  only as an internal north-star in CLAUDE.md). Marketing copy stays "works with
+  Seestar," no implied endorsement.
 
 ## 10. Data-safety guarantees (mostly done — verify) 🟡
 
 *The persona's captures are irreplaceable. The architecture is already careful;
 this is a verification pass, not new work.*
 
-- [~] 🟡 **"Never touches your originals"** — true by design (ingest is
-  preview-then-confirm, copy-not-move from Seestar). **Verify and then say it
-  loudly** in onboarding — it's a top adoption objection.
+- [x] 🟡 **"Never touches your originals"** — true by design (ingest is
+  preview-then-confirm, copy-not-move from Seestar) and now **said loudly**: a
+  dedicated promise banner on the landing page + a callout in the README. (Verified
+  by the preview-then-confirm architecture; §3 real-device testing still validates it
+  on other Seestar dumps.)
 - [~] 🟡 **Migration safety across beta builds** — `migrate.py` is idempotent /
   never-destructive on the store layout. Confirm the upgrade path holds when a
   beta user updates from build N to N+1 with real data.
@@ -324,25 +339,25 @@ this is a verification pass, not new work.*
 
 ## Suggested beta gate (minimum viable)
 
-A defensible "invite strangers" bar is the 🔴 items only:
+A defensible "invite strangers" bar is the 🔴 items only. **Status as of launch-eve:**
 
-1. **§1** a notarized macOS `.dmg` + a Linux **AppImage** + an **unsigned** Windows
-   installer (with Run-anyway docs) + a real version. All three ship; macOS leads.
-2. **§2** a **Windows** smoke pass (never run) + a **deeper x86_64 Linux** pass on
-   the packaged AppImage (only ARM/Pi-from-source confirmed so far).
-3. **§3** Seestar ingest confirmed on at least the common S30/S50 layouts (or a
-   rock-solid manual-folder fallback + 2–3 real tester dumps).
-4. **§5** global error handling + an in-app feedback/report path.
-5. **§6** public repo + a landing/download page + the Discord/Reddit feedback
-   venue wired up. Flipping the repo public pulls in the **§7 contribution
-   guardrails** (branch protection, CONTRIBUTING, issue/PR templates, the
-   contribution-license stance) — tagged 🟡 but effectively gating on *this* step,
-   since a public repo takes issues and PRs from day one.
+1. **§1 — essentially done.** Notarized macOS `.dmg` **shipped**; the Linux AppImage
+   + unsigned Windows installer build in CI (`release.yml`) on the first tag; real
+   version (`0.1.0b1`) done. ✅ (build artifacts materialize when the tag fires)
+2. **§2 — partial.** macOS clean-VM pass done. **Windows** smoke (never run) + a
+   deeper **x86_64 Linux** pass still pending — they land when the first tag produces
+   the installers to test.
+3. **§3 — open.** Seestar ingest confirmed on at least the common S30/S50 layouts
+   (or a rock-solid manual-folder fallback + 2–3 real tester dumps).
+4. **§5 — done.** Global error handling + in-app report path shipped.
+5. **§6 — nearly done.** Landing page live at **m110.space** with real screenshots;
+   the §7 contribution guardrails are all in place. **Remaining: flip the repo
+   public, tag the release (→ download page lights up), and wire the Discord feedback
+   venue** — the launch-day steps.
 
-🟡 items make the beta *good* (onboarding, docs, CI) — except the §7
-contribution-readiness ones noted above, which ride along with going public; 🟢
-items can trail the first invites. Realistically **§1 + §2 for Windows is the long pole** — it's the
-one platform never run, so packaging *and* first-time QE land together there.
-Linux is de-risked (Pi-5/ARM smoke pass), leaving mainly the x86_64 AppImage
-confirmation. Windows signing is explicitly **out of scope for the beta**
-(unsigned + docs; revisit on uptake), so it's no longer an open decision.
+**The remaining path to launch is short:** make the repo public → tag
+`v0.1.0-beta.1` (fires `release.yml`, cuts the Release, lights up the downloads;
+upload the macOS DMG by hand) → wire the Discord venue → announce. The true
+open risk is no longer packaging but **§2/§3 first-run QE on real Windows + Linux +
+other Seestar models** — best surfaced by the first testers. Windows signing stays
+**out of scope** (unsigned + docs; revisit on uptake).

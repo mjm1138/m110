@@ -381,13 +381,22 @@ control.
 m110/            engine package (+ ui/ subpackage, seed/ data)
 tests/                  pytest suite (fixture-based)
 tools/                  dev utilities (make_test_corpus.py → synthetic manual-test store)
-pyproject.toml          deps + entry point (gui-script: m110)
-README.md               user-facing quickstart
+packaging/              native installers: common/ (shared PyInstaller entry shim +
+                        astropy hook override) · macos/ (.app→sign/notarize→.dmg) ·
+                        linux/ (onedir→AppDir→AppImage) · windows/ (onedir→.ico→Inno Setup)
+site/                   m110.space landing page (static; Cloudflare Pages, deploy dir = site/)
+.github/workflows/      ci.yml (pytest on push/PR) · release.yml (build Linux+Windows on tag)
+.github/ISSUE_TEMPLATE/ + PULL_REQUEST_TEMPLATE.md  contribution templates
+pyproject.toml          deps + entry point (gui-script: m110); [build] extra = pyinstaller
+README.md               user-facing README (what it is / download / features)
 CLAUDE.md               this file
 ROADMAP.md              canonical roadmap (open/active work + decisions)
 DONE.md                 archive of shipped work (how/why it landed) — read when touching an existing subsystem
+BETA.md                 public-beta readiness checklist (shippability, not features)
+BETA_FEATURES.md        beta feature punchlist
 TESTING.md              manual / regression test runbook
 BUGS.md                 open issues + improvement backlog
+CONTRIBUTING.md · CODE_OF_CONDUCT.md · SECURITY.md · CHANGELOG.md   OSS project docs
 LICENSE / NOTICE        Apache-2.0
 .venv/                  local virtualenv (gitignored)
 ```
