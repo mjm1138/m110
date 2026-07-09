@@ -85,4 +85,4 @@ def _write(pins: dict[str, str]) -> None:
         if pins[slug] in _VALID:
             lines.append(f"{_quote(slug)} = {_quote(pins[slug])}")
     config.PINS_TOML.parent.mkdir(parents=True, exist_ok=True)
-    config.PINS_TOML.write_text("\n".join(lines) + "\n")
+    config.PINS_TOML.write_text("\n".join(lines) + "\n", encoding="utf-8")

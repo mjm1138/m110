@@ -17,7 +17,7 @@ def _load(name: str):
     p = config.DERIVED_DIR / name
     if not p.is_file():
         return None
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def derived_available() -> bool:
@@ -76,7 +76,7 @@ def load_sessions() -> list[dict]:
     if not p.is_file():
         return []
     rows = []
-    for line in p.read_text().splitlines():
+    for line in p.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line:
             rows.append(json.loads(line))

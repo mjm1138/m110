@@ -108,7 +108,7 @@ mask_narrowband = ""         # softer floor for ON/LP (narrowband) filters
 
 def _read_settings() -> dict:
     try:
-        return json.loads(SETTINGS_FILE.read_text())
+        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -128,7 +128,7 @@ def save_setting(key: str, value) -> None:
     APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     s = _read_settings()
     s[key] = value
-    SETTINGS_FILE.write_text(json.dumps(s, indent=2))
+    SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
 
 
 def _resolve_data_root() -> Path:
@@ -314,24 +314,24 @@ def ensure_data_root(root=None) -> Path:
     _seed_library(internal / "library.toml")
     readme = internal / "README.txt"
     if not readme.exists():
-        readme.write_text(_README_TEXT)
+        readme.write_text(_README_TEXT, encoding="utf-8")
 
     # Reference journal template + a per-object stub for every Library object
     # (idempotent — never overwrites an existing journal).
     template = internal / "journal_template.md"
     if not template.exists():
-        template.write_text(JOURNAL_TEMPLATE)
+        template.write_text(JOURNAL_TEMPLATE, encoding="utf-8")
     _ensure_object_stubs(r, internal)
 
     # A default observing-site profile for session planning (idempotent).
     profile = internal / "profiles" / "default.toml"
     if not profile.exists():
         profile.parent.mkdir(parents=True, exist_ok=True)
-        profile.write_text(DEFAULT_PROFILE_TOML)
+        profile.write_text(DEFAULT_PROFILE_TOML, encoding="utf-8")
 
     # Stamp the store version so migrate short-circuits on the next launch.
     from . import migrate
-    (internal / migrate.VERSION_FILE).write_text(str(migrate.STORE_VERSION))
+    (internal / migrate.VERSION_FILE).write_text(str(migrate.STORE_VERSION), encoding="utf-8")
     return r
 
 
@@ -345,7 +345,8 @@ def _seed_library(dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(
         "# M110 Library — your object corpus (captured + annotated objects).\n"
-        "# Grows by capture / Add-object; M110 reads/writes this file.\n")
+        "# Grows by capture / Add-object; M110 reads/writes this file.\n",
+        encoding="utf-8")
 
 
 def _ensure_object_stubs(root: Path, internal: Path) -> None:
@@ -358,7 +359,7 @@ def _ensure_object_stubs(root: Path, internal: Path) -> None:
     try:
         with cat_path.open("rb") as f:
             catalog = tomllib.load(f).get("catalog", {})
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
         return
     objects_dir = root / "Objects"
     for slug, entry in catalog.items():
@@ -369,7 +370,7 @@ def _ensure_object_stubs(root: Path, internal: Path) -> None:
         if journal.exists():
             continue
         journal.parent.mkdir(parents=True, exist_ok=True)
-        journal.write_text(_object_stub(obj_id, entry.get("name", "")))
+        journal.write_text(_object_stub(obj_id, entry.get("name", "")), encoding="utf-8")
 
 
 # ── Seestar device detection ────────────────────────────────────────────────

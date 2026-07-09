@@ -55,14 +55,14 @@ def load_library() -> dict[str, dict]:
         with open(config.LIBRARY_TOML, "rb") as f:
             return tomllib.load(f).get("catalog", {})   # {} for an empty Library
     except tomllib.TOMLDecodeError as e:
-        healed = _dedupe_catalog_text(config.LIBRARY_TOML.read_text())
+        healed = _dedupe_catalog_text(config.LIBRARY_TOML.read_text(encoding="utf-8"))
         if healed is not None:
             try:
                 data = tomllib.loads(healed).get("catalog", {})
             except tomllib.TOMLDecodeError:
                 data = None
             if data is not None:
-                config.LIBRARY_TOML.write_text(healed)   # persist the repair
+                config.LIBRARY_TOML.write_text(healed, encoding="utf-8")   # persist the repair
                 print("  library.toml: removed duplicate object blocks (self-healed)")
                 return data
         raise LibraryParseError(
@@ -230,7 +230,7 @@ def _append_library_entries(entries: dict[str, dict]) -> None:
     existing: set[str] = set()
     if config.LIBRARY_TOML.is_file():
         existing = set(re.findall(r"^\[catalog\.([^\]]+)\]",
-                                  config.LIBRARY_TOML.read_text(), re.M))
+                                  config.LIBRARY_TOML.read_text(encoding="utf-8"), re.M))
     lines = []
     for slug, e in entries.items():
         if slug in existing:
@@ -243,7 +243,7 @@ def _append_library_entries(entries: dict[str, dict]) -> None:
                 continue
             lines.append(f"{k} = {_toml_value(v)}")
     if lines:
-        with config.LIBRARY_TOML.open("a") as f:
+        with config.LIBRARY_TOML.open("a", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
 
 
@@ -495,7 +495,7 @@ def _write_library(entries: dict[str, dict]) -> None:
                 continue
             lines.append(f"{k} = {_toml_value(v)}")
         lines.append("")
-    config.LIBRARY_TOML.write_text("\n".join(lines))
+    config.LIBRARY_TOML.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _simbad_coords(name: str):

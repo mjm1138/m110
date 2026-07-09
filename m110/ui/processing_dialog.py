@@ -77,7 +77,7 @@ class GuidanceViewer(QDialog):
         lay = QVBoxLayout(self)
         tb = QTextBrowser()
         p = siril.guidance_path(doc_id)
-        tb.setMarkdown(p.read_text() if p.is_file() else "_Guidance not found._")
+        tb.setMarkdown(p.read_text(encoding="utf-8") if p.is_file() else "_Guidance not found._")
         tb.setOpenExternalLinks(True)
         lay.addWidget(tb)
 

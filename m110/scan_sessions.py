@@ -147,7 +147,7 @@ def scan() -> list[dict]:
 def write_jsonl(rows: list[dict]):
     out = config.SESSIONS_JSONL
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w") as f:
+    with out.open("w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 

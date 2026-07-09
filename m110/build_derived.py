@@ -47,7 +47,7 @@ def load_sessions() -> list[dict]:
     if not sessions.exists():
         return []
     rows = []
-    with sessions.open() as f:
+    with sessions.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
@@ -659,15 +659,15 @@ def main():
     out_dir = config.DERIVED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "totals.json").write_text(
-        json.dumps(totals, indent=2, ensure_ascii=False, default=str))
+        json.dumps(totals, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     (out_dir / "priorities.json").write_text(
-        json.dumps(priority_progress, indent=2, ensure_ascii=False))
+        json.dumps(priority_progress, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "summary.json").write_text(
-        json.dumps(summary, indent=2, ensure_ascii=False))
+        json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "processing.json").write_text(
-        json.dumps(processing, indent=2, ensure_ascii=False))
+        json.dumps(processing, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "goals.json").write_text(
-        json.dumps(goals, indent=2, ensure_ascii=False))
+        json.dumps(goals, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"  totals:     {len(totals['by_slug'])} slugs, "
           f"{len(totals['by_folder'])} folders")

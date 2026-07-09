@@ -165,7 +165,7 @@ def guidance_path(doc_id: str) -> Path:
 def guidance_title(doc_id: str) -> str:
     p = guidance_path(doc_id)
     if p.is_file():
-        for line in p.read_text().splitlines():
+        for line in p.read_text(encoding="utf-8").splitlines():
             if line.startswith("#"):
                 return line.lstrip("# ").strip()
     return doc_id.replace("_", " ").title()
@@ -319,7 +319,7 @@ def _read_preset(path: Path) -> dict:
     """On-disk preset as a dict, or {} if missing/unreadable (→ treated as
     non-default, so `apply_prep` preserves rather than clobbers an odd file)."""
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -353,11 +353,11 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
             # Re-tune only a pristine (unedited) preset as the frame count grows;
             # never clobber a preset the user has hand-edited. First write always.
             if not pp.exists() or is_default_preset(_read_preset(pp)):
-                pp.write_text(json.dumps(job.preset, indent=4) + "\n")
+                pp.write_text(json.dumps(job.preset, indent=4) + "\n", encoding="utf-8")
         Path(plan.siril_dir).mkdir(parents=True, exist_ok=True)
         # next-steps.md is app guidance (not user-owned) — always refreshed so the
         # recommended drizzle/filters for the current count stay visible.
-        (Path(plan.siril_dir) / "next-steps.md").write_text(_next_steps_md(plan))
+        (Path(plan.siril_dir) / "next-steps.md").write_text(_next_steps_md(plan), encoding="utf-8")
 
     return {"linked": linked, "skipped": skipped, "cancelled": cancelled}
 

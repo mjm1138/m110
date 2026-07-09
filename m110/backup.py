@@ -138,7 +138,7 @@ def _sha256(path: Path) -> str:
 def _read_manifest(snapshot_dir: Path) -> dict | None:
     mf = snapshot_dir / MANIFEST_NAME
     try:
-        return json.loads(mf.read_text())
+        return json.loads(mf.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -157,7 +157,7 @@ def _supports_hardlinks(dir_path: Path) -> bool:
     a = dir_path / ".m110-linkprobe-a"
     b = dir_path / ".m110-linkprobe-b"
     try:
-        a.write_text("x")
+        a.write_text("x", encoding="utf-8")
         try:
             os.link(a, b)
         except (OSError, NotImplementedError, AttributeError):
@@ -301,7 +301,7 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
             "linked": linked,
             "files": files_meta,
         }
-        (incomplete / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2))
+        (incomplete / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     except BaseException:
         shutil.rmtree(incomplete, ignore_errors=True)
         raise
@@ -335,7 +335,7 @@ def _copy_bytes(src: Path, dst: Path, src_stat) -> None:
 def _store_version(src_root: Path) -> str | None:
     try:
         from . import migrate
-        return (src_root / config.INTERNAL_DIRNAME / migrate.VERSION_FILE).read_text().strip()
+        return (src_root / config.INTERNAL_DIRNAME / migrate.VERSION_FILE).read_text(encoding="utf-8").strip()
     except (OSError, ImportError):
         return None
 
@@ -347,7 +347,7 @@ def _write_state(store_root: Path, src_root: Path) -> None:
     snaps.sort()
     state = {"source_root": str(src_root), "store_name": src_root.name,
              "snapshots": snaps, "updated": datetime.now().isoformat(timespec="seconds")}
-    (store_root / STATE_NAME).write_text(json.dumps(state, indent=2))
+    (store_root / STATE_NAME).write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 # ── verify ──────────────────────────────────────────────────────────────────

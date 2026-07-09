@@ -137,7 +137,7 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
 
     def write(name, ctx, dest, root=""):
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(env.get_template(name).render(root=root, **base, **ctx))
+        dest.write_text(env.get_template(name).render(root=root, **base, **ctx), encoding="utf-8")
 
     pages = ["index.html"]
     write("index.html", {"rows": rows, "summary": summary}, out / "index.html")

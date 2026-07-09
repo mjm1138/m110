@@ -201,7 +201,7 @@ def add_alias(src: str, dst: str) -> None:
     lines = ["[alias]"]
     for k, v in sorted(aliases.items()):
         lines.append(f"{json.dumps(k)} = {json.dumps(v)}")   # TOML strings ≈ JSON
-    p.write_text("\n".join(lines) + "\n")
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def canonical_target(name: str) -> str:
