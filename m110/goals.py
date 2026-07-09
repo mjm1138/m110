@@ -186,7 +186,7 @@ def _write(active: list[str], custom: list[dict]) -> None:
         lines.append("name = " + _q(c["name"]))
         mem = ", ".join(_q(s) for s in c["members"])
         lines.append("members = [" + mem + "]\n")
-    config.GOALS_TOML.write_text("\n".join(lines))
+    config.GOALS_TOML.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _q(s: str) -> str:

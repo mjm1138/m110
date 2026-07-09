@@ -224,7 +224,7 @@ def _render_hero(src: Path, dst: Path) -> bool:
         identity = None
     if identity is not None and dst.exists():
         try:
-            if sidecar.read_text() == identity:
+            if sidecar.read_text(encoding="utf-8") == identity:
                 return True
         except OSError:
             pass
@@ -237,7 +237,7 @@ def _render_hero(src: Path, dst: Path) -> bool:
         img.save(dst, "JPEG", quality=90, optimize=True)
         if identity is not None:
             try:
-                sidecar.write_text(identity)
+                sidecar.write_text(identity, encoding="utf-8")
             except OSError:
                 pass
         return True
@@ -306,7 +306,7 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
             progress(i, len(targets))
 
     config.DERIVED_DIR.mkdir(parents=True, exist_ok=True)
-    (config.DERIVED_DIR / "images.json").write_text(json.dumps(manifest, indent=2))
+    (config.DERIVED_DIR / "images.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     # Prune orphaned derivatives — only on a FULL render (a `slugs=` subset would
     # make the manifest partial, so its "active" set is incomplete). Content-hashed
     # thumbnail names change when a source reprocesses, leaving the old file behind

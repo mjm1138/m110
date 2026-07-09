@@ -61,7 +61,7 @@ def journal_path(slug: str) -> Path:
 def read_journal_text(slug: str) -> str:
     """Raw `journal.md` text for editing (frontmatter + body), or "" if absent."""
     p = journal_path(slug)
-    return p.read_text() if p.is_file() else ""
+    return p.read_text(encoding="utf-8") if p.is_file() else ""
 
 
 def write_journal(slug: str, text: str) -> Path:
@@ -71,7 +71,7 @@ def write_journal(slug: str, text: str) -> Path:
     """
     p = journal_path(slug)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text)
+    p.write_text(text, encoding="utf-8")
     return p
 
 
@@ -98,7 +98,7 @@ def read_journal(slug: str) -> tuple[dict, str]:
     p = journal_path(slug)
     if not p.is_file():
         return {}, ""
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     if not text.startswith("---"):
         return {}, text
     parts = text.split("---", 2)

@@ -35,7 +35,7 @@ Mask = list[tuple[float, float]]
 def load_mask(path) -> Mask:
     """Parse a horizon/glow mask file into sorted ``(azimuth, altitude)`` pairs."""
     pts: list[tuple[float, float]] = []
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line[0] in "#;":

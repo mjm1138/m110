@@ -18,6 +18,10 @@ changes a **user** would notice, per release.
   policy, and issue / pull-request templates.
 
 ### Fixed
+- No longer crashes on **Windows** first launch: engine text files (library, journals,
+  seeds, derived JSON) are now always read and written as UTF-8 instead of the OS
+  locale encoding (cp1252 on Windows), which had corrupted non-ASCII characters like
+  em-dashes and crashed on the next read.
 - No longer crashes on Linux when a background library sync completes while the
   main window is not visible (a stray backup-nudge dialog could abort the app).
 

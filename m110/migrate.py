@@ -33,7 +33,7 @@ _STACK_EXTS = (".fit", ".fits", ".tif", ".tiff")
 def _read_version(root: Path) -> int:
     f = root / INTERNAL_DIRNAME / VERSION_FILE
     try:
-        return int(f.read_text().strip())
+        return int(f.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
         return 0
 
@@ -144,7 +144,7 @@ def migrate_store(root) -> bool:
         cat.rename(lib)
         changed = True
     if changed and internal.is_dir():
-        (internal / VERSION_FILE).write_text(str(STORE_VERSION))
+        (internal / VERSION_FILE).write_text(str(STORE_VERSION), encoding="utf-8")
     return changed
 
 
