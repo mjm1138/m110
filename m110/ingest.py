@@ -347,10 +347,12 @@ def _nearest(coords: dict, ra: float, dec: float):
     return best, best_sep
 
 
-def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[IngestGroup]:
+def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
+                      progress=None) -> list[IngestGroup]:
     """Flag groups whose sample frame points >0.15° from the named object, and
     suggest the nearest catalog object. Reads ONE frame per group (worker I/O).
-    Degrades to no-op where coords/frames are unavailable."""
+    Degrades to no-op where coords/frames are unavailable. `progress(i, label)`
+    reports per group (this frame read is also slow over SMB)."""
     coords = catalog.load_coords()
     if not coords:
         return groups
@@ -358,9 +360,11 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[Ing
         cat = catalog.load_library()
     except Exception:
         cat = {}
-    for g in groups:
+    for i, g in enumerate(groups, 1):
         if should_cancel and should_cancel():
             break
+        if progress:
+            progress(i, g.object)
         if g.kind in ("media", "dark", "flat", "bias", "finished") or not g.ops:
             continue
         radec = frame_radec(g.ops[0].src)
@@ -716,25 +720,32 @@ def _in_own_store(src_dir: Path) -> bool:
     return False
 
 
-def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
+def _scan_base(base, action: str, should_cancel=None, progress=None) -> list[IngestOp]:
     """Classify the immediate children of a base dir laid out like the Seestar
     staging/MyWorks structure and return the operations to bring NEW files into the
     collection. Reads only. `action` is 'move' (staging) or 'copy' (device — leaves
     originals in place). `should_cancel` is checked at directory boundaries; if it
-    returns true, IngestCancelled is raised (for a responsive Cancel)."""
+    returns true, IngestCancelled is raised (for a responsive Cancel). `progress(n,
+    label)` reports the running file count + current folder (a device scan over SMB
+    is slow — the caller shows it live)."""
     if base is None or not base.is_dir():
         return []
     ops: list[IngestOp] = []
+    scanned = 0
     for d in sorted((e for e in base.iterdir()
                      if e.is_dir() and not e.name.startswith(".")),
                     key=lambda p: p.name):
         if should_cancel and should_cancel():
             raise IngestCancelled()
+        if progress:
+            progress(scanned, d.name)
         ops.extend(_classify_dir(d, d.name, action, should_cancel))
+        scanned += len(_all_files(d))
     return ops
 
 
-def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[IngestOp]:
+def scan_directory_plan(root, action: str = "copy", should_cancel=None,
+                        progress=None) -> list[IngestOp]:
     """Dry-run plan for an **arbitrary** directory (ROADMAP 6a). Walks `root`
     recursively and classifies *every* directory by the layout recognizers (6b) —
     M110-store-shaped, Seestar conventions, or a raw-FITS header sort — so a nested
@@ -745,7 +756,8 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
     if root is None or not root.is_dir():
         return []
     ops: list[IngestOp] = []
-    for dirpath, dirnames, _files in os.walk(root):
+    scanned = 0                                   # files seen so far (for progress)
+    for dirpath, dirnames, files in os.walk(root):
         if should_cancel and should_cancel():
             raise IngestCancelled()
         dirnames[:] = sorted(d for d in dirnames
@@ -753,7 +765,10 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
+        if progress:
+            progress(scanned, d.name)             # announce the dir before scanning it
         ops.extend(_classify_dir(d, d.name, action, should_cancel))
+        scanned += sum(1 for f in files if not f.startswith("."))
     return ops
 
 
@@ -805,15 +820,15 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
     return groups
 
 
-def scan_staging_plan(should_cancel=None) -> list[IngestOp]:
+def scan_staging_plan(should_cancel=None, progress=None) -> list[IngestOp]:
     """Dry-run plan for the Inbox staging area (moves). Reads only."""
-    return _scan_base(_staging(), "move", should_cancel)
+    return _scan_base(_staging(), "move", should_cancel, progress)
 
 
-def scan_seestar_plan(should_cancel=None) -> list[IngestOp]:
+def scan_seestar_plan(should_cancel=None, progress=None) -> list[IngestOp]:
     """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
     untouched). Empty if no Seestar is mounted. Reads only."""
-    return _scan_base(config.find_seestar_myworks(), "copy", should_cancel)
+    return _scan_base(config.find_seestar_myworks(), "copy", should_cancel, progress)
 
 
 # ── holding area (6c): manual assign of unclassifiable files ───────────────────
