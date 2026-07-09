@@ -347,10 +347,12 @@ def _nearest(coords: dict, ra: float, dec: float):
     return best, best_sep
 
 
-def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[IngestGroup]:
+def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
+                      progress=None) -> list[IngestGroup]:
     """Flag groups whose sample frame points >0.15° from the named object, and
     suggest the nearest catalog object. Reads ONE frame per group (worker I/O).
-    Degrades to no-op where coords/frames are unavailable."""
+    Degrades to no-op where coords/frames are unavailable. `progress(i, label)`
+    reports per group (this frame read is also slow over SMB)."""
     coords = catalog.load_coords()
     if not coords:
         return groups
@@ -358,9 +360,11 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None) -> list[Ing
         cat = catalog.load_library()
     except Exception:
         cat = {}
-    for g in groups:
+    for i, g in enumerate(groups, 1):
         if should_cancel and should_cancel():
             break
+        if progress:
+            progress(i, g.object)
         if g.kind in ("media", "dark", "flat", "bias", "finished") or not g.ops:
             continue
         radec = frame_radec(g.ops[0].src)
@@ -530,7 +534,7 @@ def _classify_store_dir(src_dir: Path, name: str, action: str,
 
 
 def _classify_seestar_dir(src_dir: Path, name: str, action: str,
-                          handled: set) -> list[IngestOp]:
+                          handled: set, should_cancel=None) -> list[IngestOp]:
     """Seestar folder conventions (the original classifier), with a 6b header
     override: a calibration frame (IMAGETYP=DARK/FLAT/BIAS) inside a lights folder is
     split out to its calibration dir — the header wins over the folder name. Records
@@ -558,6 +562,8 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
         # the name and skip the per-frame header read; only header-check odd names.
         buckets: dict[str, list[str]] = {}
         for f in fits:
+            if should_cancel and should_cancel():
+                raise IngestCancelled()
             if f.startswith("Light_"):
                 kind = "light"
             else:
@@ -601,13 +607,15 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
 
 
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
-                      handled: set) -> list[IngestOp]:
+                      handled: set, should_cancel=None) -> list[IngestOp]:
     """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
     routed by its IMAGETYP; the object comes from the OBJECT header, else the
     containing folder name. Frames with neither a usable type nor an object are left
     unclassified (the 6c holding area). Records recognized files in `handled`."""
     buckets: dict[tuple, list[str]] = {}          # (kind, obj) → files
     for f in _fit_files(src_dir):
+        if should_cancel and should_cancel():     # per-frame: header reads over a
+            raise IngestCancelled()               # slow share must stay cancellable
         info = frame_info(str(src_dir / f))
         kind = info["imagetyp"] if info else None
         obj_hdr = canonical_target(info["object"]) if info and info["object"] else None
@@ -643,12 +651,16 @@ def _emit_unassigned(src_dir: Path, files, name: str, action: str,
     return ops
 
 
-def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+def _classify_dir(src_dir: Path, name: str, action: str,
+                  should_cancel=None) -> list[IngestOp]:
     """Classify ONE source directory and return the ops for its NEW files. Picks a
     layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
     raw-FITS header sort — delegates, then **sweeps any unclaimed content file into
     the Inbox/ holding area** (6c — nothing is silently ignored). A directory inside
-    this app's own store, or a sandbox (process/siril), is skipped. Reads only."""
+    this app's own store, or a sandbox (process/siril), is skipped. Reads only.
+    `should_cancel` is threaded into the per-frame header-read loops so a slow scan
+    (many FITS over a slow share) stays cancellable *within* a directory, not only at
+    directory boundaries."""
     if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
@@ -656,9 +668,9 @@ def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
     if layout == "m110-store":
         ops = _classify_store_dir(src_dir, name, action, handled)
     elif layout == "seestar":
-        ops = _classify_seestar_dir(src_dir, name, action, handled)
+        ops = _classify_seestar_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "raw-fits":
-        ops = _classify_raw_dir(src_dir, name, action, handled)
+        ops = _classify_raw_dir(src_dir, name, action, handled, should_cancel)
     else:
         ops = []
     # Claim a loose finished/processed raster (a Siril export dropped in an object
@@ -708,25 +720,32 @@ def _in_own_store(src_dir: Path) -> bool:
     return False
 
 
-def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
+def _scan_base(base, action: str, should_cancel=None, progress=None) -> list[IngestOp]:
     """Classify the immediate children of a base dir laid out like the Seestar
     staging/MyWorks structure and return the operations to bring NEW files into the
     collection. Reads only. `action` is 'move' (staging) or 'copy' (device — leaves
     originals in place). `should_cancel` is checked at directory boundaries; if it
-    returns true, IngestCancelled is raised (for a responsive Cancel)."""
+    returns true, IngestCancelled is raised (for a responsive Cancel). `progress(n,
+    label)` reports the running file count + current folder (a device scan over SMB
+    is slow — the caller shows it live)."""
     if base is None or not base.is_dir():
         return []
     ops: list[IngestOp] = []
+    scanned = 0
     for d in sorted((e for e in base.iterdir()
                      if e.is_dir() and not e.name.startswith(".")),
                     key=lambda p: p.name):
         if should_cancel and should_cancel():
             raise IngestCancelled()
-        ops.extend(_classify_dir(d, d.name, action))
+        if progress:
+            progress(scanned, d.name)
+        ops.extend(_classify_dir(d, d.name, action, should_cancel))
+        scanned += len(_all_files(d))
     return ops
 
 
-def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[IngestOp]:
+def scan_directory_plan(root, action: str = "copy", should_cancel=None,
+                        progress=None) -> list[IngestOp]:
     """Dry-run plan for an **arbitrary** directory (ROADMAP 6a). Walks `root`
     recursively and classifies *every* directory by the layout recognizers (6b) —
     M110-store-shaped, Seestar conventions, or a raw-FITS header sort — so a nested
@@ -737,7 +756,8 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
     if root is None or not root.is_dir():
         return []
     ops: list[IngestOp] = []
-    for dirpath, dirnames, _files in os.walk(root):
+    scanned = 0                                   # files seen so far (for progress)
+    for dirpath, dirnames, files in os.walk(root):
         if should_cancel and should_cancel():
             raise IngestCancelled()
         dirnames[:] = sorted(d for d in dirnames
@@ -745,7 +765,10 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
-        ops.extend(_classify_dir(d, d.name, action))
+        if progress:
+            progress(scanned, d.name)             # announce the dir before scanning it
+        ops.extend(_classify_dir(d, d.name, action, should_cancel))
+        scanned += sum(1 for f in files if not f.startswith("."))
     return ops
 
 
@@ -797,15 +820,15 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
     return groups
 
 
-def scan_staging_plan(should_cancel=None) -> list[IngestOp]:
+def scan_staging_plan(should_cancel=None, progress=None) -> list[IngestOp]:
     """Dry-run plan for the Inbox staging area (moves). Reads only."""
-    return _scan_base(_staging(), "move", should_cancel)
+    return _scan_base(_staging(), "move", should_cancel, progress)
 
 
-def scan_seestar_plan(should_cancel=None) -> list[IngestOp]:
+def scan_seestar_plan(should_cancel=None, progress=None) -> list[IngestOp]:
     """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
     untouched). Empty if no Seestar is mounted. Reads only."""
-    return _scan_base(config.find_seestar_myworks(), "copy", should_cancel)
+    return _scan_base(config.find_seestar_myworks(), "copy", should_cancel, progress)
 
 
 # ── holding area (6c): manual assign of unclassifiable files ───────────────────

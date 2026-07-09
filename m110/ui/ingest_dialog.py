@@ -41,6 +41,7 @@ class _ScanWorker(QThread):
     done = Signal(list)
     cancelled = Signal()
     failed = Signal(str)
+    progressed = Signal(str)      # live status label (queued → GUI thread)
 
     def __init__(self, plan_fn, cancel_event, parent=None):
         super().__init__(parent)
@@ -49,10 +50,18 @@ class _ScanWorker(QThread):
 
     def run(self):
         try:
-            ops = self._plan_fn(should_cancel=self._cancel.is_set)
+            # progress fires per directory / per group (not per file), so the emit
+            # rate is bounded — no event-loop flooding.
+            ops = self._plan_fn(
+                should_cancel=self._cancel.is_set,
+                progress=lambda n, label: self.progressed.emit(
+                    f"Scanning {label}…  ·  {n} files"))
             groups = ingest.group_ops(ops)
             # Pointing reads one FITS frame per group — keep it on the worker.
-            ingest.annotate_pointing(groups, should_cancel=self._cancel.is_set)
+            ingest.annotate_pointing(
+                groups, should_cancel=self._cancel.is_set,
+                progress=lambda i, label: self.progressed.emit(
+                    f"Checking pointing…  ·  {i}/{len(groups)}"))
             self.done.emit(groups)
         except ingest.IngestCancelled:
             self.cancelled.emit()
@@ -186,8 +195,13 @@ class IngestDialog(QDialog):
         self._worker.done.connect(self._on_scan_done)
         self._worker.cancelled.connect(self._on_scan_cancelled)
         self._worker.failed.connect(self._on_scan_failed)
+        self._worker.progressed.connect(self._on_scan_progress)
         self._worker.start()
         self._progress.show()
+
+    def _on_scan_progress(self, text: str):
+        if self._progress is not None:
+            self._progress.setLabelText(text)
 
     def _on_scan_done(self, groups):
         self._finish_worker()

@@ -195,14 +195,20 @@ class ImportPage(QWidget):
         root = self._root
         self._set_busy(True)
         self._make_progress("Scanning…", 0, "Scanning")   # 0 max = indeterminate
-        plan_fn = (lambda should_cancel=None, r=root:
-                   ingest.scan_directory_plan(r, should_cancel=should_cancel))
+        plan_fn = (lambda should_cancel=None, progress=None, r=root:
+                   ingest.scan_directory_plan(r, should_cancel=should_cancel,
+                                              progress=progress))
         self._worker = _ScanWorker(plan_fn, self._cancel_event, self)
         self._worker.done.connect(self._on_scan_done)
         self._worker.cancelled.connect(self._on_scan_cancelled)
         self._worker.failed.connect(self._on_scan_failed)
+        self._worker.progressed.connect(self._on_scan_progress)
         self._worker.start()
         self._progress.show()
+
+    def _on_scan_progress(self, text: str):
+        if self._progress is not None:
+            self._progress.setLabelText(text)
 
     def _on_scan_done(self, groups):
         self._finish_worker()
