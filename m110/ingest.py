@@ -530,7 +530,7 @@ def _classify_store_dir(src_dir: Path, name: str, action: str,
 
 
 def _classify_seestar_dir(src_dir: Path, name: str, action: str,
-                          handled: set) -> list[IngestOp]:
+                          handled: set, should_cancel=None) -> list[IngestOp]:
     """Seestar folder conventions (the original classifier), with a 6b header
     override: a calibration frame (IMAGETYP=DARK/FLAT/BIAS) inside a lights folder is
     split out to its calibration dir — the header wins over the folder name. Records
@@ -558,6 +558,8 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
         # the name and skip the per-frame header read; only header-check odd names.
         buckets: dict[str, list[str]] = {}
         for f in fits:
+            if should_cancel and should_cancel():
+                raise IngestCancelled()
             if f.startswith("Light_"):
                 kind = "light"
             else:
@@ -601,13 +603,15 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
 
 
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
-                      handled: set) -> list[IngestOp]:
+                      handled: set, should_cancel=None) -> list[IngestOp]:
     """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
     routed by its IMAGETYP; the object comes from the OBJECT header, else the
     containing folder name. Frames with neither a usable type nor an object are left
     unclassified (the 6c holding area). Records recognized files in `handled`."""
     buckets: dict[tuple, list[str]] = {}          # (kind, obj) → files
     for f in _fit_files(src_dir):
+        if should_cancel and should_cancel():     # per-frame: header reads over a
+            raise IngestCancelled()               # slow share must stay cancellable
         info = frame_info(str(src_dir / f))
         kind = info["imagetyp"] if info else None
         obj_hdr = canonical_target(info["object"]) if info and info["object"] else None
@@ -643,12 +647,16 @@ def _emit_unassigned(src_dir: Path, files, name: str, action: str,
     return ops
 
 
-def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
+def _classify_dir(src_dir: Path, name: str, action: str,
+                  should_cancel=None) -> list[IngestOp]:
     """Classify ONE source directory and return the ops for its NEW files. Picks a
     layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
     raw-FITS header sort — delegates, then **sweeps any unclaimed content file into
     the Inbox/ holding area** (6c — nothing is silently ignored). A directory inside
-    this app's own store, or a sandbox (process/siril), is skipped. Reads only."""
+    this app's own store, or a sandbox (process/siril), is skipped. Reads only.
+    `should_cancel` is threaded into the per-frame header-read loops so a slow scan
+    (many FITS over a slow share) stays cancellable *within* a directory, not only at
+    directory boundaries."""
     if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
@@ -656,9 +664,9 @@ def _classify_dir(src_dir: Path, name: str, action: str) -> list[IngestOp]:
     if layout == "m110-store":
         ops = _classify_store_dir(src_dir, name, action, handled)
     elif layout == "seestar":
-        ops = _classify_seestar_dir(src_dir, name, action, handled)
+        ops = _classify_seestar_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "raw-fits":
-        ops = _classify_raw_dir(src_dir, name, action, handled)
+        ops = _classify_raw_dir(src_dir, name, action, handled, should_cancel)
     else:
         ops = []
     # Claim a loose finished/processed raster (a Siril export dropped in an object
@@ -722,7 +730,7 @@ def _scan_base(base, action: str, should_cancel=None) -> list[IngestOp]:
                     key=lambda p: p.name):
         if should_cancel and should_cancel():
             raise IngestCancelled()
-        ops.extend(_classify_dir(d, d.name, action))
+        ops.extend(_classify_dir(d, d.name, action, should_cancel))
     return ops
 
 
@@ -745,7 +753,7 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None) -> list[
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
-        ops.extend(_classify_dir(d, d.name, action))
+        ops.extend(_classify_dir(d, d.name, action, should_cancel))
     return ops
 
 
