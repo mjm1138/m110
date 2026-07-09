@@ -54,6 +54,14 @@ def load_library() -> dict[str, dict]:
     try:
         with open(config.LIBRARY_TOML, "rb") as f:
             return tomllib.load(f).get("catalog", {})   # {} for an empty Library
+    except UnicodeDecodeError as e:
+        bad = e.object[e.start] if e.start < len(e.object) else 0
+        raise LibraryParseError(
+            f"{config.LIBRARY_TOML} is not valid UTF-8 (byte 0x{bad:02x} at position "
+            f"{e.start}). This usually means it was written by an older M110 build on "
+            "Windows (which used the cp1252 locale encoding). Delete the data folder "
+            "(or just that file) to let M110 recreate it as UTF-8, or re-save it as "
+            "UTF-8.") from e
     except tomllib.TOMLDecodeError as e:
         healed = _dedupe_catalog_text(config.LIBRARY_TOML.read_text(encoding="utf-8"))
         if healed is not None:

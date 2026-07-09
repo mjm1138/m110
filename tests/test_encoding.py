@@ -10,6 +10,8 @@ engine source so a new unencoded `open`/`read_text`/`write_text` can't reintrodu
 import ast
 import pathlib
 
+import pytest
+
 ENGINE = pathlib.Path(__file__).resolve().parents[1] / "m110"
 
 # `.open()` on these receivers is a library reader (binary/handled), not a text file.
@@ -61,3 +63,14 @@ def test_engine_text_io_specifies_utf8():
         'engine text I/O without encoding="utf-8" (cp1252 corrupts non-ASCII on '
         "Windows):\n  " + "\n  ".join(bad)
     )
+
+
+def test_load_library_rejects_non_utf8_gracefully(tmp_path, monkeypatch):
+    """A cp1252-encoded library.toml (e.g. written by an older Windows build) must
+    raise the actionable LibraryParseError, not a raw UnicodeDecodeError crash."""
+    from m110 import config, catalog
+    p = tmp_path / "library.toml"
+    p.write_bytes(b"# M110 Library \x97 written as cp1252\n")   # 0x97 = em-dash, invalid UTF-8
+    monkeypatch.setattr(config, "LIBRARY_TOML", p)
+    with pytest.raises(catalog.LibraryParseError):
+        catalog.load_library()
