@@ -16,12 +16,17 @@ changes a **user** would notice, per release.
   before merge.
 - Contributor documentation: `CONTRIBUTING.md`, a Code of Conduct, a security
   policy, and issue / pull-request templates.
+- Import: **live scan progress** — the "Scanning…" step now shows the current folder
+  and a running file count (and a "Checking pointing…" count), so a slow scan over a
+  network share or shared drive clearly shows progress instead of an opaque spinner.
 
 ### Fixed
 - No longer crashes on **Windows** first launch: engine text files (library, journals,
   seeds, derived JSON) are now always read and written as UTF-8 instead of the OS
   locale encoding (cp1252 on Windows), which had corrupted non-ASCII characters like
   em-dashes and crashed on the next read.
+- Import: the **Cancel** button now interrupts a scan mid-folder (it previously only
+  responded between folders, so a large folder on a slow share looked frozen).
 - No longer crashes on Linux when a background library sync completes while the
   main window is not visible (a stray backup-nudge dialog could abort the app).
 
