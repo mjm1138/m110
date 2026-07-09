@@ -97,12 +97,13 @@
   .feature p { margin: 0; color: var(--ink-soft); font-size: .97rem; }
 
   /* Screenshots */
-  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
-  .shot {
-    aspect-ratio: 16 / 10; border-radius: 12px; border: 1px dashed var(--card-border);
-    background: var(--card); display: flex; align-items: center; justify-content: center;
-    color: var(--ink-soft); font-size: .9rem; text-align: center; padding: 16px;
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
+  .shot { margin: 0; }
+  .shot img {
+    width: 100%; height: auto; display: block; border-radius: 12px;
+    border: 1px solid var(--card-border); box-shadow: var(--shadow);
   }
+  .shot figcaption { margin-top: 10px; text-align: center; color: var(--ink-soft); font-size: .95rem; }
 
   /* Downloads */
   .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
@@ -171,8 +172,8 @@
     <div class="feature">
       <div class="ico">🎯</div>
       <h3>A goal to chase</h3>
-      <p>Track progress toward completing a catalog. See what's up tonight and what's
-      still missing. Named for the 110th and final Messier object.</p>
+      <p>Track your progress through a curated catalog, or your own custom goals. 
+        See what's up tonight and what's still missing. Named for the 110th and final Messier object.</p>
     </div>
     <div class="feature">
       <div class="ico">💾</div>
@@ -186,9 +187,21 @@
 <section class="wrap">
   <h2 class="center">A look inside</h2>
   <div class="shots">
-    <div class="shot">Library &amp; gallery<br><span class="muted">(screenshot coming)</span></div>
-    <div class="shot">Object detail &amp; journal<br><span class="muted">(screenshot coming)</span></div>
-    <div class="shot">Ingest preview<br><span class="muted">(screenshot coming)</span></div>
+    <figure class="shot">
+      <img src="assets/shot-library.jpg" width="1240" height="780" loading="lazy"
+           alt="M110's Library grid — a gallery of deep-sky captures with status chips and integration times">
+      <figcaption>Your whole library, at a glance</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="assets/shot-detail.jpg" width="1240" height="780" loading="lazy"
+           alt="M110 object detail — an Orion Nebula mosaic hero with capture stats and notes">
+      <figcaption>Every object, with its story</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="assets/shot-summary.jpg" width="1240" height="780" loading="lazy"
+           alt="M110 summary dashboard — goal progress, category breakdown, and the processing queue">
+      <figcaption>Track your progress toward your goals</figcaption>
+    </figure>
   </div>
 </section>
 
