@@ -38,11 +38,14 @@ signed, notarized `.dmg` that installs Gatekeeper-clean on a fresh VM. Track **(
 real double-click installer** is largely closed: the macOS DMG ships, and the Linux
 **AppImage** + unsigned **Windows** installer are scaffolded and build automatically
 in CI (`release.yml`) on the first version tag. That leaves track **(2)** as the real
-remaining gap: **Linux is only smoke-confirmed** (from source on a Raspberry Pi 5,
-ARM64 — UI fine, Seestar import works, shallow), and **Windows has never been run at
-all**. So the open risk is no longer packaging but **first-run QE on real x86_64
-Linux + Windows, and Seestar ingest on models beyond Mike's own** — best surfaced by
-the packaged builds (once tagged) and the first testers.
+remaining gap, though it's now partly underway: **Linux is smoke-confirmed** (from
+source on a Raspberry Pi 5, ARM64 — UI fine, Seestar import works, shallow), and
+**Windows has now been run from source** on a Windows 11 **ARM VM** — which already
+paid off, surfacing and fixing two genuine bugs (a UTF-8/cp1252 first-run crash and
+an unresponsive/opaque scan over a slow share; see §2). Still pending: **native
+x86_64** Windows + the **packaged** installers on both, and **Seestar ingest on
+models beyond Mike's own** — best surfaced by the packaged builds (now that the repo
+can be tagged) and the first testers.
 
 ---
 
@@ -111,16 +114,26 @@ for the beta (Windows just ships unsigned).*
 ## 2. Cross-platform QE 🔴
 
 *Developed + exercised on macOS. **Linux is smoke-confirmed** (Pi 5 / ARM64, from
-source — runs, UI fine, Seestar import works, shallow only). **Windows untested.***
+source — runs, UI fine, Seestar import works, shallow only). **Windows: run from
+source on an ARM Win11 VM** — launches and runs after two bug fixes (below); native
+x86_64 + the packaged installer still untested.***
 
 - [~] 🟡 **Linux deeper pass on x86_64 desktop** — the Pi 5 run proves the code is
   Linux-clean, but confirm on a mainstream **x86_64** distro (Ubuntu LTS) with a
   desktop session (X11 *and* Wayland) and exercise the full flow: first-run,
   ingest, refresh, processing-prep, backup, publish, Media "Open." Then confirm the
   **packaged AppImage** (§1) runs, not just the from-source path.
-- [ ] 🔴 **Actually run on Windows** — full smoke. Watch path handling, file
-  dialogs, and the **Seestar SMB mount detection** (`find_seestar_myworks` — drive
-  letters vs. `/Volumes`).
+- [~] 🔴 **Actually run on Windows** — **runs from source on a Windows 11 ARM VM**
+  (x64 Python under emulation). This first pass already caught + fixed two real bugs:
+  (1) a **UTF-8/cp1252 first-run crash** — engine text I/O defaulted to the Windows
+  locale encoding, corrupting non-ASCII (em-dashes) in seeded TOML; now all engine
+  text I/O forces `encoding="utf-8"` (+ an AST guard test). (2) An Import scan over a
+  slow shared drive that **looked hung** — Cancel only checked at directory
+  boundaries and the spinner was opaque; now cancellable per-frame with a **live
+  progress** label, covering the Seestar SMB path too. *Still pending:* **native
+  x86_64** Windows, the **packaged installer** (not just from-source), file dialogs,
+  and **Seestar SMB mount detection** (`find_seestar_myworks` — drive letters vs.
+  `/Volumes`) against a real device.
 - [ ] 🟡 **Media "Open" launch** cross-platform (`pages/media.py` shells out to an
   OS player — verify on all three; this is exactly the cross-platform-launch risk
   ROADMAP #19 flags).
@@ -344,9 +357,10 @@ A defensible "invite strangers" bar is the 🔴 items only. **Status as of launc
 1. **§1 — essentially done.** Notarized macOS `.dmg` **shipped**; the Linux AppImage
    + unsigned Windows installer build in CI (`release.yml`) on the first tag; real
    version (`0.1.0b1`) done. ✅ (build artifacts materialize when the tag fires)
-2. **§2 — partial.** macOS clean-VM pass done. **Windows** smoke (never run) + a
-   deeper **x86_64 Linux** pass still pending — they land when the first tag produces
-   the installers to test.
+2. **§2 — partial, progressing.** macOS clean-VM pass done. **Windows** now runs
+   from source on an ARM VM (fixed two real bugs in the process); native x86_64 +
+   the **packaged** installers on both Windows and x86_64 Linux still pending — they
+   land when the first tag produces the installers to test.
 3. **§3 — open.** Seestar ingest confirmed on at least the common S30/S50 layouts
    (or a rock-solid manual-folder fallback + 2–3 real tester dumps).
 4. **§5 — done.** Global error handling + in-app report path shipped.
