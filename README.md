@@ -42,6 +42,12 @@ Ingest is always **preview-then-confirm** and **copies** from your telescope —
 capture files stay exactly where they are. Nothing is moved or modified without your
 say-so.
 
+## User guide
+
+New here? The **[user guide](docs/README.md)** covers ingest, the library layout,
+processing prep (and what M110's use of **hardlinks** means for your files), backup,
+and getting around the app.
+
 ## Download
 
 Beta builds are on the **[Releases page](https://github.com/mjm1138/m110/releases/latest)**:
