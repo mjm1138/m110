@@ -23,8 +23,8 @@ file owns *look & feel*.
   numbers, no decoration for its own sake.
 - **Minimal main-window chrome (a core principle, 2026-07-01).** A common failing of
   astro software is a cluttered, control-dense interface. M110 pushes hard the other
-  way: the **main window's** primary views (Summary · Goals · Library · Processing ·
-  Sessions · Journal · Media) carry as **few visible controls as possible**, presented
+  way: the **main window's** primary views (**Library · Overview · Import · Processing** —
+  the 4-pane rail after the 2026-07 IA cleanup) carry as **few visible controls as possible**, presented
   **unobtrusively but legibly** — prefer one control with one clear meaning over several
   redundant ones; prefer a sensible default over a toggle nobody switches; don't let a
   control's show/hide relocate its neighbours. Complexity is allowed to grow in
@@ -231,6 +231,20 @@ Apply tokens across the current pages; no new views.
 - **Accent:** a warm ink/sepia accent was tried to match the logo but **reverted** — it
   read poorly; the accent stays the **neutral blue** for now (still a one-token swap in
   `tokens.py` if revisited).
+
+### Phase 5 — Navigation IA cleanup  *(done 2026-07; pre-public-launch)*
+Decided once, before launch, to avoid re-teaching users a moved layout. The rail went
+from **8 panes → 4**: **Library · Overview · Import · Processing**.
+- **Library is home** — lands there by default, in **grid** mode; a fresh empty store
+  lands on Overview (welcome/CTA).
+- **Overview** = the former **Summary + Goals** merged into one pane of **collapsible
+  sections** (`widgets.CollapsibleSection`, the macOS disclosure pattern; open/closed
+  state persists per user). Goal *progress* is the hero; goal *setup* is demoted to a
+  collapsed "Manage goals" section.
+- **Media** → a **Deep sky · Media segment** at the top of the Library (embeds `MediaPage`).
+- **Journal** → a third **List · Grid · Feed** view of the Library (embeds `JournalPage`).
+- **Sessions** → a "View all sessions…" dialog on Overview (per-object sessions already
+  live in the object detail pane). The Library stat strip gained total integration hours.
 
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
