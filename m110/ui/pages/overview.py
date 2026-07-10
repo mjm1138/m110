@@ -127,7 +127,7 @@ class OverviewPage(QScrollArea):
             return
 
         summary = derived.load_summary()
-        by_folder = derived.load_totals().get("by_folder", {})
+        by_slug = derived.totals_by_slug()
 
         for key, label, default in self.SECTIONS:
             sec = self._section(key, label, default)
@@ -136,7 +136,7 @@ class OverviewPage(QScrollArea):
             elif key == "priority":
                 self._fill_priority(sec.body)
             elif key == "integrations":
-                self._fill_integrations(sec.body, by_folder)
+                self._fill_integrations(sec.body, by_slug)
             elif key == "category":
                 self._fill_category(sec.body, summary)
             elif key == "checklists":
@@ -172,8 +172,10 @@ class OverviewPage(QScrollArea):
         body.addWidget(g_tbl)
 
     def _fill_category(self, body, summary):
+        # "Total" column dropped (item 21) — it read as confusing next to the Total
+        # *row*; the per-category totals live in the Goal checklists instead.
         cats = summary.get("by_category", {})
-        cat_tbl = make_table(["Category", "Captured", "Deep stack", "Total",
+        cat_tbl = make_table(["Category", "Captured", "Deep stack",
                               "Captured objects"], stretch_last=True)
         cat_tbl.setSortingEnabled(False)
         for cat, v in sorted(cats.items()):
@@ -182,8 +184,7 @@ class OverviewPage(QScrollArea):
             cat_tbl.setItem(r, 0, QTableWidgetItem(cat.replace("_", " ").title()))
             cat_tbl.setItem(r, 1, QTableWidgetItem(str(v.get("captured", 0))))
             cat_tbl.setItem(r, 2, QTableWidgetItem(str(v.get("deep_stack", 0))))
-            cat_tbl.setItem(r, 3, QTableWidgetItem(str(v.get("total", 0))))
-            cat_tbl.setItem(r, 4, QTableWidgetItem(", ".join(v.get("captured_ids", []))))
+            cat_tbl.setItem(r, 3, QTableWidgetItem(", ".join(v.get("captured_ids", []))))
         grand = summary.get("grand", {})
         if grand:
             r = cat_tbl.rowCount()
@@ -191,13 +192,12 @@ class OverviewPage(QScrollArea):
             cat_tbl.setItem(r, 0, QTableWidgetItem("Total"))
             cat_tbl.setItem(r, 1, QTableWidgetItem(str(grand.get("captured", 0))))
             cat_tbl.setItem(r, 2, QTableWidgetItem(str(grand.get("deep_stack", 0))))
-            cat_tbl.setItem(r, 3, QTableWidgetItem(str(grand.get("total", 0))))
-            cat_tbl.setItem(r, 4, QTableWidgetItem(""))
+            cat_tbl.setItem(r, 3, QTableWidgetItem(""))
         cat_tbl.resizeColumnsToContents()
         fit_table_height(cat_tbl)
         body.addWidget(cat_tbl)
 
-    def _fill_integrations(self, body, by_folder):
+    def _fill_integrations(self, body, by_slug):
         row = QHBoxLayout()
         row.addStretch(1)
         all_btn = QPushButton("View all sessions…")
@@ -205,18 +205,20 @@ class OverviewPage(QScrollArea):
         row.addWidget(all_btn)
         body.addLayout(row)
 
-        # Integration time by target.
-        body.addWidget(self._caption("Integration time by target"))
+        # Integration time by object (per catalog object, matching the detail pane —
+        # a folder-keyed table showed 0-session rows for multi-object / stack-only
+        # capture folders while the objects had plenty of data under their slugs).
+        body.addWidget(self._caption("Integration time by object"))
         ci = make_table(["Object", "Sessions", "Frames", "Integration", "Filter",
                          "Status"], stretch_last=True)
-        rows = sorted(by_folder.items(),
-                      key=lambda kv: kv[1].get("integration_min", 0), reverse=True)
-        for fname, t in rows:
+        rows = sorted(
+            ((slug, t) for slug, t in by_slug.items() if t.get("session_count", 0)),
+            key=lambda kv: kv[1].get("integration_min", 0), reverse=True)
+        for slug, t in rows:
             r = ci.rowCount()
             ci.insertRow(r)
-            obj = QTableWidgetItem(fname)
-            if t.get("slugs"):
-                obj.setData(Qt.UserRole, t["slugs"][0])
+            obj = QTableWidgetItem(t.get("id") or slug)
+            obj.setData(Qt.UserRole, slug)
             ci.setItem(r, 0, obj)
             ci.setItem(r, 1, NumItem(str(t.get("session_count", 0)), t.get("session_count", 0)))
             ci.setItem(r, 2, NumItem(str(t.get("frames", 0)), t.get("frames", 0)))

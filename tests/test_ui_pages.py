@@ -1078,9 +1078,54 @@ def test_overview_section_order_and_pins_only(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
-def test_library_view_segment_stays_put_in_feed(tmp_path, monkeypatch, qapp):
-    """Item 17: the List/Grid/Feed segment lives on its own row, so hiding the
-    catalog filter in Feed mode can't relocate it; it hides only in Media scope."""
+def test_overview_category_drops_total_column_keeps_total_row(tmp_path, monkeypatch, qapp):
+    """Item 21: Progress by category loses the 'Total' column but keeps the Total row."""
+    from PySide6.QtWidgets import QTableWidget
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
+    try:
+        def hdr(t):
+            return [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
+        cat = next(t for t in page._content.findChildren(QTableWidget)
+                   if hdr(t) == ["Category", "Captured", "Deep stack", "Captured objects"])
+        assert "Total" not in hdr(cat)                       # no Total column
+        col0 = [cat.item(r, 0).text() for r in range(cat.rowCount()) if cat.item(r, 0)]
+        assert "Total" in col0                               # Total row remains
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_overview_integration_is_per_object(tmp_path, monkeypatch, qapp):
+    """Item 22: the Integration table is keyed by catalog object (by_slug) to match
+    the detail pane — not by capture folder — and excludes zero-session entries (which
+    is what made multi-object / stack-only folders read as 'no data')."""
+    from PySide6.QtWidgets import QTableWidget
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
+    try:
+        def hdr(t):
+            return [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
+        integ = next(t for t in page._content.findChildren(QTableWidget)
+                     if hdr(t) == ["Object", "Sessions", "Frames", "Integration",
+                                   "Filter", "Status"])
+        found = [(integ.item(r, 0).data(Qt.UserRole), int(integ.item(r, 1).text()))
+                 for r in range(integ.rowCount())]
+        assert any(s == slug and sc > 0 for s, sc in found)   # object appears with data
+        assert all(sc > 0 for _, sc in found)                 # no zero-session rows
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_view_segment_stays_put_in_feed_and_greys_in_media(tmp_path, monkeypatch, qapp):
+    """Items 17 + 20: the List/Grid/Feed segment lives on its own row (no relocation
+    when the catalog filter hides in Feed mode) and, in Media scope, stays visible but
+    greyed out rather than disappearing."""
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
@@ -1090,9 +1135,10 @@ def test_library_view_segment_stays_put_in_feed(tmp_path, monkeypatch, qapp):
         page._view_btns["feed"].setChecked(True)
         assert page._filter_bar.isHidden() and not page._view_seg.isHidden()
         page._media_btn.setChecked(True)
-        assert page._view_seg.isHidden()        # not applicable to Media
+        assert not page._view_seg.isHidden()    # persists (item 20)…
+        assert not page._view_seg.isEnabled()   # …but greyed out (not applicable)
         page._deepsky_btn.setChecked(True)
-        assert not page._view_seg.isHidden()
+        assert page._view_seg.isEnabled()
     finally:
         page.deleteLater()
         qapp.processEvents()

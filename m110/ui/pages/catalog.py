@@ -278,7 +278,9 @@ class CatalogPage(QWidget):
 
     def _set_scope(self, idx: int):
         self._scope_stack.setCurrentIndex(idx)
-        self._view_seg.setVisible(idx == 0)   # List/Grid/Feed only apply to Deep sky
+        # List/Grid/Feed don't apply to Media — keep the segment in place (no layout
+        # shift) but grey it out rather than hiding it.
+        self._view_seg.setEnabled(idx == 0)
         if idx == 1:                          # entering Media → refresh its contents
             self.media_view.reload()
 

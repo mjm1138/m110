@@ -17,3 +17,6 @@ BETA_BUGS
 - [x] Library: “List”, “Grid”, and “Feed” buttons relocate in Feed view. They should stay in one place and be styled as a single control similar to the Format, Animate, Document buttons in the upper-right corner of Apple Keynote’s main window (ask for samples if you need them). Do a similar treatment with the “Deep Sky” and “Media” buttons. Put the  “Deep Sky” and “Media” buttons justified left on the same row as “List”, “Grid”, and “Feed” justified right.
 - [x] Priority Targets: Need to insert language about it being an in-development feature, and not populate the table with old data
 - [x] Object Detail View: pad the Processing and Sessions tables so a whole row will fit, and allow them to vertically scale to accommodate 6 rows if >= 6 rows are present.
+- [x] Library view: If I select “media”, the “list”, “grid”, “feed” buttons disappear. They should persist (if there’s a mode there that’s not compatible with “media” then grey out that button)
+- [x] Overview: Progress by category is slightly confusing. I think it would be slightly less confusing by eliminating the “Total” column (keep the “Total” row)
+- [x] Overview: When running against my live library, “Integration time and Sessions” shows no data for several objects in my library (there is session data for these objects in the object detail view)
