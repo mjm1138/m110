@@ -9,8 +9,6 @@ Empty store → a welcome + guided-import CTA (goal progress still shows, since 
 north-star is motivating even at 0%)."""
 from __future__ import annotations
 
-import re as _re
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
@@ -20,11 +18,9 @@ from PySide6.QtWidgets import (
 
 from m110 import catalog, config, derived, pins, goals as goals_mod
 from m110.ui.widgets import (
-    NumItem, status_label, make_table, CollapsibleSection,
+    NumItem, status_label, make_table, CollapsibleSection, fit_table_height,
 )
 from m110.ui.theme import status_color
-
-_URGENT = ("out_of_date", "not_processed")
 
 # Manage-goals sub-groups (hemisphere), mirroring the former Goals page.
 _GROUPS = [
@@ -35,15 +31,6 @@ _GROUPS = [
 ]
 
 
-def _priority_slug(p: dict) -> str | None:
-    """Best-effort Library slug for a hand-edited priority entry (for pin + click)."""
-    prog = p.get("progress")
-    if prog and prog.get("source") in ("slug", "folder"):
-        return prog.get("key")
-    base = _re.sub(r"\s*\(.*?\)\s*", "", p.get("id", "")).strip()
-    return base.lower().replace(" ", "-").replace("/", "-") or None
-
-
 class OverviewPage(QScrollArea):
     open_object = Signal(str)
     go_to_import = Signal()        # empty-state CTA → shell switches to Import
@@ -52,13 +39,12 @@ class OverviewPage(QScrollArea):
 
     # (key, title, default_expanded)
     SECTIONS = [
-        ("goals",        "Goals",               True),
-        ("priority",     "Priority targets",    True),
-        ("integrations", "Current integrations", True),
-        ("processing",   "Processing queue",    True),
-        ("category",     "Progress by category", False),
-        ("checklists",   "Goal checklists",     False),
-        ("manage",       "Manage goals",        False),
+        ("goals",        "Goals",                       True),
+        ("priority",     "Priority targets",            True),
+        ("integrations", "Integration Time and Sessions", True),
+        ("checklists",   "Goal checklists",             False),
+        ("category",     "Progress by category",        False),
+        ("manage",       "Manage goals",                False),
     ]
     SETTING = "overview_sections"
 
@@ -110,6 +96,12 @@ class OverviewPage(QScrollArea):
                 self.open_object.emit(slug)
         table.itemDoubleClicked.connect(go)
 
+    @staticmethod
+    def _caption(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setProperty("caption", True)
+        return lbl
+
     # ---- build ----
     def reload(self):
         self._building = True
@@ -135,20 +127,16 @@ class OverviewPage(QScrollArea):
             return
 
         summary = derived.load_summary()
-        proc = derived.load_processing()
         by_folder = derived.load_totals().get("by_folder", {})
-        priorities = derived.load_priorities()
 
         for key, label, default in self.SECTIONS:
             sec = self._section(key, label, default)
             if key == "goals":
                 self._fill_goals(sec.body, goals)
             elif key == "priority":
-                self._fill_priority(sec.body, priorities)
+                self._fill_priority(sec.body)
             elif key == "integrations":
                 self._fill_integrations(sec.body, by_folder)
-            elif key == "processing":
-                self._fill_processing(sec.body, proc)
             elif key == "category":
                 self._fill_category(sec.body, summary)
             elif key == "checklists":
@@ -180,7 +168,7 @@ class OverviewPage(QScrollArea):
                 f"{g.get('captured', 0)}/{g.get('total', 0)} "
                 f"({g.get('percent', 0)}%)"))
         g_tbl.resizeColumnsToContents()
-        g_tbl.setMinimumHeight(min(220, 28 * (len(goals) + 1) + 8))
+        fit_table_height(g_tbl)
         body.addWidget(g_tbl)
 
     def _fill_category(self, body, summary):
@@ -206,37 +194,8 @@ class OverviewPage(QScrollArea):
             cat_tbl.setItem(r, 3, QTableWidgetItem(str(grand.get("total", 0))))
             cat_tbl.setItem(r, 4, QTableWidgetItem(""))
         cat_tbl.resizeColumnsToContents()
-        cat_tbl.setMinimumHeight(min(360, 28 * (cat_tbl.rowCount() + 1) + 8))
+        fit_table_height(cat_tbl)
         body.addWidget(cat_tbl)
-
-    def _fill_processing(self, body, proc):
-        counts = proc.get("counts", {})
-        body.addWidget(QLabel(
-            f"{counts.get('out_of_date', 0)} out of date · "
-            f"{counts.get('not_processed', 0)} not processed · "
-            f"{counts.get('up_to_date', 0)} up to date"))
-        urgent = [f for f in proc.get("queue", []) if f.get("status") in _URGENT][:8]
-        if not urgent:
-            body.addWidget(QLabel("<i>All caught up.</i>"))
-            return
-        ut = make_table(["Object", "Status", "Integration", "+ since stack",
-                         "Last stack"], stretch_last=True)
-        ut.setSortingEnabled(False)
-        for f in urgent:
-            r = ut.rowCount()
-            ut.insertRow(r)
-            obj = QTableWidgetItem(f.get("folder", ""))
-            if f.get("slugs"):
-                obj.setData(Qt.UserRole, f["slugs"][0])
-            ut.setItem(r, 0, obj)
-            ut.setItem(r, 1, QTableWidgetItem(f.get("status", "").replace("_", " ")))
-            ut.setItem(r, 2, QTableWidgetItem(f.get("integration_hms", "")))
-            ut.setItem(r, 3, QTableWidgetItem(f"+{f.get('new_lights_since_stack', 0)}"))
-            ut.setItem(r, 4, QTableWidgetItem(f.get("latest_processed_at") or "—"))
-        ut.resizeColumnsToContents()
-        ut.setMinimumHeight(min(280, 28 * (len(urgent) + 1) + 8))
-        self._wire_open(ut)
-        body.addWidget(ut)
 
     def _fill_integrations(self, body, by_folder):
         row = QHBoxLayout()
@@ -245,6 +204,9 @@ class OverviewPage(QScrollArea):
         all_btn.clicked.connect(self._open_all_sessions)
         row.addWidget(all_btn)
         body.addLayout(row)
+
+        # Integration time by target.
+        body.addWidget(self._caption("Integration time by target"))
         ci = make_table(["Object", "Sessions", "Frames", "Integration", "Filter",
                          "Status"], stretch_last=True)
         rows = sorted(by_folder.items(),
@@ -262,18 +224,47 @@ class OverviewPage(QScrollArea):
             ci.setItem(r, 4, QTableWidgetItem("/".join(t.get("filters", []))))
             ci.setItem(r, 5, QTableWidgetItem(status_label(t.get("status"), True)))
         ci.resizeColumnsToContents()
-        ci.setMinimumHeight(min(400, 28 * (len(rows) + 1) + 8))
+        fit_table_height(ci, max_rows=10)
         self._wire_open(ci)
         body.addWidget(ci)
 
-    def _fill_priority(self, body, priorities):
-        rows = self._priority_rows(priorities)
+        # Last 5 sessions (most recent capture nights across the whole store).
+        body.addWidget(self._caption("Last 5 sessions"))
+        sessions = sorted(derived.load_sessions(),
+                          key=lambda s: s.get("date", ""), reverse=True)[:5]
+        ls = make_table(["Date", "Object", "Frames", "Exp (s)", "Filter",
+                         "Integration"], stretch_last=True)
+        ls.setSortingEnabled(False)
+        for s in sessions:
+            r = ls.rowCount()
+            ls.insertRow(r)
+            obj = QTableWidgetItem(s.get("object_dir", ""))
+            if s.get("slugs"):
+                obj.setData(Qt.UserRole, s["slugs"][0])
+            ls.setItem(r, 0, QTableWidgetItem(s.get("date", "")))
+            ls.setItem(r, 1, obj)
+            ls.setItem(r, 2, NumItem(str(s.get("frames", 0)), s.get("frames", 0)))
+            ls.setItem(r, 3, QTableWidgetItem(str(s.get("exposure_s", ""))))
+            ls.setItem(r, 4, QTableWidgetItem(s.get("filter", "")))
+            ls.setItem(r, 5, QTableWidgetItem(
+                f"{s.get('integration_min', 0) / 60:.1f}h"
+                if s.get("integration_min") else "—"))
+        # wire open on the Object column (col 1)
+        ls.itemDoubleClicked.connect(
+            lambda item: self.open_object.emit(ls.item(item.row(), 1).data(Qt.UserRole))
+            if ls.item(item.row(), 1) and ls.item(item.row(), 1).data(Qt.UserRole) else None)
+        ls.resizeColumnsToContents()
+        fit_table_height(ls)
+        body.addWidget(ls)
+
+    def _fill_priority(self, body):
+        cap = QLabel("In development — an automatic prioritizer is coming. For now, "
+                     "pin objects from your Library (right-click → Pin as priority).")
+        cap.setProperty("caption", True)
+        cap.setWordWrap(True)
+        body.addWidget(cap)
+        rows = self._priority_rows()
         if not rows:
-            hint = QLabel("No priority targets yet. Pin an object from your Library "
-                          "(right-click → Pin as priority) to build your list.")
-            hint.setProperty("caption", True)
-            hint.setWordWrap(True)
-            body.addWidget(hint)
             return
         pt = make_table(["Object", "Type", "Season", "Priority", "Filter",
                          "Target", "Progress"], stretch_last=True)
@@ -291,7 +282,7 @@ class OverviewPage(QScrollArea):
             pt.setItem(r, 5, QTableWidgetItem(row["target"]))
             pt.setItem(r, 6, QTableWidgetItem(row["progress"]))
         pt.resizeColumnsToContents()
-        pt.setMinimumHeight(min(480, 28 * (len(rows) + 1) + 8))
+        fit_table_height(pt, max_rows=12)
         self._wire_open(pt)
         pt.setContextMenuPolicy(Qt.CustomContextMenu)
         pt.customContextMenuRequested.connect(
@@ -319,8 +310,13 @@ class OverviewPage(QScrollArea):
 
     def _fill_manage(self, body):
         """Goal setup: activate/deactivate catalogs + custom-goal CRUD, grouped by
-        hemisphere in nested disclosure sections (former Goals page)."""
-        body.addWidget(QLabel(
+        hemisphere in nested disclosure sections (former Goals page). This is the only
+        non-table section, so it's wrapped in a bordered frame to read as a group."""
+        frame = QFrame()
+        frame.setObjectName("manageGoalsBox")
+        frame.setFrameShape(QFrame.StyledPanel)
+        inner = QVBoxLayout(frame)
+        inner.addWidget(QLabel(
             "Catalogs and custom lists you're tracking. Uncaptured members show as a "
             "checklist above; capturing or annotating an object adds it to your Library."))
         self._checks = {}
@@ -345,7 +341,8 @@ class OverviewPage(QScrollArea):
                 new_row.addWidget(new_btn)
                 new_row.addStretch(1)
                 section.body.addLayout(new_row)
-            body.addWidget(section)
+            inner.addWidget(section)
+        body.addWidget(frame)
 
     # ---- goal-row + membership table (from the former Goals page) ----
     def _goal_row(self, g: dict) -> QWidget:
@@ -417,9 +414,7 @@ class OverviewPage(QScrollArea):
         hdr = tbl.horizontalHeader()
         tbl.resizeColumnsToContents()
         hdr.setSectionResizeMode(1, QHeaderView.Stretch)
-        h = min(380, 24 * (len(slugs) + 1) + 10)
-        tbl.setMinimumHeight(h)
-        tbl.setMaximumHeight(h)
+        fit_table_height(tbl, max_rows=12)      # long catalogs cap + scroll
         self._wire_open(tbl)
         tbl.setContextMenuPolicy(Qt.CustomContextMenu)
         tbl.customContextMenuRequested.connect(
@@ -565,36 +560,13 @@ class OverviewPage(QScrollArea):
         tip.setWordWrap(True)
         self._lay.addWidget(tip)
 
-    # ---- priority rows (from the former Summary page) ----
-    def _priority_rows(self, priorities) -> list[dict]:
-        deprioritized = pins.deprioritized_slugs()
-        pinned = pins.pinned_slugs()
+    # ---- priority rows (manual pins only — the auto-prioritizer isn't shipped, so
+    # the legacy priorities.toml source is intentionally not read here) ----
+    def _priority_rows(self) -> list[dict]:
         cat = catalog.load_library()
         by_slug = derived.totals_by_slug()
-        rows, shown = [], set()
-        for p in priorities:
-            slug = _priority_slug(p)
-            if slug and slug in deprioritized:
-                continue
-            if p.get("progress"):
-                prog = (f"{p['progress'].get('integration_hms', '')} "
-                        f"({p.get('percent_complete', 0)}%)")
-            elif not p.get("track", True):
-                prog = "campaign — see strategy"
-            else:
-                prog = "not started"
-            rows.append({
-                "label": p.get("id", ""), "slug": slug,
-                "type": p.get("type_hint", "") or "", "season": p.get("season", "") or "",
-                "priority": str(p.get("priority", "") or ""),
-                "filter": p.get("filter", "") or "", "target": str(p.get("target", "") or ""),
-                "progress": prog,
-            })
-            if slug:
-                shown.add(slug)
-        for slug in sorted(pinned):
-            if slug in shown:
-                continue
+        rows = []
+        for slug in sorted(pins.pinned_slugs()):
             e = cat.get(slug)
             if not e:
                 continue

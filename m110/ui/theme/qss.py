@@ -30,6 +30,32 @@ QToolTip {{
 QLabel[muted="true"] {{ color: {t.text_secondary}; }}
 QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}
 
+/* ── Overview "Manage goals" bounding box (the one non-table section) ── */
+#manageGoalsBox {{
+    border: 1px solid {t.border};
+    border-radius: {r['md']}px;
+    padding: {SPACE['xs']}px;
+}}
+
+/* ── joined segmented controls (Library: Deep sky|Media, List|Grid|Feed) ── */
+#segControl {{
+    border: 1px solid {t.border};
+    border-radius: {r['sm']}px;
+    background-color: {t.surface};
+}}
+#segControl QToolButton#segButton {{
+    border: none;
+    border-radius: 0px;
+    padding: 3px 12px;
+    color: {t.text_primary};
+    background-color: transparent;
+}}
+#segControl QToolButton#segButton:hover:!checked {{ background-color: {t.surface_alt}; }}
+#segControl QToolButton#segButton:checked {{
+    background-color: {t.accent};
+    color: {t.accent_text};
+}}
+
 /* ── lists (galleries, pickers) ── */
 QListWidget {{
     background-color: {t.surface};

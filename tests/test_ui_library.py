@@ -9,7 +9,7 @@ PIL = pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402
 
 from m110 import catalog, config, derived, refresh  # noqa: E402
-from tests._helpers import add_library, messier_member, seed_root  # noqa: E402
+from tests._helpers import add_library, messier_member, seed_root, seed_sandbox  # noqa: E402
 
 
 def _png(path, color=(40, 80, 160)):
@@ -250,7 +250,8 @@ def test_processing_row_gets_async_thumbnail(tmp_path, monkeypatch, qapp, qtbot)
     slug, tid = messier_member()
     lights = config.lights_dir(tid); lights.mkdir(parents=True)
     (lights / f"Light_{tid}_30.0s_LP_20260529-010101.fit").write_text("x")
-    _png(config.finished_dir(tid) / f"{tid}_final.png")
+    _png(config.finished_dir(tid) / f"{tid}_final.png")   # hero source for the thumbnail
+    seed_sandbox(tid)   # unimported Siril output → shows in the "Ready to import" group
     refresh.run_refresh()
 
     from m110.ui.pages.processing import ProcessingPage

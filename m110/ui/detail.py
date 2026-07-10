@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from m110 import build_images, config, derived, objects, siril
 from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
-from m110.ui.widgets import status_label, targets_for_slug, make_table
+from m110.ui.widgets import status_label, targets_for_slug, make_table, fit_table_height
 
 
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
@@ -308,8 +308,7 @@ class DetailPane(QScrollArea):
             for c, val in enumerate(r):
                 tbl.setItem(i, c, QTableWidgetItem(val))
         tbl.resizeColumnsToContents()
-        tbl.setMinimumHeight(min(280, 28 * (len(rows) + 1) + 6))
-        tbl.setMaximumHeight(28 * (len(rows) + 1) + 12)
+        fit_table_height(tbl, max_rows=6)      # whole row fits; scroll past 6 rows
         self._lay.addWidget(tbl)
 
     def _add_processing_section(self, slug: str):

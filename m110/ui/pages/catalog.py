@@ -129,24 +129,6 @@ class CatalogPage(QWidget):
         fb.addWidget(self._catalog_combo, 1)
         cat_row.addWidget(self._filter_bar, 1)
 
-        # Three-way view segment: List · Grid · Feed. One control, one meaning;
-        # the active mode persists. (Grid is the default "home" view.)
-        from PySide6.QtWidgets import QButtonGroup
-        self._view_group = QButtonGroup(self)
-        self._view_group.setExclusive(True)
-        self._view_btns: dict[str, QToolButton] = {}
-        for mode, label in (("list", "List"), ("grid", "Grid"), ("feed", "Feed")):
-            b = QToolButton()
-            b.setText(label)
-            b.setCheckable(True)
-            b.setAutoRaise(True)
-            b.setCursor(Qt.PointingHandCursor)
-            self._view_group.addButton(b)
-            self._view_btns[mode] = b
-            b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
-            cat_row.addWidget(b)
-        self._view_btns[self._view_mode].setChecked(True)
-
         # Its own bottom row (not cat_row) — a fixed-width slider appearing/
         # disappearing inline next to the stretchy catalog combo shifted every
         # widget after it (the toggle button included) each time grid mode
@@ -207,11 +189,28 @@ class CatalogPage(QWidget):
         self._scope_stack = QStackedWidget()
         self._scope_stack.addWidget(self.splitter)      # 0 = deep sky
         self._scope_stack.addWidget(self.media_view)    # 1 = media
-        seg_row = self._build_scope_segment()
+
+        # One control row: Deep sky · Media (left) + List · Grid · Feed (right), each
+        # a joined segmented control. Fixed positions — the view segment no longer
+        # rides on the (hideable) catalog filter, so it can't shift in Feed mode.
+        self._scope_seg, self._scope_group, scope_btns = self._make_segment(
+            [("deep", "Deep sky"), ("media", "Media")], "deep")
+        self._deepsky_btn, self._media_btn = scope_btns["deep"], scope_btns["media"]
+        self._deepsky_btn.toggled.connect(lambda on: on and self._set_scope(0))
+        self._media_btn.toggled.connect(lambda on: on and self._set_scope(1))
+        self._view_seg, self._view_group, self._view_btns = self._make_segment(
+            [("list", "List"), ("grid", "Grid"), ("feed", "Feed")], self._view_mode)
+        for mode, b in self._view_btns.items():
+            b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
+
+        controls = QHBoxLayout()
+        controls.addWidget(self._scope_seg)
+        controls.addStretch(1)
+        controls.addWidget(self._view_seg)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addLayout(seg_row)
+        lay.addLayout(controls)
         lay.addWidget(self._scope_stack, 1)
 
         self._all_tile_items = self._build_tile_items()
@@ -251,32 +250,36 @@ class CatalogPage(QWidget):
         """Theme changed — repaint views (status/muted colors) from new tokens."""
         self._rebuild_views()
 
-    # ---- scope segment (Deep sky | Media) ----
-    def _build_scope_segment(self) -> QHBoxLayout:
-        from PySide6.QtWidgets import QButtonGroup
-        row = QHBoxLayout()
+    # ---- segmented controls (Deep sky|Media, List|Grid|Feed) ----
+    def _make_segment(self, items, active_key):
+        """A joined macOS-style segmented control: exclusive checkable buttons packed
+        into a bordered frame (`#segControl` / `#segButton` in the QSS). `items` =
+        [(key, label)]. Returns (frame, group, {key: button})."""
+        from PySide6.QtWidgets import QButtonGroup, QFrame
+        frame = QFrame()
+        frame.setObjectName("segControl")
+        row = QHBoxLayout(frame)
         row.setContentsMargins(0, 0, 0, 0)
-        self._scope_group = QButtonGroup(self)
-        self._scope_group.setExclusive(True)
-        self._deepsky_btn = QToolButton()
-        self._deepsky_btn.setText("Deep sky")
-        self._media_btn = QToolButton()
-        self._media_btn.setText("Media")
-        for i, b in ((0, self._deepsky_btn), (1, self._media_btn)):
+        row.setSpacing(0)
+        group = QButtonGroup(frame)
+        group.setExclusive(True)
+        btns: dict[str, QToolButton] = {}
+        for key, label in items:
+            b = QToolButton()
+            b.setObjectName("segButton")
+            b.setText(label)
             b.setCheckable(True)
-            b.setAutoRaise(True)
             b.setCursor(Qt.PointingHandCursor)
-            self._scope_group.addButton(b, i)
+            group.addButton(b)
+            btns[key] = b
             row.addWidget(b)
-        self._deepsky_btn.setChecked(True)
-        self._deepsky_btn.toggled.connect(lambda on: on and self._set_scope(0))
-        self._media_btn.toggled.connect(lambda on: on and self._set_scope(1))
-        row.addStretch(1)
-        return row
+        btns[active_key].setChecked(True)
+        return frame, group, btns
 
     def _set_scope(self, idx: int):
         self._scope_stack.setCurrentIndex(idx)
-        if idx == 1:                       # entering Media → refresh its contents
+        self._view_seg.setVisible(idx == 0)   # List/Grid/Feed only apply to Deep sky
+        if idx == 1:                          # entering Media → refresh its contents
             self.media_view.reload()
 
     def reload(self):
