@@ -284,7 +284,15 @@ def build_priorities(priorities: list[dict], totals: dict, catalog: dict) -> lis
 
 def read_latest_stack_metadata(folder: Path) -> dict | None:
     """Read STACKCNT / LIVETIME / EXPTIME from the most recent .fit/.fits
-    stack file in `folder` (root) or `folder/stacks/` (post-migration).
+    stack file in `folder` (root), `folder/stacks/` (post-migration), or
+    `folder/working_files/`.
+
+    The last case matters because the ingest lights-guard diverts any non-sub
+    `.fit` (a stack or a processing product — they carry a `NxEXPsec`/`_processed`
+    token) into `working_files/`; the real Siril stack, with an authoritative
+    STACKCNT/LIVETIME/DATE header, often ends up there. Reading it fixes the
+    Processing view's In-stack / "+ new" / rejection for such objects (root/stacks
+    take precedence when a canonical stack is present).
 
     Returns a dict with stack_frames, stack_integration_min,
     stack_integration_hms, stack_exposure_s, stack_file, and stacked_at,
@@ -295,8 +303,11 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
     except ImportError:
         return None
 
+    # (dir priority, path): a canonical stack in the root/stacks/ wins over one
+    # that happens to sit in working_files/; newest-first within each priority.
     candidates = []
-    for d in [folder, folder / "stacks"]:
+    for d in [folder, folder / "stacks", folder / "working_files"]:
+        pr = 1 if d == folder / "working_files" else 0
         if not d.is_dir():
             continue
         for f in d.iterdir():
@@ -304,10 +315,10 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
                 continue
             if f.suffix.lower() not in (".fit", ".fits"):
                 continue
-            candidates.append(f)
-    candidates.sort(key=lambda p: -p.stat().st_mtime)
+            candidates.append((pr, f))
+    candidates.sort(key=lambda c: (c[0], -c[1].stat().st_mtime))
 
-    for f in candidates:
+    for _pr, f in candidates:
         try:
             with fits.open(f) as hdul:
                 hdr = hdul[0].header

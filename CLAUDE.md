@@ -342,6 +342,17 @@ control.
   the stack `DATE` = the unintegrated backlog; rejection% is `1 − STACKCNT /
   frames_present_at_stack`, not `/ running_total`). Reach for mtime only as a
   last-resort fallback when no such recorded timestamp exists.
+- **The real Siril stack often lives in `working_files/`, not `stacks/`.** The
+  ingest lights-guard diverts any non-sub `.fit` (a stack or a processing product —
+  they carry a `NxEXPsec`/`_processed` token) into `working_files/`, so the
+  authoritative stack FITS (STACKCNT/LIVETIME/DATE) frequently ends up there. Both
+  `build_derived.read_latest_stack_metadata` (root/stacks first, then
+  `working_files/`) and `build_images.discover_images` (gallery, filtered by
+  `_is_intermediate_fit`) look there — without this, finished-render-only objects
+  showed a blank "In stack" and an mtime-inflated "+ new" (the M10 case). Reading
+  where the stack *is* fixes existing libraries with no re-import; a proper
+  classification fix (route the stack → `stacks/`, `_processed` → `finished/`) is a
+  separate, deferred change.
 - **Never validate rendering/refresh against a live data root.** (A render
   pointed at the wrong root once clobbered a real `images.json`.) Use a temp
   copy or a throwaway root.

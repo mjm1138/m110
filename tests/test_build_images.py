@@ -158,6 +158,27 @@ def test_is_intermediate_fit_honors_final_hint():
     assert build_images._is_intermediate_fit(Path("M51_processed.png")) is False  # raster
 
 
+def test_discover_images_includes_working_files_render(tmp_path, monkeypatch):
+    """A processed render diverted into working_files/ (the M10 case) shows in the
+    gallery as a Working file; raw intermediates (og) + starmask stay hidden."""
+    import numpy as np
+    from astropy.io import fits
+    _setup(tmp_path, monkeypatch)
+    wf = config.working_files_dir("M99")
+    wf.mkdir(parents=True, exist_ok=True)
+
+    def _fit(name):
+        fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16")).writeto(wf / name, overwrite=True)
+    _fit("M99_301x20sec_processed.fit")   # finished-hint → kept
+    _fit("M99_301x20sec_og.fit")          # intermediate → dropped
+    _fit("starmask_M99_crop.fit")         # intermediate → dropped
+
+    names = {i["name"]: i["label"] for i in build_images.discover_images("m99", ["M99"], {})}
+    assert names.get("M99_301x20sec_processed.fit") == "Working file"
+    assert "M99_301x20sec_og.fit" not in names
+    assert "starmask_M99_crop.fit" not in names
+
+
 def test_hero_rerenders_when_a_different_source_is_picked(tmp_path, monkeypatch):
     """#17 hero-cache fix: choosing an *older* image as hero must re-render — the
     old mtime-only cache left a stale hero when the pick was older than the current
