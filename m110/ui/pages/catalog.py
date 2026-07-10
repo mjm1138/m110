@@ -264,9 +264,13 @@ class CatalogPage(QWidget):
         group = QButtonGroup(frame)
         group.setExclusive(True)
         btns: dict[str, QToolButton] = {}
-        for key, label in items:
+        n = len(items)
+        for i, (key, label) in enumerate(items):
             b = QToolButton()
             b.setObjectName("segButton")
+            # Position so the QSS can round only the outer corners of the end buttons.
+            b.setProperty("segpos", "solo" if n == 1 else
+                          "first" if i == 0 else "last" if i == n - 1 else "mid")
             b.setText(label)
             b.setCheckable(True)
             b.setCursor(Qt.PointingHandCursor)
@@ -278,7 +282,9 @@ class CatalogPage(QWidget):
 
     def _set_scope(self, idx: int):
         self._scope_stack.setCurrentIndex(idx)
-        self._view_seg.setVisible(idx == 0)   # List/Grid/Feed only apply to Deep sky
+        # Media has no List/Grid/Feed views (yet), so hide the segment in Media scope.
+        # (When Media gains its own grid/list/journal views, show + enable it instead.)
+        self._view_seg.setVisible(idx == 0)
         if idx == 1:                          # entering Media → refresh its contents
             self.media_view.reload()
 
