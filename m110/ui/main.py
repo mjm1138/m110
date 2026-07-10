@@ -1,11 +1,13 @@
 """M110 — PySide6 desktop shell.
 
-A left nav rail switches between the Library pages (Summary · Catalog ·
-Processing — Sessions/Journal coming) in a stacked content area. Summary is the
-landing page. The Catalog page hosts the shared per-object detail; object links
-on the other pages route there via `open_object`. The shell keeps everything in
-sync with disk: it refreshes on launch, on window-focus, and after ingest
-(threaded), and backfills any missing processing working folders.
+A left nav rail switches between the pages (Library · Overview · Import ·
+Processing · …) in a stacked content area. The **Library** (thumbnail grid) is
+the landing "home"; a fresh empty store lands on **Overview** (welcome/CTA).
+Overview merges the former Summary dashboard and Goals management into one pane
+of collapsible sections. The Library page hosts the shared per-object detail;
+object links on the other pages route there via `open_object`. The shell keeps
+everything in sync with disk: it refreshes on launch, on window-focus, and after
+ingest (threaded), and backfills any missing processing working folders.
 """
 from __future__ import annotations
 
@@ -23,8 +25,7 @@ from PySide6.QtWidgets import (
 
 from m110 import config, derived
 from m110.catalog import object_count
-from m110.ui.pages.summary import SummaryPage
-from m110.ui.pages.goals import GoalsPage
+from m110.ui.pages.overview import OverviewPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.sessions import SessionsPage
@@ -107,8 +108,8 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal",
-           "Media", "Import"]
+    NAV = ["Library", "Overview", "Import", "Processing", "Sessions", "Journal",
+           "Media"]
 
     def __init__(self):
         super().__init__()
@@ -132,17 +133,17 @@ class MainWindow(QMainWindow):
             return
 
         # Pages (order matches the nav rail + stack).
-        self.summary = SummaryPage()
-        self.goals = GoalsPage()
         self.catalog = CatalogPage()
+        self.overview = OverviewPage()
+        self.import_page = ImportPage()
         self.processing = ProcessingPage()
         self.sessions = SessionsPage()
         self.journal = JournalPage()
         self.media = MediaPage()
-        self.import_page = ImportPage()
-        self.pages = [self.summary, self.goals, self.catalog, self.processing,
-                      self.sessions, self.journal, self.media, self.import_page]
+        self.pages = [self.catalog, self.overview, self.import_page,
+                      self.processing, self.sessions, self.journal, self.media]
         self._catalog_index = self.pages.index(self.catalog)
+        self._overview_index = self.pages.index(self.overview)
         self._import_index = self.pages.index(self.import_page)
 
         self.stack = QStackedWidget()
@@ -183,12 +184,10 @@ class MainWindow(QMainWindow):
         self.catalog.dirty.connect(self._do_refresh)
         self.catalog.notes_saved.connect(self._on_notes_saved)
         self.catalog.pins_changed.connect(self._on_pins_changed)
-        self.summary.open_object.connect(self.open_object)
-        self.summary.go_to_import.connect(self._open_ingest)   # empty-state CTA
-        self.summary.pins_changed.connect(self._on_pins_changed)
-        self.goals.open_object.connect(self.open_object)
-        self.goals.dirty.connect(self._do_refresh)
-        self.goals.pins_changed.connect(self._on_pins_changed)
+        self.overview.open_object.connect(self.open_object)
+        self.overview.go_to_import.connect(self._open_ingest)   # empty-state CTA
+        self.overview.pins_changed.connect(self._on_pins_changed)
+        self.overview.dirty.connect(self._do_refresh)           # goal set changed
         self.processing.open_object.connect(self.open_object)
         self.sessions.open_object.connect(self.open_object)
         self.journal.open_object.connect(self.open_object)
@@ -270,7 +269,10 @@ class MainWindow(QMainWindow):
             lambda: self._maybe_auto_backup(scheduled=True))
         self._backup_timer.start()
 
-        self.nav.setCurrentRow(0)          # Summary lands first
+        # Land on the Library (grid) — the "home" view; but on a fresh, empty store
+        # land on Overview, whose welcome/CTA guides the first import.
+        empty = not derived.totals_by_slug()
+        self.nav.setCurrentRow(self._overview_index if empty else self._catalog_index)
         self._update_status()
         self.resize(1180, 740)
         self._ready = True

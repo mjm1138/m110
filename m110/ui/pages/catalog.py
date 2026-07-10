@@ -71,8 +71,10 @@ class CatalogPage(QWidget):
         self._thumbs = RowThumbnails(self._thumb_loader)
         self._all_tile_items: list[TileItem] = []
 
-        view_mode = config.get_setting(LIBRARY_VIEW_KEY, "list")
-        self._view_mode = view_mode if view_mode in ("list", "grid") else "list"
+        # Grid (thumbnail) is the default "home" view — the Lightroom-style wall of
+        # objects. A user's explicit list/grid choice persists and overrides this.
+        view_mode = config.get_setting(LIBRARY_VIEW_KEY, "grid")
+        self._view_mode = view_mode if view_mode in ("list", "grid") else "grid"
         zoom = config.get_setting(LIBRARY_ZOOM_KEY, GRID_ZOOM_DEFAULT)
         self._zoom = max(GRID_ZOOM_MIN, min(GRID_ZOOM_MAX, int(zoom)))
 

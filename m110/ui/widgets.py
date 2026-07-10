@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, S
 from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
-    QTableWidget, QTableWidgetItem,
+    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
 )
 
 from m110 import derived, objects
@@ -114,6 +114,42 @@ def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
     if stretch_last:
         t.horizontalHeader().setStretchLastSection(True)
     return t
+
+
+class CollapsibleSection(QWidget):
+    """A titled group whose body toggles open/closed via its header — the
+    macOS-native disclosure-triangle pattern (a rotating arrow beside a bold
+    title). `on_toggle(expanded)` fires on every change so the owning page can
+    persist the open/closed state across a rebuild (pages reload on window focus,
+    which would otherwise reset every section to its default). Add content to
+    `.body` (a QVBoxLayout)."""
+
+    def __init__(self, title: str, expanded: bool = True, on_toggle=None, parent=None):
+        super().__init__(parent)
+        self._on_toggle = on_toggle
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._btn = QToolButton()
+        self._btn.setText(title)
+        self._btn.setCheckable(True)
+        self._btn.setChecked(expanded)
+        self._btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self._btn.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
+        self._btn.toggled.connect(self._on_toggled)
+        lay.addWidget(self._btn)
+        self._body = QWidget()
+        self.body = QVBoxLayout(self._body)
+        self.body.setContentsMargins(18, 2, 0, 6)
+        lay.addWidget(self._body)
+        self._body.setVisible(expanded)
+
+    def _on_toggled(self, on: bool):
+        self._btn.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+        self._body.setVisible(on)
+        if self._on_toggle is not None:
+            self._on_toggle(on)
 
 
 # ── async row thumbnails (Library / Sessions / Processing) ──────────────────

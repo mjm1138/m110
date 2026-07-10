@@ -37,9 +37,9 @@ def test_goals_page_lists_progress_and_links(tmp_path, monkeypatch, qapp):
     slug, tid = seed_capture(root)       # m31 captured (shallow)
     from m110 import goals
     goals.create_custom_goal("My List", ["m31", "m51"])
-    from m110.ui.pages.goals import GoalsPage
+    from m110.ui.pages.overview import OverviewPage
     from PySide6.QtWidgets import QTableWidget
-    page = GoalsPage()
+    page = OverviewPage()
     try:
         # default Messier + the new custom goal each get a checkbox
         assert page._checks["messier"].isChecked()
@@ -64,9 +64,9 @@ def test_goals_page_lists_progress_and_links(tmp_path, monkeypatch, qapp):
 def test_goals_page_catalog_table_marks_captured_and_deep(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)       # m31 captured (shallow → not deep)
-    from m110.ui.pages.goals import GoalsPage
+    from m110.ui.pages.overview import OverviewPage
     from PySide6.QtWidgets import QTableWidget
-    page = GoalsPage()
+    page = OverviewPage()
     try:
         # find the row for the captured object across the per-catalog tables
         row = None
@@ -90,8 +90,8 @@ def test_goals_page_catalog_table_marks_captured_and_deep(tmp_path, monkeypatch,
 def test_goals_page_toggle_emits_dirty(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     from m110 import goals
-    from m110.ui.pages.goals import GoalsPage
-    page = GoalsPage()
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
     try:
         fired = []
         page.dirty.connect(lambda: fired.append(True))
@@ -417,6 +417,7 @@ def test_library_detail_hidden_until_selection_then_closable(tmp_path, monkeypat
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
+        page._grid_btn.setChecked(False)               # list mode (grid is the default)
         assert page.detail.isHidden()                  # nothing selected on first nav
 
         page.table.selectRow(0)
@@ -459,6 +460,7 @@ def test_library_view_toggle_preserves_selection(tmp_path, monkeypatch, qapp):
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
+        page._grid_btn.setChecked(False)              # list mode (grid is the default)
         page.table.selectRow(0)
         assert not page.detail.isHidden()
 
@@ -849,8 +851,8 @@ def test_summary_empty_priority_state(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)                       # a capture → dashboard (not welcome) renders
     from PySide6.QtWidgets import QLabel
-    from m110.ui.pages.summary import SummaryPage
-    page = SummaryPage()
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
     try:
         caps = [w.text() for w in page._content.findChildren(QLabel)]
         assert any("Pin an object" in t for t in caps)
@@ -867,8 +869,8 @@ def test_summary_surfaces_pinned_object(tmp_path, monkeypatch, qapp):
     slug, tid = seed_capture(root)
     from m110 import pins
     pins.set_state(slug, pins.PIN)
-    from m110.ui.pages.summary import SummaryPage
-    page = SummaryPage()
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
     try:
         rows = page._priority_rows([])
         assert any(r["slug"] == slug and r["label"].startswith("▲") for r in rows)
@@ -888,8 +890,8 @@ def test_summary_priority_view_has_pin_controls(tmp_path, monkeypatch, qapp):
     slug, tid = seed_capture(root)
     from m110 import pins
     pins.set_state(slug, pins.PIN)
-    from m110.ui.pages.summary import SummaryPage
-    page = SummaryPage()
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
     try:
         def headers(t):
             return [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
@@ -938,9 +940,9 @@ def test_goals_member_pin_emits(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
     from m110 import pins
-    from m110.ui.pages.goals import GoalsPage
+    from m110.ui.pages.overview import OverviewPage
     from PySide6.QtWidgets import QTableWidget
-    page = GoalsPage()
+    page = OverviewPage()
     try:
         fired = []
         page.pins_changed.connect(lambda: fired.append(True))
@@ -991,8 +993,8 @@ def test_summary_empty_store_shows_welcome_cta(tmp_path, monkeypatch, qapp):
     """A fresh store shows the welcome card; its Import button fires go_to_import."""
     seed_root(tmp_path, monkeypatch)        # bootstrapped but nothing captured
     from PySide6.QtWidgets import QLabel, QPushButton
-    from m110.ui.pages.summary import SummaryPage
-    page = SummaryPage()
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
     try:
         labels = " ".join(w.text() for w in page._content.findChildren(QLabel))
         assert "Welcome to M110" in labels
@@ -1010,13 +1012,15 @@ def test_summary_empty_store_shows_welcome_cta(tmp_path, monkeypatch, qapp):
 def test_summary_seeded_store_shows_dashboard_not_welcome(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)                      # now there's a capture
-    from PySide6.QtWidgets import QLabel
-    from m110.ui.pages.summary import SummaryPage
-    page = SummaryPage()
+    from PySide6.QtWidgets import QLabel, QToolButton
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
     try:
         labels = " ".join(w.text() for w in page._content.findChildren(QLabel))
         assert "Welcome to M110" not in labels
-        assert "Progress by category" in labels
+        # dashboard sections render as collapsible headers (QToolButton), not labels
+        sections = [b.text() for b in page._content.findChildren(QToolButton)]
+        assert "Progress by category" in sections
     finally:
         page.deleteLater()
         qapp.processEvents()
