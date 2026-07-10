@@ -74,22 +74,17 @@ def test_table_sort_persists_across_rebuild(tmp_path, monkeypatch, qapp):
 
 def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
-    from m110 import catalog
-    slug, tid = next(iter(catalog.load_bundled_catalog("messier")["members"].items()))
-    lights = config.lights_dir(tid)
-    lights.mkdir(parents=True)
-    (lights / f"Light_{tid}_a.fit").write_text("x")
-    from m110 import refresh
-    refresh.run_refresh()
+    from tests._helpers import seed_capture
+    slug, tid = seed_capture(root)    # real light → session → totals (store not empty)
 
     from m110.ui.main import MainWindow
     win = MainWindow()
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Summary", "Goals", "Library", "Processing", "Sessions", "Journal",
-             "Media", "Import"]
-        assert win.stack.currentIndex() == 0          # Summary lands first
+            ["Library", "Overview", "Import", "Processing"]
+        # A store with captures lands on the Library (home); Library is index 0.
+        assert win.stack.currentIndex() == win._catalog_index == 0
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index
         assert win.catalog._selected_slug() == slug
