@@ -417,7 +417,7 @@ def test_library_detail_hidden_until_selection_then_closable(tmp_path, monkeypat
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(False)               # list mode (grid is the default)
+        page._set_view_mode("list")               # list mode (grid is the default)
         assert page.detail.isHidden()                  # nothing selected on first nav
 
         page.table.selectRow(0)
@@ -460,17 +460,17 @@ def test_library_view_toggle_preserves_selection(tmp_path, monkeypatch, qapp):
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(False)              # list mode (grid is the default)
+        page._set_view_mode("list")              # list mode (grid is the default)
         page.table.selectRow(0)
         assert not page.detail.isHidden()
 
-        page._grid_btn.setChecked(True)               # toggle to grid
+        page._set_view_mode("grid")               # toggle to grid
         assert page._view_mode == "grid"
         sel = page.grid_view.selectionModel().selectedIndexes()
         assert sel and sel[0].data(KEY_ROLE) == slug
         assert not page.detail.isHidden()              # no hide/show flash
 
-        page._grid_btn.setChecked(False)               # toggle back
+        page._set_view_mode("list")               # toggle back
         assert page._view_mode == "list"
         row = page.table.selectedItems()[0].row()
         assert page.table.item(row, 0).data(Qt.UserRole) == slug
@@ -485,7 +485,7 @@ def test_library_grid_search_preserves_selection_when_still_matching(tmp_path, m
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(True)
+        page._set_view_mode("grid")
         page._select_slug(slug)
         assert not page.detail.isHidden()
 
@@ -508,7 +508,7 @@ def test_library_grid_click_routes_to_detail_pane(tmp_path, monkeypatch, qapp):
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(True)
+        page._set_view_mode("grid")
         idx = page._grid_model.index_of(slug)
         assert idx.isValid()
         page.grid_view.selectionModel().select(
@@ -544,7 +544,7 @@ def test_library_grid_uncaptured_tile_renders_without_crash(tmp_path, monkeypatc
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(True)
+        page._set_view_mode("grid")
         assert page._grid_model.rowCount() == 1
         idx = page._grid_model.index(0)
         assert page._grid_model.data(idx, MUTED_ROLE) is True
@@ -568,7 +568,7 @@ def test_library_grid_context_menu_resolves_same_slug_as_table(tmp_path, monkeyp
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(True)
+        page._set_view_mode("grid")
         page.grid_view.resize(400, 400)                 # force layout offscreen
         idx = page._grid_model.index_of(slug)
         rect = page.grid_view.visualRect(idx)
@@ -585,7 +585,7 @@ def test_library_select_object_works_in_grid_mode(tmp_path, monkeypatch, qapp):
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        page._grid_btn.setChecked(True)
+        page._set_view_mode("grid")
         page.select_object(slug)
         assert not page.detail.isHidden()
         sel = page.grid_view.selectionModel().selectedIndexes()

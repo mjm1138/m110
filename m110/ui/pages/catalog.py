@@ -72,9 +72,9 @@ class CatalogPage(QWidget):
         self._all_tile_items: list[TileItem] = []
 
         # Grid (thumbnail) is the default "home" view — the Lightroom-style wall of
-        # objects. A user's explicit list/grid choice persists and overrides this.
+        # objects. A user's explicit list/grid/feed choice persists and overrides this.
         view_mode = config.get_setting(LIBRARY_VIEW_KEY, "grid")
-        self._view_mode = view_mode if view_mode in ("list", "grid") else "grid"
+        self._view_mode = view_mode if view_mode in ("list", "grid", "feed") else "grid"
         zoom = config.get_setting(LIBRARY_ZOOM_KEY, GRID_ZOOM_DEFAULT)
         self._zoom = max(GRID_ZOOM_MIN, min(GRID_ZOOM_MAX, int(zoom)))
 
@@ -94,11 +94,16 @@ class CatalogPage(QWidget):
         self.grid_view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.grid_view.customContextMenuRequested.connect(self._on_context_menu)
 
+        # Feed view = the reverse-chron object-card feed (absorbs the Journal pane).
+        from m110.ui.pages.journal import JournalPage
+        self.feed_view = JournalPage()
+        self.feed_view.open_object.connect(self.select_object)   # card → detail
+
         self._view_stack = QStackedWidget()
-        self._view_stack.addWidget(self.table)
-        self._view_stack.addWidget(self.grid_view)
-        self._view_stack.setCurrentWidget(
-            self.table if self._view_mode == "list" else self.grid_view)
+        self._view_stack.addWidget(self.table)          # 0
+        self._view_stack.addWidget(self.grid_view)      # 1
+        self._view_stack.addWidget(self.feed_view)      # 2
+        self._view_stack.setCurrentWidget(self._view_widget(self._view_mode))
 
         self.detail = DetailPane()
         self.detail.editing_changed.connect(self._on_detail_editing)
@@ -107,31 +112,40 @@ class CatalogPage(QWidget):
         self.detail.closed.connect(self._on_detail_closed)
         self.detail.hide()                                # nothing selected yet
 
-        # Left side: catalog selector + view toggle + zoom + search + stat row.
+        # Left side: catalog selector + view segment + zoom + search + stat row.
         cat_row = QHBoxLayout()
-        cat_row.addWidget(QLabel("Catalog:"))
+        # The catalog filter (label + combo) only applies to the object views, so
+        # it's wrapped for hide/show — the Feed view has its own search and no
+        # catalog scoping.
+        self._filter_bar = QWidget()
+        fb = QHBoxLayout(self._filter_bar)
+        fb.setContentsMargins(0, 0, 0, 0)
+        fb.addWidget(QLabel("Catalog:"))
         self._catalog_combo = QComboBox()
         self._catalog_combo.addItem("All objects", None)
         for c in self._catalogs:
             self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
         self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
-        cat_row.addWidget(self._catalog_combo, 1)
+        fb.addWidget(self._catalog_combo, 1)
+        cat_row.addWidget(self._filter_bar, 1)
 
-        # A single grid toggle (checked = grid). One control, one meaning:
-        # click to switch to grid, click again to go back to list — nothing
-        # relocates, and the "off" state IS list view (no separate list icon
-        # that reads like an unrelated hamburger menu). Kept minimal on
-        # purpose — see the "restrained main-window chrome" note in CLAUDE.md.
-        self._grid_btn = QToolButton()
-        self._grid_btn.setText("⊞")
-        self._grid_btn.setToolTip("Grid view")
-        self._grid_btn.setCheckable(True)
-        self._grid_btn.setAutoRaise(True)
-        self._grid_btn.setCursor(Qt.PointingHandCursor)
-        self._grid_btn.setChecked(self._view_mode == "grid")
-        self._grid_btn.toggled.connect(
-            lambda on: self._set_view_mode("grid" if on else "list"))
-        cat_row.addWidget(self._grid_btn)
+        # Three-way view segment: List · Grid · Feed. One control, one meaning;
+        # the active mode persists. (Grid is the default "home" view.)
+        from PySide6.QtWidgets import QButtonGroup
+        self._view_group = QButtonGroup(self)
+        self._view_group.setExclusive(True)
+        self._view_btns: dict[str, QToolButton] = {}
+        for mode, label in (("list", "List"), ("grid", "Grid"), ("feed", "Feed")):
+            b = QToolButton()
+            b.setText(label)
+            b.setCheckable(True)
+            b.setAutoRaise(True)
+            b.setCursor(Qt.PointingHandCursor)
+            self._view_group.addButton(b)
+            self._view_btns[mode] = b
+            b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
+            cat_row.addWidget(b)
+        self._view_btns[self._view_mode].setChecked(True)
 
         # Its own bottom row (not cat_row) — a fixed-width slider appearing/
         # disappearing inline next to the stretchy catalog combo shifted every
@@ -171,6 +185,14 @@ class CatalogPage(QWidget):
         self._left_lay.addWidget(self._view_stack)
         self._left_lay.addWidget(self._zoom_row_widget)
 
+        # Initial Feed-mode chrome (the button-sync guard short-circuits _set_view_mode
+        # for the already-current mode, so set the Feed's control visibility here).
+        if self._view_mode == "feed":
+            self._filter_bar.hide()
+            self._search.hide()
+            self._stat.hide()
+            self.detail.hide()
+
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(left)
         self.splitter.addWidget(self.detail)
@@ -209,9 +231,12 @@ class CatalogPage(QWidget):
         self.grid_view.setEnabled(not locked)
 
     def select_object(self, slug: str):
-        # Route from another page → show the Deep-sky scope (not Media) and ensure
-        # the target row isn't filtered out (clear search + catalog filter).
+        # Route from another page (or a Feed card) → show the Deep-sky scope (not
+        # Media), switch out of the Feed to a selectable view, and ensure the target
+        # row isn't filtered out (clear search + catalog filter).
         self._deepsky_btn.setChecked(True)
+        if self._view_mode == "feed":
+            self._set_view_mode("grid")
         self._search.clear()
         if self._catalog_filter is not None:
             self._catalog_combo.setCurrentIndex(0)   # "All objects" → triggers rebuild
@@ -257,6 +282,8 @@ class CatalogPage(QWidget):
     def reload(self):
         if self._scope_stack.currentIndex() == 1:   # keep the Media scope fresh
             self.media_view.reload()
+        if self._view_mode == "feed":                # keep the Feed fresh when active
+            self.feed_view.reload()
         new_cat = load_library()
         new_totals = derived.totals_by_slug()
         changed = (new_cat != self._cat) or (new_totals != self._totals)
@@ -515,18 +542,36 @@ class CatalogPage(QWidget):
             self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
 
     # ---- view toggle + zoom ----
+    def _view_widget(self, mode: str) -> QWidget:
+        return {"list": self.table, "grid": self.grid_view,
+                "feed": self.feed_view}[mode]
+
     def _set_view_mode(self, mode: str):
         if mode == self._view_mode:
             return
         prev_slug = self._selected_slug()
         self._view_mode = mode
-        self._view_stack.setCurrentWidget(self.table if mode == "list" else self.grid_view)
+        feed = mode == "feed"
+        self._view_stack.setCurrentWidget(self._view_widget(mode))
         self._zoom_row_widget.setVisible(mode == "grid")
+        # Feed has its own search + no catalog scoping — hide the object-view chrome.
+        self._filter_bar.setVisible(not feed)
+        self._search.setVisible(not feed)
+        self._stat.setVisible(not feed)
         config.save_setting(LIBRARY_VIEW_KEY, mode)
+        # Keep the segment buttons in sync when the mode is set programmatically
+        # (e.g. select_object switching Feed → Grid); setChecked only re-enters
+        # _set_view_mode with the same mode, which the guard above no-ops.
+        if not self._view_btns[mode].isChecked():
+            self._view_btns[mode].setChecked(True)
+        if feed:
+            self.feed_view.reload()
+            self.detail.hide()                 # no per-object detail in the feed
+            return
         if prev_slug:
             self._select_slug(prev_slug)
         else:
-            (self.table if mode == "list" else self.grid_view).clearSelection()
+            self._view_widget(mode).clearSelection()
 
     def _on_zoom_changing(self, value: int):
         self._zoom = value
