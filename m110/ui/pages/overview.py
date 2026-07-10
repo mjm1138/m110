@@ -211,6 +211,7 @@ class OverviewPage(QScrollArea):
         body.addWidget(self._caption("Integration time by object"))
         ci = make_table(["Object", "Sessions", "Frames", "Integration", "Filter",
                          "Status"], stretch_last=True)
+        ci.setSortingEnabled(False)   # rows are pre-sorted; sorting-on-insert blanks cells
         rows = sorted(
             ((slug, t) for slug, t in by_slug.items() if t.get("session_count", 0)),
             key=lambda kv: kv[1].get("integration_min", 0), reverse=True)

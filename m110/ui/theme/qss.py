@@ -38,17 +38,28 @@ QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['capt
 }}
 
 /* ── joined segmented controls (Library: Deep sky|Media, List|Grid|Feed) ── */
-#segControl {{
-    border: 1px solid {t.border};
-    border-radius: {r['sm']}px;
-    background-color: {t.surface};
-}}
+/* The container has no border/background; each button carries the border, and the
+   end buttons round their outer corners so the whole control reads as one pill. */
+#segControl {{ background-color: transparent; }}
 #segControl QToolButton#segButton {{
-    border: none;
+    border: 1px solid {t.border};
+    border-left-width: 0px;             /* shared edges collapse to one line */
     border-radius: 0px;
     padding: 3px 12px;
     color: {t.text_primary};
-    background-color: transparent;
+    background-color: {t.surface};
+}}
+#segControl QToolButton#segButton[segpos="first"],
+#segControl QToolButton#segButton[segpos="solo"] {{ border-left-width: 1px; }}
+#segControl QToolButton#segButton[segpos="first"],
+#segControl QToolButton#segButton[segpos="solo"] {{
+    border-top-left-radius: {r['sm']}px;
+    border-bottom-left-radius: {r['sm']}px;
+}}
+#segControl QToolButton#segButton[segpos="last"],
+#segControl QToolButton#segButton[segpos="solo"] {{
+    border-top-right-radius: {r['sm']}px;
+    border-bottom-right-radius: {r['sm']}px;
 }}
 #segControl QToolButton#segButton:hover:!checked {{ background-color: {t.surface_alt}; }}
 #segControl QToolButton#segButton:checked {{
