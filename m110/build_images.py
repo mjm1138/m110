@@ -128,6 +128,7 @@ def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict
         for src_dir, label in [
             (config.finished_dir(fname), "Finished render"),
             (config.stacks_dir(fname), "Siril stack"),
+            (config.working_files_dir(fname), "Working file"),
             (config.seestar_stacks_dir(fname), "Seestar in-app stack"),
         ]:
             if not src_dir.is_dir():

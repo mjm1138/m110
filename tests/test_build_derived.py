@@ -125,6 +125,39 @@ def test_rejection_measured_against_frames_present_at_stack_time(tmp_path, monke
     assert f["new_lights_since_stack"] == 200
 
 
+def test_stack_read_from_working_files(tmp_path, monkeypatch):
+    """The real Siril stack often lands in working_files/ (the ingest lights-guard
+    diverts processing-product .fit there). It's still read for In-stack / "+ new" /
+    rejection from its STACKCNT/DATE header — the M10 live-library case, where the
+    Processing view otherwise showed "—" in-stack and an mtime-inflated backlog."""
+    from astropy.io import fits
+    import numpy as np
+    images = tmp_path / "Images"
+    tgt = images / "M10"
+    (tgt / "lights").mkdir(parents=True)
+    (tgt / "finished").mkdir()
+    (tgt / "finished" / "M_10_processed.png").write_text("png")   # processed output exists
+    wf = tgt / "working_files"
+    wf.mkdir()
+    hdu = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    hdu.header["STACKCNT"] = 301
+    hdu.header["LIVETIME"] = 301 * 20
+    hdu.header["EXPTIME"] = 20
+    hdu.header["DATE"] = "2026-06-12T20:00:00"
+    hdu.writeto(wf / "M_10_301x20sec_2026-06-11_drizzle_2026-06-12_og.fit")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M10", "2026-06-10", 336),   # present when stacked (<= 06-12)
+                _sess("M10", "2026-06-15", 177)]    # captured after the stack date
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    f = proc["folders"]["M10"]
+    sm = f["stack_meta"]
+    assert sm and sm["stack_frames"] == 301                 # in-stack read from working_files/
+    assert f["new_lights_since_stack"] == 177               # date-based, not mtime fallback
+    assert sm["stack_rejection_pct"] == round((1 - 301 / 336) * 100)   # 10%
+
+
 def test_status_up_to_date_when_all_frames_precede_stack(tmp_path, monkeypatch):
     images = tmp_path / "Images"
     tgt = images / "M100"
