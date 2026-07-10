@@ -60,6 +60,28 @@ def test_finished_render_is_not_not_processed(tmp_path, monkeypatch):
     assert proc["counts"]["not_processed"] == 0
 
 
+# ── build_processing: ready_for_import flag (finished Siril output waiting) ──
+
+def test_ready_for_import_flag(tmp_path, monkeypatch):
+    """A target with unimported output in its siril/ sandbox gets
+    ready_for_import=True (drives the Processing page's "Ready to import" group)."""
+    images = tmp_path / "Images"
+    tgt = images / "M51"
+    (tgt / "lights").mkdir(parents=True)
+    (tgt / "lights" / "Light_a.fit").write_text("x")
+    (tgt / "siril").mkdir()
+    (tgt / "siril" / "M51_x_processed.png").write_text("png")   # unimported deliverable
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    totals = build_derived.build_totals({}, [{
+        "object_dir": "M51", "slugs": ["m51"], "frames": 1,
+        "integration_min": 1.0, "date": "2026-06-28", "filter": "IRCUT",
+        "exposure_s": 20,
+    }])
+    proc = build_derived.build_processing(totals, None, {})
+    assert proc["folders"]["M51"]["ready_for_import"] is True
+
+
 # ── build_processing: rejection% + freshness use the stack DATE, not the total ──
 
 def _write_stack(folder, stackcnt, date, exp_s=20):

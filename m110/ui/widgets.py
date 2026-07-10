@@ -116,6 +116,29 @@ def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
     return t
 
 
+def fit_table_height(tbl: QTableWidget, max_rows: int | None = None,
+                     half_row_pad: bool = True) -> None:
+    """Size a populated table to its content so it neither truncates a row nor
+    leaves dead space. Call **after** rows are inserted.
+
+    `header + frame + Σ row heights` (+ ½ a row when `half_row_pad`, which both
+    stops the last row clipping and — when capped — peeks the next row as a scroll
+    hint). With `max_rows`, height caps at that many rows and the vertical scrollbar
+    turns on for the rest; otherwise the whole table is shown with no inner scroll."""
+    tbl.resizeRowsToContents()
+    n = tbl.rowCount()
+    default_h = tbl.verticalHeader().defaultSectionSize()
+    row_h = tbl.rowHeight(0) if n else default_h
+    shown = n if (max_rows is None or n <= max_rows) else max_rows
+    body = sum(tbl.rowHeight(i) for i in range(shown)) if n else default_h
+    pad = row_h // 2 if half_row_pad else 0
+    capped = max_rows is not None and n > max_rows
+    tbl.setVerticalScrollBarPolicy(
+        Qt.ScrollBarAsNeeded if capped else Qt.ScrollBarAlwaysOff)
+    header = tbl.horizontalHeader().height() + 2 * tbl.frameWidth()
+    tbl.setFixedHeight(header + body + pad)
+
+
 class CollapsibleSection(QWidget):
     """A titled group whose body toggles open/closed via its header — the
     macOS-native disclosure-triangle pattern (a rotating arrow beside a bold

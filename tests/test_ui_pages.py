@@ -855,8 +855,8 @@ def test_summary_empty_priority_state(tmp_path, monkeypatch, qapp):
     page = OverviewPage()
     try:
         caps = [w.text() for w in page._content.findChildren(QLabel)]
-        assert any("Pin an object" in t for t in caps)
-        assert page._priority_rows([]) == []
+        assert any("In development" in t and "pin objects" in t.lower() for t in caps)
+        assert page._priority_rows() == []      # pins-only source
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -872,11 +872,11 @@ def test_summary_surfaces_pinned_object(tmp_path, monkeypatch, qapp):
     from m110.ui.pages.overview import OverviewPage
     page = OverviewPage()
     try:
-        rows = page._priority_rows([])
+        rows = page._priority_rows()
         assert any(r["slug"] == slug and r["label"].startswith("▲") for r in rows)
         # deprioritizing it drops it back out
         pins.set_state(slug, pins.DEPRIORITIZE)
-        assert all(r["slug"] != slug for r in page._priority_rows([]))
+        assert all(r["slug"] != slug for r in page._priority_rows())
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -906,7 +906,7 @@ def test_summary_priority_view_has_pin_controls(tmp_path, monkeypatch, qapp):
         page.pins_changed.emit()
         assert fired
         page.reload()                       # unpinned → drops off the list
-        assert all(r["slug"] != slug for r in page._priority_rows([]))
+        assert all(r["slug"] != slug for r in page._priority_rows())
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -1032,6 +1032,67 @@ def test_library_empty_state_hint(tmp_path, monkeypatch, qapp):
     page = CatalogPage()
     try:
         assert "Library is empty" in page._stat.text()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+# ── BETA_BUGS: table-height helper, Overview restructure, Library segments ────
+
+def test_fit_table_height_no_clip_and_caps(qapp):
+    from PySide6.QtWidgets import QTableWidgetItem
+    from m110.ui.widgets import make_table, fit_table_height
+    # a single-row table: no inner scrollbar, whole row fits (+ half-row pad)
+    t = make_table(["A", "B"])
+    t.insertRow(0)
+    t.setItem(0, 0, QTableWidgetItem("x")); t.setItem(0, 1, QTableWidgetItem("y"))
+    fit_table_height(t)
+    assert t.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+    assert t.height() > t.horizontalHeader().height()      # header + a full row
+    # a table above the cap turns the scrollbar on
+    t2 = make_table(["A"])
+    for i in range(9):
+        t2.insertRow(i); t2.setItem(i, 0, QTableWidgetItem(str(i)))
+    fit_table_height(t2, max_rows=6)
+    assert t2.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded
+
+
+def test_overview_section_order_and_pins_only(tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QToolButton
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110.ui.pages.overview import OverviewPage
+    page = OverviewPage()
+    try:
+        section_titles = {"Goals", "Priority targets", "Integration Time and Sessions",
+                          "Goal checklists", "Progress by category", "Manage goals"}
+        order = [b.text() for b in page._content.findChildren(QToolButton)
+                 if b.text() in section_titles]
+        assert order == ["Goals", "Priority targets", "Integration Time and Sessions",
+                         "Goal checklists", "Progress by category", "Manage goals"]
+        assert "Processing queue" not in [b.text() for b in
+                                          page._content.findChildren(QToolButton)]
+        assert page._priority_rows() == []      # pins-only source, none pinned
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_library_view_segment_stays_put_in_feed(tmp_path, monkeypatch, qapp):
+    """Item 17: the List/Grid/Feed segment lives on its own row, so hiding the
+    catalog filter in Feed mode can't relocate it; it hides only in Media scope."""
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        assert set(page._view_btns) == {"list", "grid", "feed"}
+        page._view_btns["feed"].setChecked(True)
+        assert page._filter_bar.isHidden() and not page._view_seg.isHidden()
+        page._media_btn.setChecked(True)
+        assert page._view_seg.isHidden()        # not applicable to Media
+        page._deepsky_btn.setChecked(True)
+        assert not page._view_seg.isHidden()
     finally:
         page.deleteLater()
         qapp.processEvents()

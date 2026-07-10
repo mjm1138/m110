@@ -9,17 +9,20 @@ from PySide6.QtWidgets import (
 
 from m110 import derived
 from m110.ui.widgets import (
-    make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
+    make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails,
+    ROW_THUMB_SIZE, fit_table_height,
 )
 
+# Status-keyed groups (Up to date is intentionally omitted — fully-processed objects
+# with nothing waiting need no attention). "Ready to import" is a separate, flag-keyed
+# group prepended in reload().
 _GROUPS = [
     ("out_of_date", "Out of date — restack to incorporate new lights"),
     ("not_processed", "Not processed — first stack needed"),
-    ("up_to_date", "Up to date"),
     ("dismissed", "Dismissed"),
 ]
 _COLS = ["Object", "Raw integ", "In stack", "Rejected", "+ new", "Latest stack",
-         "Last capture", "Star removal", "Note"]
+         "Last capture", "Notes"]
 
 
 class ProcessingPage(QScrollArea):
@@ -59,14 +62,23 @@ class ProcessingPage(QScrollArea):
         title = QLabel("<h2>Processing Queue</h2>")
         title.setTextFormat(Qt.RichText)
         self._lay.addWidget(title)
+        n_ready = sum(1 for f in queue if f.get("ready_for_import"))
         self._lay.addWidget(QLabel(
-            f"{counts.get('out_of_date', 0)} out of date · "
-            f"{counts.get('not_processed', 0)} not processed · "
-            f"{counts.get('up_to_date', 0)} up to date"
+            (f"{n_ready} ready to import · " if n_ready else "")
+            + f"{counts.get('out_of_date', 0)} out of date · "
+            f"{counts.get('not_processed', 0)} not processed"
             + (f" · {counts.get('dismissed')} dismissed" if counts.get("dismissed") else "")))
 
-        for status, label in _GROUPS:
-            rows = [f for f in queue if f.get("status") == status]
+        # "Ready to import" (finished Siril output waiting) takes precedence over the
+        # status groups, so an object with output to pull in shows once, at the top.
+        ready = [f for f in queue if f.get("ready_for_import")]
+        rest = [f for f in queue if not f.get("ready_for_import")]
+        groups = ([("Ready to import — finished Siril output waiting", ready)] if ready
+                  else [])
+        groups += [(label, [f for f in rest if f.get("status") == status])
+                   for status, label in _GROUPS]
+
+        for label, rows in groups:
             if not rows:
                 continue
             h = QLabel(f"<h3>{label}</h3>")
@@ -102,21 +114,15 @@ class ProcessingPage(QScrollArea):
                     f.get("latest_processed_at") or ""))
                 tbl.setItem(r, 6, NumItem(
                     f.get("last_capture") or "—", f.get("last_capture") or ""))
-                tbl.setItem(r, 7, QTableWidgetItem("✓ yes" if f.get("star_removal") else "—"))
-                tbl.setItem(r, 8, QTableWidgetItem(f.get("note") or ""))
+                tbl.setItem(r, 7, QTableWidgetItem(f.get("note") or ""))
             tbl.resizeColumnsToContents()
-            tbl.resizeRowsToContents()
             # Enable click-to-sort, but keep the meaningful queue order until the
             # user actually picks a column (no active sort indicator).
             tbl.setSortingEnabled(True)
             tbl.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
-            # Size to fit every row — these grouped tables shouldn't scroll
-            # internally (the page scrolls); a capped minimum truncated them.
-            tbl.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            h = tbl.horizontalHeader().height() + 2 * tbl.frameWidth()
-            for i in range(tbl.rowCount()):
-                h += tbl.rowHeight(i)
-            tbl.setFixedHeight(h)
+            # Fit every row (the page scrolls, not each table) + a half-row pad so a
+            # single-row group isn't clipped.
+            fit_table_height(tbl)
             self._wire_open(tbl)
             self._lay.addWidget(tbl)
 
