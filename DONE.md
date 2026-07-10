@@ -224,6 +224,25 @@ future work live in `CLAUDE.md` "Gotchas / lessons learned".
 - **#15 — Working folders self-heal on refresh** (`processing.prepare_missing`).
 - **#22 — Siril autoprep race** (`SameFileError`): `_link_or_copy` idempotent;
   `_do_refresh` skips while Import is busy.
+- **Holding-area importer polish** (2026-07-09). (1) The holding panel was cramped by
+  default — the splitter now seeds a ~40% height (`setSizes`) + a 2:1 stretch. (2) The
+  Rescan/Select/Import button row sat flush against the splitter handle → bottom margin
+  on the top layout. (3) A held Inbox folder spanning multiple objects collapsed into one
+  row with one Object/Kind picker; `scan_holding` now tags each held FITS with its
+  detected object (shared `_suggest_slug` — OBJECT header / nearest by RA·Dec), so
+  `group_ops` splits it into one **independently assignable** row per object (unidentified
+  files stay bundled per folder). Selection-restore rekeyed on `(folder, object)`.
+  `tests/test_holding.py`.
+- **DwarfLab Dwarf 3 support** (2026-07-09). Validated against real Dwarf 3 output.
+  Two `.fit`-only bugs made Dwarf `.fits` captures invisible: `config.is_light_frame`
+  diverted every sub to `working_files/`, and `scan_sessions` skipped `.fits` + parsed
+  Seestar-only filenames → zero sessions. Fixed with a shared `config.FIT_EXTS`
+  (`.fit`/`.fits`) engine-wide + a header-driven `scan_sessions` (`DATE-OBS`/`EXPTIME`/
+  `FILTER`, Seestar filename as fast path). Added a `dwarf` layout recognizer
+  (`_classify_dwarf_dir`): subs → `lights/`, `stacked-16_*` + `stacked.jpg` →
+  `seestar-stacks/`, startrails → `Media/Startrails_{video,photo}/`, `Thumbnail/`
+  (→ `_SKIP_DIRS`) + aux ignored; `_usable_object` sends `''`/`Unknown` to holding.
+  No `.store_version` bump. `tests/test_ingest_dwarf.py`.
 - **Recursive-import grouping** — `group_ops` keyed on the resolved object, not the bare
   folder name (a precursor store's per-object `lights/` no longer collapse into one row).
 - **Loose finished render → holding** — new `finished-render` recognizer routes a loose

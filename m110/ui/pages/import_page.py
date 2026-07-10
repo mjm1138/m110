@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import catalog, config, ingest
+from m110.ui import theme
 from m110.ui.ingest_dialog import (
     _ScanWorker, _ApplyWorker, _fmt_size, KIND_LABEL, ASSIGNABLE_KINDS,
 )
@@ -54,9 +55,10 @@ class ImportPage(QWidget):
 
         # Top block (source picker + scan preview) and the holding-area panel share
         # a vertical splitter so the panel is always visible (6c).
+        s = theme.tokens.SPACE
         top = QWidget()
         tv = QVBoxLayout(top)
-        tv.setContentsMargins(0, 0, 0, 0)
+        tv.setContentsMargins(0, 0, 0, s["sm"])   # keep the button row off the splitter handle
 
         src_row = QHBoxLayout()
         src_row.addWidget(QLabel("Source:"))
@@ -105,8 +107,11 @@ class ImportPage(QWidget):
         split = QSplitter(Qt.Vertical)
         split.addWidget(top)
         split.addWidget(self._build_holding_panel())
-        split.setStretchFactor(0, 3)
+        # Give the holding panel a real default height (it was cramped) and keep it
+        # from collapsing on resize. setSizes scales proportionally to actual height.
+        split.setStretchFactor(0, 2)
         split.setStretchFactor(1, 1)
+        split.setSizes([480, 320])
         outer.addWidget(split, 1)
 
         # Wait for a still-running worker before the app tears down — never destroy
@@ -314,8 +319,9 @@ class ImportPage(QWidget):
         self._populate_holding(prev)
 
     def _capture_holding_selections(self) -> dict:
-        """Current per-folder (object text, kind id) picks, so a rebuild can restore
-        them for rows that survive."""
+        """Current per-row (object text, kind id) picks, so a rebuild can restore
+        them for rows that survive. Keyed on (source folder, detected object) since a
+        folder can now split into several object rows."""
         out = {}
         for r in range(self.holding_table.rowCount()):
             if r >= len(self._holding_groups):
@@ -323,7 +329,8 @@ class ImportPage(QWidget):
             obj_w = self.holding_table.cellWidget(r, 3)
             kind_w = self.holding_table.cellWidget(r, 4)
             if obj_w is not None and kind_w is not None:
-                out[self._holding_groups[r].group] = (
+                g = self._holding_groups[r]
+                out[(g.group, g.object)] = (
                     obj_w.currentText().strip(), kind_w.currentData())
         return out
 
@@ -355,7 +362,7 @@ class ImportPage(QWidget):
             files_item.setToolTip(tip)
             self.holding_table.setItem(r, 1, files_item)
             self.holding_table.setItem(r, 2, QTableWidgetItem(_fmt_size(g.size_bytes)))
-            prev_obj, prev_kind = prev.get(g.group, ("", None))
+            prev_obj, prev_kind = prev.get((g.group, g.object), ("", None))
             obj = QComboBox()
             obj.setEditable(True)               # allow new / off-catalog objects
             obj.addItem("— choose —")

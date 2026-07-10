@@ -205,12 +205,23 @@ def working_files_dir(name: str) -> Path:
     return IMAGES_DIR / name / "working_files"
 
 
+# FITS extensions we accept. Seestar/Astronomy-port use ``.fit``; the Dwarf 3
+# (and most other rigs) write ``.fits``. This single set is the authority so a new
+# device's extension is recognized everywhere (import, sessions, prep) at once.
+FIT_EXTS = (".fit", ".fits")
+
+
+def is_fits_file(name: str) -> bool:
+    """True if ``name`` has a FITS extension (``.fit`` or ``.fits``)."""
+    return name.lower().endswith(FIT_EXTS)
+
+
 # A ``lights/`` folder must hold only raw subs. We identify the enemy — a
 # **processing by-product** (stack, starless, crop, …) — rather than trying to
 # whitelist every telescope's sub-naming (a Seestar ``Light_*`` allowlist would
 # wrongly divert a Dwarf/other-rig sub we don't yet know the naming of). So the
-# rule *fails toward "it's a light"*: a ``.fit`` is a sub unless it clearly reads
-# as a product. This single shared definition is used by import (route products
+# rule *fails toward "it's a light"*: a ``.fit``/``.fits`` is a sub unless it clearly
+# reads as a product. This single shared definition is used by import (route products
 # to ``working_files/`` instead of ``lights/``) and Siril prep (don't treat a
 # product as a light — the M27 phantom-``OTHER``-filter bug). A ``count×exposure``
 # token (``888x20sec``) is the tell-tale of a *stack*; the words are common
@@ -229,9 +240,9 @@ def is_processing_product(name: str) -> bool:
 
 
 def is_light_frame(name: str) -> bool:
-    """True if ``name`` is a raw light sub — a ``.fit`` that isn't a
+    """True if ``name`` is a raw light sub — a ``.fit``/``.fits`` that isn't a
     processing by-product (`is_processing_product`)."""
-    return name.lower().endswith(".fit") and not is_processing_product(name)
+    return is_fits_file(name) and not is_processing_product(name)
 
 
 def darks_dir(name: str) -> Path:

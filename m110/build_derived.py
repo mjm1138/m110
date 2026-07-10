@@ -28,12 +28,12 @@ except ImportError:
 # monkeypatch takes effect without re-import).
 
 DEEP_STACK_MIN = 60  # threshold per CLAUDE.md
-PROCESSED_EXTS = (".fit", ".tif", ".tiff")
+PROCESSED_EXTS = (".fit", ".fits", ".tif", ".tiff")
 # Hand-finished renders (finished/) are raster exports, not FITS stacks — but
 # they're still processed output. An imported library (e.g. the Astronomy
 # sibling) often carries only a finished render with no raw Siril stack, and
 # must not read as "not processed".
-FINISHED_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".fit")
+FINISHED_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".fit", ".fits")
 SKIP_DIRS = {"M42 copy", "M81 M82 orig", "Template"}
 
 
@@ -440,7 +440,7 @@ def build_processing(totals: dict, overrides: dict | None,
         light_files = []
         if lights.is_dir():
             light_files = [f for f in lights.iterdir()
-                           if f.is_file() and f.suffix.lower() == ".fit"]
+                           if f.is_file() and f.suffix.lower() in config.FIT_EXTS]
         newest_light_mtime = (max(f.stat().st_mtime for f in light_files)
                               if light_files else 0.0)
 

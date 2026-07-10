@@ -5,7 +5,10 @@ Each line is one (date, object, exposure, filter) tuple from the FITS
 filenames — the canonical session record. The scan is idempotent: re-running
 overwrites sessions.jsonl with the current view of the FITS folder.
 
-Filename conventions (per CLAUDE.md):
+The (date, exposure, filter) key for each sub comes from the Seestar/mosaic
+filename convention when it matches, else from the FITS header
+(`DATE-OBS`/`EXPTIME`/`FILTER`) — so any device's subs (Dwarf 3, …) produce
+sessions regardless of filename convention. Seestar filename convention:
   Light_<object>_<exp>s_<filter>_<YYYYMMDD>-<HHMMSS>.fit
   mosaic_<object>_<exp>s_<filter>_<YYYYMMDD>-<HHMMSS>.fit
 
@@ -42,6 +45,31 @@ PAT = re.compile(
     r"(\d{8})-(\d{6})\.fit",
     re.I,
 )
+
+
+def _session_key(path: Path) -> tuple[str, float, str] | None:
+    """(iso_date, exposure_s, filter) for one light sub — the fields a session
+    row buckets on. Fast path: the Seestar/mosaic filename convention (no header
+    read). Fallback: read the FITS header (``DATE-OBS``/``EXPTIME``/``FILTER``) so
+    device layouts with other filename conventions (Dwarf 3, …) still produce
+    sessions. Returns None if neither yields a usable date+exposure."""
+    m = PAT.search(path.name)
+    if m:
+        d = m.group(4)                          # YYYYMMDD
+        iso = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+        return iso, float(m.group(2)), m.group(3).upper()
+    try:
+        from astropy.io import fits
+        hdr = fits.getheader(str(path))
+        obs = str(hdr.get("DATE-OBS") or "").strip()
+        iso = obs.split("T", 1)[0]              # 'YYYY-MM-DD' from ISO datetime
+        exp = float(hdr.get("EXPTIME"))
+        if len(iso) != 10 or exp <= 0:
+            return None
+        filt = str(hdr.get("FILTER") or "").strip().upper()
+        return iso, exp, filt
+    except Exception:
+        return None
 
 
 def slugify(name: str) -> str:
@@ -110,22 +138,20 @@ def scan() -> list[dict]:
         if not lights.is_dir():
             continue
 
-        # Bucket by (date, exp, filt) to compress to one row per session-segment
+        # Bucket by (iso-date, exp, filt) to compress to one row per session-segment.
+        # Each light's key comes from the filename (Seestar fast path) or its FITS
+        # header (device-agnostic fallback — see `_session_key`).
         bucket: dict[tuple[str, float, str], int] = defaultdict(int)
         for f in lights.iterdir():
-            if not f.is_file() or f.suffix.lower() != ".fit":
+            if not f.is_file() or f.suffix.lower() not in config.FIT_EXTS:
                 continue
-            m = PAT.search(f.name)
-            if not m:
+            key = _session_key(f)
+            if key is None:
                 continue
-            exp = float(m.group(2))
-            filt = m.group(3).upper()
-            d = m.group(4)
-            bucket[(d, exp, filt)] += 1
+            bucket[key] += 1
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
-        for (d, exp, filt), n in sorted(bucket.items()):
-            iso = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+        for (iso, exp, filt), n in sorted(bucket.items()):
             session_date = datetime.strptime(iso, "%Y-%m-%d").date()
             mount_mode = "EQ" if session_date >= EQ_FROM else "Alt-Az"
             row = {
