@@ -239,6 +239,12 @@ class OverviewPage(QScrollArea):
         body.addWidget(ut)
 
     def _fill_integrations(self, body, by_folder):
+        row = QHBoxLayout()
+        row.addStretch(1)
+        all_btn = QPushButton("View all sessions…")
+        all_btn.clicked.connect(self._open_all_sessions)
+        row.addWidget(all_btn)
+        body.addLayout(row)
         ci = make_table(["Object", "Sessions", "Frames", "Integration", "Filter",
                          "Status"], stretch_last=True)
         rows = sorted(by_folder.items(),
@@ -520,6 +526,21 @@ class OverviewPage(QScrollArea):
                 seen.add(slug)
                 slugs.append(slug)
         return slugs
+
+    def _open_all_sessions(self):
+        """The full capture-session log (the former Sessions pane) in a dialog; a
+        row routes to the object and closes the dialog."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout
+        from m110.ui.pages.sessions import SessionsPage
+        dlg = QDialog(self)
+        dlg.setWindowTitle("All sessions")
+        dlg.resize(760, 560)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 0)
+        sp = SessionsPage()
+        sp.open_object.connect(lambda slug: (dlg.accept(), self.open_object.emit(slug)))
+        lay.addWidget(sp)
+        dlg.exec()
 
     # ---- welcome (empty store) ----
     def _add_welcome(self):

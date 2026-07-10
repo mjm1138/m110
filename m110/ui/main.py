@@ -28,7 +28,6 @@ from m110.catalog import object_count
 from m110.ui.pages.overview import OverviewPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
-from m110.ui.pages.sessions import SessionsPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui import theme
 
@@ -106,7 +105,7 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Import", "Processing", "Sessions"]
+    NAV = ["Library", "Overview", "Import", "Processing"]
 
     def __init__(self):
         super().__init__()
@@ -134,9 +133,8 @@ class MainWindow(QMainWindow):
         self.overview = OverviewPage()
         self.import_page = ImportPage()
         self.processing = ProcessingPage()
-        self.sessions = SessionsPage()
         self.pages = [self.catalog, self.overview, self.import_page,
-                      self.processing, self.sessions]
+                      self.processing]
         self._catalog_index = self.pages.index(self.catalog)
         self._overview_index = self.pages.index(self.overview)
         self._import_index = self.pages.index(self.import_page)
@@ -184,7 +182,6 @@ class MainWindow(QMainWindow):
         self.overview.pins_changed.connect(self._on_pins_changed)
         self.overview.dirty.connect(self._do_refresh)           # goal set changed
         self.processing.open_object.connect(self.open_object)
-        self.sessions.open_object.connect(self.open_object)
         self.import_page.imported.connect(
             lambda moved: self._do_refresh() if moved else None)
 

@@ -311,8 +311,11 @@ class CatalogPage(QWidget):
             name = next((c["name"] for c in self._catalogs
                          if c["id"] == self._catalog_filter), self._catalog_filter)
             prefix = f"{name} — "
+        integ_min = sum(self._totals.get(s, {}).get("integration_min", 0)
+                        for s in slugs if s in self._totals)
+        integ = f" · {integ_min / 60:.1f}h integration" if integ_min else ""
         self._stat.setText(
-            f"{prefix}{captured} captured · {deep} deep · {len(slugs)} total")
+            f"{prefix}{captured} captured · {deep} deep · {len(slugs)} total{integ}")
 
     def _apply_filter(self, *_):
         q = self._search.text().strip().lower()

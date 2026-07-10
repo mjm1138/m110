@@ -82,7 +82,7 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Library", "Overview", "Import", "Processing", "Sessions"]
+            ["Library", "Overview", "Import", "Processing"]
         # A store with captures lands on the Library (home); Library is index 0.
         assert win.stack.currentIndex() == win._catalog_index == 0
         win.open_object(slug)                         # link from another page
