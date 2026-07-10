@@ -966,6 +966,16 @@ def scan_holding(should_cancel=None) -> list[IngestOp]:
     if not base.is_dir():
         return []
     root = config.DATA_ROOT
+    # For splitting held rows by detected object: read each FITS frame's header and
+    # tag its op with the resolved object (OBJECT header / nearest by RA·Dec), so
+    # `group_ops` yields one row per object. Frames with no readable identity keep
+    # object="" and bundle per folder. Coords/library loaded once.
+    coords = catalog.load_coords()
+    try:
+        cat = catalog.load_library()
+    except Exception:
+        cat = {}
+    ref = catalog.load_reference()
     ops: list[IngestOp] = []
     for dirpath, dirnames, files in os.walk(base):
         if should_cancel and should_cancel():
@@ -977,10 +987,20 @@ def scan_holding(should_cancel=None) -> list[IngestOp]:
         for f in sorted(files):
             if not _is_content_file(f):
                 continue
+            if should_cancel and should_cancel():
+                raise IngestCancelled()
             src = d / f
+            obj = ""
+            if config.is_fits_file(f):
+                info = frame_info(str(src))
+                if info:
+                    slug, _reason = _suggest_slug(info, coords, cat)
+                    if slug:
+                        obj = cat.get(slug, {}).get("id") \
+                            or ref.get(slug, {}).get("id") or slug
             ops.append(IngestOp(str(src), str(src), "unassigned", group,
                                 str(src.relative_to(root)), False, "move",
-                                _size(src), "holding", ""))
+                                _size(src), "holding", obj))
     return ops
 
 
@@ -1082,26 +1102,32 @@ def identify_holding(group: IngestGroup, coords: dict | None = None,
     if hdr.get("imagetyp") in ("light", "dark", "flat", "bias"):
         info["suggested_kind"] = hdr["imagetyp"]
 
-    # (a) the OBJECT header names a known object → high-confidence suggestion.
-    #     Try the raw header + its canonical folding ("M 10" → "M10").
+    slug, reason = _suggest_slug(hdr, coords, cat, ref)
+    if slug:
+        info.update(suggested_slug=slug, suggested_id=_disp_id(slug), reason=reason)
+    return info
+
+
+def _suggest_slug(hdr: dict, coords: dict, cat: dict,
+                  ref: dict | None = None) -> tuple[str | None, str | None]:
+    """Best-effort catalog slug for a held frame's header (+ a human reason):
+    (a) the OBJECT header names a known object (raw + canonical folding), else
+    (b) the nearest catalog object within `IDENTIFY_TOL_DEG` of the frame's RA/Dec.
+    Shared by `identify_holding` (the #26 aids) and `scan_holding` (splitting held
+    rows by detected object). Returns (None, None) when nothing resolves."""
     obj = hdr.get("object")
-    slug = None
     if obj:
         for cand in (obj, canonical_target(obj), fits_object_name(obj)):
             slug = _slug_for_object(cand, cat)
             if slug:
-                break
-    if slug:
-        info.update(suggested_slug=slug, suggested_id=_disp_id(slug),
-                    reason=f"OBJECT header “{obj}”")
-        return info
-    # (b) else fall back to the nearest catalog object by the frame's RA/Dec.
+                return slug, f"OBJECT header “{obj}”"
     if coords and hdr.get("ra_deg") is not None and hdr.get("dec_deg") is not None:
         near, sep = _nearest(coords, hdr["ra_deg"], hdr["dec_deg"])
         if near and sep <= IDENTIFY_TOL_DEG:
-            info.update(suggested_slug=near, suggested_id=_disp_id(near),
-                        reason=f"{sep:.2f}° from {_disp_id(near)}")
-    return info
+            ref = ref if ref is not None else {}
+            disp = cat.get(near, {}).get("id") or ref.get(near, {}).get("id") or near
+            return near, f"{sep:.2f}° from {disp}"
+    return None, None
 
 
 def annotate_holding(groups: list[IngestGroup], should_cancel=None) -> list[dict]:

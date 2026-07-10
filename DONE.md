@@ -224,6 +224,15 @@ future work live in `CLAUDE.md` "Gotchas / lessons learned".
 - **#15 — Working folders self-heal on refresh** (`processing.prepare_missing`).
 - **#22 — Siril autoprep race** (`SameFileError`): `_link_or_copy` idempotent;
   `_do_refresh` skips while Import is busy.
+- **Holding-area importer polish** (2026-07-09). (1) The holding panel was cramped by
+  default — the splitter now seeds a ~40% height (`setSizes`) + a 2:1 stretch. (2) The
+  Rescan/Select/Import button row sat flush against the splitter handle → bottom margin
+  on the top layout. (3) A held Inbox folder spanning multiple objects collapsed into one
+  row with one Object/Kind picker; `scan_holding` now tags each held FITS with its
+  detected object (shared `_suggest_slug` — OBJECT header / nearest by RA·Dec), so
+  `group_ops` splits it into one **independently assignable** row per object (unidentified
+  files stay bundled per folder). Selection-restore rekeyed on `(folder, object)`.
+  `tests/test_holding.py`.
 - **DwarfLab Dwarf 3 support** (2026-07-09). Validated against real Dwarf 3 output.
   Two `.fit`-only bugs made Dwarf `.fits` captures invisible: `config.is_light_frame`
   diverted every sub to `working_files/`, and `scan_sessions` skipped `.fits` + parsed
