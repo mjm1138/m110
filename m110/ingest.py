@@ -85,6 +85,7 @@ class Layout:
 
 LAYOUTS = [
     Layout("seestar",         "Seestar",         True),   # folder-name conventions (_sub/Stacked_/_photo)
+    Layout("dwarf",           "DwarfLab Dwarf",  True),    # DWARF_RAW_*/STARTRAILS_* session folders
     Layout("m110-store",      "M110 store",      True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
     Layout("raw-fits",        "Raw FITS",        True),    # loose FITS sorted by header
     Layout("finished-render", "Finished render", True),    # a loose *_processed/final raster in an object folder
@@ -113,6 +114,27 @@ def is_stacked_fit(filename: str) -> bool:
     return (filename.startswith("Stacked_")
             or filename.startswith("DSO_Stacked_")
             or filename.startswith("Video_Stacked_"))
+
+
+# OBJECT-header values that mean "no target was identified" — the device wrote a
+# placeholder. Treated as absent so the frame falls to the holding area (identify
+# by pointing) instead of creating a literal "Unknown" target.
+_UNUSABLE_OBJECTS = {"", "unknown", "none", "n/a", "untitled"}
+
+
+def _usable_object(name: str | None) -> str | None:
+    """The OBJECT header value if it names a real target, else None."""
+    if not name:
+        return None
+    s = str(name).strip()
+    return None if s.lower() in _UNUSABLE_OBJECTS else s
+
+
+def _is_dwarf_session_dir(name: str) -> bool:
+    """A DwarfLab Dwarf on-device session folder (its subs sit beside an in-app
+    ``stacked-16_*`` stack, a ``Thumbnail/`` dir, and ``stacked.jpg`` previews)."""
+    n = name.upper()
+    return n.startswith("DWARF_RAW_") or n.startswith("STARTRAILS_")
 
 
 def _fit_files(d: Path) -> list[str]:
@@ -446,7 +468,7 @@ _STORE_PARENT_KIND = {
     "seestar_stacks": "stack", "seestar-stacks": "stack",
 }
 # Working/sandbox dirs that are never content — don't import or recurse into them.
-_SKIP_DIRS = {"process", "siril"}
+_SKIP_DIRS = {"process", "siril", "thumbnail"}   # thumbnail/ = per-sub preview sidecars (Dwarf)
 
 
 def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
@@ -499,6 +521,11 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
         if _all_files(src_dir):
             return "m110-store"
+    # DwarfLab Dwarf on-device session folder (name-prefixed). Loose Dwarf FITS a
+    # user re-grouped into named folders have no prefix and fall to raw-fits, which
+    # routes them by OBJECT header just fine.
+    if _is_dwarf_session_dir(name) and _fit_files(src_dir):
+        return "dwarf"
     # Seestar folder conventions.
     if name.endswith("_sub") or is_media_dir(name):
         return "seestar"
@@ -606,6 +633,100 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
     return ops
 
 
+def _emit_media(src_dir: Path, files, category_dir: str, obj_label: str,
+                action: str, layout: str, handled: set) -> list[IngestOp]:
+    """Route `files` into `Media/<category_dir>/` (e.g. ``Startrails_video``),
+    skipping ones already present. Marks them handled."""
+    root = config.DATA_ROOT
+    dst_dir = config.MEDIA_DIR / category_dir
+    existing = set(_all_files(dst_dir))
+    ops: list[IngestOp] = []
+    for f in files:
+        handled.add(f)
+        if f in existing:
+            continue
+        dest = dst_dir / f
+        ops.append(IngestOp(str(src_dir / f), str(dest), "media", category_dir,
+                            str(dest.relative_to(root)), False, action,
+                            _size(src_dir / f), layout, obj_label))
+    return ops
+
+
+def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
+                        handled: set, should_cancel=None) -> list[IngestOp]:
+    """DwarfLab Dwarf on-device session folder (6b). A session holds raw subs
+    (``<OBJECT>_…_.fits``) beside an in-app stack (``stacked-16_*.fits``), a
+    ``stacked.jpg`` preview, per-sub previews (skipped ``Thumbnail/`` dir), and
+    aux rasters (``img_*``, ``*_thumbnail``). Routing:
+      • raw subs → ``lights/`` (object from the OBJECT header; a header
+        IMAGETYP=DARK/FLAT/BIAS splits to its calibration dir);
+      • ``stacked-16_*`` + ``stacked.jpg``/``stacked-16_*.png`` → the object's
+        ``seestar-stacks/`` (generic device-stack) tier;
+      • **Startrails** (``STARTRAILS_`` prefix — subs have an empty OBJECT) →
+        ``.mp4`` to ``Media/Startrails_video/`` + composite ``stacked.jpg`` to
+        ``Media/Startrails_photo/``; raw subs ignored (not a stackable target);
+      • aux/per-sub rasters are marked handled (ignored, not held).
+    Records recognized files in `handled`."""
+    content = _content_files(src_dir)
+    fits = _fit_files(src_dir)
+    raw_subs = [f for f in fits if not f.startswith("stacked-16_")]
+    stacks = [f for f in fits if f.startswith("stacked-16_")]
+
+    # Startrails — a novelty capture, imported as Media (video + composite).
+    if name.upper().startswith("STARTRAILS_"):
+        ops: list[IngestOp] = []
+        videos = [f for f in content
+                  if f.rsplit(".", 1)[-1].lower() in ("mp4", "mov", "avi")]
+        ops += _emit_media(src_dir, videos, "Startrails_video", "Startrails",
+                           action, "dwarf", handled)
+        composite = [f for f in content if f.lower() == "stacked.jpg"]
+        ops += _emit_media(src_dir, composite, "Startrails_photo", "Startrails",
+                           action, "dwarf", handled)
+        handled.update(content)     # ignore raw subs + thumbnails; nothing else to hold
+        return ops
+
+    # DSO / Moon — object comes from the OBJECT header (shared across subs).
+    obj = None
+    for f in raw_subs:
+        info = frame_info(str(src_dir / f))
+        cand = _usable_object(info["object"]) if info else None
+        if cand:
+            obj = canonical_target(cand)
+            break
+
+    ops = []
+    if obj:
+        buckets: dict[str, list[str]] = {}
+        for f in raw_subs:
+            if should_cancel and should_cancel():
+                raise IngestCancelled()
+            info = frame_info(str(src_dir / f))
+            kind = (info["imagetyp"] if info and info["imagetyp"] in ("dark", "flat", "bias")
+                    else "light")
+            buckets.setdefault(kind, []).append(f)
+        for kind, fs in buckets.items():
+            handled.update(fs)
+            ops += _emit_files(src_dir, fs, kind, obj, name, action, "dwarf")
+        # Device stack + its ready-made previews → the object's stack tier.
+        previews = [f for f in content
+                    if f.lower() == "stacked.jpg"
+                    or (f.startswith("stacked-16_")
+                        and f.rsplit(".", 1)[-1].lower() in ("png", "jpg", "jpeg"))]
+        handled.update(stacks)
+        handled.update(previews)
+        ops += _emit_files(src_dir, stacks, "stack", obj, name, action, "dwarf")
+        ops += _emit_files(src_dir, previews, "stack", obj, name, action, "dwarf")
+    # else: OBJECT was a placeholder (Unknown/empty) → leave raw subs to the sweep
+    # (holding area, where identify-by-pointing can name them).
+
+    # Ignore aux rasters (reference/counter renders, small thumbnails, the flat
+    # img_stacked_all.tif rendition) so they never hit the holding area.
+    aux = [f for f in content
+           if f.startswith("img_") or f.lower() == "stacked_thumbnail.jpg"]
+    handled.update(aux)
+    return ops
+
+
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
                       handled: set, should_cancel=None) -> list[IngestOp]:
     """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
@@ -618,7 +739,8 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
             raise IngestCancelled()               # slow share must stay cancellable
         info = frame_info(str(src_dir / f))
         kind = info["imagetyp"] if info else None
-        obj_hdr = canonical_target(info["object"]) if info and info["object"] else None
+        usable = _usable_object(info["object"]) if info else None
+        obj_hdr = canonical_target(usable) if usable else None
         if kind in ("dark", "flat", "bias"):
             obj = obj_hdr or canonical_target(name)
         elif kind == "light" or obj_hdr:
@@ -667,6 +789,8 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     handled: set[str] = set()      # files the recognizer claimed (new OR already-present)
     if layout == "m110-store":
         ops = _classify_store_dir(src_dir, name, action, handled)
+    elif layout == "dwarf":
+        ops = _classify_dwarf_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "seestar":
         ops = _classify_seestar_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "raw-fits":
@@ -1120,7 +1244,7 @@ def plan_lights_cleanup(targets: list[str] | None = None) -> list[IngestOp]:
         if not ldir.is_dir():
             continue
         for f in sorted(ldir.iterdir()):
-            if not (f.is_file() and f.suffix.lower() == ".fit"):
+            if not (f.is_file() and f.suffix.lower() in config.FIT_EXTS):
                 continue
             if config.is_light_frame(f.name):
                 continue                        # genuine sub — leave it

@@ -326,6 +326,19 @@ archived in **[`DONE.md`](DONE.md)**.
    header-based classification + the `ingest.LAYOUTS` registry; the holding area) —
    full detail in **[`DONE.md`](DONE.md)**.
 
+   - **DwarfLab Dwarf 3 support** *(done 2026-07-09, `feature/dwarf3-ingest`)*. A second
+     device validated end-to-end against real Dwarf 3 output. Fixed two `.fit`-only
+     assumptions that made Dwarf `.fits` captures invisible (`config.is_light_frame`
+     diverted every sub to `working_files/`; `scan_sessions` skipped `.fits` + parsed
+     Seestar-only filenames → zero sessions): a shared `config.FIT_EXTS` now covers
+     `.fit`/`.fits` engine-wide, and `scan_sessions` is **header-driven** (`DATE-OBS`/
+     `EXPTIME`/`FILTER`, Seestar filename as a fast path). Added a `dwarf` layout
+     recognizer (`ingest._classify_dwarf_dir`) routing on-device session folders (subs →
+     `lights/`, `stacked-16_*` + `stacked.jpg` → the `seestar-stacks/` device-stack tier,
+     startrails → `Media/Startrails_{video,photo}/`, `Thumbnail/`/aux ignored), and
+     `_usable_object` so an `OBJECT` of `''`/`Unknown` goes to the holding area instead of
+     a literal target. No `.store_version` bump. Tests in `tests/test_ingest_dwarf.py`.
+
    - **6d — Lazy device-under-target + source differentiation** *(open, deferred)*.
      Record device/source per session; introduce the optional `Images/<target>/<device>/`
      path level only when a **2nd device** appears (flat = default device). A device
