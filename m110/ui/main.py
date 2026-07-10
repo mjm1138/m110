@@ -30,7 +30,6 @@ from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.sessions import SessionsPage
 from m110.ui.pages.journal import JournalPage
-from m110.ui.pages.media import MediaPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui import theme
 
@@ -108,8 +107,7 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Import", "Processing", "Sessions", "Journal",
-           "Media"]
+    NAV = ["Library", "Overview", "Import", "Processing", "Sessions", "Journal"]
 
     def __init__(self):
         super().__init__()
@@ -139,9 +137,8 @@ class MainWindow(QMainWindow):
         self.processing = ProcessingPage()
         self.sessions = SessionsPage()
         self.journal = JournalPage()
-        self.media = MediaPage()
         self.pages = [self.catalog, self.overview, self.import_page,
-                      self.processing, self.sessions, self.journal, self.media]
+                      self.processing, self.sessions, self.journal]
         self._catalog_index = self.pages.index(self.catalog)
         self._overview_index = self.pages.index(self.overview)
         self._import_index = self.pages.index(self.import_page)

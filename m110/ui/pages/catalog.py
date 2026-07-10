@@ -175,9 +175,22 @@ class CatalogPage(QWidget):
         self.splitter.addWidget(left)
         self.splitter.addWidget(self.detail)
         self.splitter.setSizes([560, 460])
+
+        # Segmented scope: Deep sky (catalog objects) vs Media (lunar/planetary/
+        # scenery/startrails) — the same page, two content stacks. Absorbs the
+        # former Media pane; the deep-sky controls live inside the deep-sky stack
+        # page, so switching to Media hides them without extra bookkeeping.
+        from m110.ui.pages.media import MediaPage
+        self.media_view = MediaPage(show_title=False)
+        self._scope_stack = QStackedWidget()
+        self._scope_stack.addWidget(self.splitter)      # 0 = deep sky
+        self._scope_stack.addWidget(self.media_view)    # 1 = media
+        seg_row = self._build_scope_segment()
+
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.splitter)
+        lay.addLayout(seg_row)
+        lay.addWidget(self._scope_stack, 1)
 
         self._all_tile_items = self._build_tile_items()
         self._apply_filter()               # first grid population
@@ -196,7 +209,9 @@ class CatalogPage(QWidget):
         self.grid_view.setEnabled(not locked)
 
     def select_object(self, slug: str):
-        # Ensure the target row isn't filtered out (clear search + catalog filter).
+        # Route from another page → show the Deep-sky scope (not Media) and ensure
+        # the target row isn't filtered out (clear search + catalog filter).
+        self._deepsky_btn.setChecked(True)
         self._search.clear()
         if self._catalog_filter is not None:
             self._catalog_combo.setCurrentIndex(0)   # "All objects" → triggers rebuild
@@ -211,7 +226,37 @@ class CatalogPage(QWidget):
         """Theme changed — repaint views (status/muted colors) from new tokens."""
         self._rebuild_views()
 
+    # ---- scope segment (Deep sky | Media) ----
+    def _build_scope_segment(self) -> QHBoxLayout:
+        from PySide6.QtWidgets import QButtonGroup
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        self._scope_group = QButtonGroup(self)
+        self._scope_group.setExclusive(True)
+        self._deepsky_btn = QToolButton()
+        self._deepsky_btn.setText("Deep sky")
+        self._media_btn = QToolButton()
+        self._media_btn.setText("Media")
+        for i, b in ((0, self._deepsky_btn), (1, self._media_btn)):
+            b.setCheckable(True)
+            b.setAutoRaise(True)
+            b.setCursor(Qt.PointingHandCursor)
+            self._scope_group.addButton(b, i)
+            row.addWidget(b)
+        self._deepsky_btn.setChecked(True)
+        self._deepsky_btn.toggled.connect(lambda on: on and self._set_scope(0))
+        self._media_btn.toggled.connect(lambda on: on and self._set_scope(1))
+        row.addStretch(1)
+        return row
+
+    def _set_scope(self, idx: int):
+        self._scope_stack.setCurrentIndex(idx)
+        if idx == 1:                       # entering Media → refresh its contents
+            self.media_view.reload()
+
     def reload(self):
+        if self._scope_stack.currentIndex() == 1:   # keep the Media scope fresh
+            self.media_view.reload()
         new_cat = load_library()
         new_totals = derived.totals_by_slug()
         changed = (new_cat != self._cat) or (new_totals != self._totals)

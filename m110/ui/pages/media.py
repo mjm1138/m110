@@ -21,14 +21,15 @@ def _fmt_size(n: int) -> str:
 
 
 class MediaPage(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, show_title=True):
         super().__init__(parent)
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignTop)
 
-        title = QLabel("<h2>Media</h2>")
-        title.setTextFormat(Qt.RichText)
-        outer.addWidget(title)
+        if show_title:            # suppressed when embedded under the Library's Media scope
+            title = QLabel("<h2>Media</h2>")
+            title.setTextFormat(Qt.RichText)
+            outer.addWidget(title)
 
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search…")
