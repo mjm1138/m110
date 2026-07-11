@@ -438,12 +438,18 @@ checklist, computed on the fly. Consequences:
   check and the #26 holding-area aids.)
 
 ### Session planning & plan files (ROADMAP items 1–2)
-- **Profiles** *(landed — site profile + planning engine)* — observing **site**,
-  **equipment/device**, and **horizon mask** (`.hrz`) are authored config under
-  `.m110_internal_data/profiles/`. One **site** profile = one shooting location
-  (home vs. a dark-site trip), each with its own horizon + glow; a `default.toml`
-  is seeded on first launch (idempotent, never overwritten — like the README /
-  journal template). The site profile also carries **light-pollution** data: a
+- **Profiles** *(landed — site profile + planning engine; **authored from the UI**
+  as of `feature/planning-profiles`)* — observing **site**, **equipment/device**, and
+  **horizon mask** (`.hrz`) are authored config under `.m110_internal_data/profiles/`.
+  One **site** profile = one shooting location (home vs. a dark-site trip), each with
+  its own horizon + glow; a `default.toml` is seeded on first launch (idempotent, never
+  overwritten — like the README / journal template). Beyond the seed, the **Planning
+  page** now creates/edits/deletes profiles via `planning_config`'s writers
+  (`save_site` / `delete_profile` / `import_horizon_mask`; imported horizon masks land
+  beside the profile as `<profile>.horizon.hrz`). Which profile the planner reads is a
+  **per-user** choice persisted in `settings.json` under `active_site_profile` (not in a
+  profile file), resolved by `active_profile()` (falls back to `default`). The site
+  profile also carries **light-pollution** data: a
   Bortle/SQM scalar (site class) + a **glow mask** — an azimuth-dependent quality
   floor layered over the physical horizon (effective floor =
   `max(physical_obstruction, glow_floor)`, `m110/horizon.effective_floor`),

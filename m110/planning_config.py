@@ -24,6 +24,7 @@ one profile per location).
 from __future__ import annotations
 
 import os
+import shutil
 import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -33,6 +34,9 @@ from zoneinfo import ZoneInfo
 from . import config
 
 DEFAULT_PROFILE = "default"
+# Which site profile the planner/prioritizer reads. Persisted in settings.json
+# (not in a profile file) so it's a per-user choice, not per-store data.
+ACTIVE_PROFILE_SETTING = "active_site_profile"
 
 
 @dataclass
@@ -149,3 +153,145 @@ def load_device(name: str = "device", path=None) -> Device:
         if hasattr(dev, k):
             setattr(dev, k, v)
     return dev
+
+
+# ── writers (author profiles from the Planning UI) ─────────────────────────────
+
+def _toml_str(v) -> str:
+    """Quote a string as a TOML basic string."""
+    return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _num(v) -> str:
+    """Render a number: integers stay integers, floats keep a decimal point."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    f = float(v)
+    return str(int(f)) + ".0" if f == int(f) else repr(f)
+
+
+def format_site_toml(site: Site) -> str:
+    """Serialize a :class:`Site` to the ``[site]``/``[horizon]``/``[glow]`` TOML
+    shape (matching ``config.DEFAULT_PROFILE_TOML``). Hand-written rather than via
+    a TOML lib (no writer dependency; mirrors ``pins._write``/``_write_library``)."""
+    return (
+        "# M110 observing-site profile. Session planning derives twilight, transit\n"
+        "# altitude, and observability from it. See m110/planning_config.py.\n\n"
+        "[site]\n"
+        f"name = {_toml_str(site.name)}\n"
+        f"latitude_deg = {_num(site.latitude_deg)}        # decimal degrees, +N\n"
+        f"longitude_deg = {_num(site.longitude_deg)}       # decimal degrees, +E\n"
+        f"elevation_m = {_num(site.elevation_m)}           # metres above sea level\n"
+        f"timezone = {_toml_str(site.timezone)}  # IANA timezone (DST automatic)\n\n"
+        "[horizon]\n"
+        "# Physical skyline obstruction (.hrz/CSV, e.g. from theo.rocks). Empty = open.\n"
+        f"mask = {_toml_str(site.horizon_mask)}\n\n"
+        "[glow]\n"
+        "# Light-pollution layer (the city light-dome). Filled by the light-dome lookup.\n"
+        f"bortle = {_num(int(site.bortle))}\n"
+        f"sqm_zenith = {_num(site.sqm_zenith)}\n"
+        f"mask = {_toml_str(site.glow_mask)}\n"
+        f"mask_narrowband = {_toml_str(site.glow_mask_narrowband)}\n"
+    )
+
+
+def save_site(site: Site, name: str = DEFAULT_PROFILE) -> Path:
+    """Write ``<name>.toml`` under the store's profiles dir; returns its path."""
+    p = profile_path(name)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(format_site_toml(site), encoding="utf-8")
+    return p
+
+
+def delete_profile(name: str) -> None:
+    """Delete a site profile. The ``default`` profile is protected (there must
+    always be a fallback). If the deleted profile was active, reset to default."""
+    if name == DEFAULT_PROFILE:
+        raise ValueError("The default profile can't be deleted.")
+    p = profile_path(name)
+    if p.is_file():
+        p.unlink()
+    if config.get_setting(ACTIVE_PROFILE_SETTING) == name:
+        config.save_setting(ACTIVE_PROFILE_SETTING, DEFAULT_PROFILE)
+
+
+def import_horizon_mask(src_path, profile: str = DEFAULT_PROFILE,
+                        *, narrowband: bool = False, glow: bool = False) -> str:
+    """Copy a user-picked ``.hrz``/CSV mask into the profiles dir under a stable
+    per-profile filename and return that filename (to store on the Site's
+    ``horizon_mask``/``glow_mask``/``glow_mask_narrowband`` field).
+
+    Validates the file parses first (``horizon.load_mask`` raises on an unusable
+    file). ``glow``/``narrowband`` pick the destination name so a profile's
+    physical + glow masks don't collide."""
+    from . import horizon
+    src = Path(src_path)
+    horizon.load_mask(str(src))     # raises ValueError on an unparseable/empty file
+    suffix = ("glow-nb" if narrowband else "glow") if glow else "horizon"
+    dest_dir = Path(config.PROFILES_DIR)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{profile}.{suffix}.hrz"
+    shutil.copyfile(src, dest)      # bytes only (mask files are plain text)
+    return dest.name
+
+
+# ── active-profile selection (which site the planner reads) ────────────────────
+
+def active_profile() -> str:
+    """The selected active site profile name. Falls back to the first available
+    profile (``default`` sorts first), then to :data:`DEFAULT_PROFILE`."""
+    name = config.get_setting(ACTIVE_PROFILE_SETTING, "") or ""
+    profiles = list_profiles()
+    if name and name in profiles:
+        return name
+    return profiles[0] if profiles else DEFAULT_PROFILE
+
+
+def set_active_profile(name: str) -> None:
+    config.save_setting(ACTIVE_PROFILE_SETTING, name)
+
+
+def load_active_site() -> Site:
+    """Load the site profile the planner/prioritizer should use."""
+    return load_site(active_profile())
+
+
+# ── optional online geocode (place name → coordinates) ─────────────────────────
+
+def geocode(query: str, *, timeout: int = 6, fetch=None):
+    """Best-effort place-name → ``(lat, lon, display_name)`` via OpenStreetMap
+    Nominatim. Returns ``None`` on any failure (offline, no match, parse error).
+
+    Opt-in — a user clicks "Look up" — and sends only the typed query. Manual
+    lat/lon entry is the baseline, so this never blocks profile authoring."""
+    import json
+    import urllib.parse
+    import urllib.request
+
+    q = (query or "").strip()
+    if not q:
+        return None
+    if fetch is None:
+        from . import updates
+
+        def fetch(url):
+            req = urllib.request.Request(url, headers={
+                "User-Agent": f"M110/{updates.current_version()} (observing-site geocode)"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+                return json.loads(r.read().decode("utf-8"))
+
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(
+        {"q": q, "format": "json", "limit": 1})
+    try:
+        data = fetch(url)
+    except Exception:
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    top = data[0]
+    try:
+        return (float(top["lat"]), float(top["lon"]), top.get("display_name") or q)
+    except (KeyError, TypeError, ValueError):
+        return None

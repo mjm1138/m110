@@ -1141,3 +1141,54 @@ def test_library_view_segment_stays_put_in_feed_and_hides_in_media(tmp_path, mon
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+def test_planning_page_profile_crud(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    from m110 import planning_config as pc
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        # Seeded default profile shows in the selector (by display name).
+        names = [page.selector.itemText(i) for i in range(page.selector.count())]
+        assert names == ["Home"]
+
+        # Create a profile via the editor's signal path.
+        pc.save_site(pc.Site(name="Dark Site", latitude_deg=39.9,
+                             longitude_deg=-105.1, elevation_m=2800,
+                             timezone="America/Denver", bortle=3), "dark-site")
+        page._on_profile_created("dark-site")
+        assert pc.active_profile() == "dark-site"
+        assert page.editor._stem == "dark-site"
+        assert page.editor._lat.value() == pytest.approx(39.9)
+
+        # Switch active back to default via the selector.
+        page.selector.setCurrentIndex(page.selector.findData("default"))
+        assert pc.active_profile() == "default"
+
+        # Delete the extra profile.
+        page.editor.load("dark-site")
+        pc.delete_profile("dark-site")
+        page._on_profile_deleted("dark-site")
+        assert pc.list_profiles() == ["default"]
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_planning_page_priority_shows_pins(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)          # a captured object in the Library
+    from m110 import pins
+    pins.set_state(slug, pins.PIN)
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page.reload()
+        # A table with the pinned object appears in the priority section body.
+        from PySide6.QtWidgets import QTableWidget
+        tables = page._priority_sec.body.parentWidget().findChildren(QTableWidget)
+        assert any(t.rowCount() >= 1 for t in tables)
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
