@@ -43,22 +43,45 @@ later (Library → Preferences) takes effect on restart.
 
 ## Getting around
 
-M110 has a **navigation rail** down the left side. The pages:
+M110 has a **navigation rail** down the left side with four pages. The **Library** is
+home — it opens there.
 
 | Page | What it's for |
 |---|---|
-| **Summary** | Landing dashboard — goal progress, what's captured, the processing queue, and your priority targets. |
-| **Goals** | Choose which catalogs you're working toward (Messier, Caldwell, …) or build a custom goal list. |
-| **Library** | Your collection — every object you've shot (and any you're tracking), as a sortable **table** or a **thumbnail grid**. Click an object to open its detail pane: hero image, notes, gallery, sessions, and processing status. |
-| **Processing** | The Siril processing-prep queue, grouped by status (needs work / up to date). |
-| **Sessions** | A log of every capture session (date, object, frames, exposure, filter, integration). |
-| **Journal** | A reverse-chronological feed of your objects, newest activity first — like a photo-blog of your imaging. |
-| **Media** | Non-catalog imagery — lunar, planetary, scenery, startrails. |
+| **Library** | Your collection — every object you've shot (and any you're tracking). This is the hub. |
+| **Overview** | A dashboard of collapsible sections: goal progress, priority targets, integration time & recent sessions, progress by category, and goal setup. |
 | **Import** | Bring in new captures from your telescope, a mounted card, or any folder. |
+| **Processing** | The Siril processing-prep queue — what needs a first stack, what's out of date, and what has finished work ready to import. |
 
-**The object detail pane** (opens when you select an object in the Library) is where
-most per-object work happens: read/edit notes, browse the gallery (finished vs.
-working files), set a hero image, and see the object's sessions and processing state.
+### The Library
+
+The Library opens as a **thumbnail grid** (a wall of your objects). A control row at the
+top gives you two segmented toggles:
+
+- **Deep sky · Media** — switch the whole page between your catalog objects and your
+  non-catalog **Media** (lunar, planetary, scenery, startrails).
+- **List · Grid · Feed** — view your deep-sky objects as a sortable **table**, the
+  **grid**, or a reverse-chronological **Feed** of object cards (a photo-blog of your
+  imaging). Plus a search box and a catalog filter (Messier, Caldwell, …).
+
+Click any object to open its **detail pane** — where most per-object work happens:
+hero image, notes, the gallery (split into *Finished* and *Working files*), the
+object's capture sessions, and its processing status. Set a hero, mark an image
+finished/working, or import finished Siril work from here.
+
+### Overview
+
+Everything that isn't your object collection lives here as **collapsible sections**
+(click a heading's triangle to open/close it; your choices are remembered):
+
+- **Goals** — progress toward each catalog you're tracking.
+- **Priority targets** — objects you've pinned (right-click → *Pin as priority* in the
+  Library). *An automatic prioritizer is on the way; for now this is manual.*
+- **Integration Time and Sessions** — hours per object, your last few sessions, and a
+  **View all sessions…** button for the full log.
+- **Progress by category** and **Goal checklists** — per-catalog membership with a green
+  check for captured / deep-stacked.
+- **Manage goals** — pick which catalogs you're working toward, or build a custom list.
 
 **Slow operations** (refresh, ingest, backup) run in the background with a progress
 dialog you can cancel — the window never freezes.

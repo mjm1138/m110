@@ -5,9 +5,9 @@
 **Complete the catalog.**
 
 **A photo library for your smart telescope.** M110 is a cross-platform desktop app
-that turns a growing pile of Seestar captures into an organized deep-sky imaging
-library — catalog, capture tracking, ingest, and Siril processing-prep — with a
-north-star goal to chase.
+that turns a growing pile of Seestar or DwarfLab captures into an organized deep-sky
+imaging library — catalog, capture tracking, ingest, and Siril processing-prep — with
+a north-star goal to chase.
 
 🌐 **[m110.space](https://m110.space)**  ·  📥 **[Download the beta](https://github.com/mjm1138/m110/releases/latest)** — macOS · Linux · Windows
 
@@ -24,7 +24,7 @@ north-star goal to chase.
 
 - **A real library** — every object you've shot, organized by catalog (Messier,
   Caldwell, and more) with status, integration time, and a per-object journal.
-- **One-click ingest** — point it at your Seestar or a folder; it groups, names, and
+- **One-click ingest** — point it at your Seestar, DwarfLab Dwarf, or a folder; it groups, names, and
   files your subs, stacks, and finished renders. You always preview before anything
   is written.
 - **Capture tracking** — sessions, frames, filters, and total integration roll up
@@ -90,8 +90,9 @@ map + conventions), [`DATA_MODEL.md`](DATA_MODEL.md) (data model), [`ROADMAP.md`
 ## Name & trademark
 
 The app is **M110** (Python package id `m110`). It's an independent, open-source
-project. **"Seestar" is a trademark of ZWO** — M110 works *with* your Seestar but is
-not affiliated with or endorsed by ZWO.
+project. **"Seestar" is a trademark of ZWO** and **"Dwarf" is a trademark of
+DwarfLab** — M110 works *with* your telescope but is not affiliated with or endorsed
+by ZWO or DwarfLab.
 
 ## License
 

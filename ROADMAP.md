@@ -46,9 +46,13 @@ archived in **[`DONE.md`](DONE.md)**.
 > (tokens + hand-rolled QSS, light/dark follow-system, Library list/grid, thumbnails
 > everywhere, upgraded viewer). Cross-cuts the pages below.
 
-0. **Site-parity multi-page UI** *(done)* — nav rail + stacked pages, Summary as the
-   landing page, one shared Object detail, plus the Media page (BUGS #11). Details in
-   **[`DONE.md`](DONE.md)**.
+0. **Navigation IA** *(done; refined pre-launch)* — a left nav rail + stacked pages
+   with one shared Object detail. A pre-public-launch cleanup **slimmed the rail 8→4**:
+   **Library · Overview · Import · Processing**. The Library (grid) is the landing
+   home; **Overview** merges the former Summary dashboard + Goals management into
+   collapsible sections; **Media / Journal / Sessions** were absorbed into the Library
+   (a Deep-sky/Media scope, a List/Grid/Feed view segment, and the detail pane).
+   Details in **[`DONE.md`](DONE.md)** and **[`UI_ROADMAP.md`](UI_ROADMAP.md)** (Phase 5).
 
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
@@ -310,8 +314,8 @@ archived in **[`DONE.md`](DONE.md)**.
    `library.toml`, bundled reference + catalog lists, the Goals nav page with custom
    goals, Simbad enrichment, the Library-=-collection reframe). **Six catalogs ship**
    (Messier, Caldwell, RASC Finest, Best-of-Sharpless, Bennett, Lacaille). Full detail
-   in **[`DONE.md`](DONE.md)**. The Goals page groups its catalog picker into
-   collapsible **All-sky / Northern / Southern / Custom** sections, each catalog
+   in **[`DONE.md`](DONE.md)**. The **Manage goals** section (Overview) groups its
+   catalog picker into collapsible **All-sky / Northern / Southern / Custom** sections, each catalog
    with a description caption + a "Learn more" link (per-catalog `hemisphere` +
    `source_url` in `seed/catalogs/*.toml`, surfaced via `goals.list_goals`).
    *Remaining (growth, not blocking):* more bundled catalogs
