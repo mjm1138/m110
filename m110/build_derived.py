@@ -659,7 +659,10 @@ def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
 
 def main():
     overrides_path = config.OVERRIDES_TOML
-    catalog = load_toml(config.LIBRARY_TOML)["catalog"]
+    # A fresh store seeds an empty library.toml with no [catalog] table (5d), so a
+    # brand-new user's first launch has an empty catalog — default to {} rather than
+    # KeyError (which surfaced as "Sync failed" on first launch).
+    catalog = load_toml(config.LIBRARY_TOML).get("catalog", {})
     priorities = load_toml(config.PRIORITIES_TOML).get("priority", [])
     sessions = load_sessions()
     overrides = load_toml(overrides_path) if overrides_path.exists() else None

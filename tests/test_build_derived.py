@@ -16,6 +16,18 @@ from m110.build_derived import (
 )
 
 
+def test_refresh_on_empty_library_does_not_fail(tmp_path, monkeypatch):
+    """A brand-new store seeds an empty library.toml (no [catalog] table). The first-
+    launch refresh must not KeyError on it (surfaced as "Sync failed" in the status
+    bar of the packaged app on an empty store)."""
+    from tests._helpers import seed_root
+    from m110 import refresh
+    from m110 import derived
+    seed_root(tmp_path, monkeypatch)          # bootstraps a zero-capture store
+    refresh.run_refresh(render=False)         # must not raise (KeyError: 'catalog')
+    assert derived.totals_by_slug() == {}
+
+
 # ── Seestar-stack-only captures (no lights → no sessions) ────────────────────
 
 def test_seestar_only_target_is_captured(tmp_path, monkeypatch):
