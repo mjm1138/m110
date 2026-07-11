@@ -40,7 +40,11 @@ Artifacts land in `dist/` (git-ignored).
    security find-identity -v -p codesigning
    ```
    Use the full `Developer ID Application: … (TEAMID)` string as `SIGN_IDENTITY`.
-3. **Notarization credentials** stored once as a keychain profile (uses an
+
+   It's "Developer ID Application: MICHAEL JAMES MERIDETH (8N7DP84NGU)"   
+   ```"Developer ID Application: MICHAEL JAMES MERIDETH (8N7DP84NGU)"
+   ```
+4. **Notarization credentials** stored once as a keychain profile (uses an
    [app-specific password](https://support.apple.com/en-us/102654)):
    ```bash
    xcrun notarytool store-credentials M110-notary \
@@ -76,3 +80,6 @@ The Linux + Windows artifacts build in CI on a version tag
 `macos-latest` job would need the Developer ID cert (base64 `.p12`) + notarytool
 creds imported as encrypted repo secrets. Until then, produce the notarized DMG
 locally with `build_release.sh` and upload it to the tag's Release by hand.
+
+The full end-to-end release checklist (tag → CI → notarize → upload the DMG) is in
+the top-level **[`RELEASING.md`](../../RELEASING.md)**.
