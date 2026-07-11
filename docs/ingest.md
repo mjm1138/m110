@@ -34,6 +34,7 @@ Your data folder is organized around **two views of the same collection**:
     stacks/                     Siril stacks you've imported back
     seestar-stacks/             the device's own in-app stacks
     finished/                   your finished, hand-processed renders
+    working_files/              processing by-products (starless, crop, stretch…)
     siril/                      the processing sandbox (see Processing)
     (darks/ flats/ biases/)     calibration frames, if you have them
   Media/<category>_photo|_video/   lunar / planetary / scenery / startrails

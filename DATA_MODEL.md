@@ -388,7 +388,8 @@ checklist, computed on the fly. Consequences:
 - **Capture pulls reference metadata** — `add_captured_objects` now fills a known
   catalog object's entry from the bundled reference (full type/mag/size/coords),
   falling back to the minimal-stub + Simbad path only for off-catalog targets.
-- Goal management moved **fully to the Goals page** (removed from Preferences).
+- Goal management lives in **Overview → Manage goals** (removed from Preferences;
+  the standalone Goals page was folded into Overview in the 8→4 nav cleanup).
 - Annotated-but-uncaptured targets stay in the **Library** (the settled lean).
 
 ### Import & multi-source / multi-telescope (BUGS #16, ROADMAP item 6)

@@ -8,11 +8,11 @@ today versus what's coming, so nothing feels broken.
 
 ## Priority targets
 
-**What works now.** On the **Summary** page, the *Priority targets* list shows objects
-you've flagged. You flag them manually: right-click any object in the Library, Goals,
-or the priority list and choose **Pin as priority** (▲) or **Deprioritize** (▼).
-Pinned objects always show; deprioritized ones are hidden. These choices are saved
-with your library and survive refreshes.
+**What works now.** On the **Overview** page, the *Priority targets* section shows
+objects you've flagged. You flag them manually: right-click any object in the Library
+(or the priority list itself) and choose **Pin as priority** (▲) or **Deprioritize**
+(▼). Pinned objects always show; deprioritized ones are hidden. These choices are
+saved with your library and survive refreshes.
 
 **What's coming.** An **automatic prioritizer** that *scores* and ranks your targets
 for you — weighing things like how close an object is to leaving the season, how much
