@@ -106,10 +106,15 @@ for the beta (Windows just ships unsigned).*
   `pyproject.toml` and `m110/__init__.py`. `about_dialog.app_version()` reads it via
   `importlib.metadata`. Bump both on each release; cut the `CHANGELOG.md`
   `[Unreleased]` section to a dated version when tagging a release.
-- [~] 🟡 **Update story** — the GitHub **Releases page** (cut by `release.yml` on
+- [x] 🟡 **Update story** — the GitHub **Releases page** (cut by `release.yml` on
   each tag) + the landing page's download buttons pointing at `releases/latest` give
-  beta users a canonical "latest build" pointer. An in-app "you're on vN / check for
-  updates" nudge is still a nice-to-have; auto-update is a bonus, not required.
+  beta users a canonical "latest build" pointer. **In-app nudge shipped**
+  (`feature/update-check`): `m110/updates.py` checks the GitHub Releases API on
+  launch (throttled ~daily, prereleases included, degrades silently offline) and
+  shows a quiet, dismissible banner ("M110 vX is available — Download · Skip") when a
+  newer release exists; Help → **Check for updates…** runs it on demand; a
+  Preferences → **Updates** toggle disables the launch check. Auto-update (self-
+  installing) is still a bonus, not required.
 
 ## 2. Cross-platform QE 🔴
 

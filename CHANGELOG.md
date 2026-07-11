@@ -10,7 +10,12 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Update notifications.** M110 checks GitHub for a newer release on launch (about
+  once a day) and shows a quiet, dismissible banner when one is available, with
+  **Download** and **Skip this version**. Check anytime via **Help → Check for
+  updates…**, or turn the launch check off in **Preferences → Updates**. The check
+  degrades silently when you're offline and sends no data.
 
 ## [0.1.0-beta.1] - 2026-07-10
 

@@ -23,8 +23,9 @@ from PySide6.QtWidgets import (
     QListWidget, QStackedWidget, QMessageBox,
 )
 
-from m110 import config, derived
+from m110 import config, derived, updates
 from m110.catalog import object_count
+from m110.ui.update_notice import UpdateCheckWorker
 from m110.ui.pages.overview import OverviewPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
@@ -120,6 +121,8 @@ class MainWindow(QMainWindow):
         self._backup_worker = None
         self._backup_cancel = None
         self._auto_backup_checked = False
+        self._update_worker = None
+        self._banner = None
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
@@ -164,12 +167,20 @@ class MainWindow(QMainWindow):
         col.addWidget(self.logo)
         col.addWidget(self.nav, 1)
 
+        # Content column: a slot for the (usually hidden) update banner above the
+        # page stack, so the nudge spans the content area but not the nav rail.
+        content = QWidget()
+        self._content_layout = QVBoxLayout(content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(s["sm"])
+        self._content_layout.addWidget(self.stack, 1)
+
         central = QWidget()
         row = QHBoxLayout(central)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
         row.addWidget(left)
-        row.addWidget(self.stack, 1)
+        row.addWidget(content, 1)
         self.setCentralWidget(central)
 
         # Routing + locking.
@@ -248,7 +259,10 @@ class MainWindow(QMainWindow):
         self.about_action.triggered.connect(self._open_about)
         self.report_action = QAction("Report a problem…", self)
         self.report_action.triggered.connect(self._open_report)
+        self.check_updates_action = QAction("Check for updates…", self)
+        self.check_updates_action.triggered.connect(self._check_updates)
         self.help_menu = self.menuBar().addMenu("Help")
+        self.help_menu.addAction(self.check_updates_action)
         self.help_menu.addAction(self.report_action)
         self.help_menu.addAction(self.about_action)
 
@@ -268,6 +282,7 @@ class MainWindow(QMainWindow):
         self.resize(1180, 740)
         self._ready = True
         QTimer.singleShot(0, self._do_refresh)
+        QTimer.singleShot(0, self._maybe_check_updates)   # quiet launch update check
 
     # ---- routing ----
     def open_object(self, slug: str):
@@ -299,6 +314,41 @@ class MainWindow(QMainWindow):
     def _open_report(self):
         from m110.ui.error_report import ErrorReportDialog, build_report
         ErrorReportDialog(build_report(), is_crash=False, parent=self).exec()
+
+    # ---- update check ----
+    def _maybe_check_updates(self):
+        """Quiet launch check — only when enabled and not run within ~24h."""
+        if updates.should_check():
+            self._start_update_check(record=True, manual=False)
+
+    def _check_updates(self):
+        """Help → Check for updates — always runs, ignores throttle + skip."""
+        self._start_update_check(record=False, manual=True)
+
+    def _start_update_check(self, *, record: bool, manual: bool):
+        if self._update_worker is not None:      # one at a time
+            return
+        self._update_worker = UpdateCheckWorker(self, record=record)
+        self._update_worker.done.connect(
+            lambda info: self._on_update_checked(info, manual))
+        self._update_worker.start()
+
+    def _on_update_checked(self, info, manual: bool):
+        self._update_worker = None
+        if manual:
+            from m110.ui.update_notice import show_manual_result
+            show_manual_result(self, info)
+            return
+        # Launch check: only nudge for a newer, non-skipped release.
+        if info is not None and info.is_newer and not updates.is_skipped(info.latest):
+            self._show_update_banner(info)
+
+    def _show_update_banner(self, info):
+        from m110.ui.update_notice import UpdateBanner
+        if self._banner is not None:
+            self._banner.deleteLater()
+        self._banner = UpdateBanner(info, self)
+        self._content_layout.insertWidget(0, self._banner)
 
     def _open_publish(self):
         if self.catalog.is_editing() or self._refreshing:
@@ -581,6 +631,11 @@ class MainWindow(QMainWindow):
             if self._backup_cancel is not None:
                 self._backup_cancel.set()
             bw.wait()
+        # Drain the update-check thread (a quick network fetch) so teardown never
+        # destroys a running QThread.
+        uw = self._update_worker
+        if uw is not None and uw.isRunning():
+            uw.wait()
 
     def closeEvent(self, event):
         self._stop_worker()

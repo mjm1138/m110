@@ -14,15 +14,13 @@ from m110.ui import theme
 
 
 def app_version() -> str:
-    """Installed distribution version, or a dev fallback."""
-    try:
-        from importlib.metadata import version, PackageNotFoundError
-        try:
-            return version("m110")
-        except PackageNotFoundError:
-            return "dev"
-    except Exception:
-        return "dev"
+    """Installed distribution version, or a dev fallback.
+
+    Delegates to :func:`m110.updates.current_version` — the single source of the
+    running version (kept as a thin wrapper here since ``error_report`` and the
+    About dialog import it)."""
+    from m110 import updates
+    return updates.current_version()
 
 
 class AboutDialog(QDialog):
