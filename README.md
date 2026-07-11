@@ -57,6 +57,7 @@ Beta builds are on the **[Releases page](https://github.com/mjm1138/m110/release
 - **Windows** — installer (unsigned for the beta: on first run, **More info → Run anyway**).
 
 Per-OS notes and screenshots are on **[m110.space](https://m110.space)**.
+Maintainers: cutting a release is documented in **[`RELEASING.md`](RELEASING.md)**.
 
 ## Your data
 
