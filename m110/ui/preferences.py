@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox,
 )
 
-from m110 import config, hints, ingest, processing
+from m110 import config, hints, ingest, processing, updates
 from m110.ui import theme
 
 
@@ -119,6 +119,19 @@ class PreferencesDialog(QDialog):
             lambda *_: theme.set_mode(self._theme_combo.currentData()))
         al.addWidget(self._theme_combo, 1)
         lay.addWidget(appearance)
+
+        # ── updates (persist live) ───────────────────────────────────────────
+        ubox = QGroupBox("Updates")
+        ul = QVBoxLayout(ubox)
+        self._update_cb = QCheckBox("Check for updates on launch")
+        self._update_cb.setToolTip(
+            "Once a day at most, M110 checks GitHub for a newer release and shows "
+            "a dismissible banner if one is available. No data is sent.")
+        self._update_cb.setChecked(updates.check_enabled())
+        self._update_cb.toggled.connect(
+            lambda on: updates.set_check_enabled(bool(on)))
+        ul.addWidget(self._update_cb)
+        lay.addWidget(ubox)
 
         # Goals (catalogs / custom lists) are managed on the Goals page, not here.
 
