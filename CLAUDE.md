@@ -359,6 +359,20 @@ control.
 - **Never validate rendering/refresh against a live data root.** (A render
   pointed at the wrong root once clobbered a real `images.json`.) Use a temp
   copy or a throwaway root.
+- **Capturing UI screenshots — render offscreen, don't drive the live app.** For
+  marketing/site screenshots (or any "show me the UI" grab), skip computer-use
+  entirely: it's deterministic, needs no window management/coordinate mapping, and
+  writes nothing. Recipe: `QT_QPA_PLATFORM=offscreen`, build `MainWindow()` against
+  a data root, **set `win._ready = False`** (neuters the deferred launch refresh so
+  it can't write to the store — this is what makes rendering against the *live* store
+  safe/read-only), pump `app.processEvents()` in a loop for a few seconds so the
+  **async thumbnail/hero loaders** populate, then `win.render(pm)` into a QPixmap with
+  `setDevicePixelRatio(2)` for 2× retina crispness. Navigate with
+  `win.nav.setCurrentRow(win._overview_index)` / `win.open_object(slug)`; widen
+  `win.catalog.splitter.setSizes([...])` for a hero-focused detail shot; and
+  `win.statusBar().hide()` so the local data-root path isn't baked into the image.
+  Site assets are 1240×780 (render at 2× → 2480×1560), re-saved as progressive JPEG
+  (~q82) into `site/assets/shot-*.jpg`.
 - **Changing the data root: Preferences saves + prompts restart by design.**
   (Engine modules now read `config.*` paths dynamically — import-time path
   binding was removed in #13 — so `config.set_data_root()` is reliable in tests;
