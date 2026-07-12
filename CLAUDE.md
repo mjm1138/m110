@@ -369,7 +369,9 @@ control.
   writes nothing. Recipe: `QT_QPA_PLATFORM=offscreen`, build `MainWindow()` against
   a data root, **set `win._ready = False`** (neuters the deferred launch refresh so
   it can't write to the store — this is what makes rendering against the *live* store
-  safe/read-only), pump `app.processEvents()` in a loop for a few seconds so the
+  safe/read-only — **and** the launch **update-check** network thread, so a short-lived
+  script doesn't exit with a running `QThread` → SIGABRT → a macOS "Python quit
+  unexpectedly" dialog; both launch workers gate on `_ready`), pump `app.processEvents()` in a loop for a few seconds so the
   **async thumbnail/hero loaders** populate, then `win.render(pm)` into a QPixmap with
   `setDevicePixelRatio(2)` for 2× retina crispness. Navigate with
   `win.nav.setCurrentRow(win._overview_index)` / `win.open_object(slug)`; widen
