@@ -14,6 +14,7 @@ Staging layout recognised:
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
@@ -22,6 +23,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import catalog, config, hints
+
+_log = logging.getLogger("m110")
 
 try:
     import tomllib
@@ -844,56 +847,81 @@ def _in_own_store(src_dir: Path) -> bool:
     return False
 
 
-def _scan_base(base, action: str, should_cancel=None, progress=None) -> list[IngestOp]:
-    """Classify the immediate children of a base dir laid out like the Seestar
-    staging/MyWorks structure and return the operations to bring NEW files into the
-    collection. Reads only. `action` is 'move' (staging) or 'copy' (device — leaves
-    originals in place). `should_cancel` is checked at directory boundaries; if it
-    returns true, IngestCancelled is raised (for a responsive Cancel). `progress(n,
-    label)` reports the running file count + current folder (a device scan over SMB
-    is slow — the caller shows it live)."""
-    if base is None or not base.is_dir():
-        return []
-    ops: list[IngestOp] = []
-    scanned = 0
-    for d in sorted((e for e in base.iterdir()
-                     if e.is_dir() and not e.name.startswith(".")),
-                    key=lambda p: p.name):
-        if should_cancel and should_cancel():
-            raise IngestCancelled()
-        if progress:
-            progress(scanned, d.name)
-        ops.extend(_classify_dir(d, d.name, action, should_cancel))
-        scanned += len(_all_files(d))
-    return ops
-
-
 def scan_directory_plan(root, action: str = "copy", should_cancel=None,
                         progress=None) -> list[IngestOp]:
     """Dry-run plan for an **arbitrary** directory (ROADMAP 6a). Walks `root`
-    recursively and classifies *every* directory by the layout recognizers (6b) —
+    **recursively** and classifies *every* directory by the layout recognizers (6b) —
     M110-store-shaped, Seestar conventions, or a raw-FITS header sort — so a nested
     layout (a per-object tree, device folders, a precursor store) is found, not just
     the immediate children. **Copy** semantics by default, so the source is left
-    untouched. Reads only; raises IngestCancelled if `should_cancel()` turns true."""
+    untouched. Reads only; raises IngestCancelled if `should_cancel()` turns true.
+
+    This is the **single, deterministic** scan entry point — the device/staging
+    helpers below delegate to it (they used to run a shallow one-level scan, which
+    silently missed nested subfolders; issue #32). Every directory visited, and why
+    it was skipped, is logged (`m110` logger → `~/.m110/logs/m110.log`) so a
+    "subfolders didn't get scanned" report is diagnosable from the log."""
     root = Path(root) if root is not None else None
     if root is None or not root.is_dir():
+        _log.info("scan: no scannable root (%s)", root)
         return []
+    _log.info("scan: start root=%s action=%s", root, action)
     ops: list[IngestOp] = []
     scanned = 0                                   # files seen so far (for progress)
+    dirs_visited = dirs_skipped = 0
     for dirpath, dirnames, files in os.walk(root):
         if should_cancel and should_cancel():
             raise IngestCancelled()
-        dirnames[:] = sorted(d for d in dirnames
-                             if not d.startswith(".") and d.lower() not in _SKIP_DIRS)
+        # Prune traversal: hidden dirs + app sandboxes (process/siril/thumbnail) are
+        # never descended. Logged so the reason a subtree wasn't scanned is visible.
+        pruned = [d for d in dirnames
+                  if d.startswith(".") or d.lower() in _SKIP_DIRS]
+        if pruned:
+            _log.debug("scan: pruning %d subdir(s) under %s: %s",
+                       len(pruned), dirpath, ", ".join(sorted(pruned)))
+        dirnames[:] = sorted(d for d in dirnames if d not in pruned)
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
         if progress:
             progress(scanned, d.name)             # announce the dir before scanning it
-        ops.extend(_classify_dir(d, d.name, action, should_cancel))
+        dir_ops = _classify_dir(d, d.name, action, should_cancel)
+        content = len(_content_files(d))
+        if content or dir_ops:
+            dirs_visited += 1
+            held = sum(1 for o in dir_ops if o.kind == "unassigned")
+            _log.debug("scan: %s → layout=%s content=%d ops=%d held=%d",
+                       dirpath, _detect_layout(d, d.name), content, len(dir_ops), held)
+        else:
+            dirs_skipped += 1                     # a structural/empty dir (no content)
+        ops.extend(dir_ops)
         scanned += sum(1 for f in files if not f.startswith("."))
+    summ = scan_summary(ops)
+    _log.info("scan: done dirs_with_content=%d structural_dirs=%d files_seen=%d "
+              "→ %d object(s), %d file(s) to import, %d to holding",
+              dirs_visited, dirs_skipped, scanned,
+              summ["objects"], summ["to_import"], summ["to_holding"])
     return ops
+
+
+def scan_summary(ops: list[IngestOp]) -> dict:
+    """Aggregate a scan plan into headline counts for the UI + logs: distinct
+    objects, files that will import vs. land in the holding area, and a per-kind
+    breakdown. Held files are `kind == 'unassigned'`."""
+    to_holding = sum(1 for o in ops if o.kind == "unassigned")
+    by_kind: dict[str, int] = {}
+    objects: set[str] = set()
+    for o in ops:
+        by_kind[o.kind] = by_kind.get(o.kind, 0) + 1
+        if o.kind != "unassigned" and o.object:
+            objects.add(o.object)
+    return {
+        "total": len(ops),
+        "to_import": len(ops) - to_holding,
+        "to_holding": to_holding,
+        "objects": len(objects),
+        "by_kind": by_kind,
+    }
 
 
 def _object_label(op: IngestOp) -> str:
@@ -945,14 +973,18 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
 
 
 def scan_staging_plan(should_cancel=None, progress=None) -> list[IngestOp]:
-    """Dry-run plan for the Inbox staging area (moves). Reads only."""
-    return _scan_base(_staging(), "move", should_cancel, progress)
+    """Dry-run plan for the Inbox staging area (moves). Reads only. Delegates to the
+    recursive `scan_directory_plan` (#32: one deterministic, depth-agnostic path)."""
+    return scan_directory_plan(_staging(), "move", should_cancel, progress)
 
 
 def scan_seestar_plan(should_cancel=None, progress=None) -> list[IngestOp]:
     """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
-    untouched). Empty if no Seestar is mounted. Reads only."""
-    return _scan_base(config.find_seestar_myworks(), "copy", should_cancel, progress)
+    untouched). Empty if no Seestar is mounted. Reads only. Delegates to the
+    recursive `scan_directory_plan` so nested MyWorks subfolders are found (#32 — the
+    old shallow one-level scan silently missed them)."""
+    return scan_directory_plan(config.find_seestar_myworks(), "copy",
+                               should_cancel, progress)
 
 
 # ── holding area (6c): manual assign of unclassifiable files ───────────────────

@@ -131,6 +131,28 @@ Legend: `[ ]` open · `[~]` partially done
   the Object/Kind pickers**. ✅ **Discard** — per-row button deletes a held group
   (confirm modal; `ingest.discard_holding`, Inbox-scoped + prunes emptied folders).
   *(Headerless plate-solving stays deferred → item 9.)*
+- [x] **#33 — Multi-select assign in the holding area** *(done —
+  `feature/holding-multiselect-assign`; beta-tester request).* Working the holding area
+  row-by-row was tedious. The holding table is now **row multi-select** (click the
+  Source/Files/Size cells; Ctrl/Shift extend), with a **bulk bar** below it — "Selected →
+  [Object] [Kind] [Assign N selected]" — that assigns every selected row to one object +
+  kind in a single confirmed, threaded move (`ingest.assign` per group → one `_ApplyWorker`
+  over the combined ops). Per-row Assign stays for one-offs. Tests in `test_ui_import.py`
+  (enable logic + a two-folder bulk assign lands both under one object).
+- [x] **#32 — Subfolder scanning inconsistent** *(done — `fix/import-subfolder-scan`;
+  beta-tester report, Windows).* Two scan paths had **different recursion depth**: the
+  Import page used the recursive `scan_directory_plan` (`os.walk`), but the (now-dead)
+  device/staging plans used a shallow one-level `_scan_base` that silently missed nested
+  subfolders. Unified everything on the single recursive scanner (`scan_seestar_plan` /
+  `scan_staging_plan` now delegate to it; `_scan_base` retired), so the importer is
+  **deterministic + depth-agnostic** regardless of entry point. Added **diagnostics**: the
+  `m110` logger records every directory visited, its detected layout, per-dir counts, pruned
+  subtrees, and a final scan summary (→ `~/.m110/logs/m110.log`, so this class of report is
+  answerable from the log). Added a user-visible **post-scan headline** on the Import page
+  ("Found N object(s), M file(s) to import; K file(s) → holding area") + a clear empty-result
+  message, so files routed to the holding area (the most likely "didn't get scanned" cause)
+  are no longer a mystery. `ingest.scan_summary()` + tests (`test_ingest.py`: nested-subfolder
+  regression for both plans, summary counts).
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,
