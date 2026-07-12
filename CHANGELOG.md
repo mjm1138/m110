@@ -18,6 +18,12 @@ changes a **user** would notice, per release.
   imported horizon (`.hrz`) skyline — with an optional online **place-name lookup** to
   fill in coordinates. This is the foundation the automatic prioritizer and session
   planner build on next.
+- **Light-dome estimate for a site.** In a site profile, **Compute light-dome…**
+  estimates your local light-pollution "glow" — how high the sky is washed out toward
+  nearby towns in each direction — from a bundled worldwide town dataset and your
+  location (optionally calibrated by a Bortle number). Planning uses it to favor
+  targets away from your brightest horizons. The result is saved with the profile and
+  can be hand-edited.
 
 ## [0.1.0-beta.2] - 2026-07-12
 

@@ -115,17 +115,29 @@ archived in **[`DONE.md`](DONE.md)**.
      selected site. The **light-dome layer** (next) and the scorer fill in on top.
      **Equipment inventory is deferred** out of this arc (the profile carries only what
      the scorer needs; multi-device stays #16-6d).
-   - *Light domes — bundled offline auto-map (v1, decided).* Build the
-     azimuth-dependent glow floor from a **bundled public-domain populated-places
-     dataset** (GeoNames): at setup, find towns within a radius (~50 mi, adjustable),
-     compute each town's **bearing** + a **glow intensity** via Walker's Law
-     (skyglow ∝ population × distance⁻²·⁵), map each to a dome (peak floor altitude +
-     angular half-width; brighter/closer ⇒ taller/wider), and take the **upper
-     envelope** as `glow_floor(az)`. Store it + the source list in the site profile
-     (inspectable, hand-editable). Calibrate via an optional observed **Bortle/SQM**
-     anchor. Fills the empty `[glow]` seam; composes as `max(physical, glow)`;
-     **filter-aware** (softened narrowband floor). VIIRS radiance stays the **v2**
-     precision upgrade.
+   - *Light domes — bundled offline auto-map (v1).* ✅ **Engine shipped**
+     (`feature/glow-automap`, `m110/glow.py`). Build the azimuth-dependent glow floor
+     from a **bundled public-domain populated-places dataset** (GeoNames): find towns
+     within a radius (~50 mi, adjustable), compute each town's **bearing** + a **glow
+     intensity** via Walker's Law (skyglow ∝ population × distance⁻²·⁵), map each to a
+     dome (peak floor altitude + angular half-width; brighter/closer ⇒ taller/wider),
+     and take the **upper envelope** as `glow_floor(az)`. Store it in the site profile
+     (`<profile>.glow.hrz`, inspectable + hand-editable); calibrate via an optional
+     observed **Bortle** anchor. Fills the `[glow]` seam; composes as
+     `max(physical, glow)` via `horizon.effective_floor`; **filter-aware** (a softer
+     `NARROWBAND_FACTOR` floor). Authored from the Planning → Manage site profiles
+     editor ("Compute light-dome…"); the scaling constants are calibration defaults to
+     tune against known sites.
+     - **Dataset = GeoNames `cities1000`** (population ≥ 1000), produced by
+       `tools/gen_geonames.py` → `m110/seed/geonames/cities1000.tsv.gz` (CC-BY 4.0,
+       attributed in `NOTICE`). **Decided: NOT `cities15000`** — skyglow domes are
+       dominated by *nearby* towns of a few thousand, so a 15k floor would silently
+       drop the sources that matter most to rural / dark-site users and biases against
+       the sparser southern hemisphere (the Reddit audience is global, both
+       hemispheres). `cities1000` is global with signed lat/lon, and the Walker/bearing
+       math is hemisphere-agnostic. `cities500` is a drop-in if finer granularity is
+       wanted; **VIIRS** radiance is the uniform-global **v2** precision upgrade if the
+       populated-places heuristic proves uneven anywhere.
    - *Scoring — two refinements to the (a)–(f) sum above.* **Trajectory-aware
      altitude:** beyond *how high* an object peaks in tonight's dark window, weight
      *which side of its seasonal arc it's on* — the dark-window peak rises to a best
