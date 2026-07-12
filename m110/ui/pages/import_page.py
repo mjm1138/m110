@@ -311,6 +311,8 @@ class ImportPage(QWidget):
         v = QVBoxLayout(box)
         self._holding_header = QLabel()
         self._holding_header.setProperty("muted", True)
+        self._holding_header.setWordWrap(True)   # don't let the (now longer) header
+                                                 # force the window minimum width
         v.addWidget(self._holding_header)
         self.holding_table = QTableWidget(0, 6)
         self.holding_table.setHorizontalHeaderLabels(

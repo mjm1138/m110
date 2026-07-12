@@ -35,6 +35,9 @@ _Nothing yet._
   name you type — including an object not yet in your library (a new entry is created
   when you assign) — but it looked like a fixed drop-down. It now clearly reads as
   type-or-pick, with a placeholder and search-as-you-type.
+- **Window can be resized narrower.** A few long description lines didn't wrap, which
+  forced the main window to a wide minimum it wouldn't shrink below (most noticeable on
+  the empty-library Overview). Those lines now wrap, so the window resizes down normally.
 
 ## [0.1.0-beta.1] - 2026-07-10
 

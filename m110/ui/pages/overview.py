@@ -319,9 +319,11 @@ class OverviewPage(QScrollArea):
         frame.setObjectName("manageGoalsBox")
         frame.setFrameShape(QFrame.StyledPanel)
         inner = QVBoxLayout(frame)
-        inner.addWidget(QLabel(
+        _manage_intro = QLabel(
             "Catalogs and custom lists you're tracking. Uncaptured members show as a "
-            "checklist above; capturing or annotating an object adds it to your Library."))
+            "checklist above; capturing or annotating an object adds it to your Library.")
+        _manage_intro.setWordWrap(True)   # wrap, so it doesn't demand a wide viewport
+        inner.addWidget(_manage_intro)
         self._checks = {}
         by_group: dict[str, list[dict]] = {}
         for g in goals_mod.list_goals():

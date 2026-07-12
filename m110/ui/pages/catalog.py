@@ -157,6 +157,8 @@ class CatalogPage(QWidget):
         self._search.textChanged.connect(self._apply_filter)
         self._stat = QLabel()
         self._stat.setProperty("muted", True)
+        self._stat.setWordWrap(True)   # long stat/empty-state text must wrap, not force
+                                       # the window minimum width (#63-style)
 
         left = QWidget()
         self._left_lay = QVBoxLayout(left)
