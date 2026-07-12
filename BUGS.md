@@ -131,6 +131,15 @@ Legend: `[ ]` open · `[~]` partially done
   the Object/Kind pickers**. ✅ **Discard** — per-row button deletes a held group
   (confirm modal; `ingest.discard_holding`, Inbox-scoped + prunes emptied folders).
   *(Headerless plate-solving stays deferred → item 9.)*
+- [x] **#34 — Arbitrary object names in the holding area** *(done —
+  `fix/holding-arbitrary-object-name`; beta-tester report).* The Object picker was already
+  an editable combo and `ingest.assign` already accepted any name (an off-catalog target is
+  created + promoted to the Library on refresh) — but it **looked like a fixed drop-down**, so
+  a tester thought they couldn't assign files for objects not yet in the library. Made the
+  affordance obvious: the picker now starts **empty with a "Type a name or pick…" placeholder**,
+  a contains-match completer, and a tooltip; the holding header spells out that you can type any
+  name. Engine unchanged. Tests in `test_ui_import.py` (combo is empty/editable/typeable) +
+  `test_assign_accepts_arbitrary_object_name`.
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,

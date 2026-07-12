@@ -198,3 +198,29 @@ def test_holding_inspect_dialog_shows_header_and_suggestion(tmp_path, monkeypatc
     assert "Suggested" in labels and "M10" in labels
     facts = dlg.findChildren(QTableWidget)
     assert facts and facts[0].rowCount() >= 4        # Object/Type/Filter/RA/Dec
+
+
+def test_holding_object_combo_is_typeable_and_empty(tmp_path, monkeypatch, qtbot):
+    """#34: the holding Object picker is editable, starts empty (so its placeholder
+    shows and it reads as type-or-pick), and accepts an arbitrary off-catalog name."""
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    combo = page.holding_table.cellWidget(0, 3)
+    assert combo.isEditable()
+    assert combo.currentText() == ""                       # empty → placeholder visible
+    assert combo.lineEdit().placeholderText()              # a non-empty hint is set
+    combo.setCurrentText("Barnard's Loop Test")            # an arbitrary name is accepted
+    assert combo.currentText() == "Barnard's Loop Test"
+
+
+def test_assign_accepts_arbitrary_object_name(tmp_path, monkeypatch):
+    """Engine capability behind #34: assigning a held group to an off-catalog name
+    routes it under that (canonicalized) target."""
+    from m110 import ingest
+    root = seed_root(tmp_path, monkeypatch)
+    held = config.STAGING_DIR / "loose"
+    held.mkdir(parents=True)
+    (held / "a.fit").write_text("x")
+    groups = ingest.group_ops(ingest.scan_holding())
+    assigned = ingest.assign(groups[0], "My New Nebula", "light")
+    assert assigned.object == ingest.canonical_target("My New Nebula")
+    assert assigned.ops and all("lights" in op.dest_rel for op in assigned.ops)
