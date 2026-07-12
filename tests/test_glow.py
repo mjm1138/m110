@@ -149,3 +149,13 @@ def test_compute_site_glow_and_write(tmp_path, monkeypatch):
     m = horizon.load_mask(site.glow_path())
     assert horizon.horizon_alt(180, m) > 15                    # glow toward the city
     assert horizon.horizon_alt(0, m) < 2                       # open away from it
+
+
+def test_local_town_does_not_make_a_spurious_dome():
+    """A town at (essentially) the observer's own location has no meaningful bearing
+    and washes the whole sky, not one azimuth — it must not create a directional
+    dome (that all-sky glow is the Bortle anchor's job)."""
+    obs = (40.015, -105.27)
+    towns = [glow.Town("HomeTown", 40.015, -105.27, 108_000)]   # right on top of us
+    mask = glow.build_glow_floor(*obs, towns)
+    assert all(alt == 0 for _, alt in mask)                     # no spurious dome

@@ -53,6 +53,11 @@ HALF_WIDTH_GAIN = 22.0           # widening added at full brightness
 NARROWBAND_FACTOR = 0.6          # softer floor for narrowband/LP filters
 STEP_DEG = 5                     # az sampling of the emitted mask
 _MIN_POP = 1                     # ignore populationless entries
+# A town you're essentially standing in has no meaningful *bearing* (the direction
+# between near-coincident points is numerically unstable) and washes the *whole* sky,
+# not one azimuth — that all-sky component is the Bortle anchor's job, not a
+# directional dome. So towns within this radius don't contribute a directional dome.
+MIN_DOME_DIST_KM = 3.0
 
 
 @dataclass
@@ -140,8 +145,8 @@ def build_glow_floor(lat: float, lon: float, towns, *, radius_mi: float = DEFAUL
         if pop < _MIN_POP:
             continue
         d = haversine_km(lat, lon, tlat, tlon)
-        if d > radius_km:
-            continue
+        if d > radius_km or d < MIN_DOME_DIST_KM:
+            continue                     # too far, or the local town (→ Bortle anchor)
         peak = _peak_alt(_intensity(pop, d)) * scale
         if peak <= 0.05:
             continue
@@ -231,7 +236,8 @@ def compute_site_glow(lat: float, lon: float, *, radius_mi: float = DEFAULT_RADI
     towns = load_towns() if towns is None else towns
     radius_km = radius_mi * MI_TO_KM
     n = sum(1 for t in towns
-            if haversine_km(lat, lon, t.lat, t.lon) <= radius_km and t.population >= _MIN_POP)
+            if MIN_DOME_DIST_KM <= haversine_km(lat, lon, t.lat, t.lon) <= radius_km
+            and t.population >= _MIN_POP)
     bb = build_glow_floor(lat, lon, towns, radius_mi=radius_mi, bortle=bortle)
     nb = build_glow_floor(lat, lon, towns, radius_mi=radius_mi, bortle=bortle,
                           narrowband=True)
