@@ -317,8 +317,13 @@ class MainWindow(QMainWindow):
 
     # ---- update check ----
     def _maybe_check_updates(self):
-        """Quiet launch check — only when enabled and not run within ~24h."""
-        if updates.should_check():
+        """Quiet launch check — only when the window is live (`_ready`) and enabled
+        and not run within ~24h. The `_ready` gate matters: this is a **network**
+        QThread, so a short-lived window (a test or an offscreen screenshot that sets
+        `_ready = False` to neuter launch work) must not spawn it — otherwise the
+        process can exit with the thread still running and Qt aborts (SIGABRT →
+        macOS "Python quit unexpectedly"). Mirrors the `_do_refresh` guard."""
+        if self._ready and updates.should_check():
             self._start_update_check(record=True, manual=False)
 
     def _check_updates(self):
