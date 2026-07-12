@@ -16,6 +16,9 @@ changes a **user** would notice, per release.
   **Download** and **Skip this version**. Check anytime via **Help → Check for
   updates…**, or turn the launch check off in **Preferences → Updates**. The check
   degrades silently when you're offline and sends no data.
+- **Holding area: assign many files at once.** Select multiple rows in the holding
+  area and assign them all to the same object and kind in one step, instead of one row
+  at a time.
 
 ## [0.1.0-beta.1] - 2026-07-10
 

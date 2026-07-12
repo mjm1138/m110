@@ -131,6 +131,14 @@ Legend: `[ ]` open · `[~]` partially done
   the Object/Kind pickers**. ✅ **Discard** — per-row button deletes a held group
   (confirm modal; `ingest.discard_holding`, Inbox-scoped + prunes emptied folders).
   *(Headerless plate-solving stays deferred → item 9.)*
+- [x] **#33 — Multi-select assign in the holding area** *(done —
+  `feature/holding-multiselect-assign`; beta-tester request).* Working the holding area
+  row-by-row was tedious. The holding table is now **row multi-select** (click the
+  Source/Files/Size cells; Ctrl/Shift extend), with a **bulk bar** below it — "Selected →
+  [Object] [Kind] [Assign N selected]" — that assigns every selected row to one object +
+  kind in a single confirmed, threaded move (`ingest.assign` per group → one `_ApplyWorker`
+  over the combined ops). Per-row Assign stays for one-offs. Tests in `test_ui_import.py`
+  (enable logic + a two-folder bulk assign lands both under one object).
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,
