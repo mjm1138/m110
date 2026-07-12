@@ -224,3 +224,48 @@ def test_assign_accepts_arbitrary_object_name(tmp_path, monkeypatch):
     assigned = ingest.assign(groups[0], "My New Nebula", "light")
     assert assigned.object == ingest.canonical_target("My New Nebula")
     assert assigned.ops and all("lights" in op.dest_rel for op in assigned.ops)
+
+
+def test_bulk_bar_enable_logic(tmp_path, monkeypatch, qtbot):
+    """#33: the bulk 'Assign selected' button is enabled only with a selection AND
+    an object."""
+    page = _held_page(tmp_path, monkeypatch, qtbot)
+    assert not page._bulk_btn.isEnabled()              # nothing selected
+    page.holding_table.selectRow(0)
+    page._update_bulk_bar()
+    assert not page._bulk_btn.isEnabled()              # selected but no object
+    page._bulk_obj.setEditText("M42")
+    page._update_bulk_bar()
+    assert page._bulk_btn.isEnabled()                  # selection + object → go
+
+
+def test_holding_bulk_assign_multiple_rows(tmp_path, monkeypatch, qtbot):
+    """#33: selecting several held rows and assigning them to one object/kind routes
+    every selected row's files under that object in a single action."""
+    from m110 import config
+    root = seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    for name, fn in (("batchA", "a.fit"), ("batchB", "b.fit")):
+        d = config.STAGING_DIR / name
+        d.mkdir(parents=True)
+        (d / fn).write_text(name)                      # distinct content (no dedup)
+    from m110.ui.pages.import_page import ImportPage
+    page = ImportPage()
+    qtbot.addWidget(page)
+    assert page.holding_table.rowCount() == 2
+
+    page.holding_table.selectAll()
+    page._bulk_obj.setEditText("M42")
+    page._bulk_kind.setCurrentIndex(page._bulk_kind.findData("light"))
+    page._update_bulk_bar()
+    assert page._bulk_btn.isEnabled()
+
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr("m110.ui.pages.import_page.QMessageBox.question",
+                        staticmethod(lambda *a, **k: QMessageBox.Yes))
+    with qtbot.waitSignal(page.imported, timeout=5000):
+        page._on_bulk_assign()
+
+    assert page.holding_table.rowCount() == 0          # both moved out of Inbox
+    files = sorted(p.name for p in config.lights_dir("M42").glob("*.fit"))
+    assert files == ["a.fit", "b.fit"]                 # both rows landed under M42

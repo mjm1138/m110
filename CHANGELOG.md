@@ -16,6 +16,17 @@ changes a **user** would notice, per release.
   **Download** and **Skip this version**. Check anytime via **Help → Check for
   updates…**, or turn the launch check off in **Preferences → Updates**. The check
   degrades silently when you're offline and sends no data.
+- **Holding area: assign many files at once.** Select multiple rows in the holding
+  area and assign them all to the same object and kind in one step, instead of one row
+  at a time.
+
+### Fixed
+- **Import now scans every subfolder, consistently.** Some capture folders nested more
+  than one level deep could be missed depending on how you started the import. The
+  importer now walks the whole folder tree the same way from every entry point, and shows
+  a clear summary after scanning — how many objects and files it found, and how many files
+  it couldn't identify (which go to the holding area for you to assign). A detailed scan
+  log is also written to help diagnose future import surprises.
 
 ### Fixed
 - **Holding area: assign files to any object name.** The Object field accepts any

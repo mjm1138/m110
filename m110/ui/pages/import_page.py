@@ -75,6 +75,15 @@ class ImportPage(QWidget):
         self._path_lbl.setWordWrap(True)       # a long path mustn't force window width (#63)
         tv.addWidget(self._path_lbl)
 
+        # A persistent scan-result headline (what the recursive scan found), set on
+        # each scan and independent of the selection-driven `_summary` below — so
+        # "where did my files go?" is always answerable, incl. files sent to holding
+        # (#32).
+        self._scan_note = QLabel()
+        self._scan_note.setProperty("caption", True)
+        self._scan_note.setWordWrap(True)
+        tv.addWidget(self._scan_note)
+
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
             ["", "Object", "Kind", "Files", "Size", "Pointing", "→ Destination"])
@@ -221,11 +230,32 @@ class ImportPage(QWidget):
         self._set_busy(False)
         self._groups = groups
         self._populate()
+        self._set_scan_note(groups)
         if self._post_import_msg:    # confirm the import, then show what's left
             tail = (f"  {self._summary.text()}" if self._groups
                     else "  Nothing left to import.")
             self._summary.setText(self._post_import_msg + tail)
             self._post_import_msg = None
+
+    def _set_scan_note(self, groups):
+        """Headline what the (recursive) scan found — object/file counts, and how
+        many files couldn't be identified and will go to the holding area — so a
+        surprising result (nothing found, or everything held) is explained (#32)."""
+        ops = [o for g in groups for o in g.ops]
+        summ = ingest.scan_summary(ops)
+        if summ["total"] == 0:
+            self._scan_note.setText(
+                "No importable files were found in this folder or its subfolders. "
+                "M110 scans every subfolder for FITS (.fit/.fits) and images; check "
+                "that the source contains capture files.")
+            return
+        bits = [f"Found {summ['objects']} object(s), {summ['to_import']} file(s) "
+                f"to import"]
+        if summ["to_holding"]:
+            bits.append(
+                f"{summ['to_holding']} file(s) couldn't be identified → sent to the "
+                f"holding area below for manual assignment")
+        self._scan_note.setText(".  ".join(bits) + ".")
 
     def _on_scan_cancelled(self):
         self._finish_worker()
@@ -288,9 +318,115 @@ class ImportPage(QWidget):
         self.holding_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.holding_table.verticalHeader().setVisible(False)
         self.holding_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        # Row multi-select (#33): click the Source/Files/Size cells; Ctrl/Shift extend.
+        # (The Object/Kind/Actions cells host widgets, so selection is driven from the
+        # left cells — the bulk bar below assigns every selected row at once.)
+        self.holding_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.holding_table.setSelectionMode(QTableWidget.ExtendedSelection)
+        self.holding_table.itemSelectionChanged.connect(self._update_bulk_bar)
         self.holding_table.cellDoubleClicked.connect(self._on_holding_inspect)   # #26
         v.addWidget(self.holding_table, 1)
+        v.addLayout(self._build_bulk_bar())
         return box
+
+    def _build_bulk_bar(self) -> QHBoxLayout:
+        """A row to assign **all selected** held rows to one object/kind at once
+        (#33 — working the holding area row-by-row is tedious)."""
+        from PySide6.QtWidgets import QCompleter
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("Selected →"))
+        self._bulk_obj = QComboBox()
+        self._bulk_obj.setEditable(True)
+        self._bulk_obj.setInsertPolicy(QComboBox.NoInsert)
+        self._bulk_obj.setCurrentIndex(-1)
+        self._bulk_obj.lineEdit().setPlaceholderText("Object — type a name or pick…")
+        self._bulk_obj.setToolTip(
+            "Object to assign every selected row to — pick from the list or type any "
+            "name (a new library entry is created for an off-catalog name).")
+        comp = self._bulk_obj.completer()
+        if comp is not None:
+            comp.setCompletionMode(QCompleter.PopupCompletion)
+            comp.setCaseSensitivity(Qt.CaseInsensitive)
+            comp.setFilterMode(Qt.MatchContains)
+        self._bulk_obj.setMinimumWidth(180)
+        self._bulk_obj.editTextChanged.connect(self._update_bulk_bar)
+        bar.addWidget(self._bulk_obj)
+        self._bulk_kind = QComboBox()
+        for k in ASSIGNABLE_KINDS:
+            self._bulk_kind.addItem(KIND_LABEL.get(k, k), k)
+        bar.addWidget(self._bulk_kind)
+        self._bulk_btn = QPushButton("Assign selected")
+        self._bulk_btn.clicked.connect(self._on_bulk_assign)
+        bar.addWidget(self._bulk_btn)
+        bar.addStretch(1)
+        self._update_bulk_bar()
+        return bar
+
+    def _selected_holding_rows(self) -> list[int]:
+        """Unique selected row indices, in order (bounded to current groups)."""
+        rows = {ix.row() for ix in self.holding_table.selectionModel().selectedRows()} \
+            if self.holding_table.selectionModel() else set()
+        return sorted(r for r in rows if r < len(self._holding_groups))
+
+    def _update_bulk_bar(self, *_):
+        rows = self._selected_holding_rows()
+        n = len(rows)
+        self._bulk_btn.setText(f"Assign {n} selected" if n else "Assign selected")
+        has_obj = bool(self._bulk_obj.currentText().strip())
+        self._bulk_btn.setEnabled(n > 0 and has_obj and not self.is_busy())
+
+    def _refresh_bulk_obj_items(self, ids):
+        """Keep the bulk Object combo's catalog list current without clobbering an
+        in-progress typed value."""
+        cur = self._bulk_obj.currentText()
+        self._bulk_obj.blockSignals(True)
+        self._bulk_obj.clear()
+        self._bulk_obj.addItems(ids)
+        self._bulk_obj.setCurrentIndex(-1)
+        self._bulk_obj.setEditText(cur)
+        self._bulk_obj.blockSignals(False)
+
+    def _on_bulk_assign(self):
+        """Assign every selected held row to one object + kind at once (#33)."""
+        if self.is_busy():
+            return
+        rows = self._selected_holding_rows()
+        obj = self._bulk_obj.currentText().strip()
+        kind = self._bulk_kind.currentData()
+        if not rows or not obj:
+            return
+        groups = [self._holding_groups[r] for r in rows]
+        assigned = [ingest.assign(g, obj, kind) for g in groups]
+        ops = [o for a in assigned for o in a.ops]
+        if not ops:
+            QMessageBox.information(
+                self, "Assign", "Those files are already present at the destination.")
+            return
+        dest = assigned[0].dest_dir
+        if QMessageBox.question(
+                self, "Confirm assign",
+                f"Move {len(ops)} file(s) from {len(groups)} holding folder(s) into "
+                f"{dest}?\n\nThis writes into the collection and moves the files out "
+                f"of Inbox/.",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel) != QMessageBox.Yes:
+            return
+        self._set_busy(True)
+        self._make_progress("Moving files…", len(ops), "Assigning")
+        self._worker = _ApplyWorker(ops, self._cancel_event, self)
+        self._worker.progressed.connect(self._on_apply_progress)
+        self._worker.done.connect(self._on_bulk_assign_done)
+        self._worker.failed.connect(self._on_apply_failed)
+        self._worker.start()
+        self._progress.show()
+
+    def _on_bulk_assign_done(self, result: dict):
+        self._finish_worker()
+        self._close_progress()
+        self._set_busy(False)
+        moved = result.get("moved", 0)
+        self.imported.emit(moved)
+        self.refresh_holding()
 
     def _on_holding_inspect(self, row: int, _col: int):
         """Double-click a held row → the FITS-header/thumbnail/suggestion inspector (#26)."""
@@ -351,6 +487,7 @@ class ImportPage(QWidget):
         self._holding_header.setTextFormat(Qt.RichText)
         from pathlib import Path
         ids = self._catalog_ids()
+        self._refresh_bulk_obj_items(ids)
         self.holding_table.setRowCount(len(groups))
         for r, g in enumerate(groups):
             aid = self._holding_info[r] if r < len(self._holding_info) else {}
@@ -609,6 +746,7 @@ class ImportPage(QWidget):
     def _set_empty(self, msg):
         self._groups = []
         self.table.setRowCount(0)
+        self._scan_note.setText("")
         self._summary.setText(msg)
         self._import_btn.setEnabled(False)
 
@@ -620,6 +758,9 @@ class ImportPage(QWidget):
         self._none_btn.setEnabled(not busy)
         self.table.setEnabled(not busy)
         self.holding_table.setEnabled(not busy)
+        self._bulk_obj.setEnabled(not busy)
+        self._bulk_kind.setEnabled(not busy)
+        self._update_bulk_bar()
         if busy:
             self._import_btn.setEnabled(False)
 
