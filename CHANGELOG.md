@@ -11,11 +11,6 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
-- **Update notifications.** M110 checks GitHub for a newer release on launch (about
-  once a day) and shows a quiet, dismissible banner when one is available, with
-  **Download** and **Skip this version**. Check anytime via **Help → Check for
-  updates…**, or turn the launch check off in **Preferences → Updates**. The check
-  degrades silently when you're offline and sends no data.
 - **Planning page + location profiles.** A new **Planning** pane in the nav rail is
   the home for session planning. It starts with a **location selector**, your
   **priority targets**, and a **Manage site profiles** section where you can create,
@@ -23,6 +18,15 @@ changes a **user** would notice, per release.
   imported horizon (`.hrz`) skyline — with an optional online **place-name lookup** to
   fill in coordinates. This is the foundation the automatic prioritizer and session
   planner build on next.
+
+## [0.1.0-beta.2] - 2026-07-12
+
+### Added
+- **Update notifications.** M110 checks GitHub for a newer release on launch (about
+  once a day) and shows a quiet, dismissible banner when one is available, with
+  **Download** and **Skip this version**. Check anytime via **Help → Check for
+  updates…**, or turn the launch check off in **Preferences → Updates**. The check
+  degrades silently when you're offline and sends no data.
 - **Holding area: assign many files at once.** Select multiple rows in the holding
   area and assign them all to the same object and kind in one step, instead of one row
   at a time.
@@ -34,6 +38,13 @@ changes a **user** would notice, per release.
   a clear summary after scanning — how many objects and files it found, and how many files
   it couldn't identify (which go to the holding area for you to assign). A detailed scan
   log is also written to help diagnose future import surprises.
+- **Holding area: assign files to any object name.** The Object field accepts any
+  name you type — including an object not yet in your library (a new entry is created
+  when you assign) — but it looked like a fixed drop-down. It now clearly reads as
+  type-or-pick, with a placeholder and search-as-you-type.
+- **Window can be resized narrower.** A few long description lines didn't wrap, which
+  forced the main window to a wide minimum it wouldn't shrink below (most noticeable on
+  the empty-library Overview). Those lines now wrap, so the window resizes down normally.
 
 ## [0.1.0-beta.1] - 2026-07-10
 

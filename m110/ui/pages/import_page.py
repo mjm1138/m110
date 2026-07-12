@@ -311,6 +311,8 @@ class ImportPage(QWidget):
         v = QVBoxLayout(box)
         self._holding_header = QLabel()
         self._holding_header.setProperty("muted", True)
+        self._holding_header.setWordWrap(True)   # don't let the (now longer) header
+                                                 # force the window minimum width
         v.addWidget(self._holding_header)
         self.holding_table = QTableWidget(0, 6)
         self.holding_table.setHorizontalHeaderLabels(
@@ -480,8 +482,11 @@ class ImportPage(QWidget):
                 "manual assignment.")
         else:
             self._holding_header.setText(
-                f"{n} file(s) awaiting assignment — double-click a row to inspect it; "
-                "suggested object/kind are pre-filled where M110 could read a header.")
+                f"{n} file(s) awaiting assignment — double-click a row to inspect it. "
+                "Set the Object by picking from the list <b>or typing any name</b> "
+                "(including an object not yet in your library); suggested object/kind "
+                "are pre-filled where M110 could read a header.")
+        self._holding_header.setTextFormat(Qt.RichText)
         from pathlib import Path
         ids = self._catalog_ids()
         self._refresh_bulk_obj_items(ids)
@@ -500,16 +505,13 @@ class ImportPage(QWidget):
             self.holding_table.setItem(r, 1, files_item)
             self.holding_table.setItem(r, 2, QTableWidgetItem(_fmt_size(g.size_bytes)))
             prev_obj, prev_kind = prev.get((g.group, g.object), ("", None))
-            obj = QComboBox()
-            obj.setEditable(True)               # allow new / off-catalog objects
-            obj.addItem("— choose —")
-            obj.addItems(ids)
+            obj = self._make_object_combo(ids)
             sug_id, reason = aid.get("suggested_id"), aid.get("reason")
             if prev_obj and prev_obj != "— choose —":
                 obj.setCurrentText(prev_obj)    # restore an in-progress pick (#66)
             elif sug_id:
                 obj.setCurrentText(sug_id)      # #26: pre-fill the suggestion
-                obj.setToolTip(f"Suggested from {reason}")
+                obj.setToolTip(f"Suggested from {reason}. You can change it — type any name.")
             self.holding_table.setCellWidget(r, 3, obj)
             kind = QComboBox()
             for k in ASSIGNABLE_KINDS:
@@ -534,6 +536,29 @@ class ImportPage(QWidget):
         self.holding_table.setColumnWidth(3, 150)   # Object
         self.holding_table.setColumnWidth(4, 130)   # Kind
         self.holding_table.setColumnWidth(5, 210)   # Assign · Reveal · Discard
+
+    def _make_object_combo(self, ids) -> QComboBox:
+        """An editable Object picker for a held row. Starts **empty** (so the
+        placeholder shows and it reads as type-or-pick, not a fixed dropdown) and
+        accepts **any** name — including an object not yet in the library, which is
+        created on import (#34: the drop-down looked mandatory to a beta tester)."""
+        from PySide6.QtWidgets import QCompleter
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.NoInsert)   # typing doesn't mutate the list
+        combo.addItems(ids)
+        combo.setCurrentIndex(-1)                    # empty → placeholder visible
+        le = combo.lineEdit()
+        le.setPlaceholderText("Type a name or pick…")
+        combo.setToolTip(
+            "Pick a catalog object, or type any name — including an object not yet "
+            "in your library (a new entry is created for it when you assign).")
+        comp = combo.completer()
+        if comp is not None:                         # match anywhere, case-insensitive
+            comp.setCompletionMode(QCompleter.PopupCompletion)
+            comp.setCaseSensitivity(Qt.CaseInsensitive)
+            comp.setFilterMode(Qt.MatchContains)
+        return combo
 
     def _holding_actions(self, row: int) -> QWidget:
         """The per-row action cluster: Assign (route into the collection), Reveal
