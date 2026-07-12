@@ -10,6 +10,10 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.0-beta.2] - 2026-07-12
+
 ### Added
 - **Update notifications.** M110 checks GitHub for a newer release on launch (about
   once a day) and shows a quiet, dismissible banner when one is available, with
@@ -27,8 +31,6 @@ changes a **user** would notice, per release.
   a clear summary after scanning — how many objects and files it found, and how many files
   it couldn't identify (which go to the holding area for you to assign). A detailed scan
   log is also written to help diagnose future import surprises.
-
-### Fixed
 - **Holding area: assign files to any object name.** The Object field accepts any
   name you type — including an object not yet in your library (a new entry is created
   when you assign) — but it looked like a fixed drop-down. It now clearly reads as
