@@ -27,7 +27,34 @@ except ImportError:
 # Paths resolve dynamically from config (so a changed data root / test
 # monkeypatch takes effect without re-import).
 
-DEEP_STACK_MIN = 60  # threshold per CLAUDE.md
+DEEP_STACK_MIN = 60  # default "deep stack" threshold (min) for an unknown type
+
+# Type-aware deep-stack threshold (minutes). Required integration scales with an
+# object's surface brightness: bright clusters are "deep" fast; faint emission
+# nebulae (e.g. Sharpless) need hours, so a flat 60 min would falsely mark them
+# done — sinking them in the prioritizer and painting a premature "deep stack"
+# badge. This single table drives BOTH the status badge (below) and the
+# prioritizer's completion factor, so they always agree. Calibration defaults —
+# tunable; a per-object user-set integration target is a planned override (ROADMAP).
+DEEP_MIN_BY_TYPE = {
+    "asterism": 15,
+    "double_star": 15,
+    "open_cluster": 25,
+    "globular": 45,
+    "galaxy": 90,
+    "galaxy_group": 90,
+    "planetary": 90,
+    "reflection": 180,
+    "emission": 240,
+    "emission_snr": 240,
+    "dark_nebula": 240,
+}
+
+
+def deep_threshold(obj_type: str) -> int:
+    """Minutes of integration at which an object of ``obj_type`` reads as a deep
+    stack. Falls back to :data:`DEEP_STACK_MIN` for unknown/off-catalog types."""
+    return DEEP_MIN_BY_TYPE.get((obj_type or "").lower(), DEEP_STACK_MIN)
 PROCESSED_EXTS = (".fit", ".fits", ".tif", ".tiff")
 # Hand-finished renders (finished/) are raster exports, not FITS stacks — but
 # they're still processed output. An imported library (e.g. the Astronomy
@@ -156,7 +183,8 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "filters": sorted(t["filters"]),
             "exposures": sorted(t["exposures"]),
             "has_pre_new_start": t["has_pre_new_start"],
-            "status": ("deep_stack" if t["integration_min"] >= DEEP_STACK_MIN
+            "status": ("deep_stack" if t["integration_min"]
+                       >= deep_threshold((catalog.get(slug) or {}).get("type"))
                        else "initial"),
         }
 
@@ -174,8 +202,11 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "exposures": sorted(f["exposures"]),
             "slugs": sorted(f["slugs"]),
             "has_pre_new_start": f["has_pre_new_start"],
-            "status": ("deep_stack" if f["integration_min"] >= DEEP_STACK_MIN
-                       else "initial"),
+            # A folder can feed several objects (e.g. "M81 M82"); use the most
+            # demanding of their thresholds so a faint member isn't marked done early.
+            "status": ("deep_stack" if f["integration_min"] >= max(
+                (deep_threshold((catalog.get(s) or {}).get("type")) for s in f["slugs"]),
+                default=DEEP_STACK_MIN) else "initial"),
         }
 
     return {"by_slug": out, "by_folder": folders}

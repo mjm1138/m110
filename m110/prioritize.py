@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from .build_derived import DEEP_STACK_MIN
+from .build_derived import DEEP_STACK_MIN, deep_threshold
 
 # ── strategy + calibration defaults ────────────────────────────────────────────
 STRATEGY_CAPTURE = "capture"     # breadth — favour new / under-threshold targets
@@ -123,9 +123,10 @@ class TargetContext:
 def score_target(ctx: TargetContext, weights: Weights, strategy: str) -> dict:
     """Compute one target's factor scores + weighted total. Pure."""
     obs = ctx.obs or {}
-    c = completion_factor(ctx.integration_min)
+    deep_min = deep_threshold(ctx.obj_type)     # type-aware: faint types need hours
+    c = completion_factor(ctx.integration_min, deep_min)
     urgency = urgency_score(obs.get("nights_to_close"), obs.get("observable")) * c
-    completion = completion_score(ctx.integration_min, strategy)
+    completion = completion_score(ctx.integration_min, strategy, deep_min)
     goal = 1.0 if ctx.in_active_goal else GOAL_BASE
     tonight = tonight_score(obs.get("transit_alt"), obs.get("hours_clear"))
     tw = weights.type_weights.get((ctx.obj_type or "").lower(), 1.0)

@@ -144,3 +144,25 @@ def test_write_prioritized_roundtrips(tmp_path, monkeypatch):
     pr.write_prioritized(rows)
     got = json.loads((config.DERIVED_DIR / "prioritized.json").read_text())
     assert got == rows
+
+
+# ── type-aware deep threshold (the Sharpless motivation) ───────────────────────
+
+def test_deep_threshold_is_type_aware():
+    from m110.build_derived import deep_threshold
+    assert deep_threshold("open_cluster") < deep_threshold("globular") \
+        < deep_threshold("galaxy") <= deep_threshold("emission")
+    assert deep_threshold("unknown") == 60          # default fallback
+
+
+def test_scorer_uses_per_type_threshold():
+    """90 min is 'deep' for a globular (thr 45) but barely started for an emission
+    nebula (thr 240) — so the emission target keeps completion + urgency credit."""
+    w = Weights()
+    glob = pr.score_target(TargetContext("g", "globular", 90, True, _obs(nights_to_close=7)),
+                           w, pr.STRATEGY_CAPTURE)
+    neb = pr.score_target(TargetContext("n", "emission", 90, True, _obs(nights_to_close=7)),
+                          w, pr.STRATEGY_CAPTURE)
+    assert glob["factors"]["urgency"] == 0.0        # globular finished at 90 → no urgency
+    assert neb["factors"]["urgency"] > 0.0          # emission still needs hours
+    assert neb["factors"]["completion"] > glob["factors"]["completion"]

@@ -138,6 +138,16 @@ archived in **[`DONE.md`](DONE.md)**.
        math is hemisphere-agnostic. `cities500` is a drop-in if finer granularity is
        wanted; **VIIRS** radiance is the uniform-global **v2** precision upgrade if the
        populated-places heuristic proves uneven anywhere.
+   - *Deep-stack threshold — type-aware (shipped `feature/prioritizer`).* The
+     "when is it deep?" threshold is now **per object type** (`build_derived
+     .deep_threshold` / `DEEP_MIN_BY_TYPE`: clusters ~25 min … galaxies/planetaries
+     ~90 … emission/Sharpless ~240), since required integration scales with surface
+     brightness — a flat 60 min falsely marked faint nebulae done. **Shared** between
+     the status badge and the prioritizer's completion factor so they always agree.
+     *Planned:* a **user-set integration target per object** (a per-object override of
+     the type default; the object detail carries the target, the badge + scorer read
+     it), and a **v2 surface-brightness** basis (magnitude + size) refining the
+     per-type table.
    - *Scoring — two refinements to the (a)–(f) sum above.* **Trajectory-aware
      altitude:** beyond *how high* an object peaks in tonight's dark window, weight
      *which side of its seasonal arc it's on* — the dark-window peak rises to a best
