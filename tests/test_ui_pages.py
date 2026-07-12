@@ -1143,8 +1143,18 @@ def test_library_view_segment_stays_put_in_feed_and_hides_in_media(tmp_path, mon
         qapp.processEvents()
 
 
+def _no_prioritizer_worker(monkeypatch):
+    """Keep the Planning page from spawning its background astropy worker in tests
+    (it would leak a running QThread at teardown). Stubs the recompute entry point,
+    so even the force=True paths (profile/site change) stay inert."""
+    from m110.ui.pages import planning
+    monkeypatch.setattr(planning.PlanningPage, "_maybe_recompute",
+                        lambda self, force=False: None)
+
+
 def test_planning_page_profile_crud(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
     from m110 import planning_config as pc
     from m110.ui.pages.planning import PlanningPage
     page = PlanningPage()
@@ -1176,19 +1186,33 @@ def test_planning_page_profile_crud(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
-def test_planning_page_priority_shows_pins(tmp_path, monkeypatch, qapp):
+def test_planning_page_ranks_cached_contexts(tmp_path, monkeypatch, qapp):
+    """The priority table renders the scorer's ranking from cached contexts, with a
+    pinned target floated to the top. No background worker (contexts pre-seeded)."""
     root = seed_root(tmp_path, monkeypatch)
-    slug, tid = seed_capture(root)          # a captured object in the Library
-    from m110 import pins
-    pins.set_state(slug, pins.PIN)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import pins, prioritize
+    from m110.prioritize import TargetContext
+    obs = {"observable": True, "hours_clear": 3.0, "transit_alt": 60.0,
+           "nights_to_close": 20, "season": "spring"}
+    prioritize.write_contexts([
+        TargetContext("m1", "emission_snr", 0, True, obs),
+        TargetContext("m13", "globular", 0, True, obs),
+    ])
+    pins.set_state("m13", pins.PIN)          # should float to #1 despite score
     from m110.ui.pages.planning import PlanningPage
     page = PlanningPage()
     try:
-        page.reload()
-        # A table with the pinned object appears in the priority section body.
         from PySide6.QtWidgets import QTableWidget
-        tables = page._priority_sec.body.parentWidget().findChildren(QTableWidget)
-        assert any(t.rowCount() >= 1 for t in tables)
+        tbl = next(t for t in page.findChildren(QTableWidget) if t.rowCount() >= 1)
+        # rank #1 is the pinned m13 (Object column carries its slug + a ▲ marker)
+        top = tbl.item(0, 1)
+        assert top.data(Qt.UserRole) == "m13"
+        assert "▲" in top.text()
+        # flipping strategy re-ranks instantly (no worker)
+        page._strategy_combo.setCurrentIndex(
+            page._strategy_combo.findData(prioritize.STRATEGY_DEEP))
+        assert prioritize.load_strategy() == prioritize.STRATEGY_DEEP
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -1224,6 +1248,7 @@ def test_site_editor_survives_refresh_while_editing(tmp_path, monkeypatch, qapp)
     """A background refresh (window focus) must not wipe unsaved profile edits —
     only an explicit profile switch / Save / restart should reset the form."""
     seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
     from m110.ui.pages.planning import PlanningPage
     page = PlanningPage()
     try:

@@ -59,6 +59,44 @@ class Weights:
     type_weights: dict[str, float] = field(default_factory=dict)  # type → multiplier
 
 
+# ── persistent tuning knobs (settings.json) ────────────────────────────────────
+SETTING_STRATEGY = "prioritizer_strategy"
+SETTING_WEIGHTS = "prioritizer_weights"
+_FACTOR_KEYS = ("goal", "urgency", "completion", "tonight")
+
+
+def load_strategy() -> str:
+    from . import config
+    s = config.get_setting(SETTING_STRATEGY, STRATEGY_CAPTURE)
+    return s if s in (STRATEGY_CAPTURE, STRATEGY_DEEP) else STRATEGY_CAPTURE
+
+
+def save_strategy(strategy: str) -> None:
+    from . import config
+    config.save_setting(SETTING_STRATEGY, strategy)
+
+
+def load_weights() -> Weights:
+    from . import config
+    d = config.get_setting(SETTING_WEIGHTS, {}) or {}
+    w = Weights()
+    for k in _FACTOR_KEYS:
+        try:
+            if k in d:
+                setattr(w, k, float(d[k]))
+        except (TypeError, ValueError):
+            pass
+    if isinstance(d.get("type_weights"), dict):
+        w.type_weights = {str(k): float(v) for k, v in d["type_weights"].items()}
+    return w
+
+
+def save_weights(w: Weights) -> None:
+    from . import config
+    config.save_setting(SETTING_WEIGHTS, {**{k: getattr(w, k) for k in _FACTOR_KEYS},
+                                          "type_weights": w.type_weights})
+
+
 def filter_for_type(obj_type: str) -> str:
     """Derive the capture filter from object type (emission/planetary punch through
     light pollution with an LP/narrowband filter; everything else is broadband
@@ -163,19 +201,20 @@ def rank(contexts, weights: Weights, strategy: str, pin_state: dict) -> list[dic
 
 # ── orchestration (loads app data, computes observability) ─────────────────────
 
-def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTURE,
-                      weights: Weights | None = None, site=None,
-                      observability_fn=None, limit: int | None = None) -> list[dict]:
-    """Assemble target contexts from the live store and rank them.
+def build_contexts(*, day: date | None = None, site=None,
+                   observability_fn=None) -> list[TargetContext]:
+    """Assemble per-target contexts from the live store — the **slow** part
+    (astropy observability). Scores the **union** of active-goal members + captured
+    targets + pinned slugs (bounding the work). Observability comes from the active
+    **site profile** unless ``site`` is passed; with no site/astropy each ``obs`` is
+    ``None`` (→ a degraded goal+completion+pins ranking). ``observability_fn`` is
+    injectable for tests.
 
-    Scores the **union** of active-goal members + captured targets + pinned slugs
-    (bounding the astropy work). Computes each target's observability from the active
-    **site profile** unless ``site`` is passed; if no site/astropy is available it
-    ranks on goal+completion+pins only. ``observability_fn`` is injectable for tests."""
+    Split from :func:`rank` on purpose: observability is **strategy-independent**, so
+    the UI computes these once (on refresh) and re-ranks instantly as the user moves
+    the strategy / weight controls."""
     from . import catalog, derived, goals, pins
-    weights = weights or Weights()
     day = day or date.today()
-    pin_state = pins.load()
 
     try:
         lib = catalog.load_library()
@@ -191,17 +230,13 @@ def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTU
 
     # Resolve the site + observability function (degrade gracefully).
     obs_fn = observability_fn
-    if obs_fn is None and site is None:
-        try:
-            from . import planning_config, planning
-            site = planning_config.load_active_site()
-            obs_fn = planning.observability
-        except Exception:
-            obs_fn = None
-    elif obs_fn is None:
+    if obs_fn is None:
         try:
             from . import planning
             obs_fn = planning.observability
+            if site is None:
+                from . import planning_config
+                site = planning_config.load_active_site()
         except Exception:
             obs_fn = None
 
@@ -221,29 +256,81 @@ def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTU
             slug=slug, obj_type=obj_type,
             integration_min=(t or {}).get("integration_min", 0.0),
             in_active_goal=slug in active_members, obs=obs))
+    return contexts
 
-    ranked = rank(contexts, weights, strategy, pin_state)
+
+def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTURE,
+                      weights: Weights | None = None, site=None,
+                      observability_fn=None, limit: int | None = None) -> list[dict]:
+    """Convenience: build contexts + rank in one call (used by tests / one-shots)."""
+    from . import pins
+    contexts = build_contexts(day=day, site=site, observability_fn=observability_fn)
+    ranked = rank(contexts, weights or Weights(), strategy, pins.load())
     return ranked[:limit] if limit else ranked
 
 
-# ── persistence (a derived rollup the UI reads) ────────────────────────────────
+# ── persistence (contexts cached so the UI can re-rank without astropy) ─────────
 
-def write_prioritized(rows: list[dict]) -> None:
-    """Write the ranked list to ``derived/prioritized.json`` (a generated rollup;
-    kept separate from the legacy `priorities.json` so it can't clobber it)."""
+def _context_to_dict(c: TargetContext) -> dict:
+    return {"slug": c.slug, "type": c.obj_type, "integration_min": c.integration_min,
+            "in_active_goal": c.in_active_goal, "obs": c.obs}
+
+
+def context_from_dict(d: dict) -> TargetContext:
+    return TargetContext(d["slug"], d.get("type", "unknown"),
+                         d.get("integration_min", 0.0),
+                         d.get("in_active_goal", False), d.get("obs"))
+
+
+def write_contexts(contexts: list[TargetContext]) -> None:
+    """Cache the (slow-to-compute) contexts to ``derived/prioritized.json`` so the
+    Planning UI can re-rank them live. Kept separate from the legacy
+    `priorities.json` so it can't clobber it."""
     import json
     from . import config
     d = config.DERIVED_DIR
     d.mkdir(parents=True, exist_ok=True)
-    (d / "prioritized.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    payload = {"generated": date.today().isoformat(),
+               "contexts": [_context_to_dict(c) for c in contexts]}
+    (d / "prioritized.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def refresh_prioritized(**kwargs) -> list[dict]:
-    """Build + persist the ranking (called from ``refresh.run_refresh``). Never
+def load_contexts() -> list[TargetContext]:
+    """Read the cached contexts back (empty if none/unreadable)."""
+    import json
+    from . import config
+    p = config.DERIVED_DIR / "prioritized.json"
+    if not p.is_file():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return [context_from_dict(d) for d in data.get("contexts", [])]
+    except Exception:
+        return []
+
+
+def is_stale(day: date | None = None) -> bool:
+    """True if the cached contexts are missing or not from ``day`` (default today).
+    Observability is date-based, so a once-a-day recompute is enough — the Planning
+    page uses this to decide whether to kick off a background rebuild."""
+    import json
+    from . import config
+    p = config.DERIVED_DIR / "prioritized.json"
+    if not p.is_file():
+        return True
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data.get("generated") != (day or date.today()).isoformat()
+    except Exception:
+        return True
+
+
+def refresh_prioritized(**kwargs) -> list[TargetContext]:
+    """Build + cache the contexts (called from ``refresh.run_refresh``). Never
     raises — a scorer hiccup must not break a refresh."""
     try:
-        rows = build_prioritized(**kwargs)
-        write_prioritized(rows)
-        return rows
+        contexts = build_contexts(**kwargs)
+        write_contexts(contexts)
+        return contexts
     except Exception:
         return []

@@ -135,15 +135,33 @@ def test_build_prioritized_over_a_store(tmp_path, monkeypatch):
     assert [r["rank"] for r in rows] == list(range(1, len(rows) + 1))
 
 
-def test_write_prioritized_roundtrips(tmp_path, monkeypatch):
-    import json
+def test_contexts_cache_roundtrips_and_reranks(tmp_path, monkeypatch):
+    """Contexts are cached (slow obs computed once) and re-ranked live — a strategy
+    flip re-orders without recomputing observability."""
     from tests._helpers import seed_root
     seed_root(tmp_path, monkeypatch)
-    from m110 import config
-    rows = [{"slug": "m1", "score": 1.0, "rank": 1}]
-    pr.write_prioritized(rows)
-    got = json.loads((config.DERIVED_DIR / "prioritized.json").read_text())
-    assert got == rows
+    contexts = [TargetContext("new", "galaxy", 0, True, _obs()),
+                TargetContext("almost", "galaxy", 120, True, _obs())]
+    pr.write_contexts(contexts)
+    got = pr.load_contexts()
+    assert {c.slug for c in got} == {"new", "almost"}
+    assert got[0].obs is not None                       # obs survived the round-trip
+    # re-rank the cached contexts two ways — no astropy needed
+    cap = {r["slug"]: r["rank"] for r in pr.rank(got, Weights(), pr.STRATEGY_CAPTURE, {})}
+    deep = {r["slug"]: r["rank"] for r in pr.rank(got, Weights(), pr.STRATEGY_DEEP, {})}
+    assert cap["new"] < cap["almost"] and deep["almost"] < deep["new"]
+
+
+def test_strategy_and_weights_persist(tmp_path, monkeypatch):
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)
+    assert pr.load_strategy() == pr.STRATEGY_CAPTURE          # default
+    pr.save_strategy(pr.STRATEGY_DEEP)
+    assert pr.load_strategy() == pr.STRATEGY_DEEP
+    w = Weights(goal=2.0, urgency=0.5, tonight=1.5)
+    pr.save_weights(w)
+    got = pr.load_weights()
+    assert got.goal == 2.0 and got.urgency == 0.5 and got.tonight == 1.5
 
 
 # ── type-aware deep threshold (the Sharpless motivation) ───────────────────────

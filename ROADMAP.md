@@ -180,9 +180,12 @@ archived in **[`DONE.md`](DONE.md)**.
      pin is simply always shown), the optional **numeric nudge**, and composing
      `computed rank + overrides = final order` (today overrides act standalone).
    - *Build order — three shippable checkpoints:*
-     - **A — Profiles + Prioritizer** *(standalone value)*: Profile view + site
-       profiles → light-dome auto-map → prioritizer engine + overrides → priority UI
-       (inline promote/demote + strategy slider + per-type weights).
+     - **A — Profiles + Prioritizer** ✅ **Shipped** (`feature/planning-profiles` →
+       `glow-automap` → `prioritizer`): Planning pane + site profiles → light-dome
+       auto-map → `m110/prioritize.py` scorer + overrides → priority UI (ranked table +
+       strategy toggle + per-factor weights, live re-rank of a once/day-cached compute).
+       *Follow-ups noted below:* trajectory-aware altitude, per-object integration
+       targets, surface-brightness thresholds, and the two-tier session controls.
      - **B — Session Planner** *(depends on A)*: the Planning view (pick site + night
        → observable & ranked tonight list with transit/altitude/moon → assemble an
        ordered plan) + the **plan-file / field-guide emit** (item 2). The shared
