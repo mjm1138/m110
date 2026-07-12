@@ -10,7 +10,10 @@ from tests._helpers import seed_root, seed_capture
 
 def _window(qapp):
     from m110.ui.main import MainWindow
-    return MainWindow()
+    win = MainWindow()
+    win._ready = False    # neuter the deferred launch refresh + update-check threads
+                          # (a leaked network QThread at teardown aborts the process)
+    return win
 
 
 def test_report_action_opens_dialog(tmp_path, monkeypatch, qapp):
@@ -76,5 +79,18 @@ def test_backup_nudge_silent_without_captures(tmp_path, monkeypatch, qapp):
         win._maybe_backup_nudge()
         assert asked == []                      # nothing to lose → no nag
         assert config.get_setting("backup_nudge_seen") in (None, False)
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_launch_update_check_skipped_when_not_ready(tmp_path, monkeypatch, qapp):
+    """Regression: the launch update-check must NOT spawn its network QThread when the
+    window isn't `_ready` (tests/screenshots set _ready=False to neuter launch work) —
+    a leaked network thread aborts the process at teardown (macOS crash dialog)."""
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)                 # _window sets _ready = False
+    try:
+        win._maybe_check_updates()
+        assert win._update_worker is None
     finally:
         win.deleteLater(); qapp.processEvents()
