@@ -140,9 +140,11 @@ archived in **[`DONE.md`](DONE.md)**.
        populated-places heuristic proves uneven anywhere.
    - *Deep-stack threshold — type-aware (shipped `feature/prioritizer`).* The
      "when is it deep?" threshold is now **per object type** (`build_derived
-     .deep_threshold` / `DEEP_MIN_BY_TYPE`: clusters ~25 min … galaxies/planetaries
-     ~90 … emission/Sharpless ~240), since required integration scales with surface
-     brightness — a flat 60 min falsely marked faint nebulae done. **Shared** between
+     .deep_threshold` / `DEEP_MIN_BY_TYPE`, calibrated to S50 experience: a **90-min
+     SNR floor** for clusters/globulars/unlisted, planetaries 180, galaxies 240,
+     emission/Sharpless/reflection/dark **360**), since required integration scales
+     with surface brightness — a flat 60 min falsely marked faint nebulae done and
+     ignored the sensor-noise floor. **Shared** between
      the status badge and the prioritizer's completion factor so they always agree.
      *Planned:* a **user-set integration target per object** (a per-object override of
      the type default; the object detail carries the target, the badge + scorer read

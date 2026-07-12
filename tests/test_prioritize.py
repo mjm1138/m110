@@ -150,9 +150,10 @@ def test_write_prioritized_roundtrips(tmp_path, monkeypatch):
 
 def test_deep_threshold_is_type_aware():
     from m110.build_derived import deep_threshold
-    assert deep_threshold("open_cluster") < deep_threshold("globular") \
-        < deep_threshold("galaxy") <= deep_threshold("emission")
-    assert deep_threshold("unknown") == 60          # default fallback
+    # 90-min SNR floor for bright/unlisted types; galaxies want more, nebulae most.
+    assert deep_threshold("globular") == deep_threshold("open_cluster") == 90
+    assert deep_threshold("planetary") < deep_threshold("galaxy") < deep_threshold("emission")
+    assert deep_threshold("unknown") == 90          # default = the SNR floor
 
 
 def test_scorer_uses_per_type_threshold():

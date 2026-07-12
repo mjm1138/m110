@@ -27,27 +27,27 @@ except ImportError:
 # Paths resolve dynamically from config (so a changed data root / test
 # monkeypatch takes effect without re-import).
 
-DEEP_STACK_MIN = 60  # default "deep stack" threshold (min) for an unknown type
+# SNR floor (minutes): on a low-cost smart-scope sensor it takes ~90 min just to
+# beat down read/thermal noise, so nothing counts as "deep" below this. Also the
+# default for clusters/globulars/asterisms and unknown types (bright, but the SNR
+# floor still applies).
+DEEP_STACK_MIN = 90
 
-# Type-aware deep-stack threshold (minutes). Required integration scales with an
-# object's surface brightness: bright clusters are "deep" fast; faint emission
-# nebulae (e.g. Sharpless) need hours, so a flat 60 min would falsely mark them
-# done — sinking them in the prioritizer and painting a premature "deep stack"
-# badge. This single table drives BOTH the status badge (below) and the
-# prioritizer's completion factor, so they always agree. Calibration defaults —
-# tunable; a per-object user-set integration target is a planned override (ROADMAP).
+# Type-aware deep-stack threshold (minutes) for the types that need *more* than the
+# floor. Required integration scales with surface brightness — galaxies want time
+# for faint outer arms, diffuse nebulae (incl. Sharpless) want hours. Calibrated to
+# S50 experience with the user. This single table drives BOTH the status badge
+# (below) and the prioritizer's completion factor, so they always agree. Types not
+# listed fall back to DEEP_STACK_MIN. A per-object user-set integration target is a
+# planned override (ROADMAP).
 DEEP_MIN_BY_TYPE = {
-    "asterism": 15,
-    "double_star": 15,
-    "open_cluster": 25,
-    "globular": 45,
-    "galaxy": 90,
-    "galaxy_group": 90,
-    "planetary": 90,
-    "reflection": 180,
-    "emission": 240,
-    "emission_snr": 240,
-    "dark_nebula": 240,
+    "planetary": 180,       # bright core comes fast; faint halo/colour wants more
+    "galaxy": 240,
+    "galaxy_group": 240,
+    "reflection": 360,
+    "emission": 360,
+    "emission_snr": 360,
+    "dark_nebula": 360,
 }
 
 
