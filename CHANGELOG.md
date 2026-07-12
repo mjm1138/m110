@@ -28,6 +28,12 @@ changes a **user** would notice, per release.
   it couldn't identify (which go to the holding area for you to assign). A detailed scan
   log is also written to help diagnose future import surprises.
 
+### Fixed
+- **Holding area: assign files to any object name.** The Object field accepts any
+  name you type — including an object not yet in your library (a new entry is created
+  when you assign) — but it looked like a fixed drop-down. It now clearly reads as
+  type-or-pick, with a placeholder and search-as-you-type.
+
 ## [0.1.0-beta.1] - 2026-07-10
 
 First public beta.
