@@ -40,6 +40,79 @@ ROADMAP slot so cross-references (`item 5`, `item 0`, …) still resolve.
 
 ---
 
+## Later phase 1 — Session planning: **Checkpoint A** *(done 2026-07-12)*
+
+The first shippable checkpoint of the session-planning arc (ROADMAP item 1) —
+**site profiles + light-dome + deterministic prioritizer + tuning UI** — landed as
+a stack of four feature branches (`feature/planning-profiles` → `glow-automap` →
+`prioritizer`; the independent update-check side task shipped separately in beta.2).
+Checkpoints B (session planner + plan-file emit) and C (assistant) remain open.
+
+- **Planning nav pane + site profiles** (`feature/planning-profiles`). A 5th nav
+  pane (**Library · Overview · Planning · Import · Processing**) surfaces the
+  previously-headless planning engine. Location profiles are conceptually
+  subordinate to planning, so they live here (not a standalone pane): a **location
+  selector** (persisted `active_site_profile`), a priority-targets table, and a
+  **Manage site profiles** editor. `planning_config` gained *writers*
+  (`save_site` / `delete_profile` / `import_horizon_mask` / `active_profile` /
+  `set_active_profile` / `load_active_site` + hand-written `format_site_toml`, no
+  writer dep) and an optional online **`geocode`** (Nominatim, degrades offline).
+  Additive authored config under the hidden dir — **no `.store_version` bump**.
+- **Light-dome glow auto-map** (`feature/glow-automap`, `m110/glow.py`, Qt-free).
+  Fills the site profile's `[glow]` seam so the observability floor demotes targets
+  low *toward* a city while leaving low-*away* ones alone. Walker's Law
+  (skyglow ∝ population × distance⁻²·⁵) → per-town light domes (peak alt + angular
+  half-width) → **upper-envelope** `glow_floor(az)`, composed as `max(physical,
+  glow)` via `horizon.effective_floor`. Optional **Bortle** nudge + a softer
+  **narrowband** floor; hemisphere-agnostic (haversine/bearing on signed coords).
+  Authored from the profile editor's **Compute light-dome…** button →
+  `<profile>.glow.hrz`, hand-editable. Town data = a bundled trimmed **GeoNames
+  `cities1000`** subset (147k towns worldwide, 2.6 MB gzip, CC-BY 4.0 in `NOTICE`;
+  `tools/gen_geonames.py`). **Decision:** `cities1000`, *not* `cities15000` —
+  skyglow is dominated by nearby towns of a few thousand, so a 15k floor would drop
+  the sources that matter most to rural/dark-site users (and biases against the
+  sparser southern hemisphere; the Reddit audience is global). *Real-data fix:* a
+  town at the observer's own location (near-zero distance, unstable bearing) made a
+  spurious maxed dome — now excluded (`MIN_DOME_DIST_KM`; that all-sky glow is the
+  Bortle anchor's job).
+- **Deterministic prioritizer** (`feature/prioritizer`, `m110/prioritize.py`,
+  Qt-free) — ranks targets, replacing the hand-edited `priorities.toml`. Weighted
+  sum of ~0..1 factors: **goal** membership · **urgency** (season closing pressure
+  from `observability()['nights_to_close']`, **×completion** so a *finished* target
+  gets no urgency credit — the Astronomy-prototype M81-vs-M12 close-out fix) ·
+  **completion** (strategy-shaped: *capture-many* favours new, *go-deep* favours
+  started-but-shallow) · **tonight** (transit altitude + graded clear hours) ·
+  optional per-type weight. **Pins compose on top** (pin→top, deprioritize→excluded).
+  Filter derived from type (emission/planetary → LP) so the glow floor is
+  filter-aware. Degrades to goal+completion+pins with no site/astropy.
+- **Type-aware deep-stack threshold** (`build_derived.deep_threshold` /
+  `DEEP_MIN_BY_TYPE`) — required integration scales with surface brightness, so a
+  flat 60 min falsely marked faint nebulae "done." **Shared** between the status
+  badge (`build_totals`, per-slug + per-folder) and the prioritizer's completion
+  factor so they always agree. **Calibrated to S50 experience with the user:** a
+  **90-min SNR floor** (nothing deep below it, on a low-cost sensor), planetaries
+  180, galaxies 240, emission/SNR/reflection/dark **360**. A per-object user-set
+  integration target is a planned override (ROADMAP).
+- **Tuning UI + cost architecture.** The Planning priority table is the scorer's
+  ranking with a live tuning surface: a **Strategy** toggle (capture ↔ deep) +
+  per-factor **weight** spinboxes (persisted; both **re-rank the cache instantly**),
+  a Recompute button, right-click Pin/Deprioritize. The slow part (astropy
+  observability over every goal member, ~45s/151 targets) is **split** from ranking
+  (`build_contexts` vs `rank`), computed **once/day** on a background
+  `_PrioritizerWorker`, cached to `derived/prioritized.json`
+  (`write_contexts`/`load_contexts`/`is_stale`). The worker fires **only** when the
+  shell navigates to Planning in a `_ready` window (`ensure_ranking`) — never from
+  widget construction / focus-refresh / offscreen tests, so a focus-refresh never
+  runs astropy and tests don't leak the thread. (Wiring it into `run_refresh` was
+  tried and reverted — it added ~45s to every focus-refresh.)
+- **Profile-editor refresh preservation.** The app-wide focus refresh reloaded the
+  `SiteProfileEditor` and wiped unsaved edits. The editor is now **dirty-aware**
+  (`is_dirty`/`current_stem`; `_loading` suppresses `load()`'s own signals) and the
+  Planning page skips reloading it while dirty on the same profile — unsaved values
+  survive a refresh, resetting only on an explicit profile switch, Save, or restart.
+
+---
+
 ## Later phase 5 — Library, catalogs & goals *(done; catalog library still growing)*
 
 5. **Library, catalogs & goals — multi-list tracking + arbitrary objects.**
@@ -200,6 +273,29 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 Concise log; full root-cause writeups are in git history. Lessons that constrain
 future work live in `CLAUDE.md` "Gotchas / lessons learned".
+
+**Beta fast-follows (post-`v0.1.0-beta.1`)**
+- **Update notifications** (`feature/update-check`, shipped in beta.2). Qt-free
+  `m110/updates.py` checks the GitHub Releases API (`/releases`, *not*
+  `/releases/latest` — the beta is a pre-release), compares the newest tag to the
+  running version (PEP 440), and shows a quiet, dismissible launch banner
+  (Download · Skip · ✕) when newer. Help → **Check for updates…** for a manual check;
+  **Preferences → Updates** toggles the throttled (~daily) launch check. Stdlib
+  `urllib`, degrades silently offline; no new dependency. *(A follow-up gated the
+  launch check on `_ready` — its network `QThread` was aborting short-lived
+  test/screenshot processes at teardown; SIGABRT → macOS "Python quit" dialogs.)*
+- **Import: one deterministic recursive scanner (#32).** Beta-tester report
+  (Windows): nested Seestar subfolders weren't scanned. Root cause = two scan paths
+  of different depth; unified everything on the recursive `scan_directory_plan`
+  (retired the shallow `_scan_base`) + added scan logging + a user-visible post-scan
+  summary (objects / to-import / to-holding).
+- **Holding area (#33/#34).** Multi-select bulk assign (row multi-select + a bulk
+  bar routing many held rows to one object/kind); and the Object picker made
+  discoverable as **type-or-pick** (it was always editable + the engine always
+  accepted arbitrary names, but it looked like a fixed drop-down).
+- **Window resizes narrower.** A few long, non-wrapping description labels pinned the
+  window to a wide minimum (worst on the empty-library Overview); wrapping them lets
+  it shrink normally.
 
 **Data store**
 - **#13 — Two-axis store (architectural).** Split the data root into `Objects/`
