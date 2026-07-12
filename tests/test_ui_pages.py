@@ -1192,3 +1192,23 @@ def test_planning_page_priority_shows_pins(tmp_path, monkeypatch, qapp):
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+def test_site_editor_survives_refresh_while_editing(tmp_path, monkeypatch, qapp):
+    """A background refresh (window focus) must not wipe unsaved profile edits —
+    only an explicit profile switch / Save / restart should reset the form."""
+    seed_root(tmp_path, monkeypatch)
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page.editor.load("default")
+        page.editor._lat.setValue(12.345)              # user edits, hasn't saved
+        assert page.editor.is_dirty()
+        page.reload()                                  # simulate the focus refresh
+        assert page.editor._lat.value() == pytest.approx(12.345)   # preserved
+        page.editor._save()                            # now persist
+        assert not page.editor.is_dirty()
+        page.reload()
+        assert page.editor._lat.value() == pytest.approx(12.345)   # saved value stays
+    finally:
+        page.deleteLater(); qapp.processEvents()

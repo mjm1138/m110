@@ -122,28 +122,56 @@ class SiteProfileEditor(QWidget):
         arow.addWidget(save)
         lay.addLayout(arow)
 
+        # Dirty tracking: once the user edits a field, a background refresh (window
+        # focus, etc.) must NOT reload the form and wipe the unsaved edits — the
+        # Planning page checks `is_dirty()` before reloading. `_loading` suppresses
+        # the change signals fired by `load()` itself. Cleared on load + Save.
+        self._loading = False
+        self._dirty = False
+        for sig in (self._name.textEdited, self._lat.valueChanged,
+                    self._lon.valueChanged, self._elev.valueChanged,
+                    self._tz.editTextChanged, self._bortle.valueChanged,
+                    self._sqm.valueChanged):
+            sig.connect(self._mark_dirty)
+
         self.load(self._stem)
+
+    # ---- dirty state ----
+    def _mark_dirty(self, *_):
+        if not self._loading:
+            self._dirty = True
+
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    def current_stem(self) -> str:
+        return self._stem
 
     # ---- data ----
     def load(self, stem: str):
-        """Populate the form from profile ``stem``."""
-        self._stem = stem
-        site = pc.load_site(stem)
-        self._name.setText(site.name)
-        self._lat.setValue(site.latitude_deg)
-        self._lon.setValue(site.longitude_deg)
-        self._elev.setValue(site.elevation_m)
-        i = self._tz.findText(site.timezone)
-        if i >= 0:
-            self._tz.setCurrentIndex(i)
-        else:
-            self._tz.setEditText(site.timezone)
-        self._bortle.setValue(int(site.bortle))
-        self._sqm.setValue(site.sqm_zenith)
-        self._horizon_mask = site.horizon_mask
-        self._mask_label.setText(site.horizon_mask or "— none —")
-        # The default profile must always exist as a fallback.
-        self._delete.setEnabled(stem != pc.DEFAULT_PROFILE)
+        """Populate the form from profile ``stem`` (resets any unsaved edits)."""
+        self._loading = True
+        try:
+            self._stem = stem
+            site = pc.load_site(stem)
+            self._name.setText(site.name)
+            self._lat.setValue(site.latitude_deg)
+            self._lon.setValue(site.longitude_deg)
+            self._elev.setValue(site.elevation_m)
+            i = self._tz.findText(site.timezone)
+            if i >= 0:
+                self._tz.setCurrentIndex(i)
+            else:
+                self._tz.setEditText(site.timezone)
+            self._bortle.setValue(int(site.bortle))
+            self._sqm.setValue(site.sqm_zenith)
+            self._horizon_mask = site.horizon_mask
+            self._mask_label.setText(site.horizon_mask or "— none —")
+            # The default profile must always exist as a fallback.
+            self._delete.setEnabled(stem != pc.DEFAULT_PROFILE)
+        finally:
+            self._loading = False
+            self._dirty = False
 
     def _current_site(self) -> pc.Site:
         return pc.Site(
@@ -165,6 +193,7 @@ class SiteProfileEditor(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "Couldn't save profile", str(exc))
             return
+        self._dirty = False
         self.saved.emit(self._stem)
 
     def _new(self):
@@ -205,10 +234,12 @@ class SiteProfileEditor(QWidget):
             return
         self._horizon_mask = fname
         self._mask_label.setText(fname)
+        self._mark_dirty()
 
     def _clear_horizon(self):
         self._horizon_mask = ""
         self._mask_label.setText("— none —")
+        self._mark_dirty()
 
     def _lookup(self):
         query, ok = QInputDialog.getText(

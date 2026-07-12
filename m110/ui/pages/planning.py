@@ -92,9 +92,12 @@ class PlanningPage(QScrollArea):
                 active_row = i
         self.selector.setCurrentIndex(active_row)
         self._loading = False
-        # Load the editor for the active profile (selector signal was suppressed).
+        # Load the editor for the active profile (the selector signal was suppressed),
+        # BUT never clobber in-progress unsaved edits: a background refresh (window
+        # focus) calls reload(), so if the user is mid-edit on this same profile, leave
+        # the form alone. Explicit profile switches / saves go through other paths.
         stem = self.selector.currentData()
-        if stem:
+        if stem and not (self.editor.is_dirty() and stem == self.editor.current_stem()):
             self.editor.load(stem)
 
     def _reload_priority(self):
