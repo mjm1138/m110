@@ -341,6 +341,55 @@ def test_scan_directory_plan_recurses_nested_tree(tmp_path, monkeypatch):
     assert any("Images/M51/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
 
 
+def test_seestar_plan_recurses_nested_subfolders(tmp_path, monkeypatch):
+    """#32 regression: a Seestar MyWorks with an extra nesting level (the device/
+    staging plans used to scan only one level deep and silently miss it). Both the
+    top-level and the nested target must be found."""
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    myworks = tmp_path / "Volumes" / "EMMC Images" / "MyWorks"
+    top = myworks / "M13_sub"                          # immediate child
+    top.mkdir(parents=True)
+    (top / "Light_M13_a.fit").write_text("data")
+    nested = myworks / "2026-07-Trip" / "M51_sub"      # one level deeper
+    nested.mkdir(parents=True)
+    (nested / "Light_M51_a.fit").write_text("data")
+    monkeypatch.setattr(config, "find_seestar_myworks", lambda: myworks)
+
+    ops = ingest.scan_seestar_plan()
+    dests = {o.dest_rel for o in ops}
+    assert any("Images/M13/lights/" in d for d in dests)
+    assert any("Images/M51/lights/" in d for d in dests)   # the nested one (was missed)
+
+
+def test_staging_plan_recurses_nested_subfolders(tmp_path, monkeypatch):
+    """#32 regression for the Inbox/staging plan — also recursive now."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    nested = staging / "batch-a" / "M13_sub"
+    nested.mkdir(parents=True)
+    (nested / "Light_M13_a.fit").write_text("data")
+    ops = ingest.scan_staging_plan()
+    assert any("Images/M13/lights/" in o.dest_rel for o in ops)
+    assert all(o.action == "move" for o in ops)            # staging = move semantics
+
+
+def test_scan_summary_counts(tmp_path, monkeypatch):
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    sub = src / "M13_sub"
+    sub.mkdir(parents=True)
+    (sub / "Light_a.fit").write_text("x")
+    (sub / "Light_b.fit").write_text("y")
+    junk = src / "Misc"
+    junk.mkdir()
+    (junk / "notes.fit").write_text("no header")           # → holding
+    summ = ingest.scan_summary(ingest.scan_directory_plan(str(src)))
+    assert summ["objects"] == 1                             # M13
+    assert summ["to_import"] == 2                           # two lights
+    assert summ["to_holding"] == 1                          # the unidentifiable fit
+    assert summ["total"] == 3
+    assert summ["by_kind"]["light"] == 2
+
+
 def test_unrecognized_loose_files_go_to_holding(tmp_path, monkeypatch):
     """A plain folder of loose content (no `_sub`/`_photo`, no Stacked_* FITS) isn't
     vacuumed up as a stack, but is no longer silently dropped — 6c routes every

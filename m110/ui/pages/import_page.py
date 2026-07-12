@@ -75,6 +75,15 @@ class ImportPage(QWidget):
         self._path_lbl.setWordWrap(True)       # a long path mustn't force window width (#63)
         tv.addWidget(self._path_lbl)
 
+        # A persistent scan-result headline (what the recursive scan found), set on
+        # each scan and independent of the selection-driven `_summary` below — so
+        # "where did my files go?" is always answerable, incl. files sent to holding
+        # (#32).
+        self._scan_note = QLabel()
+        self._scan_note.setProperty("caption", True)
+        self._scan_note.setWordWrap(True)
+        tv.addWidget(self._scan_note)
+
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
             ["", "Object", "Kind", "Files", "Size", "Pointing", "→ Destination"])
@@ -221,11 +230,32 @@ class ImportPage(QWidget):
         self._set_busy(False)
         self._groups = groups
         self._populate()
+        self._set_scan_note(groups)
         if self._post_import_msg:    # confirm the import, then show what's left
             tail = (f"  {self._summary.text()}" if self._groups
                     else "  Nothing left to import.")
             self._summary.setText(self._post_import_msg + tail)
             self._post_import_msg = None
+
+    def _set_scan_note(self, groups):
+        """Headline what the (recursive) scan found — object/file counts, and how
+        many files couldn't be identified and will go to the holding area — so a
+        surprising result (nothing found, or everything held) is explained (#32)."""
+        ops = [o for g in groups for o in g.ops]
+        summ = ingest.scan_summary(ops)
+        if summ["total"] == 0:
+            self._scan_note.setText(
+                "No importable files were found in this folder or its subfolders. "
+                "M110 scans every subfolder for FITS (.fit/.fits) and images; check "
+                "that the source contains capture files.")
+            return
+        bits = [f"Found {summ['objects']} object(s), {summ['to_import']} file(s) "
+                f"to import"]
+        if summ["to_holding"]:
+            bits.append(
+                f"{summ['to_holding']} file(s) couldn't be identified → sent to the "
+                f"holding area below for manual assignment")
+        self._scan_note.setText(".  ".join(bits) + ".")
 
     def _on_scan_cancelled(self):
         self._finish_worker()
@@ -693,6 +723,7 @@ class ImportPage(QWidget):
     def _set_empty(self, msg):
         self._groups = []
         self.table.setRowCount(0)
+        self._scan_note.setText("")
         self._summary.setText(msg)
         self._import_btn.setEnabled(False)
 

@@ -20,6 +20,14 @@ changes a **user** would notice, per release.
   area and assign them all to the same object and kind in one step, instead of one row
   at a time.
 
+### Fixed
+- **Import now scans every subfolder, consistently.** Some capture folders nested more
+  than one level deep could be missed depending on how you started the import. The
+  importer now walks the whole folder tree the same way from every entry point, and shows
+  a clear summary after scanning — how many objects and files it found, and how many files
+  it couldn't identify (which go to the holding area for you to assign). A detailed scan
+  log is also written to help diagnose future import surprises.
+
 ## [0.1.0-beta.1] - 2026-07-10
 
 First public beta.
