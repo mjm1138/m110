@@ -30,6 +30,8 @@ from . import config
 REPO = "mjm1138/m110"
 _API = f"https://api.github.com/repos/{REPO}/releases"
 _RELEASES_URL = f"https://github.com/{REPO}/releases"
+# Online home of the user guide (docs/README.md), for Help → User guide + the site.
+USER_GUIDE_URL = f"https://github.com/{REPO}/blob/main/docs/README.md"
 _TIMEOUT_S = 6
 _CHECK_INTERVAL_S = 24 * 3600
 

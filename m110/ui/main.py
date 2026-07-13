@@ -267,7 +267,11 @@ class MainWindow(QMainWindow):
         self.report_action.triggered.connect(self._open_report)
         self.check_updates_action = QAction("Check for updates…", self)
         self.check_updates_action.triggered.connect(self._check_updates)
+        self.user_guide_action = QAction("User guide", self)
+        self.user_guide_action.triggered.connect(self._open_user_guide)
         self.help_menu = self.menuBar().addMenu("Help")
+        self.help_menu.addAction(self.user_guide_action)
+        self.help_menu.addSeparator()
         self.help_menu.addAction(self.check_updates_action)
         self.help_menu.addAction(self.report_action)
         self.help_menu.addAction(self.about_action)
@@ -326,6 +330,12 @@ class MainWindow(QMainWindow):
     def _open_report(self):
         from m110.ui.error_report import ErrorReportDialog, build_report
         ErrorReportDialog(build_report(), is_crash=False, parent=self).exec()
+
+    def _open_user_guide(self):
+        """Help → User guide — open the online user guide in the browser."""
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl(updates.USER_GUIDE_URL))
 
     # ---- update check ----
     def _maybe_check_updates(self):
