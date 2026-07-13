@@ -220,6 +220,7 @@ def build_contexts(*, day: date | None = None, site=None,
         lib = catalog.load_library()
     except Exception:
         lib = {}
+    ref = catalog.load_reference()          # bundled type/coords for uncaptured goal members
     totals = derived.totals_by_slug()
     coords = catalog.load_coords()
 
@@ -244,7 +245,13 @@ def build_contexts(*, day: date | None = None, site=None,
     for slug in slugs:
         entry = lib.get(slug) or {}
         t = totals.get(slug)
-        obj_type = entry.get("type", "unknown")
+        # Prefer a real library type; fall back to the bundled reference so an
+        # uncaptured goal member (absent from the Library) still gets its true type
+        # — which drives the filter (filter_for_type) and the deep threshold. Without
+        # this the whole uncaptured sweep scored as type "unknown" → IRCUT + 90-min.
+        obj_type = entry.get("type")
+        if not obj_type or obj_type == "unknown":
+            obj_type = ref.get(slug, {}).get("type") or "unknown"
         obs = None
         if obs_fn is not None and site is not None and slug in coords:
             ra, dec = coords[slug]

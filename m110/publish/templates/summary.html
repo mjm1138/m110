@@ -81,32 +81,4 @@
   </table>
 </section>
 
-{% if priorities %}
-<section>
-  <h2>Priority Targets</h2>
-  <table class="catalog">
-    <thead>
-      <tr><th>Object</th><th class="num">Target</th><th>Progress</th></tr>
-    </thead>
-    <tbody>
-    {% for p in priorities %}
-      <tr>
-        <td>{{ p.name or p.id }}</td>
-        <td class="num">{{ p.target_integration_min or '' }}</td>
-        <td class="progress-cell">
-          {% if p.progress %}
-            <div class="bar"><div class="fill" style="width: {{ p.percent_complete|bar_pct }}%"></div></div>
-            <span class="bar-text">{{ p.progress.integration_hms }} ({{ p.percent_complete }}%)</span>
-          {% elif not p.track %}
-            <span class="muted">campaign</span>
-          {% else %}
-            <span class="muted">not started</span>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
 {% endblock %}

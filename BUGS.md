@@ -250,14 +250,17 @@ Legend: `[ ]` open · `[~]` partially done
 *Findings from the 2026-07-13 prioritizer/planner review below — reasoning in
 [`prioritizer-review.md`](prioritizer-review.md).*
 
-- [ ] **#35 — Join the two priority artifacts + read catalog type.** `prioritized.json`
-  (observability engine, full catalog, but `filter`/`priority`/`type` absent and
-  `type:"unknown"` for every uncaptured object) and `priorities.json` (curated intent +
-  progress, but stale season/no astronomy) are **disjoint and never merged**. Compose one
-  ranked view: pull durable fields (filter, type from the **catalog**, `target_integration_min`,
-  priority weight) from the curated store + catalog; recompute time-varying fields
-  (season/urgency/window/altitude) from the engine. Don't inherit `priorities.toml`'s stale
-  `season`/"target met" strings. Unblocks filter-awareness for the whole sweep. (→ ROADMAP #21.)
+- [x] **#35 — Single ranked view + retire `priorities.toml`.** *(PLANNING_ROADMAP Phase 1.1,
+  `feature/session-planner`.)* The prioritizer (`prioritize.py`) was already the single
+  source the Planning UI consumes; the real defect was that `build_contexts` read object
+  `type` only from the Library, so every **uncaptured** active-goal member scored as
+  `type:"unknown"` → wrong filter (IRCUT) + the 90-min deep floor instead of the type-aware
+  240/360. Fixed by falling back to the **bundled reference** for type (→ correct
+  filter/threshold across the whole sweep). Also **retired the legacy curated path** end to
+  end: `build_derived` no longer reads `priorities.toml` or writes `priorities.json`;
+  `build_priorities`/`derived.load_priorities`/`select.filter_priorities` deleted; the
+  published site's Priority Targets section dropped (the curated data was personal + not
+  generalizable). `track=false` campaign exclusion is covered by a pin *deprioritize*.
 - [ ] **#36 — Moon model is wrong (planner header).** On `2026-07-18` the plan reported
   "Moon: 0% lit, down at dusk (−17°)"; actual Boulder values are **~24% illuminated (waxing
   crescent, 4 days after the Jul 14 new moon), +5° at dusk, setting ~23:00**. Two bugs: (a) **illumination is wrong** (reported 0% — dangerous,

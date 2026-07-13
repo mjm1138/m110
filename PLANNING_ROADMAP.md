@@ -24,7 +24,13 @@ those and the feature is releasable.
 
 Nothing downstream can be trusted until the ranked view is correct and complete.
 
-### 1.1 — Single ranked view; retire the `priorities.toml` dependency  *(BUGS #35, review §1–2)*
+### 1.1 — Single ranked view; retire the `priorities.toml` dependency  *(BUGS #35, review §1–2)* ✅ **landed** (`feature/session-planner`)
+> **Shipped:** the prioritizer was already the single source; the real fix was
+> `prioritize.build_contexts` reading object `type` from the bundled **reference** when
+> the Library lacks it (uncaptured goal members were scoring as `type:"unknown"` → IRCUT +
+> the 90-min floor). The legacy `priorities.toml` → `priorities.json` path is retired end
+> to end (`build_priorities`/`load_priorities`/`filter_priorities` deleted; the published
+> site's Priority Targets section dropped). Remaining acceptance below is met.
 The review framed this as "join the two disjoint artifacts" (`prioritized.json` =
 observability, full sweep, but intent-free + `type:"unknown"` for uncaptured;
 `priorities.json` = curated intent + progress, but stale + no astronomy). **Revised

@@ -135,6 +135,28 @@ def test_build_prioritized_over_a_store(tmp_path, monkeypatch):
     assert [r["rank"] for r in rows] == list(range(1, len(rows) + 1))
 
 
+def test_uncaptured_goal_member_gets_type_from_reference(tmp_path, monkeypatch):
+    """An active-goal member that hasn't been captured is absent from the Library,
+    so its type must come from the bundled reference — not default to "unknown".
+    Otherwise the whole uncaptured sweep scored as IRCUT + the 90-min floor instead
+    of its true filter + type-aware deep threshold (PLANNING_ROADMAP Phase 1.1)."""
+    from tests._helpers import seed_root
+    from m110.build_derived import deep_threshold
+    seed_root(tmp_path, monkeypatch)      # empty Library, default Messier goal active
+
+    def fake_obs(target, day, site, **kw):
+        return {"observable": True, "hours_clear": 3.0, "transit_alt": 55.0,
+                "nights_to_close": 20, "season": "summer"}
+
+    contexts = pr.build_contexts(observability_fn=fake_obs, site=object())
+    by_slug = {c.slug: c for c in contexts}
+    assert "m8" in by_slug, "an uncaptured Messier member should still be scored"
+    m8 = by_slug["m8"]
+    assert m8.obj_type == "emission"                     # from the reference, not "unknown"
+    assert pr.filter_for_type(m8.obj_type) == "LP"       # emission → narrowband
+    assert deep_threshold(m8.obj_type) == 360            # type-aware, not the 90-min floor
+
+
 def test_contexts_cache_roundtrips_and_reranks(tmp_path, monkeypatch):
     """Contexts are cached (slow obs computed once) and re-ranked live — a strategy
     flip re-orders without recomputing observability."""

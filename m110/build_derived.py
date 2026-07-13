@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Join catalog + sessions + priorities into derived rollups.
+"""Join catalog + sessions into derived rollups.
 
 Outputs (under the hidden internal store, config.DERIVED_DIR):
   totals.json     — per-object integration totals & status
-  priorities.json — priority list with current progress
   summary.json    — category roll-ups for the dashboard
   processing.json — per-target processing status / queue
+
+Target *ranking* is the prioritizer's job (``m110/prioritize.py`` →
+``prioritized.json``); the legacy curated ``priorities.toml`` → ``priorities.json``
+path was retired (PLANNING_ROADMAP Phase 1.1).
 """
 from __future__ import annotations
 
@@ -213,90 +216,6 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         }
 
     return {"by_slug": out, "by_folder": folders}
-
-
-def build_priorities(priorities: list[dict], totals: dict, catalog: dict) -> list[dict]:
-    """Attach current integration progress to each priority entry."""
-    by_slug = totals["by_slug"]
-    by_folder = totals["by_folder"]
-
-    def slug_for_id(pid: str) -> str | None:
-        # Try simple slug
-        s = pid.lower().replace(" ", "-").replace("/", "-")
-        if s in catalog:
-            return s
-        # M81/M82 etc — match folder
-        for fname in by_folder:
-            fslug = fname.lower().replace(" ", "-").replace("/", "-")
-            if fslug == s:
-                return fname  # use folder name as the lookup key
-        return None
-
-    import re as _re
-    out = []
-    for p in priorities:
-        pid = p["id"]
-        # Strip parenthesised qualifiers ("Markarian's Chain (mosaic)" →
-        # "Markarian's Chain") for matching purposes; keep them in the id
-        # for display. Lower-case + slash/space normalised.
-        def norm(s: str) -> str:
-            s = _re.sub(r"\s*\(.*?\)\s*", "", s).strip().lower()
-            return s.replace("/", " ")
-        pid_norm = norm(pid)
-
-        # `track = false` marks a campaign / reminder entry (multi-object or
-        # multi-filter) whose id doesn't map to a single capture folder — skip
-        # auto-progress matching so it renders without a misleading bar.
-        tracked = p.get("track", True)
-
-        folder_match = None
-        if tracked:
-            for fname in by_folder:
-                if norm(fname) == pid_norm:
-                    folder_match = fname
-                    break
-
-        progress = None
-        if folder_match:
-            t = by_folder[folder_match]
-            progress = {
-                "source": "folder",
-                "key": folder_match,
-                "integration_min": t["integration_min"],
-                "integration_hms": t["integration_hms"],
-                "frames": t["frames"],
-                "session_count": t["session_count"],
-                "status": t["status"],
-            }
-        elif tracked:
-            # Try slug match (also strip parenthesised qualifiers).
-            base = _re.sub(r"\s*\(.*?\)\s*", "", pid).strip()
-            slug = base.lower().replace(" ", "-").replace("/", "-")
-            if slug in by_slug:
-                t = by_slug[slug]
-                progress = {
-                    "source": "slug",
-                    "key": slug,
-                    "integration_min": t["integration_min"],
-                    "integration_hms": t["integration_hms"],
-                    "frames": t["frames"],
-                    "session_count": t["session_count"],
-                    "status": t["status"],
-                }
-
-        target_min = p.get("target_integration_min")
-        pct = None
-        if progress and target_min:
-            pct = round(100 * progress["integration_min"] / target_min, 1)
-            pct = min(pct, 999.9)  # cap display at 999.9% for absurd cases
-
-        out.append({
-            **p,
-            "track": tracked,
-            "progress": progress,
-            "percent_complete": pct,
-        })
-    return out
 
 
 # ── stack metadata from FITS headers ─────────────────────────────────────
@@ -697,13 +616,11 @@ def main():
     # brand-new user's first launch has an empty catalog — default to {} rather than
     # KeyError (which surfaced as "Sync failed" on first launch).
     catalog = load_toml(config.LIBRARY_TOML).get("catalog", {})
-    priorities = load_toml(config.PRIORITIES_TOML).get("priority", [])
     sessions = load_sessions()
     overrides = load_toml(overrides_path) if overrides_path.exists() else None
 
     from . import goals as goals_mod
     totals = build_totals(catalog, sessions)
-    priority_progress = build_priorities(priorities, totals, catalog)
     summary = build_summary(catalog, totals)
     processing = build_processing(totals, overrides, catalog, sessions)
     goals = build_goals(totals, goals_mod.active_goal_ids())
@@ -712,8 +629,6 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "totals.json").write_text(
         json.dumps(totals, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
-    (out_dir / "priorities.json").write_text(
-        json.dumps(priority_progress, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "processing.json").write_text(
@@ -723,7 +638,6 @@ def main():
 
     print(f"  totals:     {len(totals['by_slug'])} slugs, "
           f"{len(totals['by_folder'])} folders")
-    print(f"  priorities: {len(priority_progress)} entries")
     print(f"  summary:    {summary['grand']['captured']}/"
           f"{summary['grand']['total']} captured "
           f"({summary['grand']['deep_stack']} deep stack)")

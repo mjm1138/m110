@@ -33,7 +33,7 @@ def test_derived_available(tmp_path, monkeypatch):
 def test_missing_files_return_empty(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DERIVED_DIR", tmp_path / "nope")
     assert derived.totals_by_slug() == {}
-    assert derived.load_priorities() == []
+    assert derived.load_summary() == {}
     assert derived.derived_available() is False
 
 
