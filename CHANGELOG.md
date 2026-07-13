@@ -18,6 +18,12 @@ changes a **user** would notice, per release.
   imported horizon (`.hrz`) skyline — with an optional online **place-name lookup** to
   fill in coordinates. This is the foundation the automatic prioritizer and session
   planner build on next.
+- **Automatic priority ranking.** The Planning page now ranks your targets for you —
+  by goal membership, how soon the season closes, how much integration they still need
+  (type-aware: nebulae need far more than clusters), and how well they sit tonight from
+  your site. A **Strategy** toggle (capture-many ↔ go-deep) and **tuning weights** re-rank
+  instantly; **Pin/Deprioritize** still compose on top. The heavy sky math runs once a
+  day in the background.
 - **Light-dome estimate for a site.** In a site profile, **Compute light-dome…**
   estimates your local light-pollution "glow" — how high the sky is washed out toward
   nearby towns in each direction — from a bundled worldwide town dataset and your

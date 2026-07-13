@@ -23,6 +23,9 @@ def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
     rows = scan_sessions.scan()
     scan_sessions.write_jsonl(rows)
     build_derived.main()  # loads catalog/priorities/sessions/overrides → derived/*.json
+    # NOTE: the prioritizer (astropy observability over all goal members) is NOT run
+    # here — that would add seconds to every focus-refresh. The Planning page computes
+    # it lazily on a background thread (once/day, cached) and re-ranks live.
 
     rendered = None
     if render:

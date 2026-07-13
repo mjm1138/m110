@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
                       self.import_page, self.processing]
         self._catalog_index = self.pages.index(self.catalog)
         self._overview_index = self.pages.index(self.overview)
+        self._planning_index = self.pages.index(self.planning)
         self._import_index = self.pages.index(self.import_page)
 
         self.stack = QStackedWidget()
@@ -156,6 +157,7 @@ class MainWindow(QMainWindow):
         self.nav.setObjectName("navRail")
         self.nav.addItems(self.NAV)
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav.currentRowChanged.connect(self._on_nav_changed)
 
         # Left column: brand mark above the nav rail (a persistent mark on every screen).
         self.logo = _LogoLabel()
@@ -287,6 +289,12 @@ class MainWindow(QMainWindow):
         self._ready = True
         QTimer.singleShot(0, self._do_refresh)
         QTimer.singleShot(0, self._maybe_check_updates)   # quiet launch update check
+
+    def _on_nav_changed(self, row: int):
+        # Opening Planning kicks off the (lazy, once/day) prioritizer recompute —
+        # only in a live, ready window, never during construction/tests.
+        if self._ready and row == self._planning_index:
+            self.planning.ensure_ranking()
 
     # ---- routing ----
     def open_object(self, slug: str):

@@ -138,6 +138,18 @@ archived in **[`DONE.md`](DONE.md)**.
        math is hemisphere-agnostic. `cities500` is a drop-in if finer granularity is
        wanted; **VIIRS** radiance is the uniform-global **v2** precision upgrade if the
        populated-places heuristic proves uneven anywhere.
+   - *Deep-stack threshold — type-aware (shipped `feature/prioritizer`).* The
+     "when is it deep?" threshold is now **per object type** (`build_derived
+     .deep_threshold` / `DEEP_MIN_BY_TYPE`, calibrated to S50 experience: a **90-min
+     SNR floor** for clusters/globulars/unlisted, planetaries 180, galaxies 240,
+     emission/Sharpless/reflection/dark **360**), since required integration scales
+     with surface brightness — a flat 60 min falsely marked faint nebulae done and
+     ignored the sensor-noise floor. **Shared** between
+     the status badge and the prioritizer's completion factor so they always agree.
+     *Planned:* a **user-set integration target per object** (a per-object override of
+     the type default; the object detail carries the target, the badge + scorer read
+     it), and a **v2 surface-brightness** basis (magnitude + size) refining the
+     per-type table.
    - *Scoring — two refinements to the (a)–(f) sum above.* **Trajectory-aware
      altitude:** beyond *how high* an object peaks in tonight's dark window, weight
      *which side of its seasonal arc it's on* — the dark-window peak rises to a best
@@ -168,9 +180,12 @@ archived in **[`DONE.md`](DONE.md)**.
      pin is simply always shown), the optional **numeric nudge**, and composing
      `computed rank + overrides = final order` (today overrides act standalone).
    - *Build order — three shippable checkpoints:*
-     - **A — Profiles + Prioritizer** *(standalone value)*: Profile view + site
-       profiles → light-dome auto-map → prioritizer engine + overrides → priority UI
-       (inline promote/demote + strategy slider + per-type weights).
+     - **A — Profiles + Prioritizer** ✅ **Shipped** (`feature/planning-profiles` →
+       `glow-automap` → `prioritizer`): Planning pane + site profiles → light-dome
+       auto-map → `m110/prioritize.py` scorer + overrides → priority UI (ranked table +
+       strategy toggle + per-factor weights, live re-rank of a once/day-cached compute).
+       *Follow-ups noted below:* trajectory-aware altitude, per-object integration
+       targets, surface-brightness thresholds, and the two-tier session controls.
      - **B — Session Planner** *(depends on A)*: the Planning view (pick site + night
        → observable & ranked tonight list with transit/altitude/moon → assemble an
        ordered plan) + the **plan-file / field-guide emit** (item 2). The shared
