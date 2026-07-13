@@ -229,6 +229,43 @@ Legend: `[ ]` open · `[~]` partially done
 	4. And so on. If two equal priority objects are visible for a window, the one closer to setting should be selected and the other sequenced afterward.
 	Later versions will improve the logic be e.g. grouping objects 
 
+*Findings from the 2026-07-13 prioritizer/planner review below — reasoning in
+[`docs/prioritizer-review.md`](docs/prioritizer-review.md).*
+
+- [ ] **#35 — Join the two priority artifacts + read catalog type.** `prioritized.json`
+  (observability engine, full catalog, but `filter`/`priority`/`type` absent and
+  `type:"unknown"` for every uncaptured object) and `priorities.json` (curated intent +
+  progress, but stale season/no astronomy) are **disjoint and never merged**. Compose one
+  ranked view: pull durable fields (filter, type from the **catalog**, `target_integration_min`,
+  priority weight) from the curated store + catalog; recompute time-varying fields
+  (season/urgency/window/altitude) from the engine. Don't inherit `priorities.toml`'s stale
+  `season`/"target met" strings. Unblocks filter-awareness for the whole sweep. (→ ROADMAP #21.)
+- [ ] **#36 — Moon model is wrong (planner header).** On `2026-07-18` the plan reported
+  "Moon: 0% lit, down at dusk (−17°)"; actual Boulder values are **~28% illuminated, +5° at
+  dusk, setting ~23:00**. Two bugs: (a) **illumination is wrong** (reported 0% — dangerous,
+  it greenlights broadband on what could be a moon-up night); (b) the moon is described by a
+  single **dusk snapshot** with a wrong altitude (timezone/eval-instant smell) when it must be
+  **per-slot** across the night. Also the `Moon°` separation column is printed even when the
+  moon is **below the horizon** (no impact) — gate it on moon-altitude, and make "moon impact"
+  filter-aware (LP narrowband is near-immune). This is the correctness half of the #193 ask to
+  *explain* moon impact.
+- [ ] **#37 — Start-altitude ceiling (~78°) ignored in slot selection.** The `2026-07-18` plan
+  put 4/8 targets at best-time altitudes over the ceiling (M29 88°, Sh2-112 84°, Sh2-115 83°,
+  M39 82°) — the Seestar app rejects captures that *start* above ~78°. Pick a start on the
+  rising side below ~75°, or after the target descends back through ~75°. The logic already
+  exists in Astronomy `scripts/sky.py` (the `^` over-ceiling flag).
+- [ ] **#38 — Feasibility / worthiness gate.** The completion goal surfaces non-imaging Messier
+  entries into dark-sky slots (the plan proposed **M40**, an optical double star / asterism,
+  0 integration) and faint Sharpless targets marginal on a 50 mm. Needs a structured
+  magnitude / surface-brightness / angular-size field in the catalog + a non-DSO/asterism flag
+  (M40, M73, …) to down-rank or annotate rather than propose them as deep targets.
+- [ ] **#39 — Combined-folder under-count in the engine.** `prioritized.json` fragments the
+  M81/M82 pair into `m81` (126 min), `m82` (**13 min**), and `m81-m82` (1743 min, `obs:null`),
+  while `priorities.json` correctly rolls the pair to 1743 min / 145%. Companion pairs and
+  mosaics are badly misjudged (M82 looks starved when the pair has ~29 h) and combined slugs
+  get no observability. Roll combined/mosaic folders up before scoring. (→ ROADMAP #21
+  "combined-frame captures".)
+
 ## Publishing  *(→ ROADMAP item 8)*
 
 - [ ] **#27 — Publishing follow-ups** (8a landed — local static-site export). Targets/
