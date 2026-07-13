@@ -1263,3 +1263,85 @@ def test_site_editor_survives_refresh_while_editing(tmp_path, monkeypatch, qapp)
         assert page.editor._lat.value() == pytest.approx(12.345)   # saved value stays
     finally:
         page.deleteLater(); qapp.processEvents()
+
+
+def test_planning_plan_a_night_and_save_and_view(tmp_path, monkeypatch, qapp):
+    """Generate a night plan (injected fast plan_night), toggle include, save a field
+    guide, and see it in the browser + render it in the viewer dialog."""
+    from datetime import datetime
+    root = seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import prioritize, planning, fieldguide
+    from m110.prioritize import TargetContext
+    obs = {"observable": True, "hours_clear": 3, "transit_alt": 60,
+           "nights_to_close": 20, "season": "summer"}
+    prioritize.write_contexts([TargetContext("m13", "globular", 30, True, obs),
+                               TargetContext("m81", "galaxy", 0, True, obs)])
+    t0 = datetime(2026, 7, 13, 22, 30)
+    t1 = datetime(2026, 7, 14, 3, 30)
+
+    def fake_plan(site, day, slugs, **kw):
+        return {"window": (t0, datetime(2026, 7, 14, 3, 50)),
+                "moon": {"illum": 0.1, "alt": -17.0},
+                "entries": [{"slug": s, "transit_time": t0, "transit_alt": 80.0,
+                             "best_alt": 80.0, "up_start": t0, "up_end": t1,
+                             "moon_sep_deg": 70.0,
+                             "samples": [(t0, 80.0, True), (t1, 40.0, True)]}
+                            for s in slugs[:2]]}
+    monkeypatch.setattr(planning, "plan_night", fake_plan)
+
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._on_generate()
+        qapp.processEvents()
+        if page._planner is not None:
+            page._planner.wait()
+            qapp.processEvents()
+        assert len(page._entries) == 2
+        assert page._plan_table.rowCount() == 2
+        assert "Astro dark" in page._plan_summary.text()
+
+        # uncheck one target → drops from the included set + timeline
+        page._plan_table.item(0, 0).setCheckState(Qt.Unchecked)
+        assert len(page._included) == 1
+
+        # reorder: move row 1 up
+        page._plan_table.selectRow(1)
+        first_before = page._entries[0]["slug"]
+        page._move_selected(-1)
+        assert page._entries[1]["slug"] == first_before
+
+        # save a field guide (only the 1 included target)
+        from PySide6.QtWidgets import QInputDialog
+        monkeypatch.setattr(QInputDialog, "getText",
+                            staticmethod(lambda *a, **k: ("My Plan", True)))
+        page._save_field_guide()
+        guides = fieldguide.list_guides()
+        assert len(guides) == 1
+        assert page._guides_table.rowCount() == 1
+
+        # the viewer dialog renders the saved markdown
+        from m110.ui.field_guide_dialog import FieldGuideDialog
+        dlg = FieldGuideDialog(guides[0]["path"])
+        assert "Observing plan" in dlg._view.toPlainText() or \
+               "My Plan" in dlg._view.toPlainText()
+        dlg.deleteLater()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_night_timeline_sets_plan_without_error(qapp):
+    from datetime import datetime
+    from m110.ui.night_timeline import NightTimeline
+    tl = NightTimeline()
+    tl.set_plan(None)                      # empty → "no darkness" path, no crash
+    t0 = datetime(2026, 7, 13, 22, 0)
+    tl.set_plan({"window": (t0, datetime(2026, 7, 14, 4, 0)), "moon": {},
+                 "entries": [{"slug": "m13",
+                              "samples": [(t0, 40.0, True),
+                                          (datetime(2026, 7, 14, 1, 0), 85.0, True)]}]})
+    tl.resize(400, 200)
+    tl.grab()                              # force a paint pass
+    tl.deleteLater()

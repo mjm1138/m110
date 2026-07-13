@@ -186,11 +186,14 @@ archived in **[`DONE.md`](DONE.md)**.
        strategy toggle + per-factor weights, live re-rank of a once/day-cached compute).
        *Follow-ups noted below:* trajectory-aware altitude, per-object integration
        targets, surface-brightness thresholds, and the two-tier session controls.
-     - **B — Session Planner** *(depends on A)*: the Planning view (pick site + night
-       → observable & ranked tonight list with transit/altitude/moon → assemble an
-       ordered plan) + the **plan-file / field-guide emit** (item 2). The shared
-       "tonight feasibility" math is computed once and feeds both the scorer's factor
-       (e) and the planner, so B is mostly UI + plan emit.
+     - **B — Session Planner** *(field-guide slice shipped `feature/session-planner`)*:
+       the **Plan a night** surface (pick site + night → per-target time windows via
+       `planning.night_track`/`plan_night` → an auto-ordered plan (sets-soonest first)
+       with include/reorder controls + a **`NightTimeline`** altitude chart) and the
+       **field-guide emit** (`m110/fieldguide.py` → printable Markdown, saved under the
+       `Plans/` axis, browsable/viewable in-app via `QTextBrowser.setMarkdown`). *Still
+       open here:* **device plan-files** (SSC schedule JSON / NINA — item 2) once the
+       schema/generator is ported + validated on a real device.
      - **C — Assistant** *(item 4; follows)*: the LLM layers over A+B's deterministic
        tools (proposes toggles/weights/plans; the engine still computes).
 

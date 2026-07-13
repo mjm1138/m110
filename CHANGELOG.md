@@ -11,6 +11,13 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Plan a night.** On the Planning page, pick a night and M110 builds an ordered
+  observing plan — which of your priority targets are up, *when* they're highest, and
+  in a suggested shooting order (targets setting soonest first) — shown on a visual
+  **altitude timeline**. Include/exclude and reorder targets, then **save a field
+  guide**: a clean, printable plan (dark window, moon, each target's best time /
+  altitude / window / moon distance / filter). Saved guides are browsable and viewable
+  right in the app.
 - **Planning page + location profiles.** A new **Planning** pane in the nav rail is
   the home for session planning. It starts with a **location selector**, your
   **priority targets**, and a **Manage site profiles** section where you can create,

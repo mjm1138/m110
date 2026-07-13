@@ -249,7 +249,8 @@ def _contiguous_up(samples, min_alt, physical, glow):
 
 
 def night_track(target, day: date, site: Site, *, filter: str | None = None,
-                min_alt: float = SEASON_MIN_ALT, step_min: int = 10) -> dict | None:
+                min_alt: float = SEASON_MIN_ALT, step_min: int = 10,
+                window=None) -> dict | None:
     """A target's track across tonight's astro-dark window (for the planner + the
     timeline chart). Returns ``None`` when the target can't be resolved or there's no
     astronomical darkness; otherwise::
@@ -267,7 +268,9 @@ def night_track(target, day: date, site: Site, *, filter: str | None = None,
     rd = _radec(target)
     if rd is None:
         return None
-    dusk, dawn = twilight(day.year, day.month, day.day, site)
+    # `window` lets plan_night compute twilight ONCE (the 18h sun scan) and reuse it
+    # across all targets on a night, instead of paying it per target.
+    dusk, dawn = window if window is not None else twilight(day.year, day.month, day.day, site)
     if not dusk or not dawn:
         return None
     ra_deg, dec_deg = rd
@@ -328,10 +331,12 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
         moon = {"illum": round(illum, 2), "alt": round(alts[0], 1)}
 
     entries = []
-    for slug in targets:
-        tr = night_track(slug, day, site, filter=filters.get(slug), step_min=step_min)
-        if tr and tr["up_start"] is not None:
-            entries.append(tr)
+    if dusk and dawn:
+        for slug in targets:
+            tr = night_track(slug, day, site, filter=filters.get(slug),
+                             step_min=step_min, window=(dusk, dawn))
+            if tr and tr["up_start"] is not None:
+                entries.append(tr)
 
     if order == "auto":
         entries.sort(key=lambda e: (e["up_end"], -scores.get(e["slug"], 0.0)))
