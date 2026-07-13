@@ -216,6 +216,18 @@ Legend: `[ ]` open · `[~]` partially done
   in a priorities preference pane are still **TBD** — see the scoring model + the
   Astronomy-prototype findings in ROADMAP item 1 (glow-mask dark-site awareness,
   urgency×completion coupling, combined-frame captures).*
+- [ ] **Session Planner** Object sessions cannot overlap, Seestar plan tool requires start and end times be on 10-minute increments
+- [ ] **Session Planner** Date selection broken, most days labeled with ellipses on the calendar, selected date displays greyed out
+- [ ] **Session Planner** way too many targets proposed (see overlapping targets). There should be a user selection for “how many targets”. User can enter an arbitrary number (up to the number of visible targets) but default will be 4. 
+- [ ] **Session Planner** output should be a sequence schedule. Each target having object name, altitude at zenith, start time, duration, filter, moon impact (but you need to explain what that means). Object 2 start time is the same as Object 1 start time + duration (don’t bother trying to calculate for slew/focus time).
+- [ ] **Session Planner** consult the session planning skill in ~/Astronomy and the scripts and workflows that exist there, and work from there.
+- [ ] **Session Planner** this is a point where an LLM might plug in, so we should lay the foundation of the session planner skill in there.
+- [ ] **Session Planner** general logic should be:
+	1. What is the highest priority object that is visible right at astronomical dark? (That is object 1) What is the desired duration for this object (span of astro dark divided by the number of objects unless it reaches deep stack status with a shorter duration)
+	2. What is the highest priority object that is visible at the end of object 1’s capture?
+	3. What is the highest priority object that is visible at the end of object 2’s capture?
+	4. And so on. If two equal priority objects are visible for a window, the one closer to setting should be selected and the other sequenced afterward.
+	Later versions will improve the logic be e.g. grouping objects 
 
 ## Publishing  *(→ ROADMAP item 8)*
 
