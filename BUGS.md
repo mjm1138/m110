@@ -241,8 +241,8 @@ Legend: `[ ]` open · `[~]` partially done
   (season/urgency/window/altitude) from the engine. Don't inherit `priorities.toml`'s stale
   `season`/"target met" strings. Unblocks filter-awareness for the whole sweep. (→ ROADMAP #21.)
 - [ ] **#36 — Moon model is wrong (planner header).** On `2026-07-18` the plan reported
-  "Moon: 0% lit, down at dusk (−17°)"; actual Boulder values are **~28% illuminated, +5° at
-  dusk, setting ~23:00**. Two bugs: (a) **illumination is wrong** (reported 0% — dangerous,
+  "Moon: 0% lit, down at dusk (−17°)"; actual Boulder values are **~24% illuminated (waxing
+  crescent, 4 days after the Jul 14 new moon), +5° at dusk, setting ~23:00**. Two bugs: (a) **illumination is wrong** (reported 0% — dangerous,
   it greenlights broadband on what could be a moon-up night); (b) the moon is described by a
   single **dusk snapshot** with a wrong altitude (timezone/eval-instant smell) when it must be
   **per-slot** across the night. Also the `Moon°` separation column is printed even when the

@@ -94,13 +94,14 @@ Plan header: **"Moon: 0% lit, down at dusk (−17°)."** Computed for Boulder
 
 | Local time | Real moon alt | Real illum |
 |---|---|---|
-| 22:30 (dusk) | **+4.9°** (up, setting) | **27.2%** |
-| 00:00 | −12.0° | 27.8% |
-| 02:00 | −33.6° | 28.7% |
-| 03:50 (dark end) | −49.1° | 29.6% |
+| 22:30 (dusk) | **+4.9°** (up, setting) | **~24%** |
+| 00:00 | −12.0° | ~24% |
+| 02:00 | −33.6° | ~25% |
+| 03:50 (dark end) | −49.1° | ~25% |
 
-So the moon is a **~28%-lit waning crescent** (6 days before the July 24 new
-moon), **up at +5° at dusk and setting ~23:00**, then down the rest of the
+So the moon is a **~24%-lit waxing crescent** (4 days after the July 14 new
+moon; illumination is climbing ~8–9%/day here, so the exact evening instant
+matters), **up at +5° at dusk and setting ~23:00**, then down the rest of the
 night. Two distinct bugs:
 
 1. **Illumination: reported 0%, actual ~28%.** This is dangerous in general —
