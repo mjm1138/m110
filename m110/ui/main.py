@@ -30,6 +30,7 @@ from m110.ui.pages.overview import OverviewPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
+from m110.ui.pages.planning import PlanningPage
 from m110.ui import theme
 
 
@@ -106,7 +107,7 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Import", "Processing"]
+    NAV = ["Library", "Overview", "Planning", "Import", "Processing"]
 
     def __init__(self):
         super().__init__()
@@ -134,10 +135,11 @@ class MainWindow(QMainWindow):
         # Pages (order matches the nav rail + stack).
         self.catalog = CatalogPage()
         self.overview = OverviewPage()
+        self.planning = PlanningPage()
         self.import_page = ImportPage()
         self.processing = ProcessingPage()
-        self.pages = [self.catalog, self.overview, self.import_page,
-                      self.processing]
+        self.pages = [self.catalog, self.overview, self.planning,
+                      self.import_page, self.processing]
         self._catalog_index = self.pages.index(self.catalog)
         self._overview_index = self.pages.index(self.overview)
         self._import_index = self.pages.index(self.import_page)
@@ -192,6 +194,8 @@ class MainWindow(QMainWindow):
         self.overview.go_to_import.connect(self._open_ingest)   # empty-state CTA
         self.overview.pins_changed.connect(self._on_pins_changed)
         self.overview.dirty.connect(self._do_refresh)           # goal set changed
+        self.planning.open_object.connect(self.open_object)
+        self.planning.pins_changed.connect(self._on_pins_changed)
         self.processing.open_object.connect(self.open_object)
         self.import_page.imported.connect(
             lambda moved: self._do_refresh() if moved else None)

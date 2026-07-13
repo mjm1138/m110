@@ -48,7 +48,8 @@ archived in **[`DONE.md`](DONE.md)**.
 
 0. **Navigation IA** *(done; refined pre-launch)* — a left nav rail + stacked pages
    with one shared Object detail. A pre-public-launch cleanup **slimmed the rail 8→4**:
-   **Library · Overview · Import · Processing**. The Library (grid) is the landing
+   **Library · Overview · Import · Processing** (a 5th **Planning** pane landed
+   post-beta with item 1's Checkpoint A). The Library (grid) is the landing
    home; **Overview** merges the former Summary dashboard + Goals management into
    collapsible sections; **Media / Journal / Sessions** were absorbed into the Library
    (a Deep-sky/Media scope, a List/Grid/Feed view segment, and the detail pane).
@@ -100,12 +101,20 @@ archived in **[`DONE.md`](DONE.md)**.
    checkpoints** so value lands incrementally, with the assistant (item 4) as a
    follow-on that layers over the deterministic tools.
 
-   - *Foundation — a **Profile** view + site profiles.* A new top-level page manages
-     named **site profiles** (Home, Dark-site A…), one marked **default**:
-     coordinates/elevation, timezone, an imported **`.hrz` horizon** (theo.rocks),
-     and the **light-dome layer** (below). Prioritizer + planner read the selected
-     site. **Equipment inventory is deferred** out of this arc (the profile carries
-     only what the scorer needs; multi-device stays #16-6d).
+   - *Foundation — a **Planning** view + site profiles.* ✅ **Shipped**
+     (`feature/planning-profiles`): a new top-level **Planning** nav pane (5th pane;
+     location profiles are conceptually subordinate to planning, so they live here,
+     not a standalone pane) with a **location selector**, a **Priority targets** table
+     (pins-only until the scorer lands), and a **Manage site profiles** section over
+     the `SiteProfileEditor`. `planning_config` gained writers (`save_site` /
+     `delete_profile` / `import_horizon_mask` / `active_profile` / `set_active_profile`
+     / `load_active_site`) + an optional online `geocode` (Nominatim, degrades
+     offline). Named **site profiles** (Home, Dark-site A…) carry coordinates/
+     elevation, timezone, and an imported **`.hrz` horizon** (theo.rocks); the active
+     one is persisted (`active_site_profile` setting). Prioritizer + planner read the
+     selected site. The **light-dome layer** (next) and the scorer fill in on top.
+     **Equipment inventory is deferred** out of this arc (the profile carries only what
+     the scorer needs; multi-device stays #16-6d).
    - *Light domes — bundled offline auto-map (v1, decided).* Build the
      azimuth-dependent glow floor from a **bundled public-domain populated-places
      dataset** (GeoNames): at setup, find towns within a radius (~50 mi, adjustable),

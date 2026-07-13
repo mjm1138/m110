@@ -10,7 +10,14 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Planning page + location profiles.** A new **Planning** pane in the nav rail is
+  the home for session planning. It starts with a **location selector**, your
+  **priority targets**, and a **Manage site profiles** section where you can create,
+  edit, and delete observing-site profiles — coordinates, elevation, timezone, and an
+  imported horizon (`.hrz`) skyline — with an optional online **place-name lookup** to
+  fill in coordinates. This is the foundation the automatic prioritizer and session
+  planner build on next.
 
 ## [0.1.0-beta.2] - 2026-07-12
 
