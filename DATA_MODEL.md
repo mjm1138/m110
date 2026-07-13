@@ -105,6 +105,10 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                                     files (`ingest.scan_holding`) await **manual assign**
                                     (`ingest.assign` → move into the content tree, 6c);
                                     no longer a user-facing import *source*
+  Plans/<date>_<slug>.md            saved session-plan **field guides** (Markdown; Checkpoint B,
+                                    `m110/fieldguide.py`) — a visible axis sibling to Media/,
+                                    created idempotently by `ensure_data_root` (additive
+                                    external output → no .store_version bump)
   .m110_internal_data/              hidden machine state (README: "don't touch")
     library.toml                    the user's Library = captured/annotated collection {slug:{id,name,type,…}} (starts empty)
     goals.toml                      per-store goals: active = [...] (default ["messier"]) + [[custom]] lists

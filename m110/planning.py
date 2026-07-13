@@ -124,8 +124,11 @@ def moon_summary(times_local, site: Site):
     alts = [float(get_body("moon", fr.obstime, location=loc).transform_to(fr).alt.deg)
             for fr in frames]
     mid = frames[len(frames) // 2]
-    elong = get_sun(mid.obstime).separation(
-        get_body("moon", mid.obstime, location=loc)).deg
+    import warnings
+    with warnings.catch_warnings():          # sun–moon elongation frame transform is
+        warnings.simplefilter("ignore")      # ~1° precise; plenty for an illum fraction
+        elong = get_sun(mid.obstime).separation(
+            get_body("moon", mid.obstime, location=loc)).deg
     illum = (1 - np.cos(np.radians(elong))) / 2.0
     return alts, illum
 
@@ -221,3 +224,115 @@ def observability(target, day: date, site: Site, *,
     return {"observable": observable, "hours_clear": round(hours, 2),
             "transit_alt": transit, "nights_to_close": nights_to_close,
             "season": season}
+
+
+# ── tonight's plan: per-target time windows + ordering (Checkpoint B) ──────────
+
+def _contiguous_up(samples, min_alt, physical, glow):
+    """Given ``[(local_time, alt, az)]`` across the dark window, return the
+    ``(start, end)`` of the **longest** run that's above ``min_alt`` AND above the
+    horizon+glow floor — the target's usable window tonight — or ``(None, None)``."""
+    best = (None, None, 0.0)
+    run_start = None
+    for t, alt, az in list(samples) + [(None, -90.0, 0.0)]:
+        clear = (t is not None and alt > min_alt
+                 and not horizon.is_below_floor(float(az), float(alt), physical, glow))
+        if clear and run_start is None:
+            run_start = t
+        elif not clear and run_start is not None:
+            span = (prev_t - run_start).total_seconds()
+            if span > best[2]:
+                best = (run_start, prev_t, span)
+            run_start = None
+        prev_t = t
+    return best[0], best[1]
+
+
+def night_track(target, day: date, site: Site, *, filter: str | None = None,
+                min_alt: float = SEASON_MIN_ALT, step_min: int = 10) -> dict | None:
+    """A target's track across tonight's astro-dark window (for the planner + the
+    timeline chart). Returns ``None`` when the target can't be resolved or there's no
+    astronomical darkness; otherwise::
+
+        {slug, transit_time, transit_alt, best_alt, up_start, up_end, moon_sep_deg,
+         samples: [(local_time, alt, clear_bool)]}
+
+    ``up_start``/``up_end`` is the longest contiguous stretch above ``min_alt`` and
+    the (filter-aware) horizon+glow floor; ``transit_time`` is the arg-max altitude;
+    ``moon_sep_deg`` is the angular separation from the moon at transit."""
+    from astropy.coordinates import AltAz, SkyCoord, get_body
+    from astropy.time import Time
+    import astropy.units as u
+
+    rd = _radec(target)
+    if rd is None:
+        return None
+    dusk, dawn = twilight(day.year, day.month, day.day, site)
+    if not dusk or not dawn:
+        return None
+    ra_deg, dec_deg = rd
+    narrowband = (filter or "").upper() in _NARROWBAND_FILTERS
+    physical = _load_mask(site.mask_path())
+    glow = _load_mask(site.glow_path(narrowband=narrowband))
+
+    n = max(2, int((dawn - dusk).total_seconds() / 60 / step_min) + 1)
+    times = [dusk + (dawn - dusk) * (i / (n - 1)) for i in range(n)]
+    T = Time([to_utc(t, site) for t in times])
+    fr = AltAz(obstime=T, location=_location(site))
+    coord = SkyCoord(ra_deg * u.deg, dec_deg * u.deg)
+    aa = coord.transform_to(fr)
+    alts, azs = [float(a) for a in aa.alt.deg], [float(a) for a in aa.az.deg]
+
+    samples = list(zip(times, alts, azs))
+    up_start, up_end = _contiguous_up(samples, min_alt, physical, glow)
+    ti = max(range(n), key=lambda i: alts[i])          # transit (arg-max altitude)
+    transit_time = times[ti]
+    import warnings
+    with warnings.catch_warnings():                    # moon-sep frame transform is
+        warnings.simplefilter("ignore")                # ~1° precise; that's plenty here
+        moon = get_body("moon", T[ti], location=_location(site))
+        moon_sep = float(coord.separation(moon).deg)
+
+    def clear(alt, az):
+        return alt > min_alt and not horizon.is_below_floor(az, alt, physical, glow)
+
+    return {
+        "slug": str(target) if not isinstance(target, (tuple, list)) else "",
+        "transit_time": transit_time,
+        "transit_alt": round(alts[ti], 1),
+        "best_alt": round(max(alts), 1),
+        "up_start": up_start,
+        "up_end": up_end,
+        "moon_sep_deg": round(moon_sep, 1),
+        "samples": [(t, round(a, 1), clear(a, z)) for t, a, z in samples],
+    }
+
+
+def plan_night(site: Site, day: date, targets, *, order: str = "auto",
+               scores: dict | None = None, filters: dict | None = None,
+               step_min: int = 10) -> dict:
+    """Build tonight's plan for ``targets`` (slugs). Returns
+    ``{window: (dusk, dawn), moon: {illum, alt}, entries: [night_track, …]}``.
+
+    Only targets that are actually **up** tonight (a real ``up_start``) are kept.
+    ``order="auto"`` sorts by ``up_end`` ascending — **the target setting soonest
+    goes first** — tie-broken by prioritizer ``score`` (higher first); ``"manual"``
+    preserves the input order. ``filters`` optionally maps slug → capture filter (so
+    the glow floor is filter-aware per target)."""
+    scores = scores or {}
+    filters = filters or {}
+    dusk, dawn = twilight(day.year, day.month, day.day, site)
+    moon = {"illum": None, "alt": None}
+    if dusk and dawn:
+        alts, illum = moon_summary([dusk], site)
+        moon = {"illum": round(illum, 2), "alt": round(alts[0], 1)}
+
+    entries = []
+    for slug in targets:
+        tr = night_track(slug, day, site, filter=filters.get(slug), step_min=step_min)
+        if tr and tr["up_start"] is not None:
+            entries.append(tr)
+
+    if order == "auto":
+        entries.sort(key=lambda e: (e["up_end"], -scores.get(e["slug"], 0.0)))
+    return {"window": (dusk, dawn), "moon": moon, "entries": entries}
