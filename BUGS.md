@@ -216,21 +216,39 @@ Legend: `[ ]` open · `[~]` partially done
   in a priorities preference pane are still **TBD** — see the scoring model + the
   Astronomy-prototype findings in ROADMAP item 1 (glow-mask dark-site awareness,
   urgency×completion coupling, combined-frame captures).*
-- [ ] **Session Planner** Object sessions cannot overlap, Seestar plan tool requires start and end times be on 10-minute increments
-- [ ] **Session Planner** Date selection broken, most days labeled with ellipses on the calendar, selected date displays greyed out
-- [ ] **Session Planner** way too many targets proposed (see overlapping targets). There should be a user selection for “how many targets”. User can enter an arbitrary number (up to the number of visible targets) but default will be 4. 
-- [ ] **Session Planner** output should be a sequence schedule. Each target having object name, altitude at zenith, start time, duration, filter, moon impact (but you need to explain what that means). Object 2 start time is the same as Object 1 start time + duration (don’t bother trying to calculate for slew/focus time).
-- [ ] **Session Planner** consult the session planning skill in ~/Astronomy and the scripts and workflows that exist there, and work from there.
-- [ ] **Session Planner** this is a point where an LLM might plug in, so we should lay the foundation of the session planner skill in there.
-- [ ] **Session Planner** general logic should be:
-	1. What is the highest priority object that is visible right at astronomical dark? (That is object 1) What is the desired duration for this object (span of astro dark divided by the number of objects unless it reaches deep stack status with a shorter duration)
-	2. What is the highest priority object that is visible at the end of object 1’s capture?
-	3. What is the highest priority object that is visible at the end of object 2’s capture?
-	4. And so on. If two equal priority objects are visible for a window, the one closer to setting should be selected and the other sequenced afterward.
-	Later versions will improve the logic be e.g. grouping objects 
+*Session-planner items (#40–44) are phased in [`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md).*
+
+- [ ] **#40 — Non-overlapping, 10-min-aligned sequence** *(→ PLANNING_ROADMAP Phase 4).*
+  Object sessions **cannot overlap**; the Seestar SSC tool requires start/end times on
+  **10-minute increments**. Replace the current overlapping "best times" with a real
+  sequence. **General logic (v1):**
+  1. Highest-priority object visible right at astronomical dark = object 1. Desired
+     duration = astro-dark span ÷ target count, unless it reaches deep-stack status
+     with a shorter duration.
+  2. Highest-priority object visible at the end of object 1's capture = object 2.
+  3. …at the end of object 2's capture = object 3, and so on.
+  4. If two equal-priority objects are visible for a window, pick the one closer to
+     **setting**; sequence the other afterward.
+  Later versions improve the logic (e.g. grouping objects by sky region).
+- [ ] **#41 — Schedule output format** *(→ PLANNING_ROADMAP Phase 4.2).* Output is a
+  sequence schedule; each target row = object name, altitude at start, start time,
+  duration, filter, **moon impact** (with a plain-language explanation of what that
+  means — see #36). Object 2 start = object 1 start + duration (don't model
+  slew/focus time).
+- [ ] **#42 — Target-count control** *(→ PLANNING_ROADMAP Phase 4.1).* Way too many
+  targets proposed (8, overlapping). Add a user selection for **how many targets** —
+  arbitrary up to the number of visible targets, **default 4**.
+- [ ] **#43 — Date-picker broken** *(→ PLANNING_ROADMAP Phase 5).* Date selection is
+  broken: most calendar days are labeled with ellipses, and the selected date renders
+  greyed-out.
+- [ ] **#44 — LLM session-planner skill foundation** *(→ PLANNING_ROADMAP Phase 6;
+  post-release follow-on).* Lay the foundation for an M110-native session-planner
+  skill over the deterministic engine — consult the `astro-session-planner` skill +
+  `scripts/`/`workflows/` in ~/Astronomy and work from there. This is the point where
+  an LLM plugs in (explains/tunes/narrates; the engine stays the source of truth).
 
 *Findings from the 2026-07-13 prioritizer/planner review below — reasoning in
-[`docs/prioritizer-review.md`](docs/prioritizer-review.md).*
+[`prioritizer-review.md`](prioritizer-review.md).*
 
 - [ ] **#35 — Join the two priority artifacts + read catalog type.** `prioritized.json`
   (observability engine, full catalog, but `filter`/`priority`/`type` absent and

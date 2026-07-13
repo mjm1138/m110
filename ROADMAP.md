@@ -58,6 +58,11 @@ archived in **[`DONE.md`](DONE.md)**.
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
    build a planning surface; emit the session-plan document.
+   > **Active tuning focus (pre-release):** the prioritizer + planner are shipped
+   > but not yet trustworthy. **[`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md)** is the
+   > canonical phase-by-phase punchlist to get them release-ready (data join / moon
+   > model / start-ceiling / real sequence / UI), from the 2026-07-13
+   > [`prioritizer-review.md`](prioritizer-review.md) + BUGS #35–44.
    **Foundation landed (2026-06-26):** the Qt-free engine is ported —
    `m110/planning.py` (`twilight` / `moon_summary` / `transit_altitude` + the
    seasonal/tonight `observability()` gate returning `{observable, hours_clear,
