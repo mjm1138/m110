@@ -468,24 +468,25 @@ checklist, computed on the fly. Consequences:
   [horizon]
   mask = "default.hrz"         # physical skyline (.hrz/.csv); "" = open
   default = true               # one site marked default (Checkpoint A)
-  [glow]                        # light-dome layer — empty until derived
-  bortle = 0                   # 0 = unset (optional observed-SQM/Bortle anchor)
+  [glow]                        # light-dome layer (computed, hand-editable)
+  bortle = 0                   # 0 = unset (optional observed-Bortle calibration nudge)
   sqm_zenith = 0.0
-  radius_mi = 50               # light-dome search radius (Checkpoint A)
-  mask = ""                    # broadband glow floor (.hrz), computed + editable
-  mask_narrowband = ""         # softer floor for ON/LP filters
-  # sources = [...]            # contributing towns (name/bearing/intensity) for display
+  mask = "default.glow.hrz"    # broadband glow floor (.hrz), computed + editable
+  mask_narrowband = "default.glow-nb.hrz"   # softer floor for ON/LP filters
   ```
 
   This is **additive authored config** under the hidden dir — **no `.store_version`
   bump / migration** (seeded idempotently, existing files unchanged). The `[glow]`
-  fields ship **empty**; **Checkpoint A** (ROADMAP item 1) populates the `mask`
-  **offline** from a **bundled GeoNames** populated-places dataset — Walker's-Law
-  domes (skyglow ∝ population × distance⁻²·⁵) within `radius_mi` → an upper-envelope
-  azimuth floor — anchored by the optional observed Bortle/SQM and **hand-editable**;
-  the contributing `sources` are stored for inspection. (Falchi **World Atlas** /
-  **VIIRS** radiance is the **v2** precision upgrade.) **Equipment inventory stays
-  deferred** out of this arc (the device seam remains #16-6d).
+  fields ship **empty** and are filled by **Compute light-dome…** in the profile
+  editor (`m110/glow.py`, `feature/glow-automap`): **offline**, from the **bundled
+  GeoNames `cities1000`** populated-places subset (`seed/geonames/cities1000.tsv.gz`,
+  CC-BY 4.0) — Walker's-Law domes (skyglow ∝ population × distance⁻²·⁵) within an
+  adjustable radius → an upper-envelope azimuth floor, written beside the profile as
+  `<profile>.glow.hrz` (+ a softer `.glow-nb.hrz` narrowband variant) and
+  **hand-editable**, anchored by the optional observed Bortle. `planning.observability`
+  composes it as `max(physical, glow)` via `horizon.effective_floor`. (Falchi **World
+  Atlas** / **VIIRS** radiance is the **v2** precision upgrade.) **Equipment inventory
+  stays deferred** out of this arc (the device seam remains #16-6d).
 - **Generated plan files** (SSC schedule JSON, NINA sequences) are user-facing
   **outputs** → proposed visible `Plans/` axis (sibling to `Media/`). Homes are
   proposed; refine when built.

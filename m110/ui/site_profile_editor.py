@@ -2,10 +2,10 @@
 
 A small form over :mod:`m110.planning_config`'s writers: name, coordinates,
 elevation, timezone, an optional physical **horizon** mask (imported ``.hrz``/CSV),
-and the light-pollution scalars (Bortle / SQM — the azimuth-dependent glow floor
-itself is authored by the light-dome tool in a later pass). Embedded in the
-Planning page's "Manage site profiles" section; edits whichever profile the page's
-location selector has active.
+the light-pollution scalars (Bortle / SQM), and a computed **light-dome** glow floor
+(``m110.glow`` — Walker's-Law domes from nearby towns, written beside the profile
+and hand-editable). Embedded in the Planning page's "Manage site profiles" section;
+edits whichever profile the page's location selector has active.
 
 Coordinates can be entered by hand (the baseline) or filled from a place name via
 the optional online geocode (`planning_config.geocode`), which degrades to a
@@ -45,6 +45,8 @@ class SiteProfileEditor(QWidget):
         super().__init__(parent)
         self._stem = pc.DEFAULT_PROFILE
         self._horizon_mask = ""     # stored filename (persisted on Save)
+        self._glow_mask = ""        # computed light-dome floors (persisted on Save)
+        self._glow_mask_nb = ""
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -86,6 +88,30 @@ class SiteProfileEditor(QWidget):
         form.addRow("Bortle class:", self._bortle)
         form.addRow("SQM (zenith):", self._sqm)
         lay.addLayout(form)
+
+        # Light-dome (glow floor) row — compute an azimuth-dependent light-pollution
+        # floor from nearby towns (Walker's Law over the bundled GeoNames data).
+        grow = QHBoxLayout()
+        grow.addWidget(QLabel("Light-dome:"))
+        self._glow_label = QLabel("— not computed —")
+        self._glow_label.setProperty("caption", True)
+        grow.addWidget(self._glow_label, 1)
+        grow.addWidget(QLabel("radius"))
+        self._glow_radius = QDoubleSpinBox()
+        self._glow_radius.setRange(5.0, 150.0)
+        self._glow_radius.setDecimals(0)
+        self._glow_radius.setValue(50.0)
+        self._glow_radius.setSuffix(" mi")
+        grow.addWidget(self._glow_radius)
+        gbtn = QPushButton("Compute…")
+        gbtn.setToolTip("Estimate the local light-pollution floor from nearby towns, "
+                        "using this location + (optionally) the Bortle class above.")
+        gbtn.clicked.connect(self._compute_glow)
+        gclr = QPushButton("Clear")
+        gclr.clicked.connect(self._clear_glow)
+        grow.addWidget(gbtn)
+        grow.addWidget(gclr)
+        lay.addLayout(grow)
 
         # Horizon mask row.
         hrow = QHBoxLayout()
@@ -167,6 +193,9 @@ class SiteProfileEditor(QWidget):
             self._sqm.setValue(site.sqm_zenith)
             self._horizon_mask = site.horizon_mask
             self._mask_label.setText(site.horizon_mask or "— none —")
+            self._glow_mask = site.glow_mask
+            self._glow_mask_nb = site.glow_mask_narrowband
+            self._glow_label.setText(site.glow_mask or "— not computed —")
             # The default profile must always exist as a fallback.
             self._delete.setEnabled(stem != pc.DEFAULT_PROFILE)
         finally:
@@ -183,6 +212,8 @@ class SiteProfileEditor(QWidget):
             horizon_mask=self._horizon_mask,
             bortle=int(self._bortle.value()),
             sqm_zenith=self._sqm.value(),
+            glow_mask=self._glow_mask,
+            glow_mask_narrowband=self._glow_mask_nb,
         )
 
     # ---- actions ----
@@ -239,6 +270,40 @@ class SiteProfileEditor(QWidget):
     def _clear_horizon(self):
         self._horizon_mask = ""
         self._mask_label.setText("— none —")
+        self._mark_dirty()
+
+    def _compute_glow(self):
+        """Build the light-dome floor from nearby towns + this location, write it
+        beside the profile, and remember it (persisted on Save)."""
+        from m110 import glow
+        towns = glow.load_towns()
+        if not towns:
+            QMessageBox.information(
+                self, "Light-dome data unavailable",
+                "The bundled populated-places dataset isn't installed, so M110 can't "
+                "compute a light-dome automatically yet.\n\nYou can still set the "
+                "Bortle class / SQM above, or import a glow mask by hand.")
+            return
+        radius = self._glow_radius.value()
+        bb, nb, n = glow.compute_site_glow(
+            self._lat.value(), self._lon.value(),
+            radius_mi=radius, bortle=int(self._bortle.value()), towns=towns)
+        fbb, fnb = glow.write_glow_masks(self._stem, bb, nb)
+        self._glow_mask, self._glow_mask_nb = fbb, fnb
+        self._glow_label.setText(f"{n} town(s) within {radius:.0f} mi → {fbb}")
+        self._mark_dirty()
+        peak = max((a for _, a in bb), default=0.0)
+        QMessageBox.information(
+            self, "Light-dome computed",
+            f"Built a glow floor from {n} town(s) within {radius:.0f} miles "
+            f"(peak {peak:.0f}° toward the brightest source).\n\n"
+            f"Save the profile to keep it. It's hand-editable afterward as "
+            f"{fbb} in your profiles folder.")
+
+    def _clear_glow(self):
+        self._glow_mask = ""
+        self._glow_mask_nb = ""
+        self._glow_label.setText("— not computed —")
         self._mark_dirty()
 
     def _lookup(self):

@@ -1194,6 +1194,32 @@ def test_planning_page_priority_shows_pins(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_site_editor_computes_and_saves_glow(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    from m110 import glow, planning_config as pc
+    from PySide6.QtWidgets import QMessageBox
+    # inject fixture towns (no bundled data needed) + silence the modal
+    monkeypatch.setattr(glow, "load_towns",
+                        lambda *a, **k: [glow.Town("Metro", 39.6, -105.0, 1_500_000)])
+    monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+    from m110.ui.site_profile_editor import SiteProfileEditor
+    ed = SiteProfileEditor()
+    try:
+        ed.load("default")
+        ed._lat.setValue(40.0); ed._lon.setValue(-105.0); ed._bortle.setValue(5)
+        ed._compute_glow()
+        assert ed._glow_mask == "default.glow.hrz"
+        ed._save()
+        site = pc.load_site("default")
+        assert site.glow_mask == "default.glow.hrz"
+        # the saved floor demotes a low-southern target (toward the town)
+        from m110 import horizon
+        m = horizon.load_mask(site.glow_path())
+        assert horizon.horizon_alt(180, m) > 15 and horizon.horizon_alt(0, m) < 2
+    finally:
+        ed.deleteLater(); qapp.processEvents()
+
+
 def test_site_editor_survives_refresh_while_editing(tmp_path, monkeypatch, qapp):
     """A background refresh (window focus) must not wipe unsaved profile edits —
     only an explicit profile switch / Save / restart should reset the form."""
