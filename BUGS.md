@@ -280,12 +280,22 @@ Legend: `[ ]` open · `[~]` partially done
   0 integration) and faint Sharpless targets marginal on a 50 mm. Needs a structured
   magnitude / surface-brightness / angular-size field in the catalog + a non-DSO/asterism flag
   (M40, M73, …) to down-rank or annotate rather than propose them as deep targets.
-- [ ] **#39 — Combined-folder under-count in the engine.** `prioritized.json` fragments the
-  M81/M82 pair into `m81` (126 min), `m82` (**13 min**), and `m81-m82` (1743 min, `obs:null`),
-  while `priorities.json` correctly rolls the pair to 1743 min / 145%. Companion pairs and
-  mosaics are badly misjudged (M82 looks starved when the pair has ~29 h) and combined slugs
-  get no observability. Roll combined/mosaic folders up before scoring. (→ ROADMAP #21
-  "combined-frame captures".)
+- [x] **#39 — Combined-folder under-count in the prioritizer.** *(PLANNING_ROADMAP Phase 1.2,
+  `feature/session-planner`.)* `prioritize.build_contexts` now rolls each combined/mosaic
+  capture folder's integration up into its constituent **catalog members** (reusing
+  `scan_sessions.folder_to_slugs`) and drops the synthetic combined slug from scoring.
+  Verified on the live store: `m81` → 1870 min (126 solo + 1744 pair), `m82` → 1757 min
+  (13 + 1744), `m81-m82` dropped (was 126/13/1743 fragments with `obs:null`). Scope was
+  **prioritizer-only** by decision — see #40b for the engine-wide rollup.
+- [ ] **#40b — Combined-folder rollup in the *engine* (processing queue + Library).**
+  `build_totals`/`build_processing` still key on `by_folder`, so genuinely-separate on-disk
+  folders (`M81`, `M82`, **and** `M81 M82`) surface as **three rows** in the Processing queue
+  and three objects in the Library — the small solo captures (M81 126 min, M82 13 min) read as
+  "not processed / new". #39 fixed only the prioritizer; extending the family rollup into
+  `build_totals`/`build_processing` (a combined folder subsumes its members' solo folders)
+  would collapse the queue + Library to one target family. Needs a rule for how a solo folder
+  folds into a combined one. **Data note:** the live store also shows an apparent duplicate
+  `M81 M82` folder (whitespace/unicode) worth cleaning up separately.
 
 ## Publishing  *(→ ROADMAP item 8)*
 

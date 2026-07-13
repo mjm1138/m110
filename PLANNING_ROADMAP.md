@@ -57,14 +57,19 @@ type defaults (a bespoke per-target integration goal or a manual priority) — b
 which the scorer + pins express generalizably. See the field-by-field table in the
 session notes.
 
-### 1.2 — Combined-folder rollup before scoring  *(BUGS #39, review §4)*
-`m81`/`m82`/`m81-m82` are scored as three fragments (M82 shows **13 min** while the
-pair has ~29 h); combined/mosaic slugs get `obs:null` because the slug has no single
-coordinate.
-- Roll companion pairs + mosaics up to the combined folder **before** computing
-  completion/urgency.
-- Resolve a representative coordinate for the combined slug so it gets observability.
-- **Acceptance:** M81/M82 ranks once, at ~1743 min / 145%, with a real up-window.
+### 1.2 — Combined-folder rollup before scoring  *(BUGS #39, review §4)* ✅ **landed** (`feature/session-planner`)
+> **Shipped (prioritizer-only, by decision):** `build_contexts` credits each combined
+> folder's integration to its constituent catalog **members** (via
+> `scan_sessions.folder_to_slugs`) and drops the synthetic combined slug. Live store:
+> `m81` → 1870, `m82` → 1757, `m81-m82` dropped. The combined members carry their real
+> reference coordinates, so observability resolves (no more `obs:null`).
+>
+> **Not** addressed here: the Processing queue + Library still show separate solo
+> folders (`M81`, `M82`) as their own rows because those are real on-disk folders —
+> that engine-wide `by_folder` rollup is filed as **BUGS #40b**.
+
+Original acceptance (met for the prioritizer): M81/M82 rank once with a real up-window
+instead of a starved companion + an `obs:null` combined slug.
 
 ### 1.3 — Structured feasibility fields in the catalog  *(BUGS #38, review §3, §5d)*
 Magnitude/size exist only in `strategy` **prose** today, so faint Sharpless targets

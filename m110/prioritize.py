@@ -205,10 +205,11 @@ def build_contexts(*, day: date | None = None, site=None,
                    observability_fn=None) -> list[TargetContext]:
     """Assemble per-target contexts from the live store — the **slow** part
     (astropy observability). Scores the **union** of active-goal members + captured
-    targets + pinned slugs (bounding the work). Observability comes from the active
-    **site profile** unless ``site`` is passed; with no site/astropy each ``obs`` is
-    ``None`` (→ a degraded goal+completion+pins ranking). ``observability_fn`` is
-    injectable for tests.
+    targets + pinned slugs (bounding the work), after rolling combined/mosaic folders
+    up into their constituent catalog members (#39). Observability comes from the
+    active **site profile** unless ``site`` is passed; with no site/astropy each
+    ``obs`` is ``None`` (→ a degraded goal+completion+pins ranking). ``observability_fn``
+    is injectable for tests.
 
     Split from :func:`rank` on purpose: observability is **strategy-independent**, so
     the UI computes these once (on refresh) and re-ranks instantly as the user moves
@@ -221,13 +222,43 @@ def build_contexts(*, day: date | None = None, site=None,
     except Exception:
         lib = {}
     ref = catalog.load_reference()          # bundled type/coords for uncaptured goal members
-    totals = derived.totals_by_slug()
+    totals_all = derived.load_totals()
+    by_slug = totals_all.get("by_slug", {}) if isinstance(totals_all, dict) else {}
+    by_folder = totals_all.get("by_folder", {}) if isinstance(totals_all, dict) else {}
     coords = catalog.load_coords()
+
+    # Combined/mosaic rollup (#39). A combined capture folder ("M81 M82") lands as a
+    # synthetic slug ("m81-m82") that carries the pair's whole integration but isn't a
+    # real catalog object and can't resolve to one coordinate (obs null). Credit each
+    # combined folder's integration to its constituent catalog **members** (reusing the
+    # canonical folder→slug split) and drop the synthetic slug from scoring — otherwise
+    # a companion is scored as starved (M82 @13 min while the pair has ~29 h) and the
+    # combined slug ranks with no observability.
+    from .scan_sessions import folder_to_slugs
+    ref_slugs = set(ref)
+    member_integration: dict[str, float] = {}
+    synthetic: set[str] = set()
+    for folder, ft in by_folder.items():
+        members = folder_to_slugs(folder, ref_slugs)
+        if not members:
+            continue                          # off-catalog target → keep its own slug
+        imin = ft.get("integration_min", 0.0)
+        for m in members:
+            member_integration[m] = member_integration.get(m, 0.0) + imin
+        for s in ft.get("slugs", []):         # the folder's own recorded slug(s)…
+            if s not in ref_slugs and s not in members:
+                synthetic.add(s)              # …e.g. m81-m82 → superseded by members
+
+    def _integration(slug: str) -> float:
+        if slug in member_integration:
+            return member_integration[slug]
+        return (by_slug.get(slug) or {}).get("integration_min", 0.0)
 
     active_members: set[str] = set()
     for gid in goals.active_goal_ids():
         active_members |= set(goals.goal_members(gid))
-    slugs = (active_members | set(totals) | pins.pinned_slugs()) - pins.deprioritized_slugs()
+    slugs = ((active_members | set(by_slug) | pins.pinned_slugs())
+             - pins.deprioritized_slugs() - synthetic)
 
     # Resolve the site + observability function (degrade gracefully).
     obs_fn = observability_fn
@@ -244,7 +275,6 @@ def build_contexts(*, day: date | None = None, site=None,
     contexts = []
     for slug in slugs:
         entry = lib.get(slug) or {}
-        t = totals.get(slug)
         # Prefer a real library type; fall back to the bundled reference so an
         # uncaptured goal member (absent from the Library) still gets its true type
         # — which drives the filter (filter_for_type) and the deep threshold. Without
@@ -261,7 +291,7 @@ def build_contexts(*, day: date | None = None, site=None,
                 obs = None
         contexts.append(TargetContext(
             slug=slug, obj_type=obj_type,
-            integration_min=(t or {}).get("integration_min", 0.0),
+            integration_min=_integration(slug),
             in_active_goal=slug in active_members, obs=obs))
     return contexts
 

@@ -157,6 +157,42 @@ def test_uncaptured_goal_member_gets_type_from_reference(tmp_path, monkeypatch):
     assert deep_threshold(m8.obj_type) == 360            # type-aware, not the 90-min floor
 
 
+def test_combined_folder_rolls_up_into_members(tmp_path, monkeypatch):
+    """A combined capture folder ("M81 M82" → synthetic slug "m81-m82") must credit
+    its integration to the constituent catalog members and drop the synthetic slug —
+    otherwise the companion looks starved (M82 @13 min while the pair has ~29 h) and
+    the combined slug ranks with no observability (PLANNING_ROADMAP Phase 1.2 / #39)."""
+    from tests._helpers import seed_root
+    from m110 import catalog, derived, goals, pins
+    seed_root(tmp_path, monkeypatch)
+
+    # Real M81/M82 exist in the bundled reference; the store has three folders: two
+    # small solo captures plus the deep combined pair (a synthetic m81-m82 slug).
+    totals = {
+        "by_slug": {
+            "m81": {"integration_min": 126.0},
+            "m82": {"integration_min": 13.0},
+            "m81-m82": {"integration_min": 1744.0},
+        },
+        "by_folder": {
+            "M81": {"integration_min": 126.0, "slugs": ["m81"]},
+            "M82": {"integration_min": 13.0, "slugs": ["m82"]},
+            "M81 M82": {"integration_min": 1744.0, "slugs": ["m81-m82"]},
+        },
+    }
+    monkeypatch.setattr(derived, "load_totals", lambda: totals)
+    monkeypatch.setattr(goals, "active_goal_ids", lambda: [])   # score via totals alone
+    monkeypatch.setattr(pins, "pinned_slugs", lambda: set())
+    monkeypatch.setattr(pins, "deprioritized_slugs", lambda: set())
+
+    contexts = pr.build_contexts(observability_fn=lambda *a, **k: _obs(), site=object())
+    by = {c.slug: c for c in contexts}
+    assert "m81-m82" not in by                     # synthetic combined slug dropped
+    assert by["m81"].integration_min == 126.0 + 1744.0   # solo + combined
+    assert by["m82"].integration_min == 13.0 + 1744.0    # no longer starved
+    assert by["m81"].obj_type == "galaxy"          # from the reference
+
+
 def test_contexts_cache_roundtrips_and_reranks(tmp_path, monkeypatch):
     """Contexts are cached (slow obs computed once) and re-ranked live — a strategy
     flip re-orders without recomputing observability."""
