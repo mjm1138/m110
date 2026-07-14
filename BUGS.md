@@ -185,8 +185,16 @@ Legend: `[ ]` open · `[~]` partially done
   **Object → Target** (a row is a capture target = one stack to process; a combined target and a
   solo capture of the same object are both legitimate rows — the old label is what made them read
   as duplicate objects). *Supersedes #40b, which wrongly proposed collapsing the queue.*
-  **Data hygiene (user):** the live store has empty duplicate variants (`M97 M108`, `M 97 M 108`
-  with 0 lights) worth deleting.
+  **Hardening:** `folder_to_slugs` checks the 2+-member split **before** the whole-slug match,
+  so a pseudo-object reintroduced into the Library can't resurrect the shadowing (see #40d).
+- [ ] **#40d — Restore has no store-version gate.** `backup` records `store_version` in each
+  snapshot manifest and `.store_version` isn't denylisted, so a **full** restore brings back the
+  old stamp and `migrate` re-runs on next launch (self-healing ✓). But `restore_dialog` offers a
+  **per-file checkable tree** and neither dialog reads `store_version` — so a **partial** restore
+  can put a pre-v4 `library.toml` back under a v4 stamp, where migration won't re-run. The #40c
+  splitter hardening means this no longer causes an under-count (the pair still splits), but the
+  stale pseudo-object rows would linger until manually removed. Worth a version-mismatch warning
+  on restore (and/or forcing `.store_version` to be restored with `library.toml`).
 
 ## Planning / prioritization
 

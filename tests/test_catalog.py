@@ -196,3 +196,17 @@ def test_combined_folder_splits_into_member_slugs(tmp_path, monkeypatch):
     slugs = scan_sessions.load_catalog_slugs()
     assert scan_sessions.folder_to_slugs("M81 M82", slugs) == ["m81", "m82"]
     assert scan_sessions.folder_to_slugs("M81", slugs) == ["m81"]
+
+
+def test_combined_split_is_not_shadowed_by_a_pseudo_object():
+    """The 2+-member split must win over the whole-slug match, so a combined
+    pseudo-object reintroduced into the Library (hand edit, or a partial restore of
+    a pre-v4 backup under a v4 stamp, where migrate won't re-run) can't resurrect
+    the under-count. Self-healing rather than order-dependent (#40c)."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    poisoned = ref | {"m81-m82", "m108-m97"}
+    assert scan_sessions.folder_to_slugs("M81 M82", poisoned) == ["m81", "m82"]
+    assert scan_sessions.folder_to_slugs("M108 M97", poisoned) == ["m108", "m97"]
+    # a single object still resolves whole (not split)
+    assert scan_sessions.folder_to_slugs("NGC 3628", poisoned) == ["ngc-3628"]
