@@ -367,3 +367,13 @@ class TestThresholdConfig:
         # If someone bumps the threshold, this fails loudly so the change is
         # explicit (rather than a silent tightening / loosening).
         assert STAR_REMOVAL_MIN_ARCMIN == 8.0
+
+
+def test_parse_size_dims():
+    from m110.build_derived import parse_size_dims
+    assert parse_size_dims("27'×14'") == (27.0, 14.0)
+    assert parse_size_dims("3°×1°") == (180.0, 60.0)
+    maj, minr = parse_size_dims('49"')                    # arcsec (M40)
+    assert abs(maj - 49 / 60) < 1e-9 and minr == maj
+    assert parse_size_dims("110'") == (110.0, 110.0)      # single dim = circular
+    assert parse_size_dims("") is None

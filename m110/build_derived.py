@@ -303,6 +303,26 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
 STAR_REMOVAL_MIN_ARCMIN = 8.0   # default size threshold (longer axis)
 
 _SIZE_RE = re.compile(r"([\d.]+)\s*([°'])")
+_SIZE_DIMS_RE = re.compile(r"([\d.]+)\s*([°'\"])")
+
+
+def parse_size_dims(size_str: str) -> tuple[float, float] | None:
+    """``(major, minor)`` in arcminutes from a catalog size string — "27'×14'",
+    "3°×1°", or an arcsecond form like '49"'. A single dimension reads as circular
+    (minor = major). ``None`` when nothing parses (missing/None size)."""
+    if not size_str:
+        return None
+    dims = []
+    for num, unit in _SIZE_DIMS_RE.findall(size_str):
+        val = float(num)
+        if unit == "°":
+            val *= 60.0
+        elif unit == '"':
+            val /= 60.0
+        dims.append(val)
+    if not dims:
+        return None
+    return max(dims), min(dims)
 
 
 def parse_size_arcmin(size_str: str) -> float:

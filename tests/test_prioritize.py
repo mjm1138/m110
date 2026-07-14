@@ -243,3 +243,56 @@ def test_scorer_uses_per_type_threshold():
     assert glob["factors"]["urgency"] == 0.0        # globular finished at 90 → no urgency
     assert neb["factors"]["urgency"] > 0.0          # emission still needs hours
     assert neb["factors"]["completion"] > glob["factors"]["completion"]
+
+
+# ── feasibility / worthiness gate (Phase 1.3 / BUGS #38) ─────────────────────
+
+def test_surface_brightness_anchors():
+    """Formula sanity against published mean-SB values (mag/arcsec²)."""
+    assert abs(pr.surface_brightness(3.4, "3°×1°") - 22.1) < 0.2      # M31
+    assert abs(pr.surface_brightness(5.7, "73'×45'") - 23.1) < 0.2    # M33
+    assert pr.surface_brightness(None, "10'") is None                 # no mag
+    assert pr.surface_brightness(9.0, None) is None                   # no size
+    assert pr.surface_brightness(9.6, '49"') is not None              # arcsec form
+
+
+def test_feasibility_non_dso_and_sb_ramp():
+    assert pr.feasibility_score("asterism") == pr.NON_DSO_FACTOR                 # M73
+    assert pr.feasibility_score("double_star", 9.6, '49"') == pr.NON_DSO_FACTOR  # M40
+    assert pr.feasibility_score("planetary", 8.8, "4'×3'") == 1.0     # bright → full
+    assert pr.feasibility_score("galaxy", 3.4, "3°×1°") > 0.95        # M31: just on the ramp
+    mid = pr.feasibility_score("galaxy", 5.7, "73'×45'")              # M33 → graded
+    assert pr.SB_FLOOR < mid < 1.0
+    assert pr.feasibility_score("galaxy", 14.4, "20'×4'") == pr.SB_FLOOR  # very faint
+    # unknown SB: neutral for compact types, the mild prior for diffuse nebulae
+    # (a mag-less emission target is more often a faint Sharpless than a showpiece)
+    assert pr.feasibility_score("globular", None, None) == 1.0
+    assert pr.feasibility_score("emission", None, None) == pr.UNKNOWN_DIFFUSE_FACTOR
+
+
+def test_non_dso_ranks_below_an_identical_real_target():
+    """A catalog-completion oddity (M40) must not out-rank a real galaxy in the same
+    state — the completion goal surfaced M40 into a dark-sky slot (review §5d)."""
+    w = Weights()
+    dso = TargetContext("gal", "galaxy", 0, True, _obs())
+    oddity = TargetContext("m40", "double_star", 0, True, _obs())
+    ranked = pr.rank([oddity, dso], w, pr.STRATEGY_CAPTURE, {})
+    assert ranked[0]["slug"] == "gal"
+    assert ranked[-1]["non_dso"] is True
+    assert ranked[-1]["factors"]["feasibility"] == pr.NON_DSO_FACTOR
+
+
+def test_build_contexts_carries_feasibility_inputs(tmp_path, monkeypatch):
+    """M40's type/magnitude/size flow from the bundled reference into the context,
+    and the cache round-trip preserves them (feasibility survives a reload)."""
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)          # empty Library, Messier goal active
+    contexts = pr.build_contexts(observability_fn=lambda *a, **k: _obs(), site=object())
+    by = {c.slug: c for c in contexts}
+    m40 = by["m40"]
+    assert m40.obj_type == "double_star" and m40.magnitude is not None
+    row = pr.score_target(m40, Weights(), pr.STRATEGY_CAPTURE)
+    assert row["non_dso"] and row["factors"]["feasibility"] == pr.NON_DSO_FACTOR
+    pr.write_contexts(contexts)
+    got = {c.slug: c for c in pr.load_contexts()}
+    assert got["m40"].magnitude == m40.magnitude and got["m40"].size == m40.size

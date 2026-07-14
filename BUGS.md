@@ -275,11 +275,23 @@ Legend: `[ ]` open · `[~]` partially done
   M39 82°) — the Seestar app rejects captures that *start* above ~78°. Pick a start on the
   rising side below ~75°, or after the target descends back through ~75°. The logic already
   exists in Astronomy `scripts/sky.py` (the `^` over-ceiling flag).
-- [ ] **#38 — Feasibility / worthiness gate.** The completion goal surfaces non-imaging Messier
-  entries into dark-sky slots (the plan proposed **M40**, an optical double star / asterism,
-  0 integration) and faint Sharpless targets marginal on a 50 mm. Needs a structured
-  magnitude / surface-brightness / angular-size field in the catalog + a non-DSO/asterism flag
-  (M40, M73, …) to down-rank or annotate rather than propose them as deep targets.
+- [x] **#38 — Feasibility / worthiness gate.** *(PLANNING_ROADMAP Phase 1.3,
+  `feature/session-planner`.)* No new stored fields were needed: the reference already **types**
+  the oddities (M40 = `double_star`, M73 = `asterism` — the type is the non-DSO flag), and mean
+  **surface brightness derives** from the existing `magnitude` + `size`
+  (`prioritize.surface_brightness`, anchored to published values: M31 22.1, M33 23.1 mag/arcsec²).
+  `feasibility_score` **multiplies** the whole score (infeasible can't be rescued by urgency/goal):
+  non-DSO → 0.05 · SB ramp 1.0→0.3 across 22–25 · unknown SB neutral, except mag-less **diffuse
+  nebulae** at a mild 0.8 prior (the faint-Sharpless-on-50mm case — Simbad has no V-mag for most,
+  so a backfill can't gate that set). Ranked rows carry `non_dso` + `factors.feasibility` for UI
+  annotation. Live store: M40 145/146, M73 146/146; top-10 = showpieces.
+- [ ] **#38b — Reference magnitude audit (B-mag leakage) + coverage backfill.** Some
+  SB-floored entries are **data errors**, not faint targets: `seed/objects.toml` lists the
+  **Helix (NGC 7293) at mag 13.5** (real V ≈ 7.3) and NGC 4945 at 14.4 (real ≈ 9.3) — Simbad
+  B-mag/photographic leakage from the build-time fetch. `SB_FLOOR = 0.3` keeps bad data from
+  burying a showpiece, but the fix is in `tools/gen_catalogs.py`: prefer V-mag explicitly,
+  flag suspect rows, and re-run the backfill (coverage gaps today: 145 missing magnitudes,
+  41 missing sizes of 450). Build-time only; runtime stays offline.
 - [x] **#39 — Combined-folder under-count in the prioritizer.** *(PLANNING_ROADMAP Phase 1.2,
   `feature/session-planner`.)* `prioritize.build_contexts` now rolls each combined/mosaic
   capture folder's integration up into its constituent **catalog members** (reusing

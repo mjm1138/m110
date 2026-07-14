@@ -71,16 +71,25 @@ session notes.
 Original acceptance (met for the prioritizer): M81/M82 rank once with a real up-window
 instead of a starved companion + an `obs:null` combined slug.
 
-### 1.3 — Structured feasibility fields in the catalog  *(BUGS #38, review §3, §5d)*
-Magnitude/size exist only in `strategy` **prose** today, so faint Sharpless targets
-and catalog oddities can't be gated for a 50 mm f/5.
-- Add structured **magnitude / surface-brightness / angular-size** to the catalog
-  reference (`seed/objects.toml` already carries mag/size for many — audit coverage,
-  backfill gaps at build time via Simbad).
-- Add a **non-DSO / asterism flag** (M40 = Winnecke 4 double star, M73, M45-as-cluster,
-  …) so completion-goal entries don't consume dark-sky imaging slots.
-- **Acceptance:** M40 and friends are annotated/down-ranked, not proposed as deep
-  targets; a surface-brightness gate exists for the ranker to consult.
+### 1.3 — Structured feasibility fields in the catalog  *(BUGS #38, review §3, §5d)* ✅ **landed** (`feature/session-planner`)
+> **Shipped, with a re-scope the audit justified:** no new stored fields were needed.
+> The reference already **types** the oddities (M40 = `double_star`, M73 = `asterism`)
+> — the type *is* the non-DSO flag — and mean **surface brightness derives** from the
+> existing `magnitude` + `size` (`prioritize.surface_brightness`, anchored to published
+> values: M31 22.1, M33 23.1). `feasibility_score` is a **multiplier** on the whole
+> score (an infeasible target can't be rescued by urgency/goal): non-DSO → 0.05,
+> SB ramp 1.0 → 0.3 across 22–25 mag/arcsec², missing data → neutral — except mag-less
+> **diffuse nebulae**, which take a mild 0.8 prior (the faint-Sharpless case; Simbad
+> has no V-mag to backfill for most, so a data backfill can't fix that set). Ranked
+> rows carry `non_dso` + `factors.feasibility` for UI annotation.
+> **Live store:** M40 → rank 145/146, M73 → 146/146; the top-10 is showpieces, not
+> mag-less Sharpless.
+>
+> **Follow-ups filed:** the reference-mag audit (BUGS #38b — some floored targets are
+> B-mag leakage: Helix listed 13.5 vs real V≈7.3); coverage gaps = 145 mags / 41 sizes.
+
+Original acceptance (met): M40 and friends are down-ranked + flagged, not proposed as
+deep targets; a surface-brightness gate exists for the ranker to consult.
 
 ---
 
