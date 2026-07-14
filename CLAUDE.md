@@ -362,6 +362,21 @@ control.
   where the stack *is* fixes existing libraries with no re-import; a proper
   classification fix (route the stack → `stacks/`, `_processed` → `finished/`) is a
   separate, deferred change.
+- **`QT_QPA_PLATFORM=offscreen` cannot validate macOS-style painting.** Offscreen
+  falls back to the **Fusion** style; force the real `macOS` style there and it
+  renders *nothing* — text, checkboxes, everything comes out blank. So an offscreen
+  "the widget doesn't paint" result is **meaningless**, and offscreen green says
+  nothing about how the native style paints. To check real macOS painting, run a
+  **real cocoa** window (no `QT_QPA_PLATFORM`) and `render()` into a QPixmap — and
+  size the pixmap to *all* the rows you care about, since a short render silently
+  crops the very rows that would show the bug. Corollary: styling gaps that only
+  bite under QMacStyle (see the item check-indicator entry in `DONE.md`) can't be
+  regression-tested by painting — assert on the generated QSS instead.
+- **Item check indicators are stylesheet-drawn on purpose.** The
+  `QTableView::indicator` rules in `theme/qss.py` are load-bearing: without them
+  QMacStyle paints a check indicator only for the *current* row and every other row
+  goes blank (clicks still toggle, invisibly). Don't drop them, and keep an
+  `image:` glyph on `:checked` — a stylesheet indicator draws no checkmark of its own.
 - **Never validate rendering/refresh against a live data root.** (A render
   pointed at the wrong root once clobbered a real `images.json`.) Use a temp
   copy or a throwaway root.

@@ -6,11 +6,22 @@ and token-driven — page-level polish (pill chips, alt rows, row heights) is Ph
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from .tokens import FONT_SIZE, RADIUS, SPACE, Tokens
+
+ICONS_DIR = Path(__file__).parent / "icons"
+
+
+def _icon_url(name: str) -> str:
+    """Absolute POSIX path for a QSS `url(...)` (backslashes break the parser)."""
+    return (ICONS_DIR / name).as_posix()
 
 
 def build_qss(t: Tokens) -> str:
     r = RADIUS
+    check_url = _icon_url("check.svg")
+    dash_url = _icon_url("dash.svg")
     return f"""
 /* ── base ── */
 QWidget {{
@@ -110,6 +121,34 @@ QTableView, QTableWidget {{
     outline: 0;
 }}
 QTableView::item, QTableWidget::item {{ padding: {SPACE['xs']}px {SPACE['sm']}px; }}
+/* Item check indicators are drawn by the stylesheet, not the platform style.
+   QMacStyle only paints an item-view check indicator for the *current* row — every
+   other checked row rendered blank (the model + click handling were fine, so the
+   Import preview's checkboxes looked dead: clicks toggled state invisibly). Giving
+   the indicator explicit rules routes it through QStyleSheetStyle, which paints all
+   rows. Keep these rules — dropping them silently reintroduces the blank rows. */
+QTableView::indicator, QTableWidget::indicator {{
+    width: 14px;
+    height: 14px;
+    border: 1px solid {t.border};
+    border-radius: {r['sm']}px;
+    background-color: {t.surface};
+}}
+QTableView::indicator:hover, QTableWidget::indicator:hover {{ border-color: {t.accent}; }}
+QTableView::indicator:disabled, QTableWidget::indicator:disabled {{
+    background-color: {t.surface_alt};
+    border-color: {t.divider};
+}}
+QTableView::indicator:checked, QTableWidget::indicator:checked {{
+    background-color: {t.accent};
+    border-color: {t.accent};
+    image: url({check_url});
+}}
+QTableView::indicator:indeterminate, QTableWidget::indicator:indeterminate {{
+    background-color: {t.accent};
+    border-color: {t.accent};
+    image: url({dash_url});
+}}
 QHeaderView::section {{
     background-color: {t.surface_alt};
     color: {t.text_secondary};

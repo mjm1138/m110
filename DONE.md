@@ -275,6 +275,23 @@ Concise log; full root-cause writeups are in git history. Lessons that constrain
 future work live in `CLAUDE.md` "Gotchas / lessons learned".
 
 **Beta fast-follows (post-`v0.1.0-beta.1`)**
+- **Import: selection checkboxes rendered blank past the first row**
+  (`feature/fix-import-checkbox-paint`; reported against 0.1.0b2, present since the
+  table shipped). On macOS only the *current* row's check indicator painted — every
+  other row's was invisible, and clicking one appeared to do nothing. Root cause was
+  **QMacStyle**, not app code: it fails to paint `PE_IndicatorItemViewItemCheck` for
+  non-current rows. Reproduces with a bare `QTableWidget` and **no stylesheet**;
+  Fusion paints all rows. The model was never wrong — `SE_ItemViewItemCheckIndicator`
+  returned a valid rect for every row and synthetic clicks toggled every row, so
+  clicks *were* registering and the cell just never repainted (which is why Select
+  all/none, hitting the one row that paints, seemed to be the only thing working).
+  Fix: explicit token-driven `::indicator` rules in `theme/qss.py` route the
+  indicator through `QStyleSheetStyle`, which paints every row; `theme/icons/*.svg`
+  supplies the checked/indeterminate glyphs (a stylesheet-drawn indicator has no
+  glyph of its own — without one, checked is an ambiguous filled square). Applies
+  app-wide, so `ingest_dialog.py`'s identical table is fixed too. Guarded by
+  `tests/test_theme_qss.py` (rule + icon-path assertions — a paint test is
+  impossible offscreen, where the macOS style renders *nothing*).
 - **Update notifications** (`feature/update-check`, shipped in beta.2). Qt-free
   `m110/updates.py` checks the GitHub Releases API (`/releases`, *not*
   `/releases/latest` — the beta is a pre-release), compares the newest tag to the
