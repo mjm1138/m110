@@ -1349,10 +1349,21 @@ def test_night_timeline_sets_plan_without_error(qapp):
     tl = NightTimeline()
     tl.set_plan(None)                      # empty → "no darkness" path, no crash
     t0 = datetime(2026, 7, 13, 22, 0)
-    tl.set_plan({"window": (t0, datetime(2026, 7, 14, 4, 0)), "moon": {},
+    t_mid = datetime(2026, 7, 14, 1, 0)
+    tl.set_plan({"window": (t0, datetime(2026, 7, 14, 4, 0)),
+                 # Phase 2/3/4 overlays: moon track + ceiling + schedule bands all
+                 # paint without error alongside the target curves.
+                 "moon": {"illum": 0.3, "alt": 5.0, "set_time": None,
+                          "rise_time": None,
+                          "track": [(t0, 5.0), (t_mid, -10.0)]},
+                 "start_ceiling_deg": 75.0, "ceiling_is_hard": True,
+                 "schedule": [{"slug": "m13", "start": t0, "end": t_mid,
+                               "duration_min": 180, "alt_start": 40.0,
+                               "moon_sep_deg": 70.0, "moon_alt_at_best": 5.0,
+                               "moon_impact": "low", "over_ceiling": False}],
                  "entries": [{"slug": "m13",
                               "samples": [(t0, 40.0, True),
-                                          (datetime(2026, 7, 14, 1, 0), 85.0, True)]}]})
+                                          (t_mid, 85.0, True)]}]})
     tl.resize(400, 200)
     tl.grab()                              # force a paint pass
     tl.deleteLater()

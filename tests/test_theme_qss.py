@@ -59,3 +59,19 @@ def test_pushbutton_has_min_height():
     qss = build_qss(tokens.LIGHT)
     btn_block = qss.split("QPushButton {", 1)[1].split("}", 1)[0]
     assert "min-height" in btn_block
+
+
+def test_calendar_popup_escapes_the_table_item_padding():
+    """BUGS #43: the QDateEdit calendar's day grid is a QTableView subclass, so the
+    generic `QTableView::item` padding squeezed its fixed-size day cells until
+    two-digit dates + weekday names elided to "…", and the muted table selection
+    made the picked date read as disabled. The sheet must scope the calendar back
+    out: zero item padding + accent selection. (Offscreen paint can't regression-
+    test this natively — assert on the generated QSS, per the theme gotcha.)"""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        assert "QCalendarWidget QTableView::item {" in qss
+        cal_item = qss.split("QCalendarWidget QTableView::item {", 1)[1].split("}", 1)[0]
+        assert "padding: 0px" in cal_item
+        sel = qss.split("QCalendarWidget QTableView::item:selected {", 1)[1].split("}", 1)[0]
+        assert t.accent in sel and t.accent_text in sel

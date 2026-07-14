@@ -418,7 +418,8 @@ class PlanningPage(QScrollArea):
             shown = [e for e in self._entries if e["slug"] in keep]
         else:
             shown = [e for e in self._entries if e["slug"] in self._included]
-        self._timeline.set_plan({**self._plan_meta, "entries": shown})
+        self._timeline.set_plan({**self._plan_meta, "entries": shown,
+                                 "schedule": self._slots})
 
     def _on_include_toggled(self, item):
         if item.column() != 0:

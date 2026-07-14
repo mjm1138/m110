@@ -237,9 +237,16 @@ Legend: `[ ]` open · `[~]` partially done
   instantly (no astropy recompute). The plan table shows the sequenced slots; move
   up/down **reflows** with the forced order, unchecking a row **excludes** the target
   and reflows (a replacement may take the slot; regenerate resets).
-- [ ] **#43 — Date-picker broken** *(→ PLANNING_ROADMAP Phase 5).* Date selection is
-  broken: most calendar days are labeled with ellipses, and the selected date renders
-  greyed-out.
+- [x] **#43 — Date-picker broken** *(PLANNING_ROADMAP Phase 5, `feature/session-planner`.)*
+  The calendar popup's day grid is a **QTableView subclass**, so the theme's generic
+  `QTableView::item` padding squeezed the fixed-size day cells until two-digit dates and
+  weekday names elided to "…", and the muted table `selection_bg` made the picked date read
+  as disabled. Reproduced offscreen (QSS-driven → shows under Fusion too), fixed with scoped
+  `QCalendarWidget` rules in `theme/qss.py` (zero item padding · accent selection · nav-bar
+  styling), re-render verified in light + dark; a generated-QSS regression test guards it.
+  *One live-app eyeball on macOS still worthwhile (native paint isn't pixel-testable
+  offscreen).* Shipped alongside: `NightTimeline` overlays — moon track (☾, dashed, only
+  while up), the start-ceiling dotted line, and the scheduled slot bands in series colors.
 - [ ] **#44 — LLM session-planner skill foundation** *(→ PLANNING_ROADMAP Phase 6;
   post-release follow-on).* Lay the foundation for an M110-native session-planner
   skill over the deterministic engine — consult the `astro-session-planner` skill +

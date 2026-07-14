@@ -209,17 +209,22 @@ read as contradictory. Suppress or reframe next to a live recommendation.
 
 ---
 
-## Phase 5 — Planning UI fixes  *(Session Planner bullets)*
+## Phase 5 — Planning UI fixes  *(BUGS #43)* ✅ **landed** (`feature/session-planner`)
 
-Blocking usability bugs in the Planning pane's date picker.
-- **Date selection broken:** most calendar days are labeled with ellipses; the
-  selected date renders greyed-out. Fix the date picker so a date can be chosen and
-  reads as selected. *(BUGS #43 — the remaining open item of this phase.)*
-- ~~Wire the target-count control (Phase 4.1) into the "Plan a night" section.~~ ✅
-  done in Phase 4 (the Targets spinbox lives on the plan row, live re-sequence).
-- Surface per-slot moon (Phase 2) and startable-window (Phase 3) in the
-  `NightTimeline` chart *(the table already shows both — the chart overlay is the
-  nice-to-have remainder)*.
+> **Date picker fixed:** the calendar's day grid is a **QTableView subclass**, so the
+> theme's generic `QTableView::item` padding squeezed the fixed-size day cells until
+> two-digit dates + weekday names elided to "…", and the muted table selection made
+> the picked date read as disabled — reproduced offscreen (QSS-driven, so Fusion shows
+> it too), fixed with scoped `QCalendarWidget` rules in `theme/qss.py` (zero item
+> padding, accent selection, nav-bar styling), verified by re-render in light + dark.
+> A generated-QSS regression test guards it (per the theme gotcha: native paint can't
+> be pixel-tested offscreen — **worth one eyeball on the live macOS app**).
+>
+> **Timeline overlays shipped:** the `NightTimeline` chart now draws the **moon
+> altitude track** (dashed, ☾, only while up — Phase 2), the **start ceiling** as a
+> dotted line (Phase 3), and the **scheduled slot bands** along the time axis in each
+> target's series color (Phase 4), so the sequence reads against the curves.
+> (The Targets count control shipped in Phase 4.)
 
 ---
 

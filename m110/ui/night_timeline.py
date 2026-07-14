@@ -89,6 +89,44 @@ class NightTimeline(QWidget):
                        Qt.AlignmentFlag.AlignCenter, tick.strftime("%H"))
             tick += timedelta(hours=1)
 
+        # Start-altitude ceiling (Phase 3): a dotted line — starts above it are
+        # refused (hard) or degraded (soft); the curves may still climb through it.
+        ceiling = plan.get("start_ceiling_deg")
+        if ceiling is not None:
+            yy = Y(ceiling)
+            pen = QPen(QColor(t.text_secondary))
+            pen.setStyle(Qt.PenStyle.DotLine)
+            p.setPen(pen)
+            p.drawLine(int(x0), int(yy), int(x1), int(yy))
+            p.setPen(muted)
+            p.drawText(QRectF(x1 - 60, yy - 13, 58, 12),
+                       Qt.AlignmentFlag.AlignRight, "ceiling")
+
+        # Moon altitude track (Phase 2), where it's above the horizon.
+        mtrack = (plan.get("moon") or {}).get("track") or []
+        up = [(tm, a) for tm, a in mtrack if a > 0]
+        if up:
+            pen = QPen(muted)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setWidthF(1.2)
+            p.setPen(pen)
+            p.drawPolyline([QPointF(X(tm), Y(a)) for tm, a in up])
+            peak = max(up, key=lambda s: s[1])
+            p.drawText(QRectF(X(peak[0]) - 16, Y(peak[1]) - 15, 32, 12),
+                       Qt.AlignmentFlag.AlignCenter, "☾")
+
+        # Scheduled slots (Phase 4): translucent time-bands along the bottom, in
+        # each target's series color, so the sequence reads against the curves.
+        schedule = plan.get("schedule") or []
+        series_of = {e.get("slug"): i for i, e in enumerate(entries)}
+        for s in schedule:
+            idx = series_of.get(s.get("slug"), 0)
+            band = QColor(_SERIES[idx % len(_SERIES)])
+            band.setAlpha(70)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(band)
+            p.drawRect(QRectF(X(s["start"]), y1 - 8, X(s["end"]) - X(s["start"]), 8))
+
         # Each target's altitude curve; a dot + label at its transit peak.
         for i, e in enumerate(entries):
             color = QColor(_SERIES[i % len(_SERIES)])
