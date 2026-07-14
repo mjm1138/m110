@@ -58,11 +58,17 @@ archived in **[`DONE.md`](DONE.md)**.
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
    build a planning surface; emit the session-plan document.
-   > **Active tuning focus (pre-release):** the prioritizer + planner are shipped
-   > but not yet trustworthy. **[`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md)** is the
-   > canonical phase-by-phase punchlist to get them release-ready (data join / moon
-   > model / start-ceiling / real sequence / UI), from the 2026-07-13
-   > [`prioritizer-review.md`](prioritizer-review.md) + BUGS #35–44.
+   > **Tuning arc complete (2026-07-14) — release-ready.** All five phases of
+   > **[`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md)** landed on
+   > `feature/session-planner`: single ranked source (`priorities.toml` retired) +
+   > combined-folder rollup + feasibility gate · per-slot moon model · per-device
+   > start-altitude ceiling · the night **sequencer** (non-overlapping 10-min
+   > schedule, count control, night fill, marginal-slot ⚠) · calendar/date-edit UI
+   > fixes + timeline overlays. Verified twice against independent astropy ground
+   > truth (the 2026-07-13 [`prioritizer-review.md`](prioritizer-review.md) and the
+   > 2026-07-14 [`PLANNING_BUGS.md`](PLANNING_BUGS.md) harness review + re-review).
+   > Remaining follow-ups are non-blocking: BUGS #38b (reference V-mag audit),
+   > #40d (restore version gate), #44 / Phase 6 (LLM skill foundation).
    **Foundation landed (2026-06-26):** the Qt-free engine is ported —
    `m110/planning.py` (`twilight` / `moon_summary` / `transit_altitude` + the
    seasonal/tonight `observability()` gate returning `{observable, hours_clear,
