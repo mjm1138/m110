@@ -187,6 +187,9 @@ class PlanningPage(QScrollArea):
         self._date = QDateEdit(QDate.currentDate())
         self._date.setCalendarPopup(True)
         self._date.setDisplayFormat("ddd d MMM yyyy")
+        # A date change makes the current plan stale — clear it rather than let a
+        # Jul-13 plan be relabelled (and saved) as Jul 18 (BUGS #36 root cause).
+        self._date.dateChanged.connect(self._invalidate_plan)
         row.addWidget(self._date)
         gen = QPushButton("Generate plan")
         gen.clicked.connect(self._on_generate)
@@ -219,7 +222,7 @@ class PlanningPage(QScrollArea):
 
         self._plan_table = QTableWidget(0, 6)
         self._plan_table.setHorizontalHeaderLabels(
-            ["Include", "Object", "Best", "Alt", "Up-window", "Moon°"])
+            ["Include", "Object", "Best", "Alt", "Up-window", "Moon"])
         self._plan_table.verticalHeader().setVisible(False)
         self._plan_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._plan_table.setSelectionMode(QTableWidget.SingleSelection)
@@ -233,6 +236,16 @@ class PlanningPage(QScrollArea):
     def _set_plan_controls_enabled(self, on: bool):
         for w in (self._up_btn, self._down_btn, self._save_btn):
             w.setEnabled(on)
+
+    def _invalidate_plan(self, *_):
+        """Clear a now-stale plan (date/location changed since it was generated)."""
+        if not self._entries and not self._plan_meta:
+            return
+        self._entries = []
+        self._included = set()
+        self._plan_meta = {}
+        self._plan_status.setText("Night changed — generate the plan again.")
+        self._render_plan()
 
     def _on_generate(self):
         if self._planner is not None:
@@ -249,6 +262,7 @@ class PlanningPage(QScrollArea):
                    for r in ranked}
         qd = self._date.date()
         day = date(qd.year(), qd.month(), qd.day())
+        self._planner_day = day        # the day this plan is FOR (not the widget's later state)
         site = pc.load_active_site()
         self._plan_status.setText("Planning the night…")
         self._planner = _PlannerWorker(site, day, cand, scores, filters, self)
@@ -265,13 +279,17 @@ class PlanningPage(QScrollArea):
             return
         self._entries = list(plan["entries"])
         self._included = {e["slug"] for e in self._entries}
-        self._plan_meta = {"window": plan["window"], "moon": plan["moon"]}
+        # `day` rides with the plan: the field-guide save must stamp the night the
+        # astronomy was computed for, never the date widget's current value.
+        self._plan_meta = {"window": plan["window"], "moon": plan["moon"],
+                           "day": getattr(self, "_planner_day", None)}
         n = len(self._entries)
         self._plan_status.setText(f"{n} target(s) up." if n else "Nothing up that night.")
         self._render_plan()
 
     def _render_plan(self):
         from datetime import datetime
+        from m110 import fieldguide
 
         def hm(t):
             return t.strftime("%H:%M") if isinstance(t, datetime) else "—"
@@ -280,8 +298,8 @@ class PlanningPage(QScrollArea):
         moon = self._plan_meta.get("moon") or {}
         dusk, dawn = window
         if dusk and dawn:
-            illum = moon.get("illum")
-            moon_txt = f" · moon {round((illum or 0) * 100)}% lit" if illum is not None else ""
+            moon_txt = (f" · <b>Moon:</b> {fieldguide.moon_headline(moon)}"
+                        if moon.get("illum") is not None else "")
             self._plan_summary.setText(
                 f"<b>Astro dark:</b> {hm(dusk)}–{hm(dawn)}{moon_txt}")
         else:
@@ -307,7 +325,12 @@ class PlanningPage(QScrollArea):
             self._plan_table.setItem(r, 3, QTableWidgetItem(f"{e['transit_alt']:.0f}°"))
             self._plan_table.setItem(r, 4, QTableWidgetItem(
                 f"{hm(e['up_start'])}–{hm(e['up_end'])}"))
-            self._plan_table.setItem(r, 5, QTableWidgetItem(f"{e['moon_sep_deg']:.0f}"))
+            mcell = QTableWidgetItem(fieldguide.moon_cell(e))
+            mcell.setToolTip("Separation from the moon at this target's best time, "
+                             "with its impact (illumination × proximity; narrowband "
+                             "LP is largely immune). \"—\" = moon below the horizon "
+                             "then — no impact.")
+            self._plan_table.setItem(r, 5, mcell)
         self._plan_table.blockSignals(False)
         self._plan_table.resizeColumnsToContents()
         fit_table_height(self._plan_table, max_rows=15)
@@ -349,8 +372,13 @@ class PlanningPage(QScrollArea):
             QMessageBox.information(self, "Save field guide",
                                    "Include at least one target first.")
             return
-        qd = self._date.date()
-        day = date(qd.year(), qd.month(), qd.day())
+        # The plan's own day — NOT the date widget, which the user may have moved
+        # since Generate (that desync produced a "Sat 18 Jul" guide with Jul-13
+        # astronomy: new-moon 0% / −17°, the BUGS #36 report).
+        day = self._plan_meta.get("day")
+        if day is None:
+            qd = self._date.date()
+            day = date(qd.year(), qd.month(), qd.day())
         default = f"{pc.load_active_site().name} — {day.strftime('%a %d %b')}"
         title, ok = QInputDialog.getText(self, "Save field guide", "Title:", text=default)
         if not ok or not title.strip():
@@ -583,6 +611,7 @@ class PlanningPage(QScrollArea):
             return
         pc.set_active_profile(stem)
         self.editor.load(stem)
+        self._invalidate_plan()               # a plan is site-specific
         self._maybe_recompute(force=True)     # a new site → observability changes
 
     def _on_profile_saved(self, stem: str):

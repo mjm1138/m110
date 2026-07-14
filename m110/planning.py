@@ -114,6 +114,30 @@ def twilight(year: int, month: int, day: int, site: Site, step_min: int = 5):
     return dusk, dawn
 
 
+def moon_impact(illum, moon_alt, sep_deg, filter: str | None = None) -> str | None:
+    """Plain-language moon impact on one target's slot — ``None`` when the moon is
+    **below the horizon** (separation is physically meaningless then; BUGS #36), else
+    ``"none"/"low"/"medium"/"high"``.
+
+    Impact = illumination × proximity, discounted for narrowband: broadband (IRCUT)
+    suffers within ~40–50° of a bright moon, LP/dual-band tolerates much closer (the
+    Astronomy moon rule). Pure + deterministic so the field guide can *explain* it."""
+    if moon_alt is None or moon_alt <= 0:
+        return None
+    if illum is None:
+        return "low"                                    # moon up, phase unknown → mild
+    score = float(illum) * max(0.0, 1.0 - float(sep_deg) / 120.0)
+    if (filter or "").upper() in _NARROWBAND_FILTERS:
+        score *= 0.25                                   # narrowband ≈ near-immune
+    if score >= 0.35:
+        return "high"
+    if score >= 0.15:
+        return "medium"
+    if score >= 0.05:
+        return "low"
+    return "none"
+
+
 def moon_summary(times_local, site: Site):
     """``(altitudes, illuminated_fraction)`` — the moon's altitude at each local
     time plus its illuminated fraction at the window's midpoint."""
@@ -315,7 +339,19 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
                scores: dict | None = None, filters: dict | None = None,
                step_min: int = 10) -> dict:
     """Build tonight's plan for ``targets`` (slugs). Returns
-    ``{window: (dusk, dawn), moon: {illum, alt}, entries: [night_track, …]}``.
+    ``{window: (dusk, dawn), moon: {…}, entries: [night_track, …]}``.
+
+    The moon is sampled **across the whole dark window** (BUGS #36 — a 5-hour night
+    can't be described by one dusk snapshot)::
+
+        moon = {illum,                  # fraction at the window midpoint
+                alt,                    # at dusk
+                set_time, rise_time,    # crossings inside the window (else None)
+                track: [(local_time, alt), …]}
+
+    and every entry is annotated with ``moon_alt_at_best`` (the moon's altitude at
+    that target's best time) + ``moon_impact`` (via :func:`moon_impact`, using the
+    target's filter) — so consumers can gate the separation column on moon-up.
 
     Only targets that are actually **up** tonight (a real ``up_start``) are kept.
     ``order="auto"`` sorts by ``up_end`` ascending — **the target setting soonest
@@ -325,10 +361,22 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
     scores = scores or {}
     filters = filters or {}
     dusk, dawn = twilight(day.year, day.month, day.day, site)
-    moon = {"illum": None, "alt": None}
+    moon = {"illum": None, "alt": None, "set_time": None, "rise_time": None,
+            "track": []}
+    times, malts, illum = [], [], None
     if dusk and dawn:
-        alts, illum = moon_summary([dusk], site)
-        moon = {"illum": round(illum, 2), "alt": round(alts[0], 1)}
+        n = max(2, int((dawn - dusk).total_seconds() / 60 / step_min) + 1)
+        times = [dusk + (dawn - dusk) * (i / (n - 1)) for i in range(n)]
+        malts, illum = moon_summary(times, site)
+        set_time = rise_time = None
+        for i in range(len(malts) - 1):
+            if malts[i] > 0 >= malts[i + 1] and set_time is None:
+                set_time = times[i + 1]
+            if malts[i] <= 0 < malts[i + 1] and rise_time is None:
+                rise_time = times[i + 1]
+        moon = {"illum": round(float(illum), 2), "alt": round(malts[0], 1),
+                "set_time": set_time, "rise_time": rise_time,
+                "track": [(t, round(a, 1)) for t, a in zip(times, malts)]}
 
     entries = []
     if dusk and dawn:
@@ -336,6 +384,12 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
             tr = night_track(slug, day, site, filter=filters.get(slug),
                              step_min=step_min, window=(dusk, dawn))
             if tr and tr["up_start"] is not None:
+                # Moon state at this target's best time (nearest grid sample).
+                bi = min(range(len(times)),
+                         key=lambda i: abs((times[i] - tr["transit_time"]).total_seconds()))
+                tr["moon_alt_at_best"] = round(malts[bi], 1)
+                tr["moon_impact"] = moon_impact(moon["illum"], malts[bi],
+                                                tr["moon_sep_deg"], filters.get(slug))
                 entries.append(tr)
 
     if order == "auto":

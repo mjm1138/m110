@@ -1345,3 +1345,55 @@ def test_night_timeline_sets_plan_without_error(qapp):
     tl.resize(400, 200)
     tl.grab()                              # force a paint pass
     tl.deleteLater()
+
+
+def test_planning_page_save_uses_plan_day_and_invalidates_on_change(
+        tmp_path, monkeypatch, qapp):
+    """BUGS #36 root cause: a plan generated for day X, then the date widget moved
+    to day Y, must (a) save the guide stamped with X's astronomy — never relabel —
+    and (b) actually get *cleared* when the date changes (stale-plan invalidation),
+    so the relabel can't happen at all."""
+    from datetime import date, datetime
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110.ui.pages.planning import PlanningPage
+    from PySide6.QtCore import QDate
+    from PySide6.QtWidgets import QInputDialog
+    page = PlanningPage()
+    try:
+        gen_day = date(2026, 7, 13)
+        t0 = datetime(2026, 7, 13, 22, 30)
+        entry = {"slug": "m13", "transit_time": t0, "transit_alt": 85.0,
+                 "best_alt": 85.0, "up_start": t0,
+                 "up_end": datetime(2026, 7, 14, 3, 30), "moon_sep_deg": 70.0,
+                 "moon_alt_at_best": -20.0, "moon_impact": None, "samples": []}
+        page._entries = [entry]
+        page._included = {"m13"}
+        page._plan_meta = {"window": (t0, datetime(2026, 7, 14, 3, 50)),
+                           "moon": {"illum": 0.02, "alt": -17.0,
+                                    "set_time": None, "rise_time": None, "track": []},
+                           "day": gen_day}
+
+        # The widget wanders to another night; the save must still stamp gen_day.
+        page._date.blockSignals(True)                  # isolate (a) from (b)
+        page._date.setDate(QDate(2026, 7, 18))
+        page._date.blockSignals(False)
+        saved = {}
+        monkeypatch.setattr(QInputDialog, "getText",
+                            staticmethod(lambda *a, **k: ("T", True)))
+        from m110 import fieldguide
+        real_render = fieldguide.render_markdown
+        def spy(site, day, plan, **kw):
+            saved["day"] = day
+            return real_render(site, day, plan, **kw)
+        monkeypatch.setattr(fieldguide, "render_markdown", spy)
+        page._save_field_guide()
+        assert saved["day"] == gen_day                 # not the widget's Jul 18
+
+        # And a real date change invalidates the stale plan outright.
+        page._date.setDate(QDate(2026, 7, 25))
+        assert page._entries == [] and page._plan_meta == {}
+        assert "generate the plan again" in page._plan_status.text().lower()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

@@ -93,27 +93,33 @@ deep targets; a surface-brightness gate exists for the ranker to consult.
 
 ---
 
-## Phase 2 — Fix the moon model  *(BUGS #36, review §5a–b)*
+## Phase 2 — Fix the moon model  *(BUGS #36, review §5a–b)* ✅ **landed** (`feature/session-planner`)
 
-The single biggest per-night driver, and today it's wrong in a way that can
-greenlight broadband on a moon-up night.
+> **Root cause was NOT the astronomy.** Reproducing the review's night showed the
+> engine already computed 27%/+5.8°/sets ~23:05 correctly for Jul 18 — the bad plan
+> file (generated **Jul 13**, whose dark window it carries) was a **date/plan
+> desync**: `_save_field_guide` stamped the date *widget's* value on astronomy
+> computed at Generate time. Jul 13-14 was the new moon → "0% lit, −17° at dusk" was
+> *right for the generation day*. Fixed both ends: the plan's `day` rides in
+> `_plan_meta` and the save uses it, **and** a date/location change now invalidates
+> the stale plan outright (regression test drives the exact desync).
+>
+> **Per-slot moon shipped** (2.1): `plan_night` samples the moon across the whole
+> window → `moon = {illum, alt, set_time, rise_time, track}`; the header reads
+> "29% lit · up at dusk (+6°) · sets 23:05" (`fieldguide.moon_headline`), not one
+> snapshot. Regression tests pin both known nights (Jul 13 new-moon: down all night;
+> Jul 18: crescent setting 22–23h, illum bounded 0.20–0.32).
+>
+> **Gating + impact shipped** (2.2): every entry carries `moon_alt_at_best` +
+> `moon_impact` (`planning.moon_impact` — illumination × proximity, narrowband ×0.25
+> ≈ near-immune; `None` when the moon is down). The Moon column (field guide + the
+> Planning table) shows "48° · medium" when up, "—" when down, with the explanation
+> footnote/tooltip (the correctness half of the #41 "explain moon impact" ask —
+> Phase 4's schedule reuses `moon_impact` per sequenced slot).
 
-### 2.1 — Correct illumination + per-slot altitude
-- The 2026-07-18 plan reported **"0% lit, down at dusk (−17°)"**; truth is **~24%
-  waxing crescent, +5° at dusk, setting ~23:00**. Two bugs: illumination formula/
-  instant is wrong, and the moon is described by a single dusk snapshot with a wrong
-  altitude (timezone / eval-instant smell).
-- Evaluate the moon **per slot** across the dark window, not once in a global header.
-- **Acceptance:** planner moon figures match `scripts/sky.py` for the same date/site
-  within tolerance; add a regression test pinning a known night.
-
-### 2.2 — Gate `Moon°` on moon altitude + make impact filter-aware
-- Only show separation when the moon is **up**; when it's down show "— / moon down".
-- "Moon impact" = *illumination × moon-altitude × separation × filter* — LP
-  narrowband reads near-immune. This is the correctness half of the "explain moon
-  impact" ask.
-- **Acceptance:** a moon-down night shows no spurious separations; a bright-moon
-  night flags broadband targets and lets LP targets through.
+Original acceptance (met): figures match the review's ground truth within tolerance,
+regression tests pin known nights; moon-down slots show no spurious separations;
+narrowband reads near-immune under a bright moon.
 
 ---
 

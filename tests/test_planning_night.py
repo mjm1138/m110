@@ -50,3 +50,48 @@ def test_plan_night_drops_targets_not_up():
 def test_plan_night_manual_preserves_order():
     plan = planning.plan_night(_SITE, _DAY, ["m13", "m81"], order="manual")
     assert [e["slug"] for e in plan["entries"]] == ["m13", "m81"]
+
+
+# ── per-slot moon model (Phase 2 / BUGS #36) ─────────────────────────────────
+
+def test_moon_impact_gates_on_moon_up():
+    # Moon below the horizon → no impact, whatever the separation.
+    assert planning.moon_impact(0.99, -5.0, 20.0) is None
+    assert planning.moon_impact(0.99, 0.0, 20.0) is None
+    # Bright moon close by: broadband suffers, narrowband is largely immune.
+    assert planning.moon_impact(0.95, 40.0, 40.0, "IRCUT") == "high"
+    assert planning.moon_impact(0.95, 40.0, 40.0, "LP") in ("low", "medium")
+    # Thin crescent far away → negligible.
+    assert planning.moon_impact(0.05, 30.0, 110.0) == "none"
+
+
+def test_plan_night_moon_track_new_moon_night():
+    """Jul 13 2026 (night before the Jul 14 new moon): the moon is down essentially
+    all night — near-0% illum, and every entry's impact must be gated to None."""
+    plan = planning.plan_night(_SITE, _DAY, ["m13"])
+    moon = plan["moon"]
+    assert moon["illum"] <= 0.05                         # ~new moon
+    assert moon["track"], "per-slot track present"
+    assert all(a <= 5 for _t, a in moon["track"])        # at/under the horizon all night
+    for e in plan["entries"]:
+        assert "moon_alt_at_best" in e
+        if e["moon_alt_at_best"] <= 0:
+            assert e["moon_impact"] is None
+
+
+def test_plan_night_moon_sets_during_window():
+    """Jul 18 2026 from Boulder — the review's ground-truth night: ~24–28% waxing
+    crescent, up at dusk (~+5°), setting ~23:00 (prioritizer-review §5a). The old
+    header claimed '0% lit, down at dusk (−17°)'."""
+    day = date(2026, 7, 18)
+    plan = planning.plan_night(_SITE, day, ["m13"])
+    moon = plan["moon"]
+    assert 0.20 <= moon["illum"] <= 0.32                 # crescent, not 0%
+    assert 2.0 <= moon["alt"] <= 10.0                    # up at dusk, ~+5°
+    assert moon["set_time"] is not None                  # sets inside the window…
+    assert moon["set_time"].hour in (22, 23)             # …around 23:00 local
+    assert moon["rise_time"] is None
+    # M13's best time is right at dusk (it transits before dark) → moon still up.
+    e = plan["entries"][0]
+    assert e["moon_alt_at_best"] > 0
+    assert e["moon_impact"] in ("none", "low", "medium", "high")

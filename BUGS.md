@@ -261,14 +261,19 @@ Legend: `[ ]` open · `[~]` partially done
   `build_priorities`/`derived.load_priorities`/`select.filter_priorities` deleted; the
   published site's Priority Targets section dropped (the curated data was personal + not
   generalizable). `track=false` campaign exclusion is covered by a pin *deprioritize*.
-- [ ] **#36 — Moon model is wrong (planner header).** On `2026-07-18` the plan reported
-  "Moon: 0% lit, down at dusk (−17°)"; actual Boulder values are **~24% illuminated (waxing
-  crescent, 4 days after the Jul 14 new moon), +5° at dusk, setting ~23:00**. Two bugs: (a) **illumination is wrong** (reported 0% — dangerous,
-  it greenlights broadband on what could be a moon-up night); (b) the moon is described by a
-  single **dusk snapshot** with a wrong altitude (timezone/eval-instant smell) when it must be
-  **per-slot** across the night. Also the `Moon°` separation column is printed even when the
-  moon is **below the horizon** (no impact) — gate it on moon-altitude, and make "moon impact"
-  filter-aware (LP narrowband is near-immune). This is the correctness half of the #193 ask to
+- [x] **#36 — Moon model "wrong" (planner header).** *(PLANNING_ROADMAP Phase 2,
+  `feature/session-planner`.)* **The astronomy was never wrong** — reproducing the night showed
+  the engine computes Jul 18 correctly (27% / +5.8° / sets ~23:05). The bad plan file was a
+  **date/plan desync**: generated **Jul 13** (its dark window says so) but *titled* Jul 18 —
+  `_save_field_guide` read the date widget at save time while the astronomy was from Generate
+  time, and Jul 13–14 was the **new moon**, hence "0% lit, −17° at dusk". Fixed both ends
+  (the plan's `day` rides in `_plan_meta`; a date/location change invalidates the stale plan),
+  plus the genuine model upgrades: **per-slot moon** (`plan_night` → `{illum, alt, set_time,
+  rise_time, track}`; header "29% lit · up at dusk (+6°) · sets 23:05"), the **Moon column
+  gated on moon-up** at each target's best time ("—" when down), and **filter-aware
+  `moon_impact`** (illumination × proximity, narrowband ≈ near-immune) with an explanation
+  footnote/tooltip. Regression tests pin the Jul 13 (new moon, down all night) and Jul 18
+  (crescent, sets 22–23h) nights + the exact save-desync flow. This is the correctness half of the #193 ask to
   *explain* moon impact.
 - [ ] **#37 — Start-altitude ceiling (~78°) ignored in slot selection.** The `2026-07-18` plan
   put 4/8 targets at best-time altitudes over the ceiling (M29 88°, Sh2-112 84°, Sh2-115 83°,

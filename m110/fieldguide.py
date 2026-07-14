@@ -27,6 +27,39 @@ def _slugify(text: str) -> str:
     return s or "plan"
 
 
+def moon_headline(moon: dict) -> str:
+    """One-line moon summary from ``plan_night``'s per-slot moon dict — phase plus
+    what it *does* across the night ("sets 23:05"), not a single dusk snapshot
+    (BUGS #36). Shared by the field guide and the Planning page."""
+    illum = moon.get("illum")
+    lit = f"{round(illum * 100)}% lit" if illum is not None else "—"
+    alt, set_t, rise_t = moon.get("alt"), moon.get("set_time"), moon.get("rise_time")
+    if alt is None:
+        return lit
+    if alt > 0:
+        state = f"up at dusk (+{alt:.0f}°)"
+        state += f" · sets {_hm(set_t)}" if set_t else " · up all night"
+    else:
+        state = "down at dusk"
+        state += f" · rises {_hm(rise_t)}" if rise_t else " · down all night"
+    return f"{lit} · {state}"
+
+
+def moon_cell(entry: dict) -> str:
+    """The per-target Moon column: separation + impact when the moon is **up** at
+    that target's best time, else "—" (separation from a set moon means nothing).
+    Degrades to the bare separation for plans that predate the annotation."""
+    alt = entry.get("moon_alt_at_best")
+    if alt is None:                                   # old plan dict — no gating info
+        sep = entry.get("moon_sep_deg")
+        return f"{sep:.0f}°" if sep is not None else "—"
+    if alt <= 0:
+        return "—"
+    impact = entry.get("moon_impact")
+    sep = entry.get("moon_sep_deg", 0.0)
+    return f"{sep:.0f}° · {impact}" if impact else f"{sep:.0f}°"
+
+
 def render_markdown(site, day: date, plan: dict, *, title: str | None = None) -> str:
     """Render ``plan`` (from ``planning.plan_night``) to a Markdown field guide."""
     try:
@@ -45,10 +78,7 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
         lines.append(f"**Astro dark:** {_hm(dusk)} – {_hm(dawn)}  ")
     illum = moon.get("illum")
     if illum is not None:
-        lit = f"{round(illum * 100)}% lit"
-        alt = moon.get("alt")
-        where = f", {'up' if (alt or -1) > 0 else 'down'} at dusk ({alt:.0f}°)" if alt is not None else ""
-        lines.append(f"**Moon:** {lit}{where}  ")
+        lines.append(f"**Moon:** {moon_headline(moon)}  ")
     lines.append("")
 
     if not entries:
@@ -57,8 +87,8 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
 
     lines.append(f"## Targets ({len(entries)}) — in shooting order")
     lines.append("")
-    lines.append("| # | Object | Best time | Alt | Up-window | Moon° | Filter |")
-    lines.append("|---|--------|-----------|-----|-----------|-------|--------|")
+    lines.append("| # | Object | Best time | Alt | Up-window | Moon | Filter |")
+    lines.append("|---|--------|-----------|-----|-----------|------|--------|")
     for i, e in enumerate(entries, 1):
         slug = e["slug"]
         entry = lib.get(slug) or ref.get(slug) or {}
@@ -66,8 +96,14 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
         filt = prioritize.filter_for_type(entry.get("type", ""))
         win = f"{_hm(e['up_start'])}–{_hm(e['up_end'])}"
         lines.append(f"| {i} | {name} | {_hm(e['transit_time'])} | "
-                     f"{e['transit_alt']:.0f}° | {win} | {e['moon_sep_deg']:.0f} | {filt} |")
+                     f"{e['transit_alt']:.0f}° | {win} | {moon_cell(e)} | {filt} |")
     lines.append("")
+    if any((e.get("moon_alt_at_best") or 0) > 0 for e in entries):
+        lines.append("<sub>**Moon** = separation from the moon at the target's best "
+                     "time, with its impact (illumination × proximity; narrowband LP "
+                     "is largely immune). \"—\" = the moon is below the horizon then — "
+                     "no impact.</sub>")
+        lines.append("")
 
     # Per-target notes (season + the library `notes`/remarks), when present.
     detail = []
