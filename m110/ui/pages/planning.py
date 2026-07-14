@@ -381,8 +381,13 @@ class PlanningPage(QScrollArea):
                                       "device's start-altitude ceiling — the capture "
                                       "may climb past it once running).")
                 self._plan_table.setItem(r, 2, start_item)
-                self._plan_table.setItem(r, 3, QTableWidgetItem(
-                    f"{s['duration_min']} min"))
+                dur_item = QTableWidgetItem(
+                    f"{s['duration_min']} min" + (" ⚠" if s.get("marginal") else ""))
+                if s.get("marginal"):
+                    dur_item.setToolTip("Last-chance slot: cut short by the target's "
+                                        "closing window while it descends — expect "
+                                        "heavy frame rejection; keep or drop knowingly.")
+                self._plan_table.setItem(r, 3, dur_item)
                 flag = "^" if s.get("over_ceiling") else ""
                 self._plan_table.setItem(r, 4, QTableWidgetItem(
                     f"{s['alt_start']:.0f}°{flag}"))

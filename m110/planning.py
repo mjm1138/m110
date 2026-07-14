@@ -50,6 +50,12 @@ _NARROWBAND_FILTERS = {"ON", "LP"}
 # the Astronomy "plan with ~75° practical" rule.
 START_CEILING_MARGIN_DEG = 3.0
 
+# A window-truncated slot on a *descending* target this short (minutes) is flagged
+# marginal ("last chance"): at low, sinking altitude the S50 rejects well above the
+# ~30% baseline on FWHM/roundness, so a 20–30 min token slot may yield ≤10 usable
+# minutes (2026-07-14 harness review, GAP 2). Longer last-grabs still pay.
+MARGINAL_SLOT_MIN = 30
+
 
 # ── coordinate / season helpers ──────────────────────────────────────────────
 
@@ -352,11 +358,6 @@ def night_track(target, day: date, site: Site, *, filter: str | None = None,
     up_start, up_end = _contiguous_up(samples, min_alt, physical, glow)
     ti = max(range(n), key=lambda i: alts[i])          # transit (arg-max altitude)
     transit_time = times[ti]
-    import warnings
-    with warnings.catch_warnings():                    # moon-sep frame transform is
-        warnings.simplefilter("ignore")                # ~1° precise; that's plenty here
-        moon = get_body("moon", T[ti], location=_location(site))
-        moon_sep = float(coord.separation(moon).deg)
 
     def clear(alt, az):
         return alt > min_alt and not horizon.is_below_floor(az, alt, physical, glow)
@@ -369,6 +370,16 @@ def night_track(target, day: date, site: Site, *, filter: str | None = None,
         ceiling -= START_CEILING_MARGIN_DEG     # plan under the refusal threshold
     start_time, start_alt, over_ceiling = pick_start(
         out_samples, ceiling, device.ceiling_is_hard)
+
+    # Moon separation, evaluated at the proposed START (the slot the plan proposes),
+    # in a COMMON topocentric AltAz frame. Never `icrs.separation(gcrs_moon)`: that
+    # re-expresses the moon's direction from the barycenter and returned 101° where
+    # the true separation was 45° (2026-07-17 M3 case — the 2026-07-14 test-harness
+    # review, PLANNING_BUGS BUG 1).
+    si = times.index(start_time) if start_time in times else ti
+    moon = get_body("moon", T[si], location=_location(site))
+    fr_si = AltAz(obstime=T[si], location=_location(site))
+    moon_sep = float(moon.transform_to(fr_si).separation(aa[si]).deg)
 
     return {
         "slug": str(target) if not isinstance(target, (tuple, list)) else "",
@@ -491,10 +502,11 @@ def _sample_at(entry: dict, t: datetime, tick_min: int = 10):
 
 def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
                   filters: dict | None = None, deep_remaining: dict | None = None,
-                  tick_min: int = 10, forced_order: list | None = None) -> list[dict]:
+                  tick_min: int = 10, forced_order: list | None = None,
+                  fill: bool = True) -> list[dict]:
     """Turn ``plan_night`` output into a **non-overlapping schedule** (Phase 4 /
     BUGS #40–42): ``[{slug, start, end, duration_min, alt_start, filter,
-    moon_sep_deg, moon_impact, over_ceiling}, …]``.
+    moon_sep_deg, moon_impact, over_ceiling, marginal}, …]``.
 
     The BUGS #40 v1 logic, deterministic and pure (no astropy — testable with
     synthetic plan dicts):
@@ -508,6 +520,15 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
        overlap, no slew/focus modelling.
     3. Near-equal priority (scores quantized to 2 dp) → the one **closer to
        setting** (earlier ``up_end``) goes first.
+
+    ``count`` sizes the slots (the night ÷ count split); with ``fill`` on (the
+    default) the sequencer **keeps scheduling past count** when shortened slots
+    leave dark unused, until dawn or candidates run out — the 2026-07-14 harness
+    review caught a plan ending at 01:00 with ~3 h of dark left (GAP 1).
+
+    A slot cut short by its **own closing window** while the target is
+    *descending* is flagged ``marginal`` ("last chance" — heavy frame rejection
+    at low, sinking altitude; GAP 2) so the human can drop it knowingly.
 
     Every start/end sits on a wall-clock ``tick_min`` boundary. A **hard** ceiling
     excludes over-ceiling ticks outright; a **soft** one allows them flagged
@@ -560,7 +581,9 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
         return alt, over
 
     slots, used, t = [], set(), t0
-    while len(slots) < n and (t_end - t).total_seconds() / 60.0 >= tick_min:
+    while (t_end - t).total_seconds() / 60.0 >= tick_min:
+        if len(slots) >= n and not fill:
+            break
         pick = None
         for slug in queue:
             if slug in used:
@@ -570,6 +593,8 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
                 pick = (slug, *st)
                 break
         if pick is None:
+            if used >= set(queue):
+                break                                 # every candidate is spent
             t += timedelta(minutes=tick_min)          # gap — nothing startable yet
             continue
         slug, alt, over = pick
@@ -578,12 +603,18 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
         rem = deep_remaining.get(slug)
         if rem is not None and rem > 0:               # deep-stack sooner → shorter slot
             dur = min(dur, int(-(-rem // tick_min)) * tick_min)
-        dur = min(dur,                                 # …its own window / dawn
-                  int((e["up_end"] - t).total_seconds() / 60.0 // tick_min) * tick_min,
+        window_cap = int((e["up_end"] - t).total_seconds() / 60.0 // tick_min) * tick_min
+        dur = min(dur, window_cap,                     # …its own window / dawn
                   int((t_end - t).total_seconds() / 60.0 // tick_min) * tick_min)
         if dur < tick_min:
             used.add(slug)
             continue
+        # Last-chance guard (GAP 2): a SHORT slot truncated by the target's own
+        # closing window while it descends — expect heavy frame rejection at low,
+        # sinking altitude. Kept (a deliberate last grab) but flagged.
+        end_alt, _ = _sample_at(e, t + timedelta(minutes=dur), tick_min)
+        marginal = (dur == window_cap and dur < base and dur <= MARGINAL_SLOT_MIN
+                    and end_alt is not None and end_alt < alt)
         malt = moon_alt_at(t)
         slots.append({
             "slug": slug,
@@ -597,6 +628,7 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
             "moon_impact": moon_impact(illum, malt, e.get("moon_sep_deg", 0.0),
                                        filters.get(slug)),
             "over_ceiling": over,
+            "marginal": marginal,
         })
         used.add(slug)
         t += timedelta(minutes=dur)

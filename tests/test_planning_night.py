@@ -275,3 +275,63 @@ def test_sequence_forced_order_and_moon_at_slot():
     assert [s["slug"] for s in slots] == ["a", "b"]     # forced, not score order
     assert slots[0]["moon_impact"] in ("low", "medium", "high")   # moon up at 22:30
     assert slots[1]["moon_impact"] is None              # moon set before slot 2
+
+
+# ── 2026-07-14 test-harness review fixes (PLANNING_BUGS.md) ──────────────────
+
+def test_moon_separation_is_topocentric_at_the_start(  # BUG 1
+        ):
+    """The harness review's ground-truth case: 2026-07-17 22:30 MDT from Boulder,
+    moon–M3 separation ≈45°. The old `icrs.separation(gcrs_moon)` path re-expressed
+    the moon's direction from the barycenter and printed 101°."""
+    tr = planning.night_track("m3", date(2026, 7, 17), _SITE)
+    assert tr is not None and tr["start_time"] is not None
+    assert 42.0 <= tr["moon_sep_deg"] <= 48.0            # ≈45°, never ~101°
+
+
+def test_sequence_fills_the_whole_night():  # GAP 1
+    """Shortened slots must not strand the back half of the night: after `count`
+    targets, the sequencer keeps scheduling until dawn or candidates run out."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    d1 = datetime(2026, 7, 19, 3, 55)
+    entries = [_entry(f"t{i}", d0, d1) for i in range(8)]
+    plan = _synthetic_plan(entries)
+    # deep caps make the first four slots short (40 min each = 160 of ~320 min)
+    deep = {f"t{i}": 35.0 for i in range(4)}
+    slots = planning.sequence_plan(plan, count=4, deep_remaining=deep,
+                                   scores={f"t{i}": 10 - i for i in range(8)})
+    assert len(slots) > 4                                # kept going past count
+    assert slots[-1]["end"] >= datetime(2026, 7, 19, 3, 40)   # night actually used
+    for a, b in zip(slots, slots[1:]):
+        assert b["start"] == a["end"]
+    # fill=False restores the strict count cut-off
+    strict = planning.sequence_plan(plan, count=4, deep_remaining=deep,
+                                    scores={f"t{i}": 10 - i for i in range(8)},
+                                    fill=False)
+    assert len(strict) == 4
+
+
+def test_sequence_flags_marginal_last_chance_slot():  # GAP 2
+    """A slot cut short by its own closing window while descending is flagged
+    marginal; a deep-cap short slot is NOT (the target isn't sinking away)."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    # descending target whose window closes ~30 min into the night (a token slot)
+    n = 5
+    desc = {"slug": "sink", "up_start": d0,
+            "up_end": datetime(2026, 7, 18, 23, 0), "moon_sep_deg": 90.0,
+            "samples": [(d0 + timedelta(minutes=10 * i), 36.0 - 2 * i, True)
+                        for i in range(n)],
+            "transit_time": d0, "transit_alt": 36.0, "best_alt": 36.0,
+            "start_time": d0, "start_alt": 36.0, "over_ceiling": False}
+    steady = _entry("steady", d0, datetime(2026, 7, 19, 3, 55))
+    plan = _synthetic_plan([desc, steady])
+    slots = planning.sequence_plan(plan, count=2,
+                                   scores={"sink": 9.0, "steady": 1.0})
+    by = {s["slug"]: s for s in slots}
+    assert by["sink"]["marginal"] is True                # window-cut + descending
+    assert by["steady"]["marginal"] is False
+    # deep-cap shortening alone isn't marginal
+    slots2 = planning.sequence_plan(_synthetic_plan([steady]), count=1,
+                                    scores={"steady": 5.0},
+                                    deep_remaining={"steady": 35.0})
+    assert slots2[0]["marginal"] is False
