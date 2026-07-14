@@ -206,7 +206,11 @@ QPushButton:default {{ border-color: {t.accent}; }}
 QPushButton:disabled {{ color: {t.text_disabled}; border-color: {t.divider}; }}
 
 /* ── inputs ── */
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
+/* QDateEdit/QDateTimeEdit are QAbstractSpinBox kin but NOT covered by the
+   QSpinBox selector — omitting them left the Planning "Night:" field on default
+   palette colors, near-unreadable in dark mode (the #43 follow-up nit). */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QDateTimeEdit,
+QPlainTextEdit, QTextEdit {{
     background-color: {t.surface};
     color: {t.text_primary};
     border: 1px solid {t.border};
@@ -216,7 +220,7 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
     selection-color: {t.selection_text};
 }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-QPlainTextEdit:focus, QTextEdit:focus {{
+QDateEdit:focus, QDateTimeEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {t.focus_ring};
 }}
 QComboBox QAbstractItemView {{
