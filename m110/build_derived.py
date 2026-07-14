@@ -155,7 +155,10 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
     # a zero-integration folder/slug entry so they show up in the gallery / status /
     # `targets_for_slug` like any other capture (no subs → 0 min, status "initial").
     from . import scan_sessions
-    slugset = set(catalog)
+    # Library ∪ bundled reference — a combined folder ("M81 M82") must split into
+    # its member objects, which the Library alone can't do before they're captured.
+    from .catalog import load_reference
+    slugset = set(catalog) | set(load_reference())
     images = config.IMAGES_DIR
     if images.is_dir():
         for d in sorted(p for p in images.iterdir() if p.is_dir()):

@@ -120,7 +120,7 @@ All machine state lives in a single **hidden** `.m110_internal_data/`.
                         [site] lat/lon/elev/tz + [horizon] .hrz mask + [glow] light-dome layer)
     derived/            generated rollups: totals/priorities/summary/processing/images.json
     renders/            generated thumbnails + hero/<slug>.jpg (gallery assets)
-    .store_version      layout version stamp (= 3)
+    .store_version      layout version stamp (= 4)
 ```
 
 **Migration:** `config.ensure_data_root()` calls `migrate.migrate_store()` first,

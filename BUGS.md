@@ -167,6 +167,27 @@ Legend: `[ ]` open · `[~]` partially done
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,
   so deferred until real-world messy imports demand more than manual assign.
 
+- [x] **#40c — Capture targets were promoted into the object axis** *(`feature/fix-capture-target-axis`;
+  store **v3→v4**).* The two axes are **many-to-many by design** — one `M81 M82` capture feeds two
+  catalog objects — but `add_captured_objects` promoted the *capture target* "M81 M82" into the
+  **Library** as a synthetic pseudo-object (`m81-m82`, type "unknown"). That fake object then
+  **shadowed `folder_to_slugs`** (its first branch returns the whole slug once it's a known
+  catalog slug), so the combined folder resolved to `['m81-m82']` instead of `['m81','m82']` —
+  self-reinforcing, and the pair's integration never credited M81/M82 (M82 read **13 min** while
+  the pair had ~29 h). Fixes: (a) `add_captured_objects` maps a folder to the objects it
+  *contains* and promotes **those members** (a combined capture promotes both); only a folder
+  matching **no** catalog object becomes an object itself; (b) `scan_sessions.load_catalog_slugs`
+  resolves against **Library ∪ bundled reference** (a fresh store could never split a pair), and
+  the splitter normalizes spaced designations (`M 97 M 108` → `M97 M108`); (c) `build_totals`
+  uses the same slug universe; (d) **migration** `_prune_combined_target_objects` drops the
+  pseudo-objects (live store: `m81-m82`, `m108-m97`, `m-97-m-108`), non-destructively —
+  `Objects/<id>/` journals are left alone; (e) the Processing page's first column is relabelled
+  **Object → Target** (a row is a capture target = one stack to process; a combined target and a
+  solo capture of the same object are both legitimate rows — the old label is what made them read
+  as duplicate objects). *Supersedes #40b, which wrongly proposed collapsing the queue.*
+  **Data hygiene (user):** the live store has empty duplicate variants (`M97 M108`, `M 97 M 108`
+  with 0 lights) worth deleting.
+
 ## Planning / prioritization
 
 - [x] **#3 — Manual Pin/Deprioritize priorities** *(the self-contained slice of ROADMAP

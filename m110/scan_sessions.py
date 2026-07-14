@@ -90,7 +90,10 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     s = slugify(folder_name)
     if s in catalog_slugs:
         return [s]
-    parts = re.split(r"\s+", folder_name)
+    # Collapse spaced designations before splitting ("M 97 M 108" → "M97 M108") so a
+    # combined folder resolves to its members whichever way the designations are typed.
+    # Safe: a single spaced designation ("NGC 3628") already returned above.
+    parts = re.split(r"\s+", re.sub(r"([A-Za-z]+)\s+(\d)", r"\1\2", folder_name))
     out = []
     for p in parts:
         ps = slugify(p)
@@ -108,18 +111,30 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
 
 
 def load_catalog_slugs() -> set[str]:
+    """Slugs a capture folder may map to: the user's Library **plus** the bundled
+    reference.
+
+    Including the reference is load-bearing for multi-object folders (#40c): a
+    combined capture like "M81 M82" must split into `m81` + `m82` — both real
+    catalog objects — so the pair's integration credits *both*. Against the Library
+    alone, a fresh store maps it to nothing, which is what let it get promoted into
+    a synthetic `m81-m82` "object" that then shadowed the split forever.
+    """
+    slugs: set[str] = set()
     cat_path = config.LIBRARY_TOML
-    if not cat_path.exists():
-        print(f"warning: {cat_path} not found; slug mapping skipped",
+    if cat_path.exists():
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # type: ignore
+        with cat_path.open("rb") as f:
+            slugs |= set(tomllib.load(f).get("catalog", {}).keys())
+    else:
+        print(f"warning: {cat_path} not found; Library slugs skipped",
               file=sys.stderr)
-        return set()
-    try:
-        import tomllib
-    except ImportError:
-        import tomli as tomllib  # type: ignore
-    with cat_path.open("rb") as f:
-        data = tomllib.load(f)
-    return set(data.get("catalog", {}).keys())
+    from .catalog import load_reference        # local: avoids an import cycle
+    slugs |= set(load_reference())
+    return slugs
 
 
 def scan() -> list[dict]:
