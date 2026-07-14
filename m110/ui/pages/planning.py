@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt, QThread, QDate, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QComboBox,
     QTableWidget, QTableWidgetItem, QMenu, QFrame, QPushButton, QDoubleSpinBox,
-    QApplication, QDateEdit, QInputDialog, QMessageBox,
+    QApplication, QDateEdit, QInputDialog, QMessageBox, QSpinBox,
 )
 
 from m110 import catalog, pins, prioritize
@@ -74,7 +74,9 @@ class PlanningPage(QScrollArea):
         self._planner = None
         self._entries = []            # ordered night_track entries of the current plan
         self._included = set()        # slugs currently checked into the plan
-        self._plan_meta = {}          # {window, moon} of the current plan
+        self._slots = []              # the sequenced schedule (Phase 4)
+        self._excluded = set()        # slugs the user removed from the sequence
+        self._plan_meta = {}          # {window, moon, ceiling, day} of the current plan
         self._strategy = prioritize.load_strategy()
         self._weights = prioritize.load_weights()
 
@@ -191,6 +193,13 @@ class PlanningPage(QScrollArea):
         # Jul-13 plan be relabelled (and saved) as Jul 18 (BUGS #36 root cause).
         self._date.dateChanged.connect(self._invalidate_plan)
         row.addWidget(self._date)
+        row.addWidget(QLabel("Targets:"))
+        self._count = QSpinBox()                       # how many slots (#42, default 4)
+        self._count.setRange(1, 20)
+        self._count.setValue(4)
+        self._count.setToolTip("How many targets to sequence across the night.")
+        self._count.valueChanged.connect(self._on_count_changed)
+        row.addWidget(self._count)
         gen = QPushButton("Generate plan")
         gen.clicked.connect(self._on_generate)
         row.addWidget(gen)
@@ -222,7 +231,7 @@ class PlanningPage(QScrollArea):
 
         self._plan_table = QTableWidget(0, 6)
         self._plan_table.setHorizontalHeaderLabels(
-            ["Include", "Object", "Start", "Alt", "Up-window", "Moon"])
+            ["Include", "Object", "Start", "Duration", "Alt", "Moon"])
         self._plan_table.verticalHeader().setVisible(False)
         self._plan_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._plan_table.setSelectionMode(QTableWidget.SingleSelection)
@@ -243,6 +252,8 @@ class PlanningPage(QScrollArea):
             return
         self._entries = []
         self._included = set()
+        self._slots = []
+        self._excluded = set()
         self._plan_meta = {}
         self._plan_status.setText("Night changed — generate the plan again.")
         self._render_plan()
@@ -260,6 +271,14 @@ class PlanningPage(QScrollArea):
         scores = {r["slug"]: r["score"] for r in ranked}
         filters = {r["slug"]: prioritize.filter_for_type(r.get("type", ""))
                    for r in ranked}
+        # Deep-stack remaining minutes per target — caps a slot's duration when the
+        # target reaches deep-stack status sooner than the even split (#40 step 1).
+        from m110.build_derived import deep_threshold
+        deep_remaining = {c.slug: max(0.0, deep_threshold(c.obj_type) - c.integration_min)
+                          for c in contexts}
+        self._seq_args = {"scores": scores, "filters": filters,
+                          "deep_remaining": deep_remaining}
+        self._excluded = set()
         qd = self._date.date()
         day = date(qd.year(), qd.month(), qd.day())
         self._planner_day = day        # the day this plan is FOR (not the widget's later state)
@@ -275,6 +294,7 @@ class PlanningPage(QScrollArea):
             self._plan_status.setText("No astronomical darkness for that night here.")
             self._entries = []
             self._included = set()
+            self._slots = []
             self._render_plan()
             return
         self._entries = list(plan["entries"])
@@ -282,10 +302,32 @@ class PlanningPage(QScrollArea):
         # `day` rides with the plan: the field-guide save must stamp the night the
         # astronomy was computed for, never the date widget's current value.
         self._plan_meta = {"window": plan["window"], "moon": plan["moon"],
+                           "start_ceiling_deg": plan.get("start_ceiling_deg"),
+                           "ceiling_is_hard": plan.get("ceiling_is_hard", True),
                            "day": getattr(self, "_planner_day", None)}
-        n = len(self._entries)
-        self._plan_status.setText(f"{n} target(s) up." if n else "Nothing up that night.")
+        self._resequence()
+        n = len(self._slots)
+        self._plan_status.setText(
+            f"{n} target(s) scheduled ({len(self._entries)} up)." if n
+            else "Nothing up that night.")
         self._render_plan()
+
+    def _on_count_changed(self, _n: int):
+        if self._entries and self._plan_meta:          # live re-sequence (no astropy)
+            self._excluded = set()
+            self._resequence()
+            self._render_plan()
+
+    def _resequence(self, forced_order=None):
+        """(Re)build the night schedule from the current plan — auto priority order,
+        or the user's forced order after a manual move/exclusion."""
+        from m110 import planning
+        args = getattr(self, "_seq_args", {}) or {}
+        excluded = getattr(self, "_excluded", set())
+        plan = {**self._plan_meta,
+                "entries": [e for e in self._entries if e["slug"] not in excluded]}
+        self._slots = planning.sequence_plan(
+            plan, count=self._count.value(), forced_order=forced_order, **args)
 
     def _render_plan(self):
         from datetime import datetime
@@ -309,47 +351,87 @@ class PlanningPage(QScrollArea):
             lib = catalog.load_library()
         except Exception:
             lib = {}
-        self._plan_table.blockSignals(True)
-        self._plan_table.setRowCount(len(self._entries))
-        for r, e in enumerate(self._entries):
-            slug = e["slug"]
+
+        def obj_name(slug):
             entry = lib.get(slug) or catalog.load_reference().get(slug) or {}
-            name = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
-            chk = QTableWidgetItem()
-            chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            chk.setCheckState(Qt.Checked if slug in self._included else Qt.Unchecked)
-            chk.setData(Qt.UserRole, slug)
-            self._plan_table.setItem(r, 0, chk)
-            self._plan_table.setItem(r, 1, QTableWidgetItem(name))
-            st, sa = fieldguide.start_cells(e)      # startable slot, not transit (#37)
-            start_item = QTableWidgetItem(st)
-            start_item.setToolTip("Best startable time under the device's "
-                                  "start-altitude ceiling — the capture may climb "
-                                  "past the ceiling once running.")
-            self._plan_table.setItem(r, 2, start_item)
-            self._plan_table.setItem(r, 3, QTableWidgetItem(sa))
-            self._plan_table.setItem(r, 4, QTableWidgetItem(
-                f"{hm(e['up_start'])}–{hm(e['up_end'])}"))
-            mcell = QTableWidgetItem(fieldguide.moon_cell(e))
-            mcell.setToolTip("Separation from the moon at this target's best time, "
-                             "with its impact (illumination × proximity; narrowband "
-                             "LP is largely immune). \"—\" = moon below the horizon "
-                             "then — no impact.")
-            self._plan_table.setItem(r, 5, mcell)
+            return catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
+
+        def moon_item(row):
+            it = QTableWidgetItem(fieldguide.moon_cell(row))
+            it.setToolTip("Separation from the moon at this slot's start, with its "
+                          "impact (illumination × proximity; narrowband LP is "
+                          "largely immune). \"—\" = moon below the horizon then — "
+                          "no impact.")
+            return it
+
+        self._plan_table.blockSignals(True)
+        if self._slots:
+            # The sequenced schedule (#40–41): one row per slot, contiguous starts.
+            self._plan_table.setRowCount(len(self._slots))
+            for r, s in enumerate(self._slots):
+                chk = QTableWidgetItem()
+                chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled
+                             | Qt.ItemIsSelectable)
+                chk.setCheckState(Qt.Checked)
+                chk.setData(Qt.UserRole, s["slug"])
+                self._plan_table.setItem(r, 0, chk)
+                self._plan_table.setItem(r, 1, QTableWidgetItem(obj_name(s["slug"])))
+                start_item = QTableWidgetItem(hm(s["start"]))
+                start_item.setToolTip("Slot start (10-minute aligned; under the "
+                                      "device's start-altitude ceiling — the capture "
+                                      "may climb past it once running).")
+                self._plan_table.setItem(r, 2, start_item)
+                self._plan_table.setItem(r, 3, QTableWidgetItem(
+                    f"{s['duration_min']} min"))
+                flag = "^" if s.get("over_ceiling") else ""
+                self._plan_table.setItem(r, 4, QTableWidgetItem(
+                    f"{s['alt_start']:.0f}°{flag}"))
+                self._plan_table.setItem(r, 5, moon_item(s))
+        else:
+            # No sequence (pre-Phase-4 state / nothing schedulable): per-target rows.
+            self._plan_table.setRowCount(len(self._entries))
+            for r, e in enumerate(self._entries):
+                slug = e["slug"]
+                chk = QTableWidgetItem()
+                chk.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled
+                             | Qt.ItemIsSelectable)
+                chk.setCheckState(Qt.Checked if slug in self._included
+                                  else Qt.Unchecked)
+                chk.setData(Qt.UserRole, slug)
+                self._plan_table.setItem(r, 0, chk)
+                self._plan_table.setItem(r, 1, QTableWidgetItem(obj_name(slug)))
+                st, sa = fieldguide.start_cells(e)   # startable slot, not transit (#37)
+                self._plan_table.setItem(r, 2, QTableWidgetItem(st))
+                self._plan_table.setItem(r, 3, QTableWidgetItem(
+                    f"{hm(e['up_start'])}–{hm(e['up_end'])}"))
+                self._plan_table.setItem(r, 4, QTableWidgetItem(sa))
+                self._plan_table.setItem(r, 5, moon_item(e))
         self._plan_table.blockSignals(False)
         self._plan_table.resizeColumnsToContents()
         fit_table_height(self._plan_table, max_rows=15)
-        self._set_plan_controls_enabled(bool(self._entries))
+        self._set_plan_controls_enabled(bool(self._slots or self._entries))
         self._refresh_timeline()
 
     def _refresh_timeline(self):
-        included = [e for e in self._entries if e["slug"] in self._included]
-        self._timeline.set_plan({**self._plan_meta, "entries": included})
+        if self._slots:
+            keep = {s["slug"] for s in self._slots}
+            shown = [e for e in self._entries if e["slug"] in keep]
+        else:
+            shown = [e for e in self._entries if e["slug"] in self._included]
+        self._timeline.set_plan({**self._plan_meta, "entries": shown})
 
     def _on_include_toggled(self, item):
         if item.column() != 0:
             return
         slug = item.data(Qt.UserRole)
+        if self._slots:
+            if item.checkState() != Qt.Checked:
+                # Removing a slot excludes the target and reflows the sequence —
+                # a replacement target may take its place (regenerate to reset).
+                self._excluded.add(slug)
+                self._resequence()
+                self._render_plan()
+            return
         if item.checkState() == Qt.Checked:
             self._included.add(slug)
         else:
@@ -358,6 +440,17 @@ class PlanningPage(QScrollArea):
 
     def _move_selected(self, delta: int):
         r = self._plan_table.currentRow()
+        if self._slots:
+            if r < 0 or not (0 <= r + delta < len(self._slots)):
+                return
+            order = [s["slug"] for s in self._slots]
+            order[r], order[r + delta] = order[r + delta], order[r]
+            # Reflow with the user's order: starts re-chain from dusk, durations
+            # and moon impact recompute for the new slot times.
+            self._resequence(forced_order=order)
+            self._render_plan()
+            self._plan_table.selectRow(r + delta)
+            return
         if r < 0 or not (0 <= r + delta < len(self._entries)):
             return
         self._entries[r], self._entries[r + delta] = \
@@ -372,7 +465,11 @@ class PlanningPage(QScrollArea):
             self.open_object.emit(slug)
 
     def _save_field_guide(self):
-        included = [e for e in self._entries if e["slug"] in self._included]
+        if self._slots:
+            keep = {s["slug"] for s in self._slots}
+            included = [e for e in self._entries if e["slug"] in keep]
+        else:
+            included = [e for e in self._entries if e["slug"] in self._included]
         if not included:
             QMessageBox.information(self, "Save field guide",
                                    "Include at least one target first.")
@@ -389,7 +486,7 @@ class PlanningPage(QScrollArea):
         if not ok or not title.strip():
             return
         from m110 import fieldguide
-        plan = {**self._plan_meta, "entries": included}
+        plan = {**self._plan_meta, "entries": included, "schedule": self._slots}
         md = fieldguide.render_markdown(pc.load_active_site(), day, plan, title=title.strip())
         path = fieldguide.save(day, title.strip(), md)
         self._plan_status.setText(f"Saved: {path.name}")

@@ -218,26 +218,25 @@ Legend: `[ ]` open · `[~]` partially done
   urgency×completion coupling, combined-frame captures).*
 *Session-planner items (#40–44) are phased in [`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md).*
 
-- [ ] **#40 — Non-overlapping, 10-min-aligned sequence** *(→ PLANNING_ROADMAP Phase 4).*
-  Object sessions **cannot overlap**; the Seestar SSC tool requires start/end times on
-  **10-minute increments**. Replace the current overlapping "best times" with a real
-  sequence. **General logic (v1):**
-  1. Highest-priority object visible right at astronomical dark = object 1. Desired
-     duration = astro-dark span ÷ target count, unless it reaches deep-stack status
-     with a shorter duration.
-  2. Highest-priority object visible at the end of object 1's capture = object 2.
-  3. …at the end of object 2's capture = object 3, and so on.
-  4. If two equal-priority objects are visible for a window, pick the one closer to
-     **setting**; sequence the other afterward.
-  Later versions improve the logic (e.g. grouping objects by sky region).
-- [ ] **#41 — Schedule output format** *(→ PLANNING_ROADMAP Phase 4.2).* Output is a
-  sequence schedule; each target row = object name, altitude at start, start time,
-  duration, filter, **moon impact** (with a plain-language explanation of what that
-  means — see #36). Object 2 start = object 1 start + duration (don't model
-  slew/focus time).
-- [ ] **#42 — Target-count control** *(→ PLANNING_ROADMAP Phase 4.1).* Way too many
-  targets proposed (8, overlapping). Add a user selection for **how many targets** —
-  arbitrary up to the number of visible targets, **default 4**.
+- [x] **#40 — Non-overlapping, 10-min-aligned sequence** *(PLANNING_ROADMAP Phase 4,
+  `feature/session-planner`.)* `planning.sequence_plan` — pure/deterministic (tested on
+  synthetic plan dicts, no astropy) — implements the v1 logic verbatim: object 1 = the
+  highest-priority target startable right at astronomical dark (clear + under the #37
+  ceiling); duration = dark-span ÷ count on 10-min ticks, shortened when the target reaches
+  **deep-stack** sooner or its own up-window ends; object N+1 starts at object N's end;
+  near-equal scores (2-dp quantum) → the target **closer to setting** first. Gaps advance
+  tick-by-tick until something rises. (Grouping by sky region stays a later version.)
+- [x] **#41 — Schedule output format** *(shipped with #40.)* The field guide renders a
+  `## Schedule` table — object name, start, duration, altitude at start (`^` when a soft
+  ceiling let it start high), filter, **moon impact re-evaluated at each slot's start**
+  with the #36 plain-language footnote. Object 2 start = object 1 end; no slew/focus
+  modelling. Season labels were dropped from the Notes beside dated recommendations
+  (review §5e / Phase 4.3).
+- [x] **#42 — Target-count control** *(shipped with #40.)* A **Targets** spinbox on the
+  plan row (default **4**, range 1–20); changing it re-sequences the cached plan
+  instantly (no astropy recompute). The plan table shows the sequenced slots; move
+  up/down **reflows** with the forced order, unchecking a row **excludes** the target
+  and reflows (a replacement may take the slot; regenerate resets).
 - [ ] **#43 — Date-picker broken** *(→ PLANNING_ROADMAP Phase 5).* Date selection is
   broken: most calendar days are labeled with ellipses, and the selected date renders
   greyed-out.

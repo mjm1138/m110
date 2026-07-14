@@ -451,4 +451,153 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
 
     if order == "auto":
         entries.sort(key=lambda e: (e["up_end"], -scores.get(e["slug"], 0.0)))
-    return {"window": (dusk, dawn), "moon": moon, "entries": entries}
+    ceiling = device.start_alt_ceiling_deg
+    if ceiling is not None:
+        ceiling -= START_CEILING_MARGIN_DEG
+    return {"window": (dusk, dawn), "moon": moon, "entries": entries,
+            # Effective (margin-applied) start ceiling — the sequencer needs the
+            # per-tick startability test, not just night_track's single pick.
+            "start_ceiling_deg": ceiling, "ceiling_is_hard": device.ceiling_is_hard}
+
+
+# ── night sequencer (Phase 4 / BUGS #40–42) ──────────────────────────────────
+
+def _ceil_tick(t: datetime, tick_min: int) -> datetime:
+    """Round up to the next wall-clock multiple of ``tick_min`` (Seestar plan
+    slots must sit on 10-minute increments)."""
+    t = t.replace(second=0, microsecond=0)
+    over = t.minute % tick_min
+    return t if not over else t + timedelta(minutes=tick_min - over)
+
+
+def _floor_tick(t: datetime, tick_min: int) -> datetime:
+    t = t.replace(second=0, microsecond=0)
+    return t - timedelta(minutes=t.minute % tick_min)
+
+
+def _sample_at(entry: dict, t: datetime, tick_min: int = 10):
+    """The track sample nearest ``t``: ``(alt, clear)``. Samples are on a 10-min
+    grid anchored at dusk and ticks on wall-clock 10s, so a real match is ≤5 min
+    away — anything farther means the track has **no data at t** (e.g. the target
+    hasn't risen yet) and must not read as startable."""
+    samples = entry.get("samples") or []
+    if not samples:
+        return None, False
+    s = min(samples, key=lambda s: abs((s[0] - t).total_seconds()))
+    if abs((s[0] - t).total_seconds()) > tick_min * 60 * 0.6:
+        return None, False
+    return s[1], s[2]
+
+
+def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
+                  filters: dict | None = None, deep_remaining: dict | None = None,
+                  tick_min: int = 10, forced_order: list | None = None) -> list[dict]:
+    """Turn ``plan_night`` output into a **non-overlapping schedule** (Phase 4 /
+    BUGS #40–42): ``[{slug, start, end, duration_min, alt_start, filter,
+    moon_sep_deg, moon_impact, over_ceiling}, …]``.
+
+    The BUGS #40 v1 logic, deterministic and pure (no astropy — testable with
+    synthetic plan dicts):
+
+    1. Object 1 = the highest-priority target **startable right at astronomical
+       dark** (clear at that tick, under the start ceiling, and with at least one
+       tick of window left). Base duration = dark span ÷ ``count`` (10-min floor),
+       shortened when the target reaches **deep-stack** status sooner
+       (``deep_remaining[slug]`` minutes) or when its own up-window ends.
+    2. Object N+1 = the highest-priority target startable at object N's end — no
+       overlap, no slew/focus modelling.
+    3. Near-equal priority (scores quantized to 2 dp) → the one **closer to
+       setting** (earlier ``up_end``) goes first.
+
+    Every start/end sits on a wall-clock ``tick_min`` boundary. A **hard** ceiling
+    excludes over-ceiling ticks outright; a **soft** one allows them flagged
+    ``over_ceiling`` (rendered ``^``). Moon impact is re-evaluated **at each
+    slot's start** from the plan's moon track. ``forced_order`` (slugs) replaces
+    the priority selection — the UI's manual reorder/exclude reflow."""
+    dusk, dawn = plan.get("window") or (None, None)
+    entries = [e for e in (plan.get("entries") or []) if e.get("up_start")]
+    if not dusk or not dawn or not entries:
+        return []
+    scores = scores or {}
+    filters = filters or {}
+    deep_remaining = deep_remaining or {}
+    ceiling = plan.get("start_ceiling_deg")
+    hard = plan.get("ceiling_is_hard", True)
+    moon = plan.get("moon") or {}
+    track = moon.get("track") or []
+    illum = moon.get("illum")
+
+    def moon_alt_at(t):
+        if not track:
+            return None
+        return min(track, key=lambda s: abs((s[0] - t).total_seconds()))[1]
+
+    t0, t_end = _ceil_tick(dusk, tick_min), _floor_tick(dawn, tick_min)
+    span = (t_end - t0).total_seconds() / 60.0
+    if span < tick_min:
+        return []
+    n = max(1, int(count))
+    base = max(tick_min, int(span / n // tick_min) * tick_min)
+
+    by_slug = {e["slug"]: e for e in entries}
+    if forced_order is not None:
+        queue = [s for s in forced_order if s in by_slug]
+    else:
+        # priority order, ties (2-dp quantum) to the target setting soonest (#40.4)
+        queue = [e["slug"] for e in sorted(
+            entries, key=lambda e: (-round(scores.get(e["slug"], 0.0), 2),
+                                    e["up_end"], e["slug"]))]
+
+    def startable(e, t):
+        if (e["up_end"] - t).total_seconds() / 60.0 < tick_min:
+            return None                              # window over (or nearly)
+        alt, clear = _sample_at(e, t, tick_min)
+        if alt is None or not clear:
+            return None
+        over = ceiling is not None and alt > ceiling
+        if over and hard:
+            return None
+        return alt, over
+
+    slots, used, t = [], set(), t0
+    while len(slots) < n and (t_end - t).total_seconds() / 60.0 >= tick_min:
+        pick = None
+        for slug in queue:
+            if slug in used:
+                continue
+            st = startable(by_slug[slug], t)
+            if st is not None:
+                pick = (slug, *st)
+                break
+        if pick is None:
+            t += timedelta(minutes=tick_min)          # gap — nothing startable yet
+            continue
+        slug, alt, over = pick
+        e = by_slug[slug]
+        dur = base
+        rem = deep_remaining.get(slug)
+        if rem is not None and rem > 0:               # deep-stack sooner → shorter slot
+            dur = min(dur, int(-(-rem // tick_min)) * tick_min)
+        dur = min(dur,                                 # …its own window / dawn
+                  int((e["up_end"] - t).total_seconds() / 60.0 // tick_min) * tick_min,
+                  int((t_end - t).total_seconds() / 60.0 // tick_min) * tick_min)
+        if dur < tick_min:
+            used.add(slug)
+            continue
+        malt = moon_alt_at(t)
+        slots.append({
+            "slug": slug,
+            "start": t,
+            "end": t + timedelta(minutes=dur),
+            "duration_min": dur,
+            "alt_start": alt,
+            "filter": filters.get(slug),
+            "moon_sep_deg": e.get("moon_sep_deg"),
+            "moon_alt_at_best": malt,                 # at THIS slot's start
+            "moon_impact": moon_impact(illum, malt, e.get("moon_sep_deg", 0.0),
+                                       filters.get(slug)),
+            "over_ceiling": over,
+        })
+        used.add(slug)
+        t += timedelta(minutes=dur)
+    return slots

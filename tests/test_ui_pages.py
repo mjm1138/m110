@@ -1277,16 +1277,21 @@ def test_planning_plan_a_night_and_save_and_view(tmp_path, monkeypatch, qapp):
            "nights_to_close": 20, "season": "summer"}
     prioritize.write_contexts([TargetContext("m13", "globular", 30, True, obs),
                                TargetContext("m81", "galaxy", 0, True, obs)])
+    from datetime import timedelta
     t0 = datetime(2026, 7, 13, 22, 30)
     t1 = datetime(2026, 7, 14, 3, 30)
 
     def fake_plan(site, day, slugs, **kw):
+        n = int((t1 - t0).total_seconds() / 60 / 10) + 1
+        samples = [(t0 + timedelta(minutes=10 * i), 50.0, True) for i in range(n)]
         return {"window": (t0, datetime(2026, 7, 14, 3, 50)),
-                "moon": {"illum": 0.1, "alt": -17.0},
-                "entries": [{"slug": s, "transit_time": t0, "transit_alt": 80.0,
-                             "best_alt": 80.0, "up_start": t0, "up_end": t1,
-                             "moon_sep_deg": 70.0,
-                             "samples": [(t0, 80.0, True), (t1, 40.0, True)]}
+                "moon": {"illum": 0.1, "alt": -17.0, "set_time": None,
+                         "rise_time": None, "track": []},
+                "start_ceiling_deg": 75.0, "ceiling_is_hard": True,
+                "entries": [{"slug": s, "transit_time": t0, "transit_alt": 50.0,
+                             "best_alt": 50.0, "start_time": t0, "start_alt": 50.0,
+                             "over_ceiling": False, "up_start": t0, "up_end": t1,
+                             "moon_sep_deg": 70.0, "samples": samples}
                             for s in slugs[:2]]}
     monkeypatch.setattr(planning, "plan_night", fake_plan)
 
@@ -1299,26 +1304,32 @@ def test_planning_plan_a_night_and_save_and_view(tmp_path, monkeypatch, qapp):
             page._planner.wait()
             qapp.processEvents()
         assert len(page._entries) == 2
+        # the sequencer schedules both (count=4, only 2 candidates), chained slots
         assert page._plan_table.rowCount() == 2
+        assert len(page._slots) == 2
+        assert page._slots[1]["start"] == page._slots[0]["end"]
+        assert page._slots[0]["start"].minute % 10 == 0
         assert "Astro dark" in page._plan_summary.text()
 
-        # uncheck one target → drops from the included set + timeline
-        page._plan_table.item(0, 0).setCheckState(Qt.Unchecked)
-        assert len(page._included) == 1
-
-        # reorder: move row 1 up
+        # reorder: move row 1 up → forced-order reflow, starts re-chain from dusk
         page._plan_table.selectRow(1)
-        first_before = page._entries[0]["slug"]
+        first_before = page._slots[0]["slug"]
         page._move_selected(-1)
-        assert page._entries[1]["slug"] == first_before
+        assert page._slots[1]["slug"] == first_before
+        assert page._slots[0]["start"].minute % 10 == 0
 
-        # save a field guide (only the 1 included target)
+        # uncheck the first slot → excluded + reflowed (no replacement available)
+        page._plan_table.item(0, 0).setCheckState(Qt.Unchecked)
+        assert len(page._slots) == 1
+
+        # save a field guide (the remaining scheduled target)
         from PySide6.QtWidgets import QInputDialog
         monkeypatch.setattr(QInputDialog, "getText",
                             staticmethod(lambda *a, **k: ("My Plan", True)))
         page._save_field_guide()
         guides = fieldguide.list_guides()
         assert len(guides) == 1
+        assert "## Schedule (1 targets)" in fieldguide.read(guides[0]["path"])
         assert page._guides_table.rowCount() == 1
 
         # the viewer dialog renders the saved markdown

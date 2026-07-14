@@ -152,7 +152,31 @@ get a rising- or setting-side slot.
 
 ---
 
-## Phase 4 — Real session sequence, not overlapping "best times"  *(Session Planner bullets)*
+## Phase 4 — Real session sequence, not overlapping "best times"  *(BUGS #40–42)* ✅ **landed** (`feature/session-planner`)
+
+> **Shipped:** `planning.sequence_plan` — a pure, deterministic sequencer (no astropy;
+> tested on synthetic plan dicts) implementing the #40 v1 logic exactly: object 1 =
+> highest-priority target **startable at astronomical dark** (clear + under the Phase-3
+> ceiling), object N+1 starts at object N's end, near-equal scores (2-dp quantum) go to
+> the target **closer to setting**. Duration = dark-span ÷ count (10-min floor), capped
+> by **deep-stack remaining minutes** and the target's own up-window; all starts/ends on
+> wall-clock 10-minute ticks; gaps advance tick-by-tick until something rises. Moon
+> impact is re-evaluated **at each slot's start** from the Phase-2 track. Hard ceiling
+> skips over-ceiling ticks; soft ceiling allows them flagged `^`.
+>
+> **UI (4.1):** a **Targets** spinbox (default 4, live re-sequence on change); the plan
+> table renders the schedule (Object · Start · Duration · Alt · Moon); **move up/down
+> reflows** the sequence with the forced order (starts re-chain from dusk), **uncheck
+> excludes** the target and reflows (a replacement may take the slot). The field guide
+> renders a `## Schedule` table (#41 row format: name, start, duration, altitude at
+> start, filter, moon impact + the Phase-2 explanation footnote).
+>
+> **4.3 shipped too:** season labels are no longer printed beside dated
+> recommendations (the guide's Notes now carry only the user's remarks).
+>
+> **Live Jul-18 run** (real store scores): M107 22:30 ×70 min → M25 23:40 ×40 → M18
+> 00:20 ×20 → M52 00:40 ×80 — contiguous ✓ 10-min ✓ ceiling ✓ (M25/M18's short slots
+> are their deep-stack-remaining caps working as specced).
 
 Turn the tonight shortlist into a schedule a user can actually run.
 
@@ -179,7 +203,7 @@ share 03:00). Replace with a **sequence**:
 - **Acceptance:** the field guide renders a contiguous, non-overlapping,
   10-min-aligned schedule; every row respects the start-ceiling from Phase 3.
 
-### 4.3 — Suppress contradictory season decoration
+### 4.3 — Suppress contradictory season decoration ✅ *(shipped with 4.2)*
 Season labels ("Aug–Oct" shown next to a Jul 18 recommendation) are decorative and
 read as contradictory. Suppress or reframe next to a live recommendation.
 
@@ -190,10 +214,12 @@ read as contradictory. Suppress or reframe next to a live recommendation.
 Blocking usability bugs in the Planning pane's date picker.
 - **Date selection broken:** most calendar days are labeled with ellipses; the
   selected date renders greyed-out. Fix the date picker so a date can be chosen and
-  reads as selected.
-- Wire the target-count control (Phase 4.1) into the "Plan a night" section.
-- Surface per-slot moon (Phase 2) and startable-window (Phase 3) in the planner table
-  + the `NightTimeline` chart.
+  reads as selected. *(BUGS #43 — the remaining open item of this phase.)*
+- ~~Wire the target-count control (Phase 4.1) into the "Plan a night" section.~~ ✅
+  done in Phase 4 (the Targets spinbox lives on the plan row, live re-sequence).
+- Surface per-slot moon (Phase 2) and startable-window (Phase 3) in the
+  `NightTimeline` chart *(the table already shows both — the chart overlay is the
+  nice-to-have remainder)*.
 
 ---
 

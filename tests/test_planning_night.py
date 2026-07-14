@@ -156,3 +156,122 @@ def test_high_transit_target_gets_startable_slot():
     plan = planning.plan_night(_SITE, day, ["m29"])
     e = plan["entries"][0]
     assert e["start_alt"] <= 75.0 and e["start_time"] is not None
+
+
+# ── night sequencer (Phase 4 / BUGS #40–42) ──────────────────────────────────
+
+def _entry(slug, up_start, up_end, alt=50.0, sep=90.0, step=10):
+    """Synthetic night_track entry: clear at `alt` across [up_start, up_end]."""
+    n = int((up_end - up_start).total_seconds() / 60 / step) + 1
+    samples = [(up_start + timedelta(minutes=step * i), alt, True) for i in range(n)]
+    return {"slug": slug, "up_start": up_start, "up_end": up_end,
+            "moon_sep_deg": sep, "samples": samples,
+            "transit_time": up_start, "transit_alt": alt, "best_alt": alt,
+            "start_time": up_start, "start_alt": alt, "over_ceiling": False}
+
+
+from datetime import timedelta
+
+
+def _synthetic_plan(entries, dusk=None, dawn=None, ceiling=75.0, hard=True,
+                    moon_track=None, illum=0.3):
+    dusk = dusk or datetime(2026, 7, 18, 22, 25)
+    dawn = dawn or datetime(2026, 7, 19, 3, 55)
+    return {"window": (dusk, dawn), "entries": entries,
+            "start_ceiling_deg": ceiling, "ceiling_is_hard": hard,
+            "moon": {"illum": illum, "alt": 5.0, "set_time": None,
+                     "rise_time": None, "track": moon_track or []}}
+
+
+def test_sequence_non_overlapping_ticked_and_chained():
+    """#40/#41 core: default 4 slots, 10-min aligned, object N+1 starts at N's end."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    d1 = datetime(2026, 7, 19, 3, 55)
+    entries = [_entry(f"t{i}", d0, d1) for i in range(6)]
+    plan = _synthetic_plan(entries)
+    slots = planning.sequence_plan(plan, scores={f"t{i}": 10 - i for i in range(6)})
+    assert len(slots) == 4                              # default count
+    assert slots[0]["start"] == datetime(2026, 7, 18, 22, 30)   # dusk 22:25 → 22:30
+    for s in slots:
+        assert s["start"].minute % 10 == 0 and s["duration_min"] % 10 == 0
+    for a, b in zip(slots, slots[1:]):
+        assert b["start"] == a["end"]                   # contiguous, non-overlapping
+    assert [s["slug"] for s in slots] == ["t0", "t1", "t2", "t3"]   # priority order
+    assert slots[-1]["end"] <= datetime(2026, 7, 19, 3, 50)
+
+
+def test_sequence_tie_goes_to_the_setter():
+    """#40.4: equal priority in a window → the one closer to setting goes first."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    early = _entry("sets-early", d0, datetime(2026, 7, 19, 0, 30))
+    late = _entry("sets-late", d0, datetime(2026, 7, 19, 3, 55))
+    plan = _synthetic_plan([late, early])
+    slots = planning.sequence_plan(plan, count=2,
+                                   scores={"sets-early": 5.0, "sets-late": 5.0})
+    assert [s["slug"] for s in slots] == ["sets-early", "sets-late"]
+
+
+def test_sequence_deep_remaining_caps_duration():
+    """#40.1: a target that reaches deep-stack sooner gets a shorter slot; the next
+    object starts at its (earlier) end."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    d1 = datetime(2026, 7, 19, 3, 55)
+    plan = _synthetic_plan([_entry("nearly-deep", d0, d1), _entry("new", d0, d1)])
+    slots = planning.sequence_plan(plan, count=2,
+                                   scores={"nearly-deep": 9, "new": 1},
+                                   deep_remaining={"nearly-deep": 35.0, "new": 240.0})
+    assert slots[0]["slug"] == "nearly-deep"
+    assert slots[0]["duration_min"] == 40               # 35 min → next 10-min tick
+    assert slots[1]["start"] == slots[0]["end"]
+
+
+def test_sequence_waits_for_a_startable_target():
+    """Nothing startable right at dark → the schedule starts when something rises."""
+    dusk = datetime(2026, 7, 18, 22, 25)
+    dawn = datetime(2026, 7, 19, 3, 55)
+    rises = _entry("later", datetime(2026, 7, 19, 0, 5), dawn)
+    plan = _synthetic_plan([rises])
+    slots = planning.sequence_plan(plan, count=1, scores={"later": 5.0})
+    assert slots and slots[0]["start"] >= datetime(2026, 7, 19, 0, 0)
+
+
+def test_sequence_hard_ceiling_skips_over_ceiling_ticks():
+    """A target above a hard ceiling at dark isn't chosen until it descends; a soft
+    ceiling allows it flagged ^."""
+    dusk = datetime(2026, 7, 18, 22, 25)
+    dawn = datetime(2026, 7, 19, 3, 55)
+    n = int((dawn - dusk).total_seconds() / 60 / 10) + 1
+    # high early (80°), descends below the 75° ceiling from 00:05 on
+    samples = [(dusk + timedelta(minutes=10 * i),
+                80.0 if (dusk + timedelta(minutes=10 * i)) < datetime(2026, 7, 19, 0, 5)
+                else 70.0, True) for i in range(n)]
+    high = {"slug": "high", "up_start": dusk, "up_end": dawn, "moon_sep_deg": 90.0,
+            "samples": samples, "transit_time": dusk, "transit_alt": 80.0,
+            "best_alt": 80.0, "start_time": dusk, "start_alt": 70.0,
+            "over_ceiling": False}
+    hard_slots = planning.sequence_plan(_synthetic_plan([high], hard=True),
+                                        count=1, scores={"high": 5.0})
+    assert hard_slots[0]["start"] >= datetime(2026, 7, 19, 0, 0)
+    assert hard_slots[0]["alt_start"] <= 75.0 and not hard_slots[0]["over_ceiling"]
+    soft_slots = planning.sequence_plan(_synthetic_plan([high], hard=False),
+                                        count=1, scores={"high": 5.0})
+    assert soft_slots[0]["start"] == datetime(2026, 7, 18, 22, 30)
+    assert soft_slots[0]["over_ceiling"] is True
+
+
+def test_sequence_forced_order_and_moon_at_slot():
+    """forced_order (the UI's manual reorder) wins over scores; moon impact is
+    evaluated at each slot's start from the track."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    d1 = datetime(2026, 7, 19, 3, 55)
+    entries = [_entry("a", d0, d1, sep=30.0), _entry("b", d0, d1, sep=30.0)]
+    # moon up until 23:05, then down
+    track = [(d0 + timedelta(minutes=10 * i),
+              5.0 if (d0 + timedelta(minutes=10 * i)) < datetime(2026, 7, 18, 23, 5)
+              else -10.0) for i in range(34)]
+    plan = _synthetic_plan(entries, moon_track=track, illum=0.9)
+    slots = planning.sequence_plan(plan, count=2, scores={"a": 1.0, "b": 9.0},
+                                   forced_order=["a", "b"])
+    assert [s["slug"] for s in slots] == ["a", "b"]     # forced, not score order
+    assert slots[0]["moon_impact"] in ("low", "medium", "high")   # moon up at 22:30
+    assert slots[1]["moon_impact"] is None              # moon set before slot 2

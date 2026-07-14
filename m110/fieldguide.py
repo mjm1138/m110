@@ -95,48 +95,71 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
         lines.append(f"**Moon:** {moon_headline(moon)}  ")
     lines.append("")
 
-    if not entries:
+    schedule = plan.get("schedule") or []
+    if not entries and not schedule:
         lines.append("_No targets are up tonight from this site._")
         return "\n".join(lines) + "\n"
 
-    lines.append(f"## Targets ({len(entries)}) — in shooting order")
-    lines.append("")
-    lines.append("| # | Object | Start | Alt | Up-window | Moon | Filter |")
-    lines.append("|---|--------|-------|-----|-----------|------|--------|")
-    for i, e in enumerate(entries, 1):
-        slug = e["slug"]
+    def obj_name(slug):
         entry = lib.get(slug) or ref.get(slug) or {}
-        name = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
-        filt = prioritize.filter_for_type(entry.get("type", ""))
-        win = f"{_hm(e['up_start'])}–{_hm(e['up_end'])}"
-        st, sa = start_cells(e)
-        lines.append(f"| {i} | {name} | {st} | {sa} | {win} | {moon_cell(e)} | {filt} |")
-    lines.append("")
+        return catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
+
+    if schedule:
+        # The sequenced schedule (Phase 4 / #40–41): contiguous, non-overlapping,
+        # 10-min-aligned slots — object N+1 starts when object N ends.
+        lines.append(f"## Schedule ({len(schedule)} targets)")
+        lines.append("")
+        lines.append("| # | Object | Start | Duration | Alt | Filter | Moon |")
+        lines.append("|---|--------|-------|----------|-----|--------|------|")
+        for i, s in enumerate(schedule, 1):
+            flag = "^" if s.get("over_ceiling") else ""
+            filt = s.get("filter") or prioritize.filter_for_type(
+                (lib.get(s["slug"]) or ref.get(s["slug"]) or {}).get("type", ""))
+            lines.append(f"| {i} | {obj_name(s['slug'])} | {_hm(s['start'])} | "
+                         f"{s['duration_min']} min | {s['alt_start']:.0f}°{flag} | "
+                         f"{filt} | {moon_cell(s)} |")
+        lines.append("")
+        seq_entries = [e for e in entries
+                       if e["slug"] in {s["slug"] for s in schedule}] or entries
+    else:
+        lines.append(f"## Targets ({len(entries)}) — in shooting order")
+        lines.append("")
+        lines.append("| # | Object | Start | Alt | Up-window | Moon | Filter |")
+        lines.append("|---|--------|-------|-----|-----------|------|--------|")
+        for i, e in enumerate(entries, 1):
+            filt = prioritize.filter_for_type(
+                (lib.get(e["slug"]) or ref.get(e["slug"]) or {}).get("type", ""))
+            win = f"{_hm(e['up_start'])}–{_hm(e['up_end'])}"
+            st, sa = start_cells(e)
+            lines.append(f"| {i} | {obj_name(e['slug'])} | {st} | {sa} | {win} | "
+                         f"{moon_cell(e)} | {filt} |")
+        lines.append("")
+        seq_entries = entries
+    rows = schedule or entries
     notes = []
-    if any((e.get("moon_alt_at_best") or 0) > 0 for e in entries):
+    if any((r.get("moon_alt_at_best") or 0) > 0 for r in rows):
         notes.append("**Moon** = separation from the moon at the target's start, "
                      "with its impact (illumination × proximity; narrowband LP is "
                      "largely immune); \"—\" = the moon is below the horizon then — "
                      "no impact.")
     notes.append("**Start** = the best startable time under the device's "
                  "start-altitude ceiling (a capture may climb past it once running).")
-    if any(e.get("over_ceiling") for e in entries):
+    if any(r.get("over_ceiling") for r in rows):
         notes.append("**^** = starts above the ceiling (no lower slot was clear) — "
                      "expect field rotation near the zenith.")
     lines.append(f"<sub>{' '.join(notes)}</sub>")
     lines.append("")
 
-    # Per-target notes (season + the library `notes`/remarks), when present.
+    # Per-target remarks (the library `notes` field), when present. Season labels
+    # are intentionally NOT shown here — a season window printed beside a concrete
+    # dated recommendation reads as contradictory (review §5e / Phase 4.3).
     detail = []
-    for e in entries:
+    for e in seq_entries:
         slug = e["slug"]
         entry = lib.get(slug) or ref.get(slug) or {}
         note = (entry.get("notes") or "").strip()
-        season = entry.get("season") or ""
-        if note or season:
-            name = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
-            bits = " · ".join(x for x in (f"season {season}" if season else "", note) if x)
-            detail.append(f"- **{name}** — {bits}")
+        if note:
+            detail.append(f"- **{obj_name(slug)}** — {note}")
     if detail:
         lines.append("## Notes")
         lines.append("")
