@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m110"
-version = "0.1.0b2"
+version = "0.1.0b3"
 description = "Library / tracker / processing-prep desktop app for smart-telescope deep-sky workflows (PySide6 GUI over a headless Python engine)."
 readme = "README.md"
 requires-python = ">=3.11"
