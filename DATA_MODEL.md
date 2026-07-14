@@ -118,7 +118,7 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     derived/                        generated rollups: totals/summary/processing/
                                     priorities/images.json
     renders/                        generated thumbnails + hero/<slug>.jpg
-    .store_version                  layout version stamp (= 3)
+    .store_version                  layout version stamp (= 4)
 ```
 
 App-bundled **reference data** (ships in the package, not in the store):
@@ -158,7 +158,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh |
 | Rollups | `.m110_internal_data/derived/*.json` | JSON | `build_derived` (totals/summary/processing/priorities), `build_images` (images) | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh (`processing.json` stamps `generated_at` and is intentionally not byte-stable) |
 | Renders cache | `.m110_internal_data/renders/` | JPG/PNG | `build_images` (content-hash cached: mtime+size+ver) | **Derived** | Regenerable | Safe to delete; **orphans should be pruned** (open #14) |
-| Store version | `.m110_internal_data/.store_version` | text (`3`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
+| Store version | `.m110_internal_data/.store_version` | text (`4`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
 | Bundled catalog/priorities/coords | `m110/seed/` | TOML/CSV | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
 | Guidance playbooks | `m110/guidance/*.md` | Markdown | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
 
@@ -232,7 +232,7 @@ realizes the "checksum manifest of raws for integrity verification" noted under
 
 ## Versioning & migration
 
-`.store_version` (currently **3**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`.)
+`.store_version` (currently **4**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`; **v3→v4** purges capture targets that were wrongly promoted into the object axis — synthetic pseudo-objects like `m81-m82` from a combined `M81 M82` folder, see `migrate._prune_combined_target_objects` and #40c.)
 `config.ensure_data_root()` runs `migrate.migrate_store()` on launch. Migrations
 are **idempotent, version-stamped, same-filesystem renames, resume-safe, and never
 destructive**. **Rule:** any change to the on-disk layout or file formats bumps the

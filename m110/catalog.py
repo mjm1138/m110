@@ -698,40 +698,53 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
     objects, so they appear in the Library/Summary views, get an object page +
     journal, and are clickable (not just folder-derived rows).
 
-    A capture folder is uncatalogued if `folder_to_slugs` maps it to nothing.
-    If the folder's slug is a known bundled-reference object (a catalog member the
-    user just captured), the full reference entry is pulled in; otherwise a minimal
-    entry (id = folder name, type "unknown"), best-effort enriched with Simbad
-    coords (→ pointing support). Idempotent + additive: never touches an existing
-    entry. Returns the slugs added.
+    A capture folder maps to the **catalog objects it contains** (`folder_to_slugs`
+    against the Library + bundled reference): "M81" → m81, and a *combined* "M81 M82"
+    → m81 + m82. Each mapped member missing from the Library is added from the
+    reference — so a combined capture promotes **both** objects (#40c). Only a folder
+    that maps to *no* catalog object (a genuinely off-catalog target) becomes an
+    object in its own right: a minimal entry (id = folder name, type "unknown"),
+    best-effort enriched with Simbad coords (→ pointing support).
+
+    A capture **target** is never itself promoted into the object axis — that's the
+    Images/ axis, and doing so created a synthetic `m81-m82` pseudo-object that then
+    shadowed the folder→slug split (the M81/M82 under-count). Idempotent + additive:
+    never touches an existing entry. Returns the slugs added.
     """
     from . import scan_sessions  # local import: avoids any import cycle
     path = config.LIBRARY_TOML
     if not path.is_file() or not config.IMAGES_DIR.is_dir():
         return []
     cat = load_library()
-    existing = set(cat)
     ref = load_reference()
+    known = set(cat) | set(ref)      # the object universe a folder may resolve into
 
     new: dict[str, dict] = {}
     for d in sorted(p for p in config.IMAGES_DIR.iterdir() if p.is_dir()):
         if not ((d / "lights").is_dir() or (d / "seestar-stacks").is_dir()):
             continue                                  # not a capture target
         folder = d.name
-        if scan_sessions.folder_to_slugs(folder, existing):
-            continue                                  # already maps to the catalog
+        members = scan_sessions.folder_to_slugs(folder, known)
+        if members:
+            # Known catalog object(s) — ensure each is in the Library, with its
+            # full reference metadata. A combined folder promotes every member.
+            for m in members:
+                if m in cat or m in new or m not in ref:
+                    continue
+                entry = dict(ref[m])
+                entry.setdefault("id", m.upper())
+                new[m] = entry
+            continue
+        # Off-catalog target: no catalog object to credit, so the target doubles
+        # as its own object.
         slug = scan_sessions.slugify(folder)
         if not slug or slug in cat or slug in new:
             continue
-        if slug in ref:                               # known catalog object
-            entry = dict(ref[slug])
-            entry.setdefault("id", folder)
-        else:
-            entry = {"id": folder, "name": "", "type": "unknown"}
-            if resolve_coords:
-                rd = _simbad_coords(folder)
-                if rd:
-                    entry["ra_deg"], entry["dec_deg"] = rd
+        entry = {"id": folder, "name": "", "type": "unknown"}
+        if resolve_coords:
+            rd = _simbad_coords(folder)
+            if rd:
+                entry["ra_deg"], entry["dec_deg"] = rd
         new[slug] = entry
 
     if new:

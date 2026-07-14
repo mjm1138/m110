@@ -139,6 +139,29 @@ def test_migrate_v2_to_v3_renames_catalog_to_library(tmp_path):
     assert migrate.migrate_store(root) is True
     assert (internal / "library.toml").read_text() == '[catalog.m31]\nid = "M31"\n'
     assert not (internal / "catalog.toml").exists()
-    assert (internal / ".store_version").read_text().strip() == "3"
+    assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
+    # idempotent
+    assert migrate.migrate_store(root) is False
+
+
+def test_migrate_v3_to_v4_prunes_combined_target_objects(tmp_path):
+    """v3 → v4: a capture target wrongly promoted into the object axis (`m81-m82`,
+    type "unknown", id "M81 M82") is dropped from the Library; real catalog objects
+    and genuinely off-catalog targets are kept (#40c)."""
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    (internal / "library.toml").write_text(
+        '[catalog.m81]\nid = "M81"\ntype = "galaxy"\n\n'
+        '[catalog.m81-m82]\nid = "M81 M82"\nname = ""\ntype = "unknown"\n\n'
+        '[catalog.ngc-1234]\nid = "NGC 1234"\nname = ""\ntype = "unknown"\n')
+    (internal / ".store_version").write_text("3")
+
+    assert migrate.migrate_store(root) is True
+    text = (internal / "library.toml").read_text()
+    assert "[catalog.m81-m82]" not in text        # the pseudo-object is gone
+    assert "[catalog.m81]" in text                # a real object stays
+    assert "[catalog.ngc-1234]" in text           # an off-catalog target stays
+    assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
     # idempotent
     assert migrate.migrate_store(root) is False

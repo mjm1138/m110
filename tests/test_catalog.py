@@ -161,3 +161,52 @@ def test_load_library_still_raises_on_real_toml_error(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(catalog.LibraryParseError):
         catalog.load_library()
+
+
+# ── #40c: a capture target is not a catalog object ───────────────────────────
+
+def test_combined_capture_promotes_members_not_a_pseudo_object(tmp_path, monkeypatch):
+    """A multi-object capture folder ("M81 M82") must promote **both** catalog
+    objects and never itself become an object. Promoting the target created a
+    synthetic `m81-m82` (type "unknown") that then shadowed the folder→slug split,
+    so the pair's integration never credited M81/M82 (#40c)."""
+    lib = tmp_path / "library.toml"
+    monkeypatch.setattr(config, "LIBRARY_TOML", lib)
+    config._seed_library(lib)                            # empty Library
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    monkeypatch.setattr(catalog, "_simbad_coords", lambda name: None)
+
+    (config.IMAGES_DIR / "M81 M82" / "lights").mkdir(parents=True)   # combined target
+    (config.IMAGES_DIR / "M82" / "lights").mkdir(parents=True)       # solo target too
+
+    added = sorted(catalog.add_captured_objects())
+    assert added == ["m81", "m82"]                       # both members promoted…
+    c = catalog.load_library()
+    assert "m81-m82" not in c                            # …and no pseudo-object
+    assert c["m81"]["type"] == "galaxy" and c["m82"]["type"] == "galaxy"
+
+
+def test_combined_folder_splits_into_member_slugs(tmp_path, monkeypatch):
+    """folder_to_slugs resolves a combined folder against Library ∪ reference, so a
+    combined capture credits both objects even before they're in the Library."""
+    from m110 import scan_sessions
+    lib = tmp_path / "library.toml"
+    monkeypatch.setattr(config, "LIBRARY_TOML", lib)
+    config._seed_library(lib)                            # empty Library
+    slugs = scan_sessions.load_catalog_slugs()
+    assert scan_sessions.folder_to_slugs("M81 M82", slugs) == ["m81", "m82"]
+    assert scan_sessions.folder_to_slugs("M81", slugs) == ["m81"]
+
+
+def test_combined_split_is_not_shadowed_by_a_pseudo_object():
+    """The 2+-member split must win over the whole-slug match, so a combined
+    pseudo-object reintroduced into the Library (hand edit, or a partial restore of
+    a pre-v4 backup under a v4 stamp, where migrate won't re-run) can't resurrect
+    the under-count. Self-healing rather than order-dependent (#40c)."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    poisoned = ref | {"m81-m82", "m108-m97"}
+    assert scan_sessions.folder_to_slugs("M81 M82", poisoned) == ["m81", "m82"]
+    assert scan_sessions.folder_to_slugs("M108 M97", poisoned) == ["m108", "m97"]
+    # a single object still resolves whole (not split)
+    assert scan_sessions.folder_to_slugs("NGC 3628", poisoned) == ["ngc-3628"]

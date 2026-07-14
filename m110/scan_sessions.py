@@ -87,15 +87,21 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     Suffix forms like "M42_mosaic" → ["m42"].
     NGC3628 → ["ngc-3628"] via space-before-digit fallback.
     """
+    # A folder naming 2+ catalog objects is a *combined capture target* and must
+    # ALWAYS split into its members — checked before the whole-slug match below,
+    # which would otherwise return a combined pseudo-object slug ("m81-m82") the
+    # moment one exists in the Library, silently under-counting the pair (#40c).
+    # Order matters: this is what makes the fix self-healing rather than dependent
+    # on the Library never containing such an entry.
+    # Spaced designations are collapsed first ("M 97 M 108" → "M97 M108") so the
+    # split works whichever way the designations are typed.
+    parts = re.split(r"\s+", re.sub(r"([A-Za-z]+)\s+(\d)", r"\1\2", folder_name))
+    out = [ps for ps in (slugify(p) for p in parts) if ps in catalog_slugs]
+    if len(out) >= 2:
+        return out
     s = slugify(folder_name)
     if s in catalog_slugs:
         return [s]
-    parts = re.split(r"\s+", folder_name)
-    out = []
-    for p in parts:
-        ps = slugify(p)
-        if ps in catalog_slugs:
-            out.append(ps)
     if out:
         return out
     s2 = slugify(re.sub(r"([A-Za-z]+)(\d)", r"\1 \2", folder_name))
@@ -108,18 +114,30 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
 
 
 def load_catalog_slugs() -> set[str]:
+    """Slugs a capture folder may map to: the user's Library **plus** the bundled
+    reference.
+
+    Including the reference is load-bearing for multi-object folders (#40c): a
+    combined capture like "M81 M82" must split into `m81` + `m82` — both real
+    catalog objects — so the pair's integration credits *both*. Against the Library
+    alone, a fresh store maps it to nothing, which is what let it get promoted into
+    a synthetic `m81-m82` "object" that then shadowed the split forever.
+    """
+    slugs: set[str] = set()
     cat_path = config.LIBRARY_TOML
-    if not cat_path.exists():
-        print(f"warning: {cat_path} not found; slug mapping skipped",
+    if cat_path.exists():
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # type: ignore
+        with cat_path.open("rb") as f:
+            slugs |= set(tomllib.load(f).get("catalog", {}).keys())
+    else:
+        print(f"warning: {cat_path} not found; Library slugs skipped",
               file=sys.stderr)
-        return set()
-    try:
-        import tomllib
-    except ImportError:
-        import tomli as tomllib  # type: ignore
-    with cat_path.open("rb") as f:
-        data = tomllib.load(f)
-    return set(data.get("catalog", {}).keys())
+    from .catalog import load_reference        # local: avoids an import cycle
+    slugs |= set(load_reference())
+    return slugs
 
 
 def scan() -> list[dict]:

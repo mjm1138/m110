@@ -1,5 +1,9 @@
 """Processing page — the Siril queue, grouped by status, with stack metadata.
-Mirrors the site's Processing page. Object rows double-click to the Catalog detail."""
+
+One row = one capture **target** (an `Images/<target>/` folder = one stack to process),
+*not* one catalog object — a combined "M81 M82" target covers two objects, and a solo
+"M81" target is a separate, equally legitimate row. Double-click opens the Catalog
+detail for the target's first object."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize, Signal
@@ -21,7 +25,10 @@ _GROUPS = [
     ("not_processed", "Not processed — first stack needed"),
     ("dismissed", "Dismissed"),
 ]
-_COLS = ["Object", "Raw integ", "In stack", "Rejected", "+ new", "Latest stack",
+# "Target" (not "Object"): a row is a capture **target** (an Images/<target> folder =
+# one stack to process), which may cover several catalog objects ("M81 M82"). Labelling
+# it "Object" made solo captures alongside a combined one read as duplicate objects.
+_COLS = ["Target", "Raw integ", "In stack", "Rejected", "+ new", "Latest stack",
          "Last capture", "Notes"]
 
 

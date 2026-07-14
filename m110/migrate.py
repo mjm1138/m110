@@ -2,7 +2,7 @@
 
 The store originally mixed machine state and content across `data/`, `Images/`
 (with jargon subfolders `FITS` / `Seestar_stacks` / `Finished Images` /
-`From the scope`), and `site/`. The current layout (store version 3) is:
+`From the scope`), and `site/`. The current layout (store version 4) is:
 
     Objects/<catalog id>/journal.md          (catalog-object axis)
     Images/<target>/{lights,stacks,seestar-stacks,finished}/
@@ -13,7 +13,9 @@ The store originally mixed machine state and content across `data/`, `Images/`
 `migrate_store()` is **idempotent** and **version-stamped**: it runs whenever the
 store hasn't reached the current version — an old-layout marker triggers the v0→v2
 two-axis reshape, and later version bumps run regardless (v2→v3 renames the
-per-store `catalog.toml` → `library.toml`). Moves use same-filesystem renames
+per-store `catalog.toml` → `library.toml`; v3→v4 purges capture targets that were
+wrongly promoted into the object axis — see `_prune_combined_target_objects`).
+Moves use same-filesystem renames
 (cheap); a re-run resumes a partial move rather than duplicating or destroying
 anything. Qt-free, and only ever exercised on temp/throwaway roots in tests —
 never pointed at a live root in validation.
@@ -23,7 +25,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-STORE_VERSION = 3
+STORE_VERSION = 4
 INTERNAL_DIRNAME = ".m110_internal_data"
 VERSION_FILE = ".store_version"
 
@@ -143,9 +145,70 @@ def migrate_store(root) -> bool:
     if cat.is_file() and not lib.is_file():
         cat.rename(lib)
         changed = True
-    if changed and internal.is_dir():
+    # v3 → v4: purge capture targets that were wrongly promoted into the object axis.
+    if _prune_combined_target_objects(root):
+        changed = True
+    if internal.is_dir():
         (internal / VERSION_FILE).write_text(str(STORE_VERSION), encoding="utf-8")
     return changed
+
+
+def _prune_combined_target_objects(root: Path) -> bool:
+    """v3 → v4: drop synthetic "combined capture target" objects from the Library.
+
+    A multi-object capture folder ("M81 M82") was wrongly promoted into the
+    catalog-object axis as a pseudo-object (slug `m81-m82`, type "unknown"), which
+    then shadowed the folder→slug split so the pair's integration never credited
+    M81/M82 (#40c). Capture targets belong to the Images/ axis only. Non-destructive:
+    the `Objects/<id>/` journal folder is left alone. Returns True if any were removed.
+    """
+    lib_path = root / INTERNAL_DIRNAME / "library.toml"
+    if not lib_path.is_file():
+        return False
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore
+    try:
+        with lib_path.open("rb") as f:
+            cat = tomllib.load(f).get("catalog", {})
+    except Exception:
+        return False
+    if not cat:
+        return False
+    from .catalog import load_reference          # local: config imports migrate
+    from .scan_sessions import folder_to_slugs
+    ref = set(load_reference())
+    if not ref:
+        return False
+    doomed = []
+    for slug, e in cat.items():
+        if slug in ref:
+            continue                              # a real catalog object
+        if (e.get("type") or "unknown") != "unknown":
+            continue                              # user gave it a real type — keep
+        # Its id is a folder name; if that folder names 2+ catalog objects it's a
+        # combined capture target, not an object.
+        if len(folder_to_slugs(str(e.get("id") or slug), ref)) >= 2:
+            doomed.append(slug)
+    if not doomed:
+        return False
+    _remove_library_blocks(lib_path, doomed)
+    return True
+
+
+def _remove_library_blocks(path: Path, slugs) -> None:
+    """Strip whole `[catalog.<slug>]` blocks from library.toml, leaving the rest of
+    the file (comments, ordering, formatting) verbatim."""
+    targets = {f"[catalog.{s}]" for s in slugs}
+    out, skipping = [], False
+    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        st = line.strip()
+        if st.startswith("[") and st.endswith("]"):
+            skipping = st in targets
+        if not skipping:
+            out.append(line)
+    path.write_text("".join(out), encoding="utf-8")
 
 
 def _reshape_v0_to_v2(root: Path) -> None:
