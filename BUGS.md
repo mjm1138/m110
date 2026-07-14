@@ -294,8 +294,8 @@ Legend: `[ ]` open · `[~]` partially done
   "not processed / new". #39 fixed only the prioritizer; extending the family rollup into
   `build_totals`/`build_processing` (a combined folder subsumes its members' solo folders)
   would collapse the queue + Library to one target family. Needs a rule for how a solo folder
-  folds into a combined one. **Data note:** the live store also shows an apparent duplicate
-  `M81 M82` folder (whitespace/unicode) worth cleaning up separately.
+  folds into a combined one. *(Superseded in framing by #40c — see there: the queue showing one
+  row per capture **target** is correct; the real defect is upstream.)*
 
 ## Publishing  *(→ ROADMAP item 8)*
 
