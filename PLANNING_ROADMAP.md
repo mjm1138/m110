@@ -123,20 +123,32 @@ narrowband reads near-immune under a bright moon.
 
 ---
 
-## Phase 3 — Apply device + tonight constraints to slot selection  *(BUGS #37, review §5c)*
+## Phase 3 — Apply device + tonight constraints to slot selection  *(BUGS #37, review §5c)* ✅ **landed** (`feature/session-planner`)
 
-The ranker knows a target is up; the planner must pick a **startable** time.
+> **Per-device ceiling research (2026-07-14)** — the ceiling is a **typed,
+> per-device profile field**, not one constant:
+>
+> | Device | Ceiling | Kind | Evidence |
+> |---|---|---|---|
+> | Seestar S50 | 78° (plan ~75° with margin) | **hard** app start-refusal | Own empirical (M94 rejected @~78°, 2026-04-29); [unofficial wiki](https://unofficialseestar.wiki/doku.php?id=faqs): "won't shoot above 85°", streaking from ~70° |
+> | Seestar S30 / S30 Pro | 78° | **hard** *(assumed — the check lives in the shared Seestar app; no model-specific number documented; UNVERIFIED)* | [ZWO forum](https://bbs.zwoastro.com/d/26239-coordinated-seestar-s30-pro-capture) "limits programmed to avoid flipping over" |
+> | Dwarf 3 / Dwarf Mini (alt-az) | ~80° | **soft** quality guideline (field rotation), **no firmware refusal found** | [DwarfLab docs](https://help.dwarflab.com/en/docs/Trouble-Shooting-Guide-For-DWARF-3-Users) silent; [Cloudy Nights](https://www.cloudynights.com/forums/topic/976142-dwarf-3-rotation-axis-limits-problem/) user tracking @82°; [Belan's Dwarf planning guide](https://martinbelan.com/2026/06/23/how-to-plan-dwarf-3-and-dwarf-mini-astrophotography-sessions-in-stellarium/) gives no ceiling |
+> | Any device, EQ mode | field rotation gone → soft ceiling n/a; Seestar hard check in EQ **undocumented** — stays hard until falsified | | |
+>
+> **Shipped:** `planning_config.Device` gained `ceiling_is_hard` + `DEVICE_PRESETS`
+> (the table above as data). `planning.pick_start` (pure, sky.py's `^` semantics)
+> picks the highest **clear** sample at/below the ceiling — a rising- or setting-side
+> slot, never the over-ceiling transit; hard ceiling with nothing startable → no
+> start ("—"), soft ceiling falls back with an `over_ceiling` flag (rendered `^`).
+> `night_track`/`plan_night` take a `device` (default: the store profile); proposed
+> starts sit `START_CEILING_MARGIN_DEG` (3°) under the refusal threshold — the
+> "~75° practical" rule. The field guide + Planning table now show **Start**
+> (startable slot + altitude) instead of transit, and the **moon annotation anchors
+> to the start slot**. Live Jul-18 check: M29 88°→02:55@74.9°, M39 81.7°→01:35@75.0°,
+> Sh2-112 84.3°→03:05@74.7°, Sh2-115 82.9°→00:35@74.9°.
 
-### 3.1 — Start-altitude ceiling (~75–78°)
-The Seestar app rejects captures whose target is above ~78° at the **start**
-(empirically ~75° practical). The 2026-07-18 plan put 4/8 targets over the ceiling
-(M29 88°, Sh2-112 84°, Sh2-115 83°, M39 82°).
-- Pick a start on the rising side below ~75°, **or** after the target descends back
-  through ~75°. Never propose "best time = transit" for a high-declination target.
-- Logic already exists in Astronomy `scripts/sky.py` (the `^` over-ceiling flag) —
-  port it; the device ceiling lives in the device profile, not hardcoded.
-- **Acceptance:** no proposed start is over the ceiling; high-dec targets get a
-  rising- or setting-side slot.
+Original acceptance (met): no proposed start is over the ceiling; high-dec targets
+get a rising- or setting-side slot.
 
 ---
 

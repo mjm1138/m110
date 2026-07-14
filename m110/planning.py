@@ -44,6 +44,12 @@ SAMPLES = 13
 # Filters that punch through light pollution → use the softer narrowband glow floor.
 _NARROWBAND_FILTERS = {"ON", "LP"}
 
+# Planning margin under the device's start-refusal ceiling: the Seestar app's
+# threshold reads tighter than nominal (M94 was rejected at ~78° against the
+# advertised 80°), so proposed starts stay a few degrees below the profile value —
+# the Astronomy "plan with ~75° practical" rule.
+START_CEILING_MARGIN_DEG = 3.0
+
 
 # ── coordinate / season helpers ──────────────────────────────────────────────
 
@@ -112,6 +118,34 @@ def twilight(year: int, month: int, day: int, site: Site, step_min: int = 5):
                 dawn = after[i + 1]
                 break
     return dusk, dawn
+
+
+def pick_start(samples, ceiling, hard: bool):
+    """The best **startable** moment from a night track (Phase 3 / BUGS #37):
+    ``(start_time, start_alt, over_ceiling)``.
+
+    ``samples`` = ``[(time, alt, clear), …]``. The Seestar app rejects a capture
+    whose target is above the ceiling at the slot's **start** (start-only — it may
+    ride through zenith once running), so the pick is the highest *clear* sample at
+    or below the ceiling — i.e. a rising- or setting-side slot for a high-transit
+    target, never the over-ceiling transit itself.
+
+    A **hard** ceiling with no startable sample → ``(None, None, True)`` (the
+    device would refuse every start). A **soft** ceiling (Dwarf alt-az: quality
+    guideline, not a firmware refusal) falls back to the best clear sample with
+    ``over_ceiling=True`` so the consumer can annotate. Pure — no astropy."""
+    clear = [(t, a) for t, a, c in samples if c]
+    if not clear:
+        return None, None, False
+    startable = ([(t, a) for t, a in clear if a <= ceiling]
+                 if ceiling is not None else clear)
+    if startable:
+        t, a = max(startable, key=lambda x: x[1])
+        return t, a, False
+    if hard:
+        return None, None, True
+    t, a = max(clear, key=lambda x: x[1])
+    return t, a, True
 
 
 def moon_impact(illum, moon_alt, sep_deg, filter: str | None = None) -> str | None:
@@ -274,16 +308,20 @@ def _contiguous_up(samples, min_alt, physical, glow):
 
 def night_track(target, day: date, site: Site, *, filter: str | None = None,
                 min_alt: float = SEASON_MIN_ALT, step_min: int = 10,
-                window=None) -> dict | None:
+                window=None, device=None) -> dict | None:
     """A target's track across tonight's astro-dark window (for the planner + the
     timeline chart). Returns ``None`` when the target can't be resolved or there's no
     astronomical darkness; otherwise::
 
-        {slug, transit_time, transit_alt, best_alt, up_start, up_end, moon_sep_deg,
+        {slug, transit_time, transit_alt, best_alt, start_time, start_alt,
+         over_ceiling, up_start, up_end, moon_sep_deg,
          samples: [(local_time, alt, clear_bool)]}
 
     ``up_start``/``up_end`` is the longest contiguous stretch above ``min_alt`` and
-    the (filter-aware) horizon+glow floor; ``transit_time`` is the arg-max altitude;
+    the (filter-aware) horizon+glow floor; ``transit_time`` is the arg-max altitude
+    (astronomy truth), while ``start_time``/``start_alt`` is the recommended
+    **startable** slot under the device's start-altitude ceiling (:func:`pick_start`
+    — Phase 3 / BUGS #37; ``device`` defaults to the store's device profile);
     ``moon_sep_deg`` is the angular separation from the moon at transit."""
     from astropy.coordinates import AltAz, SkyCoord, get_body
     from astropy.time import Time
@@ -323,21 +361,33 @@ def night_track(target, day: date, site: Site, *, filter: str | None = None,
     def clear(alt, az):
         return alt > min_alt and not horizon.is_below_floor(az, alt, physical, glow)
 
+    if device is None:
+        device = planning_config.load_device()
+    out_samples = [(t, round(a, 1), clear(a, z)) for t, a, z in samples]
+    ceiling = device.start_alt_ceiling_deg
+    if ceiling is not None:
+        ceiling -= START_CEILING_MARGIN_DEG     # plan under the refusal threshold
+    start_time, start_alt, over_ceiling = pick_start(
+        out_samples, ceiling, device.ceiling_is_hard)
+
     return {
         "slug": str(target) if not isinstance(target, (tuple, list)) else "",
         "transit_time": transit_time,
         "transit_alt": round(alts[ti], 1),
         "best_alt": round(max(alts), 1),
+        "start_time": start_time,
+        "start_alt": start_alt,
+        "over_ceiling": over_ceiling,
         "up_start": up_start,
         "up_end": up_end,
         "moon_sep_deg": round(moon_sep, 1),
-        "samples": [(t, round(a, 1), clear(a, z)) for t, a, z in samples],
+        "samples": out_samples,
     }
 
 
 def plan_night(site: Site, day: date, targets, *, order: str = "auto",
                scores: dict | None = None, filters: dict | None = None,
-               step_min: int = 10) -> dict:
+               step_min: int = 10, device=None) -> dict:
     """Build tonight's plan for ``targets`` (slugs). Returns
     ``{window: (dusk, dawn), moon: {…}, entries: [night_track, …]}``.
 
@@ -350,8 +400,11 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
                 track: [(local_time, alt), …]}
 
     and every entry is annotated with ``moon_alt_at_best`` (the moon's altitude at
-    that target's best time) + ``moon_impact`` (via :func:`moon_impact`, using the
-    target's filter) — so consumers can gate the separation column on moon-up.
+    that target's proposed slot) + ``moon_impact`` (via :func:`moon_impact`, using
+    the target's filter) — so consumers can gate the separation column on moon-up.
+    ``device`` (default: the store's device profile) supplies the start-altitude
+    ceiling; each entry carries ``start_time``/``start_alt``/``over_ceiling`` from
+    :func:`pick_start`.
 
     Only targets that are actually **up** tonight (a real ``up_start``) are kept.
     ``order="auto"`` sorts by ``up_end`` ascending — **the target setting soonest
@@ -360,6 +413,8 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
     the glow floor is filter-aware per target)."""
     scores = scores or {}
     filters = filters or {}
+    if device is None:
+        device = planning_config.load_device()
     dusk, dawn = twilight(day.year, day.month, day.day, site)
     moon = {"illum": None, "alt": None, "set_time": None, "rise_time": None,
             "track": []}
@@ -382,11 +437,13 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
     if dusk and dawn:
         for slug in targets:
             tr = night_track(slug, day, site, filter=filters.get(slug),
-                             step_min=step_min, window=(dusk, dawn))
+                             step_min=step_min, window=(dusk, dawn), device=device)
             if tr and tr["up_start"] is not None:
-                # Moon state at this target's best time (nearest grid sample).
+                # Moon state at this target's proposed slot (its startable start
+                # when the ceiling picked one, else transit) — nearest grid sample.
+                anchor = tr["start_time"] or tr["transit_time"]
                 bi = min(range(len(times)),
-                         key=lambda i: abs((times[i] - tr["transit_time"]).total_seconds()))
+                         key=lambda i: abs((times[i] - anchor).total_seconds()))
                 tr["moon_alt_at_best"] = round(malts[bi], 1)
                 tr["moon_impact"] = moon_impact(moon["illum"], malts[bi],
                                                 tr["moon_sep_deg"], filters.get(slug))

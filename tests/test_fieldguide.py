@@ -122,3 +122,19 @@ def test_render_markdown_moon_gating(tmp_path, monkeypatch):
     assert "| 44° · low |" in md          # moon-up slot: separation + impact
     assert "| — |" in md                  # moon-down slot: gated
     assert "below the horizon" in md      # the explanation footnote
+
+
+def test_start_cells_ceiling_states():
+    dt = datetime(2026, 7, 18, 23, 40)
+    # startable slot under the ceiling
+    assert fieldguide.start_cells({"start_time": dt, "start_alt": 74.0,
+                                   "over_ceiling": False}) == ("23:40", "74°")
+    # soft-ceiling fallback carries the ^ flag
+    assert fieldguide.start_cells({"start_time": dt, "start_alt": 85.0,
+                                   "over_ceiling": True}) == ("23:40", "85°^")
+    # hard ceiling with no startable moment
+    assert fieldguide.start_cells({"start_time": None, "start_alt": None,
+                                   "over_ceiling": True}) == ("—", "—")
+    # pre-Phase-3 plan dict falls back to transit
+    assert fieldguide.start_cells({"transit_time": dt, "transit_alt": 88.0}) \
+        == ("23:40", "88°")

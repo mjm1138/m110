@@ -275,11 +275,17 @@ Legend: `[ ]` open · `[~]` partially done
   footnote/tooltip. Regression tests pin the Jul 13 (new moon, down all night) and Jul 18
   (crescent, sets 22–23h) nights + the exact save-desync flow. This is the correctness half of the #193 ask to
   *explain* moon impact.
-- [ ] **#37 — Start-altitude ceiling (~78°) ignored in slot selection.** The `2026-07-18` plan
-  put 4/8 targets at best-time altitudes over the ceiling (M29 88°, Sh2-112 84°, Sh2-115 83°,
-  M39 82°) — the Seestar app rejects captures that *start* above ~78°. Pick a start on the
-  rising side below ~75°, or after the target descends back through ~75°. The logic already
-  exists in Astronomy `scripts/sky.py` (the `^` over-ceiling flag).
+- [x] **#37 — Start-altitude ceiling ignored in slot selection.** *(PLANNING_ROADMAP Phase 3,
+  `feature/session-planner`.)* The 2026-07-18 plan put 4/8 targets at over-ceiling best times
+  (M29 88°, Sh2-112 84°, Sh2-115 83°, M39 82°). Shipped as a **typed per-device ceiling**
+  (2026-07-14 research, table + sources in PLANNING_ROADMAP Phase 3): Seestar S50/S30/S30 Pro =
+  **hard** 78° app start-refusal (S30/S30 Pro assumed from the shared app — unverified);
+  Dwarf 3/Mini alt-az = **soft** ~80° quality guideline (no firmware refusal found).
+  `planning_config.DEVICE_PRESETS` carries the data; `planning.pick_start` (pure; sky.py's `^`
+  semantics) proposes the highest clear sample at/below ceiling−3° margin (the ~75° practical
+  rule) — rising- or setting-side, never the transit; soft-ceiling fallback renders `^`. Field
+  guide + Planning table show **Start** instead of transit; moon impact anchors to the start
+  slot. Live Jul-18: M29 88°→02:55@74.9°, M39→01:35@75.0°, Sh2-112→03:05@74.7°, Sh2-115→00:35@74.9°.
 - [x] **#38 — Feasibility / worthiness gate.** *(PLANNING_ROADMAP Phase 1.3,
   `feature/session-planner`.)* No new stored fields were needed: the reference already **types**
   the oddities (M40 = `double_star`, M73 = `asterism` — the type is the non-DSO flag), and mean

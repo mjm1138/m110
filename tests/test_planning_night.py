@@ -84,14 +84,75 @@ def test_plan_night_moon_sets_during_window():
     crescent, up at dusk (~+5°), setting ~23:00 (prioritizer-review §5a). The old
     header claimed '0% lit, down at dusk (−17°)'."""
     day = date(2026, 7, 18)
-    plan = planning.plan_night(_SITE, day, ["m13"])
+    plan = planning.plan_night(_SITE, day, ["m107"])
     moon = plan["moon"]
     assert 0.20 <= moon["illum"] <= 0.32                 # crescent, not 0%
     assert 2.0 <= moon["alt"] <= 10.0                    # up at dusk, ~+5°
     assert moon["set_time"] is not None                  # sets inside the window…
     assert moon["set_time"].hour in (22, 23)             # …around 23:00 local
     assert moon["rise_time"] is None
-    # M13's best time is right at dusk (it transits before dark) → moon still up.
+    # M107 (transit 36°, under the ceiling) starts right at dusk → moon still up,
+    # and the impact annotation follows the proposed START slot (Phase 3).
     e = plan["entries"][0]
+    assert e["start_time"] == plan["window"][0]
     assert e["moon_alt_at_best"] > 0
     assert e["moon_impact"] in ("none", "low", "medium", "high")
+
+
+# ── start-altitude ceiling (Phase 3 / BUGS #37) ──────────────────────────────
+
+def _mk(hh, mm, alt, clear=True):
+    return (datetime(2026, 7, 18, hh, mm), alt, clear)
+
+
+def test_pick_start_prefers_highest_startable():
+    samples = [_mk(22, 0, 60), _mk(23, 0, 75), _mk(0, 0, 85), _mk(1, 0, 74)]
+    t, a, over = planning.pick_start(samples, 78.0, True)
+    assert (a, over) == (75, False) and t.hour == 23    # rising-side slot, not the 85° peak
+
+
+def test_pick_start_hard_ceiling_refuses_when_nothing_startable():
+    samples = [_mk(23, 0, 82), _mk(0, 0, 88)]
+    assert planning.pick_start(samples, 78.0, True) == (None, None, True)
+
+
+def test_pick_start_soft_ceiling_falls_back_with_flag():
+    samples = [_mk(23, 0, 82), _mk(0, 0, 88)]
+    t, a, over = planning.pick_start(samples, 80.0, False)
+    assert (a, over) == (88, True)                       # annotated, not refused
+
+
+def test_pick_start_ignores_unclear_and_no_ceiling():
+    samples = [_mk(22, 0, 76, clear=False), _mk(23, 0, 70)]
+    t, a, over = planning.pick_start(samples, 78.0, True)
+    assert a == 70                                       # obstructed 76° sample skipped
+    t, a, over = planning.pick_start(samples, None, True)
+    assert a == 70 and over is False                     # no ceiling → best clear
+
+
+def test_device_presets_ceiling_kinds():
+    from m110.planning_config import DEVICE_PRESETS
+    for k in ("seestar_s50", "seestar_s30", "seestar_s30_pro"):
+        d = DEVICE_PRESETS[k]
+        assert d.start_alt_ceiling_deg == 78.0 and d.ceiling_is_hard
+    for k in ("dwarf_3", "dwarf_mini"):
+        d = DEVICE_PRESETS[k]
+        assert d.start_alt_ceiling_deg == 80.0 and not d.ceiling_is_hard
+
+
+def test_high_transit_target_gets_startable_slot():
+    """The review's 5c case: M29 transits ~88° from lat 40 on Jul 18 — the Seestar
+    app would reject a start there. The proposed start must be ≤ the ceiling, inside
+    the dark window, and distinct from transit."""
+    day = date(2026, 7, 18)
+    tr = planning.night_track("m29", day, _SITE)         # default device = S50, hard 78°
+    assert tr["transit_alt"] > 80                        # the trap the old plan fell into
+    assert tr["start_time"] is not None
+    # profile ceiling 78° minus the planning margin → practical ~75°
+    assert tr["start_alt"] <= 78.0 - planning.START_CEILING_MARGIN_DEG
+    assert tr["over_ceiling"] is False
+    assert tr["start_time"] != tr["transit_time"]
+    # plan_night surfaces the same slot + anchors the moon annotation to it
+    plan = planning.plan_night(_SITE, day, ["m29"])
+    e = plan["entries"][0]
+    assert e["start_alt"] <= 75.0 and e["start_time"] is not None

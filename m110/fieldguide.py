@@ -45,6 +45,20 @@ def moon_headline(moon: dict) -> str:
     return f"{lit} · {state}"
 
 
+def start_cells(entry: dict) -> tuple[str, str]:
+    """``(time, altitude)`` strings for the proposed **start** slot — the startable
+    pick under the device ceiling (Phase 3 / #37), falling back to transit for plan
+    dicts that predate it. A hard-ceiling target with no startable moment reads
+    "—"; a soft-ceiling over-ceiling start is flagged ``^`` (the sky.py notation)."""
+    if "start_time" not in entry:                     # pre-Phase-3 plan dict
+        return _hm(entry.get("transit_time")), f"{entry.get('transit_alt', 0):.0f}°"
+    t, alt = entry.get("start_time"), entry.get("start_alt")
+    if t is None:
+        return "—", "—"                               # device would refuse every start
+    flag = "^" if entry.get("over_ceiling") else ""
+    return _hm(t), f"{alt:.0f}°{flag}"
+
+
 def moon_cell(entry: dict) -> str:
     """The per-target Moon column: separation + impact when the moon is **up** at
     that target's best time, else "—" (separation from a set moon means nothing).
@@ -87,23 +101,30 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
 
     lines.append(f"## Targets ({len(entries)}) — in shooting order")
     lines.append("")
-    lines.append("| # | Object | Best time | Alt | Up-window | Moon | Filter |")
-    lines.append("|---|--------|-----------|-----|-----------|------|--------|")
+    lines.append("| # | Object | Start | Alt | Up-window | Moon | Filter |")
+    lines.append("|---|--------|-------|-----|-----------|------|--------|")
     for i, e in enumerate(entries, 1):
         slug = e["slug"]
         entry = lib.get(slug) or ref.get(slug) or {}
         name = catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
         filt = prioritize.filter_for_type(entry.get("type", ""))
         win = f"{_hm(e['up_start'])}–{_hm(e['up_end'])}"
-        lines.append(f"| {i} | {name} | {_hm(e['transit_time'])} | "
-                     f"{e['transit_alt']:.0f}° | {win} | {moon_cell(e)} | {filt} |")
+        st, sa = start_cells(e)
+        lines.append(f"| {i} | {name} | {st} | {sa} | {win} | {moon_cell(e)} | {filt} |")
     lines.append("")
+    notes = []
     if any((e.get("moon_alt_at_best") or 0) > 0 for e in entries):
-        lines.append("<sub>**Moon** = separation from the moon at the target's best "
-                     "time, with its impact (illumination × proximity; narrowband LP "
-                     "is largely immune). \"—\" = the moon is below the horizon then — "
-                     "no impact.</sub>")
-        lines.append("")
+        notes.append("**Moon** = separation from the moon at the target's start, "
+                     "with its impact (illumination × proximity; narrowband LP is "
+                     "largely immune); \"—\" = the moon is below the horizon then — "
+                     "no impact.")
+    notes.append("**Start** = the best startable time under the device's "
+                 "start-altitude ceiling (a capture may climb past it once running).")
+    if any(e.get("over_ceiling") for e in entries):
+        notes.append("**^** = starts above the ceiling (no lower slot was clear) — "
+                     "expect field rotation near the zenith.")
+    lines.append(f"<sub>{' '.join(notes)}</sub>")
+    lines.append("")
 
     # Per-target notes (season + the library `notes`/remarks), when present.
     detail = []

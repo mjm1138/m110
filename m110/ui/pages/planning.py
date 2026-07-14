@@ -222,7 +222,7 @@ class PlanningPage(QScrollArea):
 
         self._plan_table = QTableWidget(0, 6)
         self._plan_table.setHorizontalHeaderLabels(
-            ["Include", "Object", "Best", "Alt", "Up-window", "Moon"])
+            ["Include", "Object", "Start", "Alt", "Up-window", "Moon"])
         self._plan_table.verticalHeader().setVisible(False)
         self._plan_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._plan_table.setSelectionMode(QTableWidget.SingleSelection)
@@ -321,8 +321,13 @@ class PlanningPage(QScrollArea):
             chk.setData(Qt.UserRole, slug)
             self._plan_table.setItem(r, 0, chk)
             self._plan_table.setItem(r, 1, QTableWidgetItem(name))
-            self._plan_table.setItem(r, 2, QTableWidgetItem(hm(e["transit_time"])))
-            self._plan_table.setItem(r, 3, QTableWidgetItem(f"{e['transit_alt']:.0f}°"))
+            st, sa = fieldguide.start_cells(e)      # startable slot, not transit (#37)
+            start_item = QTableWidgetItem(st)
+            start_item.setToolTip("Best startable time under the device's "
+                                  "start-altitude ceiling — the capture may climb "
+                                  "past the ceiling once running.")
+            self._plan_table.setItem(r, 2, start_item)
+            self._plan_table.setItem(r, 3, QTableWidgetItem(sa))
             self._plan_table.setItem(r, 4, QTableWidgetItem(
                 f"{hm(e['up_start'])}–{hm(e['up_end'])}"))
             mcell = QTableWidgetItem(fieldguide.moon_cell(e))
