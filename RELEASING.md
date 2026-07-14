@@ -80,8 +80,9 @@ gh run watch          # or: gh run list --workflow release.yml
 
 ### b. Build + notarize the macOS DMG locally
 
+Mikes identity is "Developer ID Application: MICHAEL JAMES MERIDETH (8N7DP84NGU)"
 ```bash
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID1234)" \
+SIGN_IDENTITY="Developer ID Application: MICHAEL JAMES MERIDETH (8N7DP84NGU)" \
   ./packaging/macos/build_release.sh
 ```
 
