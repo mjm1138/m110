@@ -443,7 +443,8 @@ control.
 ```
 m110/            engine package (+ ui/ subpackage, seed/ data)
 tests/                  pytest suite (fixture-based)
-tools/                  dev utilities (make_test_corpus.py → synthetic manual-test store)
+tools/                  dev utilities (release.py → one-command release cutter;
+                        make_test_corpus.py → synthetic manual-test store)
 packaging/              native installers: common/ (shared PyInstaller entry shim +
                         astropy hook override) · macos/ (.app→sign/notarize→.dmg) ·
                         linux/ (onedir→AppDir→AppImage) · windows/ (onedir→.ico→Inno Setup)

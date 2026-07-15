@@ -19,6 +19,41 @@ Releases are **hybrid**:
 So a full release is: push a tag (CI makes the Release + Linux/Windows assets), build
 the notarized macOS DMG locally, and upload the DMG.
 
+---
+
+## The short version: one command
+
+```bash
+python tools/release.py 0.2.0b2            # --dry-run first if you like
+```
+
+**[`tools/release.py`](tools/release.py)** runs the whole mechanical sequence below —
+version bump (all three spellings), changelog roll, commit/push, **pipeline smoke
+test**, tag, wait for CI, macOS build + notarize + staple, DMG upload, and a final
+asset check — and **refuses to start** if the tree is dirty, `main` isn't synced, the
+tag exists, the changelog has no `[Unreleased]` notes, the tests fail, or your signing
+identity is missing.
+
+| Flag | Use |
+|---|---|
+| `--dry-run` | print every step, change nothing (still runs the real preflight checks) |
+| `--skip-macos` | cut the release without the DMG (not on a Mac / no cert) |
+| `--resume-from PHASE` | restart mid-release: `preflight bump changelog commit smoke tag wait macos upload verify` |
+| `--yes` | skip the "did you do the manual test pass?" prompt |
+
+It takes **one** version in either spelling (`0.2.0b2` or `v0.2.0-beta.2`) and derives
+the rest — PEP 440 for the package, SemVer for the tag, numeric for the DMG — which is
+the whole class of "the tag and the package disagree" error, gone.
+
+**What it can't do (still yours):** decide the version, write the changelog prose (it
+moves your notes, it can't author them), the manual test pass ([`TESTING.md`](TESTING.md)),
+verifying the DMG on a Mac **without** your dev cert, and the announce post.
+
+The rest of this page is the **manual path** — what the script does, step by step. Read
+it once, use it when something breaks mid-release (then `--resume-from` the phase).
+
+---
+
 ## One-time setup (macOS build machine)
 
 1. **Xcode command-line tools:** `xcode-select --install`
@@ -42,6 +77,8 @@ gotchas (inside-out signing, the hardened-runtime entitlements).
 
 ## 0. Smoke the release pipeline (do this *before* tagging)
 
+> Scripted: `tools/release.py` phase `smoke`.
+
 `release.yml` only triggers on a `v*` tag, so **nothing in normal CI ever exercises
 it** — a broken build step or an artifact-action mismatch stays invisible until the
 tag is already pushed and the Release is half-created. Flush that out first with a
@@ -64,6 +101,8 @@ before committing to a tag.
 
 ## 1. Bump the version
 
+> Scripted: `tools/release.py` phases `bump` + `changelog`.
+
 Edit **both** so they agree:
 
 - `pyproject.toml` → `version = "0.1.0b1"`
@@ -83,7 +122,14 @@ python -c "import importlib.metadata as m; print(m.version('m110'))"   # must pr
 
 Commit the bump and merge it to `main` before tagging.
 
+**Roll the changelog in the same commit.** Move everything under `## [Unreleased]` into
+a new dated, versioned section (`## [0.2.0-beta.2] - 2026-07-15`). This was a manual
+step nobody remembered — both 0.1.0-beta.3 and 0.2.0-beta.1 shipped with the changelog
+a release behind. The script does it for you; if you're doing it by hand, don't skip it.
+
 ## 2. Cut the release
+
+> Scripted: `tools/release.py` phases `tag` → `wait` → `macos` → `upload`.
 
 Use a `v*` tag (that's what CI triggers on). Example below uses `v0.1.0-beta.1`.
 
@@ -140,6 +186,9 @@ gh release upload v0.1.0-beta.1 dist/M110-0.1.0.dmg --clobber
   ```
 
 ## 3. Verify
+
+> Partly scripted: `tools/release.py` phase `verify` asserts the three assets exist.
+> The Gatekeeper check needs a **human on a Mac without the dev cert**.
 
 - The Release page shows **three assets**: the `.dmg`, the `.AppImage`, and the
   Windows `-setup.exe`.
