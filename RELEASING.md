@@ -40,6 +40,26 @@ the notarized macOS DMG locally, and upload the DMG.
 See [`packaging/macos/README.md`](packaging/macos/README.md) for the full detail and
 gotchas (inside-out signing, the hardened-runtime entitlements).
 
+## 0. Smoke the release pipeline (do this *before* tagging)
+
+`release.yml` only triggers on a `v*` tag, so **nothing in normal CI ever exercises
+it** — a broken build step or an artifact-action mismatch stays invisible until the
+tag is already pushed and the Release is half-created. Flush that out first with a
+manual dispatch, which builds Linux + Windows and round-trips the artifacts but
+**creates no Release** (the publish job is gated on `refs/tags/`):
+
+```bash
+gh workflow run release.yml --ref main     # or a branch you're validating
+gh run watch                               # green = the pipeline still works
+```
+
+Do this whenever the workflow, its actions, or the packaging changed since the last
+release — **always after a Dependabot bump to `actions/upload-artifact` or
+`actions/download-artifact`**, which must interoperate as a pair (they're grouped
+into one PR in `.github/dependabot.yml` for exactly this reason). The dispatched run
+also leaves downloadable artifacts, so you can sanity-check the AppImage/installer
+before committing to a tag.
+
 ## 1. Bump the version
 
 Edit **both** so they agree:

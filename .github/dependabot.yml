@@ -23,3 +23,15 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    groups:
+      # upload-artifact and download-artifact must INTEROPERATE (an upload@vN
+      # artifact isn't always readable by a download@vM — the v3→v4 break is the
+      # classic case). Dependabot would otherwise open them as separate PRs and
+      # merging one alone would leave the release pipeline mismatched. Group them
+      # so the pair always lands together and can be validated in one dispatch run.
+      artifact-actions:
+        patterns:
+          - "actions/upload-artifact"
+          - "actions/download-artifact"
+      # Everything else (checkout, setup-python) is independent — one PR each is
+      # fine, and CI genuinely exercises those two.
