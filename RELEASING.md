@@ -1,7 +1,8 @@
 # Releasing M110
 
 The end-to-end runbook for cutting a release. The per-platform mechanics live in the
-`packaging/*/README.md` files and the strategy in [`BETA.md`](BETA.md) §1 — this page
+`packaging/*/README.md` files and the distribution strategy in
+[`ROADMAP.md`](ROADMAP.md) (Foundational decisions) — this page
 stitches them into one checklist.
 
 ## How releases work
@@ -131,4 +132,3 @@ gh release upload v0.1.0-beta.1 dist/M110-0.1.0.dmg --clobber
 - [`packaging/macos/README.md`](packaging/macos/README.md) — signing/notarization detail
 - [`packaging/linux/README.md`](packaging/linux/README.md) — AppImage build
 - [`packaging/windows/README.md`](packaging/windows/README.md) — installer build
-- [`BETA.md`](BETA.md) §1 — distribution strategy (what's signed, what's not, and why)

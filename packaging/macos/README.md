@@ -1,7 +1,9 @@
 # macOS packaging
 
 Builds a signed, notarized **M110.app** and a drag-to-Applications **DMG** with
-PyInstaller. Lead platform for the beta (see [`../../BETA.md`](../../BETA.md) §1).
+PyInstaller. Lead platform for the beta (ships unsigned during the beta — strategy in
+[`ROADMAP.md`](../../ROADMAP.md) Foundational decisions; runbook in
+[`RELEASING.md`](../../RELEASING.md)).
 
 ## TL;DR
 

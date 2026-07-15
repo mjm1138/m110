@@ -65,18 +65,34 @@ at the bottom so this list stays honest about what ships now.)
 - **Runs fully offline** — a bundled reference catalog (448 objects) and bundled Siril /
   Seestar workflow playbooks; the internet is only ever optional (online metadata lookups).
 
+## Session planning (new in 0.2.0-beta.1)
+
+- **Automatic prioritization** — a deterministic, tunable ranking of your targets:
+  goal membership, season urgency (an object about to leave the evening sky outranks
+  one that keeps), integration still needed (type-aware), and tonight's feasibility
+  from *your* site. A capture-many ↔ go-deep strategy toggle and tuning weights
+  re-rank instantly; manual pins always compose on top.
+- **Site profiles** — location, timezone, an imported `.hrz` horizon skyline, and an
+  **estimated light dome** computed from nearby towns (Walker's Law over a bundled
+  worldwide dataset, optionally calibrated by Bortle) — so planning favors targets
+  away from your brightest horizons, gentler for narrowband.
+- **Plan a night** — a real schedule, not a wish list: back-to-back 10-minute-aligned
+  slots from dusk to dawn, start times your telescope will accept (the Seestar
+  refuses starts near the zenith — M110 catches high targets on the rising or
+  setting side), durations that shrink when a target reaches deep-stack status,
+  per-slot moon impact (filter-aware), and last-chance slots flagged. Reorder or
+  drop targets and the schedule re-chains.
+- **Altitude timeline & field guides** — every plan drawn as an altitude-vs-time
+  chart (target curves, moon track, start ceiling, slot bands), and saved as a
+  clean printable **field guide** in your library's `Plans/` folder.
+
 ## In development (not yet in the app)
 
 *Named here because [`Why M110.md`](Why%20M110.md) describes them — they're the roadmap,
 not current features.*
 
-- **Session planning** — pick tonight's targets by your location, horizon, local
-  light-pollution domes, and lunar phase; schedule objects at peak visibility; emit a
-  field-guide plan. (The positional/observability engine is built; the planning UI is
-  next.)
-- **Automatic prioritization** — a deterministic, tunable scoring engine that ranks
-  targets toward your goals (season urgency, "capture many" vs. "go deep," feasibility),
-  replacing today's hand-edited priority list.
+- **Device-ready schedule export** — write a night's plan straight into a telescope
+  automation format (e.g. an SSC file for `seestar_alp`-style schedulers).
 - **Optional LLM assistant** — connect Claude (or another LLM) for session-plan help,
   processing/settings advice, and result critique. Core M110 works fully without it.
 - **Beyond the Seestar & Siril** — support for other smart telescopes / rigs and additional

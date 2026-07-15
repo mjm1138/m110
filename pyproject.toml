@@ -22,6 +22,9 @@ dependencies = [
     "numpy>=1.26",      # image stretching
     "pillow>=10",       # thumbnails + heroes
     "tifffile>=2024.1", # Siril 32-bit float TIF thumbnails
+    "packaging>=23",    # updates.py: PEP 440 release-tag comparison (previously an
+                        # undeclared transitive — a clean venv would silently
+                        # disable the update check)
     # macOS-only: lets the app-menu / dock show "M110" instead of "Python" when run
     # unbundled from source (patches NSBundle's CFBundleName). Optional at runtime.
     "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
@@ -36,7 +39,7 @@ online = ["astroquery>=0.4"]
 publish = ["jinja2>=3", "markdown>=3"]
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3"]  # astroquery also build-time (tools/gen_caldwell.py)
 # Packaging the desktop app into native bundles/installers (see packaging/).
-build = ["pyinstaller>=6.6", "packaging>=23"]
+build = ["pyinstaller>=6.6"]        # packaging moved to core deps (updates.py uses it)
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"

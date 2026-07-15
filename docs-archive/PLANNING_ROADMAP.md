@@ -6,7 +6,7 @@ Status target: get the **Planning** pane (prioritizer + session planner) from
 Source material:
 - [`prioritizer-review.md`](prioritizer-review.md) — the 2026-07-13 review of the
   live derived outputs + the first real planner run (reasoning behind the bug items).
-- [`BUGS.md`](BUGS.md) → *Planning / prioritization* (#35–39 + the Session Planner
+- [`BUGS.md`](../BUGS.md) → *Planning / prioritization* (#35–39 + the Session Planner
   bullets).
 - ROADMAP **item 1** (auto-prioritizer scoring model + the three checkpoints) and
   the Astronomy `astro-session-planner` skill / `scripts/sky.py` (the proven logic

@@ -1,7 +1,8 @@
 # Windows packaging
 
 Builds an **M110-`<version>`-setup.exe** (PyInstaller `.exe` + Inno Setup installer).
-Supported-but-not-lead platform (BETA §1); ships **unsigned** for the beta.
+Supported-but-not-lead platform; ships **unsigned** for the beta (strategy in
+[`ROADMAP.md`](../../ROADMAP.md) Foundational decisions).
 
 ## TL;DR (on a Windows host)
 
@@ -31,7 +32,7 @@ Produces `dist\M110-<version>-setup.exe`.
 ## Unsigned build — SmartScreen
 
 The beta ships **unsigned** (code-signing certs deferred until there's uptake — see
-BETA.md §1). On first run of an unsigned installer, Windows SmartScreen shows
+the strategy note above). On first run of an unsigned installer, Windows SmartScreen shows
 **"Windows protected your PC."** Users clear it by:
 
 > **More info → Run anyway**
@@ -48,7 +49,7 @@ Revisit only on uptake.)
   dialog still lets advanced users pick all-users.
 - **AppId is stable** (`{254AD386-…}`) so future versions upgrade in place rather
   than installing side-by-side. Don't change it.
-- **Watch on first real run** (BETA §2/§3): path handling (backslashes / spaces /
+- **Watch on first real run**: path handling (backslashes / spaces /
   OneDrive-redirected `Documents`), native file dialogs, and **Seestar detection**
   (`find_seestar_myworks` — drive letters + UNC paths vs. `/Volumes`).
 - **First launch** writes the data store to `%USERPROFILE%\Documents\M110` (or
