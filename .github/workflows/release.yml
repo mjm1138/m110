@@ -81,7 +81,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')    # only on a tag push, not manual runs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: Create GitHub Release
