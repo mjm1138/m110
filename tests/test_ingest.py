@@ -772,6 +772,45 @@ def test_discard_holding_refuses_paths_outside_inbox(tmp_path, monkeypatch):
     assert outside.exists()                                      # untouched
 
 
+def test_safe_segment_neutralizes_traversal():
+    """SECURITY F1: a destination folder name can't contain separators, parent refs,
+    or control chars — an attacker-controlled FITS OBJECT header / folder name is
+    reduced to a single safe path segment; ordinary names pass through."""
+    assert ingest._safe_segment("M81 M82") == "M81 M82"          # ordinary, verbatim
+    assert ingest._safe_segment("NGC 7000") == "NGC 7000"
+    assert "/" not in ingest._safe_segment("../../etc/cron.d/x")
+    assert ".." not in ingest._safe_segment("../../etc/cron.d/x")
+    assert "\\" not in ingest._safe_segment(r"..\..\Windows\System32")
+    assert ingest._safe_segment("") == "unknown"                 # never empty
+    assert ingest._safe_segment("...") == "unknown"
+    assert ingest._safe_segment("a\x00b/c") == "ab c"            # null removed, sep→space
+
+
+def test_canonical_target_cannot_escape_the_store(tmp_path, monkeypatch):
+    """A crafted OBJECT header / device folder name resolves to a contained folder,
+    so canonical_target never yields a traversal segment."""
+    _make_staging(tmp_path, monkeypatch)
+    seg = ingest.canonical_target("../../../.config/autostart")
+    assert "/" not in seg and ".." not in seg
+
+
+def test_apply_ops_refuses_writes_outside_the_store(tmp_path, monkeypatch):
+    """SECURITY F1 hard guard: the only writer rejects any op whose destination
+    resolves outside the data root, whatever built it — nothing is written."""
+    root, _ = _make_staging(tmp_path, monkeypatch)
+    (config.STAGING_DIR / "src").mkdir(parents=True)
+    src = config.STAGING_DIR / "src" / "f.fit"
+    src.write_text("payload")
+    escaped = tmp_path / "outside" / "pwned.fit"           # sibling of the data root
+    op = ingest.IngestOp(str(src), str(escaped), "light", "src",
+                         "../outside/pwned.fit", True, "move", 7, "seestar", "x")
+
+    with pytest.raises(ValueError, match="outside the data store"):
+        ingest.apply_ops([op])
+    assert not escaped.exists()                             # nothing written
+    assert src.exists()                                    # source untouched
+
+
 def test_assign_moves_held_files_into_target(tmp_path, monkeypatch):
     """assign() rebuilds a held group to move its files into Images/<obj>/<kind>;
     apply_ops actually moves them out of the holding area."""

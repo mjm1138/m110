@@ -229,17 +229,33 @@ def add_alias(src: str, dst: str) -> None:
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _safe_segment(name: str) -> str:
+    """Reduce an object/target name to a **single, safe path segment** for a
+    destination folder. Strips directory separators, parent refs, leading dots, and
+    control chars so an untrusted source — a device folder name or a **FITS `OBJECT`
+    header** (fully attacker-controlled in a crafted file) — can't steer a write
+    outside the data store (path traversal). Preserves ordinary names verbatim
+    ("M81 M82", "NGC 7000"). See SECURITY_ASSESSMENT.md F1."""
+    s = str(name).replace("\x00", "")
+    s = re.sub(r"[/\\]+", " ", s)                 # no separators → collapse to space
+    s = re.sub(r"\.\.+", ".", s)                  # no ".." parent refs
+    s = re.sub(r"[\x00-\x1f]", "", s)             # no control chars
+    s = s.strip().strip(".").strip()              # no leading/trailing dot or space
+    return s or "unknown"
+
+
 def canonical_target(name: str) -> str:
     """Resolve a device folder name to a canonical destination object: alias →
     existing Images/<dir> casing → catalog id casing → normalized name. Folds
-    case variants (`m82`→`M82`) and known quirks onto one folder."""
+    case variants (`m82`→`M82`) and known quirks onto one folder. The resolved name
+    is a **safe single path segment** (`_safe_segment`) — never a traversal."""
     aliases = load_aliases()
     low = name.lower()
     for k, v in aliases.items():
         if k.lower() == low:
-            return v
+            return _safe_segment(v)
 
-    norm = fits_object_name(name)
+    norm = _safe_segment(fits_object_name(name))
     nlow = norm.lower()
 
     images = config.IMAGES_DIR
@@ -1241,6 +1257,18 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
     moved = skipped = 0
     total = len(ops)
     cancelled = False
+    # Hard containment guard (defense in depth over `_safe_segment`): the ONLY writer
+    # into the store refuses any op whose destination resolves outside the data root.
+    # Catches every path-traversal vector at once — folder name, FITS OBJECT header,
+    # alias, retarget — regardless of how the op was built (SECURITY_ASSESSMENT.md F1).
+    root = config.DATA_ROOT.resolve()
+    for op in ops:
+        try:
+            Path(op.dest).resolve().relative_to(root)
+        except ValueError:
+            raise ValueError(
+                f"refusing ingest op writing outside the data store: {op.dest!r}")
+
     for i, op in enumerate(ops, 1):
         if should_cancel and should_cancel():
             cancelled = True

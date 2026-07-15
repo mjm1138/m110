@@ -60,6 +60,12 @@ def _open_image(src: Path):
         from PIL import Image
     except ImportError:
         return None
+    # Decompression-bomb ceiling for UNTRUSTED imported rasters: a tiny malicious
+    # file can decode to gigapixels and exhaust memory. Astro frames are large but
+    # bounded (a Seestar sub is ~2–4 MP; a wide mosaic tens of MP), so a generous
+    # cap stops the attack without rejecting real images. Pillow raises
+    # DecompressionBombError past this, caught below (SECURITY_ASSESSMENT.md F3).
+    Image.MAX_IMAGE_PIXELS = 300_000_000       # ~300 MP
     suffix = src.suffix.lower()
     try:
         if suffix in (".fit", ".fits"):

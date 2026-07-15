@@ -20,7 +20,9 @@ dependencies = [
     "PySide6>=6.6",
     "astropy>=6.0",     # build_derived reads FITS stack-metadata headers
     "numpy>=1.26",      # image stretching
-    "pillow>=10",       # thumbnails + heroes
+    "pillow>=12.3",     # thumbnails + heroes — decodes UNTRUSTED imported images, so
+                        # the floor is held at the PYSEC-2026-2253..2257 fix (12.3.0).
+                        # SECURITY_ASSESSMENT.md F2
     "tifffile>=2024.1", # Siril 32-bit float TIF thumbnails
     "packaging>=23",    # updates.py: PEP 440 release-tag comparison (previously an
                         # undeclared transitive — a clean venv would silently
