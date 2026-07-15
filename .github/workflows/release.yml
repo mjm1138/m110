@@ -21,7 +21,7 @@ jobs:
     name: Linux AppImage
     runs-on: ubuntu-22.04    # low glibc floor → the AppImage also runs on newer distros
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -55,7 +55,7 @@ jobs:
     name: Windows installer
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
