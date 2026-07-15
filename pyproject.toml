@@ -20,7 +20,9 @@ dependencies = [
     "PySide6>=6.6",
     "astropy>=6.0",     # build_derived reads FITS stack-metadata headers
     "numpy>=1.26",      # image stretching
-    "pillow>=10",       # thumbnails + heroes
+    "pillow>=12.3",     # thumbnails + heroes — decodes UNTRUSTED imported images, so
+                        # the floor is held at the PYSEC-2026-2253..2257 fix (12.3.0).
+                        # SECURITY_ASSESSMENT.md F2
     "tifffile>=2024.1", # Siril 32-bit float TIF thumbnails
     # macOS-only: lets the app-menu / dock show "M110" instead of "Python" when run
     # unbundled from source (patches NSBundle's CFBundleName). Optional at runtime.

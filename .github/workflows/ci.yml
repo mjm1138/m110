@@ -7,6 +7,12 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege: the test workflow only needs to read the checked-out code. An
+# explicit block overrides any repo/org default that would grant the job's
+# GITHUB_TOKEN write scopes (a fork-PR could otherwise run with more than it needs).
+permissions:
+  contents: read
+
 # If you push twice quickly, cancel the older in-flight run for the same ref.
 concurrency:
   group: ci-${{ github.ref }}
