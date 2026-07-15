@@ -15,7 +15,8 @@ each page links to the next.
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
 4. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, and *what hardlinks mean for your files* (important)
 5. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
-6. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet (prioritization, session planning)
+6. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
+7. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
 
 ---
 
@@ -43,13 +44,14 @@ later (Library → Preferences) takes effect on restart.
 
 ## Getting around
 
-M110 has a **navigation rail** down the left side with four pages. The **Library** is
+M110 has a **navigation rail** down the left side with five pages. The **Library** is
 home — it opens there.
 
 | Page | What it's for |
 |---|---|
 | **Library** | Your collection — every object you've shot (and any you're tracking). This is the hub. |
 | **Overview** | A dashboard of collapsible sections: goal progress, priority targets, integration time & recent sessions, progress by category, and goal setup. |
+| **Planning** | What to shoot next, and tonight's plan — site profiles, the automatic target ranking, the night scheduler, and saved field guides. See **[Session planning](planning.md)**. |
 | **Import** | Bring in new captures from your telescope, a mounted card, or any folder. |
 | **Processing** | The Siril processing-prep queue — what needs a first stack, what's out of date, and what has finished work ready to import. |
 
@@ -76,7 +78,7 @@ Everything that isn't your object collection lives here as **collapsible section
 
 - **Goals** — progress toward each catalog you're tracking.
 - **Priority targets** — objects you've pinned (right-click → *Pin as priority* in the
-  Library). *An automatic prioritizer is on the way; for now this is manual.*
+  Library). The **Planning** page adds the automatic ranking on top; pins always win.
 - **Integration Time and Sessions** — hours per object, your last few sessions, and a
   **View all sessions…** button for the full log.
 - **Progress by category** and **Goal checklists** — per-catalog membership with a green

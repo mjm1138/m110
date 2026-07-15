@@ -79,4 +79,4 @@ recorded checksums.
 > automatically. Your catalog, notes, subs, stacks, and finished renders are all
 > included.
 
-Next: **[On the roadmap →](upcoming.md)**
+Next: **[Session planning →](planning.md)**

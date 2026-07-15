@@ -10,14 +10,59 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] - 2026-07-15
+
 ### Added
-- **Plan a night.** On the Planning page, pick a night and M110 builds an ordered
-  observing plan — which of your priority targets are up, *when* they're highest, and
-  in a suggested shooting order (targets setting soonest first) — shown on a visual
-  **altitude timeline**. Include/exclude and reorder targets, then **save a field
-  guide**: a clean, printable plan (dark window, moon, each target's best time /
-  altitude / window / moon distance / filter). Saved guides are browsable and viewable
-  right in the app.
+- **Plan a night.** On the Planning page, pick a night, choose how many **targets**
+  (default 4), and M110 builds a real observing **schedule** — back-to-back,
+  non-overlapping slots on 10-minute boundaries, each with a start time, duration,
+  altitude at start, filter, and moon impact. The highest-priority target that's up at
+  astronomical dark goes first; each next target starts when the previous one ends;
+  targets about to leave the season go before ones that will keep. Durations adapt:
+  a target that reaches *deep stack* sooner gets a shorter slot, and the schedule
+  keeps filling until dawn rather than stranding dark hours. Reorder or drop slots
+  (the schedule re-chains instantly), then **save a field guide** — a clean, printable
+  plan you can browse and view right in the app.
+- **Altitude timeline.** The plan is drawn as an altitude-vs-time chart: each target's
+  curve across the dark window, the **moon's track** while it's up, your device's
+  **start ceiling**, and the scheduled slots as colored time bands.
+- **The schedule respects your telescope.** Smart scopes like the Seestar refuse to
+  *start* a capture too close to the zenith (~78° for the S50) — proposed start times
+  now stay safely below that ceiling, catching high targets on their rising or setting
+  side instead. Dwarf devices get a softer quality guideline. Short "last-chance"
+  slots on a setting target are flagged **⚠** so you can keep or drop them knowingly.
+- **Smarter ranking.** Catalog completion oddities that aren't imaging targets (M40 —
+  a double star; M73 — an asterism) no longer claim dark-sky time, and very faint,
+  diffuse targets are down-weighted by surface brightness — a showpiece outranks a
+  stretch target on a small scope.
+
+### Fixed
+- **Moon information is now trustworthy.** The plan header describes the whole night
+  ("29% lit · up at dusk (+6°) · sets 23:05"), not one misleading snapshot; the
+  per-target **Moon** column only shows a separation while the moon is actually up
+  ("—" once it sets) and grades its impact by phase, proximity, and your filter
+  (narrowband is largely immune). Also fixed a bug that could print a moon separation
+  roughly double the real value.
+- **Plans can no longer be saved under the wrong date.** Changing the night or the
+  location clears the stale plan (regenerate for the new night); a saved field guide
+  is always stamped with the night its astronomy was computed for.
+- **The date picker works.** The calendar popup showed "…" instead of most day
+  numbers and greyed out the selected date; day numbers, weekday names, and the
+  selection now render properly in both light and dark themes — and the "Night:"
+  field itself is no longer near-unreadable in dark mode.
+
+### Changed
+- Field guides now note both dates: when the plan was generated and which night it's
+  for. Season labels are no longer printed beside a dated recommendation (they read
+  as contradictory).
+
+### Removed
+- The published website's *Priority Targets* section. It was driven by the old
+  hand-edited priorities file, which the automatic ranking replaces.
+
+## [0.1.0-beta.3] - 2026-07-14
+
+### Added
 - **Planning page + location profiles.** A new **Planning** pane in the nav rail is
   the home for session planning. It starts with a **location selector**, your
   **priority targets**, and a **Manage site profiles** section where you can create,
@@ -37,6 +82,17 @@ changes a **user** would notice, per release.
   location (optionally calibrated by a Bortle number). Planning uses it to favor
   targets away from your brightest horizons. The result is saved with the profile and
   can be hand-edited.
+- The **user guide** is now linked from the app's Help menu and the website.
+
+### Fixed
+- **Combined captures count for both objects.** A two-object capture folder (like
+  `M81 M82`) now credits its integration to *both* catalog objects, and no longer
+  creates a phantom "M81 M82" object in your Library (existing libraries are cleaned
+  up automatically on first launch — the library format steps to v4). The Processing
+  queue's first column is now honestly labelled **Target**: a combined capture and a
+  solo capture of the same object are separate stacks to process, not duplicates.
+- **Import preview checkboxes render on every row** on macOS (clicks toggled them
+  correctly, but only the current row's checkbox was visible).
 
 ## [0.1.0-beta.2] - 2026-07-12
 

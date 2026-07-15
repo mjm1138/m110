@@ -6,31 +6,19 @@ M110 is in public beta. A few capabilities are **partially built** — you'll se
 referenced in the app before they're fully finished. This page explains what works
 today versus what's coming, so nothing feels broken.
 
-## Priority targets
-
-**What works now.** On the **Overview** page, the *Priority targets* section shows
-objects you've flagged. You flag them manually: right-click any object in the Library
-(or the priority list itself) and choose **Pin as priority** (▲) or **Deprioritize**
-(▼). Pinned objects always show; deprioritized ones are hidden. These choices are
-saved with your library and survive refreshes.
-
-**What's coming.** An **automatic prioritizer** that *scores* and ranks your targets
-for you — weighing things like how close an object is to leaving the season, how much
-integration it still needs, and tonight's observability — so the list becomes a
-smart "what should I shoot next" rather than a purely manual one. Your manual pins
-will always compose over the automatic ranking.
-
 ## Session planning
 
-**What exists now.** M110 already includes the astronomical engine for planning —
-twilight windows, moon interference, an object's altitude and transit, and a
-seasonal/tonight observability gate — plus per-site profiles (your latitude,
-longitude, horizon obstructions, and light-pollution level).
+**What works now.** The whole planning flow shipped — see
+**[Session planning](planning.md)**: site profiles with horizon and light-dome
+layers, the automatic target ranking with strategy/weight tuning, the night
+scheduler with its altitude timeline, and saved field guides.
 
-**What's coming.** A **planning view** that surfaces this: tonight's best targets for
-your site, when each is highest, and how many clear nights remain before an object
-sets for the season. Until that page ships, the planning engine mainly feeds the
-prioritizer work above.
+**What's coming.** **Device-ready schedule export** — writing a plan straight into a
+format your telescope's automation can run (such as an SSC file for
+`seestar_alp`-style schedulers) instead of a human-readable guide only. And the
+telescope constraints for the Seestar **S30 / S30 Pro** are currently assumed to
+match the S50 — if your S30 accepts or refuses high starts differently, we'd love
+the report.
 
 ## Publishing & sharing
 
