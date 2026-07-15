@@ -289,10 +289,11 @@ prunes the synthetic pseudo-objects; Processing's first column renamed **Target*
 
 ---
 
-## Later phase 6 — Import, robust/layout-flexible *(6a–6c done 2026-06-26/27)*
+## Later phase 6 — Import, robust/layout-flexible *(6a–6c done 2026-06-26/27; Dwarf 3 done 2026-07-09)*
 
 Ingest renamed **Import** + promoted to a top-level nav page; **6d** (lazy
-device-under-target) is still open in [`ROADMAP.md`](ROADMAP.md) item 6.
+device-under-target + the Dwarf remainders) is still open in
+[`ROADMAP.md`](ROADMAP.md).
 
 - **6a — Import view + any-directory source.** Directory chooser + Favorites/Recent
   places (Seestar + Inbox auto-appear); **recursive** `ingest.scan_directory_plan`
@@ -312,6 +313,21 @@ device-under-target) is still open in [`ROADMAP.md`](ROADMAP.md) item 6.
   (`kind="unassigned"`), surfaced in an always-visible **Holding area panel** with
   per-folder Object+Kind **Assign** (`ingest.scan_holding`/`assign` → move into the
   content tree; alias learning). `Inbox/` is no longer a user-facing source.
+- **DwarfLab Dwarf 3 support** *(done 2026-07-09, `feature/dwarf3-ingest`)*. A second
+  device validated end-to-end against real Dwarf 3 output. Fixed two `.fit`-only
+  assumptions that made Dwarf `.fits` captures invisible (`config.is_light_frame`
+  diverted every sub to `working_files/`; `scan_sessions` skipped `.fits` + parsed
+  Seestar-only filenames → zero sessions): a shared `config.FIT_EXTS` now covers
+  `.fit`/`.fits` engine-wide, and `scan_sessions` is **header-driven** (`DATE-OBS`/
+  `EXPTIME`/`FILTER`, Seestar filename as a fast path). Added a `dwarf` layout
+  recognizer (`ingest._classify_dwarf_dir`, keyed on the `DWARF_RAW_*`/`STARTRAILS_*`
+  session-folder prefix) routing on-device session folders (subs → `lights/`,
+  `stacked-16_*` + `stacked.jpg` → the `seestar-stacks/` device-stack tier,
+  startrails → `Media/Startrails_{video,photo}/`, `Thumbnail/`/aux ignored), and
+  `_usable_object` so an `OBJECT` of `''`/`Unknown` goes to the holding area instead
+  of a literal target. No `.store_version` bump. Tests in `tests/test_ingest_dwarf.py`.
+  *(Still open under ROADMAP 6d: `DWARF_DARK`/`CALI_FRAME` routing, `Restacked/`,
+  TIFF subs, the `shotsInfo.json` sidecar, volume auto-detection, Dwarf II.)*
 
 ---
 
@@ -328,6 +344,36 @@ flag (`catalog.set_publish_flag`, Library right-click) + journal `private` front
 Optional `publish` extra (jinja2 + markdown; degrades via `PublishDepsMissing`).
 *Deferred follow-ups (BUGS #27):* GitHub Pages deploy, Netlify/S3/CMS targets, per-list
 flags, cross-publish cache reuse, auto-publish.
+
+---
+
+## Later phase 10 — Library backup *(v1 done 2026-07-02)*
+
+Incremental backups to a user-defined destination + selective restore + retention.
+Qt-free engine `m110/backup.py` writes **hardlinked dated snapshots**
+(`rsync --link-dest` semantics in pure Python): each snapshot is a full, browsable
+tree, but files unchanged since the previous snapshot (all the immutable raws) are
+hardlinked, so incrementals cost only the changed bytes (verified: a 2nd no-change
+snapshot of the test store added **0 new bytes**). Scope is a **denylist** —
+everything under the store except regenerable derived data (`derived/`, `renders/`,
+`sessions.jsonl`) and the `siril/` working sandboxes — so new authored data is
+captured automatically. Each snapshot carries a **checksum manifest** for
+integrity/bit-rot verification. **Restore** defaults to extracting selected paths
+to a chosen folder (never touches the live store); restoring back into the store is
+available behind a create-vs-overwrite conflict preview + confirm. **Retention**
+(keep-N snapshots, default all / min-free-GB, default 100) prunes whole oldest
+snapshots, explicitly, never the last one. UI: Library → **Back up…** / **Restore…**
+(`backup_dialog.py` / `restore_dialog.py`, mirroring the publish worker/progress
+pattern) + an opt-in **auto-backup** (background, unobtrusive): fires at **launch**
+when the last snapshot is older than the interval (default **12h**), *and* on an
+**hourly tick** that runs a **daily 02:00** snapshot while the app stays open (so a
+long-running session still gets daily backups, not just launch ones) — the interval
+doubles as a min-age guard so a fresh launch backup doesn't re-fire at 02:00
+(`due_for_auto_backup` / `due_for_scheduled_backup`). Both share one cancel-on-quit
+worker; an interrupted snapshot is atomic (`*.incomplete` → rename, swept on next
+run) so quitting mid-backup never corrupts. It's an external-output feature (writes
+outside `<data_root>`) → no `.store_version` impact. *Deferred:* cloud/remote
+destinations, multiple destinations (3-2-1).
 
 ---
 
@@ -710,3 +756,61 @@ Brainstorm that drove the import improvements above (kept for rationale):
 - **Resumability** is already good (skip-if-present + atomic temp+rename), so a
   cancelled/failed import just re-runs — worth surfacing in the UI (see the open
   "surface skipped files" backlog item).
+
+### Session-planning arc — decided design + prototype findings (archived from ROADMAP item 1)
+
+The design record behind the Checkpoint A/B/tuning-arc sections above; kept for
+the *why* behind the shipped shape. Open refinements moved to ROADMAP →
+"Session-planning follow-ups".
+
+**Decided design (2026-07-03, with the user).** The prioritizer and the session
+planner are one interdependent arc — the planner *consumes* the prioritizer and
+both need the same site/glow foundation — shipped as **three checkpoints** so value
+landed incrementally: **A** Profiles + Prioritizer → **B** Session Planner →
+**C** Assistant (ROADMAP item 4, still open: the LLM layers over A+B's
+deterministic tools; the engine still computes). Equipment inventory was
+deliberately deferred out of the arc (the profile carries only what the scorer
+needs; multi-device stays 6d). **Score model:** a weighted sum of (a) active-goal
+membership · (b) seasonal urgency (closing soon ≫ mid-season ≫ just rising) ·
+(c) completion vs. a capture-many ↔ go-deep strategy toggle · (d) optional
+per-type weights · (e) tonight feasibility (transit alt, moon, horizon/glow) ·
+(f) manual overrides (pins) — all shipped in `m110/prioritize.py`.
+
+**Horizon-input decision:** Stellarium/NINA-style **`.hrz`** files (whitespace
+az/alt pairs; CSV also accepted) — **theo.rocks** (mobile web app: pan the phone
+around the skyline, export `.hrz`) is the recommended capture tool; the parser
+consumes its output directly.
+
+**Findings from the Astronomy prototype (reviewed 2026-06-22)** — the
+`scripts/prioritize.py` prototype ran against the full real collection; every
+finding shaped the port and all are now resolved:
+- **Location/dark-site awareness was the biggest gap** — strategy=new top-picked
+  low-southern dark-site-only targets (M16/M17 @34–36°) for a Bortle-5 backyard.
+  → The **glow mask**: an azimuth-dependent light-pollution floor layered on the
+  physical horizon (`max(physical, glow)`), per **site profile** (a dark-site trip
+  uses an empty mask), **filter-aware** (narrowband punches through → softer
+  floor). Shipped as `m110/glow.py` (Walker's-Law GeoNames auto-map; VIIRS
+  radiance noted as the v2 precision upgrade; the Falchi World Atlas as a
+  site-class anchor source).
+- **The season gate hard-dropped short-window targets** (`season_min_hours` ate
+  M109/M53/the Veil). → Graded: continuous `hours_clear` so the scorer *grades*
+  short windows instead of dropping them.
+- **Hand metadata was fragile** (folder→object mapping lived on generated priority
+  entries). → Stable sources only: the store's library + `pins.toml`; the
+  generator's artifact is never read back.
+- **Resolve by canonical coords, not display id** ("Veil Nebula (E)" didn't
+  resolve). → The port resolves via `catalog.load_coords`.
+- **Filter derived from type** (emission/planetary → LP, else IRCUT) — kept
+  first-class (`prioritize.filter_for_type`).
+- **Strategy mode = the night's character** — new vs deep flips the list, so the
+  toggle got UI prominence on the Planning pane.
+
+**Prototype fixes ported (2026-06-22):**
+- **Urgency × completion coupling** — deep mode let seasonal urgency pump
+  *finished* targets (a done M81 "closing in 7d" outranked the genuine M12
+  close-out). Fix: `u = u_raw × c`, so finished targets (c→0) get no urgency
+  credit. Ported into `prioritize.py` as designed.
+- **Combined-frame captures** — the prototype needed an explicit `[[combine]]`
+  prefs group to rank `M81 M82` as one entry. In M110 the two-axis store makes
+  the capture *target* the natural unit, and the tuning arc's #39/#40c landed the
+  member rollup in the engine — no prefs-file shape was copied.

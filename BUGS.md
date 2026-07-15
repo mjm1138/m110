@@ -88,15 +88,13 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Planning / prioritization
 
-- [~] **#21 — Auto-prioritizer / target scoring.** Promoted to **ROADMAP item 1**
-  (a deterministic, testable scoring engine to replace the hand-edited/LLM-edited
-  `priorities.toml`; dependency: multi-catalog goals, item 5 ✓). The vision: priorities
-  derive from active **goals** + **season** (an in-goal object about to go out of season
-  outranks one just rising) + an optional **per-type weight** preference + a "many new
-  targets" vs "deep stacks" strategy toggle. *The scoring weights + which knobs surface
-  in a priorities preference pane are still **TBD** — see the scoring model + the
-  Astronomy-prototype findings in ROADMAP item 1 (glow-mask dark-site awareness,
-  urgency×completion coupling, combined-frame captures).*
+- [~] **#21 — Auto-prioritizer / target scoring.** The scoring engine **shipped**
+  as ROADMAP item 1 Checkpoint A (`m110/prioritize.py`: goals + season urgency +
+  completion×strategy + per-type weights + tonight feasibility + pins; strategy
+  toggle + weight spinboxes on the Planning pane — see [`DONE.md`](DONE.md), incl.
+  the archived scoring-model design + Astronomy-prototype findings). *Still open:*
+  the **session-time controls + night presets** (the second tuning tier) and the
+  other refinements listed under ROADMAP → "Session-planning follow-ups".
 *Session-planner items (#40–44) are phased in [`PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md).*
 
 - [ ] **#44 — LLM session-planner skill foundation** *(→ PLANNING_ROADMAP Phase 6;
