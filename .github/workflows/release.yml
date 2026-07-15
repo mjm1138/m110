@@ -76,15 +76,25 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish GitHub Release
+    name: Collect artifacts (+ publish Release on a tag)
     needs: [linux, windows]
-    if: startsWith(github.ref, 'refs/tags/')    # only on a tag push, not manual runs
     runs-on: ubuntu-latest
+    # NOTE: the tag gate lives on the *release-creating step*, not this job. Gating
+    # the whole job meant `download-artifact` only ever ran on a real tag — so a
+    # manual smoke run (RELEASING.md step 0) couldn't prove that upload@vN and
+    # download@vM interoperate, which is precisely the thing that breaks. Running the
+    # job on every trigger exercises the download + the file-collection on a dispatch,
+    # and only the `gh release create` is tag-only.
     steps:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+      - name: Show collected artifacts
+        run: |
+          find artifacts -type f -printf '%p  (%s bytes)\n'
+          test -n "$(find artifacts -type f)" || { echo "no artifacts collected"; exit 1; }
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')    # only a tag publishes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

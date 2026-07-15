@@ -45,8 +45,10 @@ gotchas (inside-out signing, the hardened-runtime entitlements).
 `release.yml` only triggers on a `v*` tag, so **nothing in normal CI ever exercises
 it** — a broken build step or an artifact-action mismatch stays invisible until the
 tag is already pushed and the Release is half-created. Flush that out first with a
-manual dispatch, which builds Linux + Windows and round-trips the artifacts but
-**creates no Release** (the publish job is gated on `refs/tags/`):
+manual dispatch, which builds Linux + Windows, uploads the artifacts, **downloads
+them back** (proving the artifact actions interoperate), and stops short of
+publishing — only the `gh release create` step is tag-gated, so **no Release is
+created**:
 
 ```bash
 gh workflow run release.yml --ref main     # or a branch you're validating
