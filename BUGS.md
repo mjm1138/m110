@@ -216,6 +216,115 @@ Legend: `[ ]` open · `[~]` partially done
   in a priorities preference pane are still **TBD** — see the scoring model + the
   Astronomy-prototype findings in ROADMAP item 1 (glow-mask dark-site awareness,
   urgency×completion coupling, combined-frame captures).*
+*Session-planner items (#40–44) are phased in [`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md).*
+
+- [x] **#40 — Non-overlapping, 10-min-aligned sequence** *(PLANNING_ROADMAP Phase 4,
+  `feature/session-planner`.)* `planning.sequence_plan` — pure/deterministic (tested on
+  synthetic plan dicts, no astropy) — implements the v1 logic verbatim: object 1 = the
+  highest-priority target startable right at astronomical dark (clear + under the #37
+  ceiling); duration = dark-span ÷ count on 10-min ticks, shortened when the target reaches
+  **deep-stack** sooner or its own up-window ends; object N+1 starts at object N's end;
+  near-equal scores (2-dp quantum) → the target **closer to setting** first. Gaps advance
+  tick-by-tick until something rises. (Grouping by sky region stays a later version.)
+- [x] **#41 — Schedule output format** *(shipped with #40.)* The field guide renders a
+  `## Schedule` table — object name, start, duration, altitude at start (`^` when a soft
+  ceiling let it start high), filter, **moon impact re-evaluated at each slot's start**
+  with the #36 plain-language footnote. Object 2 start = object 1 end; no slew/focus
+  modelling. Season labels were dropped from the Notes beside dated recommendations
+  (review §5e / Phase 4.3).
+- [x] **#42 — Target-count control** *(shipped with #40.)* A **Targets** spinbox on the
+  plan row (default **4**, range 1–20); changing it re-sequences the cached plan
+  instantly (no astropy recompute). The plan table shows the sequenced slots; move
+  up/down **reflows** with the forced order, unchecking a row **excludes** the target
+  and reflows (a replacement may take the slot; regenerate resets).
+- [x] **#43 — Date-picker broken** *(PLANNING_ROADMAP Phase 5, `feature/session-planner`.)*
+  The calendar popup's day grid is a **QTableView subclass**, so the theme's generic
+  `QTableView::item` padding squeezed the fixed-size day cells until two-digit dates and
+  weekday names elided to "…", and the muted table `selection_bg` made the picked date read
+  as disabled. Reproduced offscreen (QSS-driven → shows under Fusion too), fixed with scoped
+  `QCalendarWidget` rules in `theme/qss.py` (zero item padding · accent selection · nav-bar
+  styling), re-render verified in light + dark; a generated-QSS regression test guards it.
+  *One live-app eyeball on macOS still worthwhile (native paint isn't pixel-testable
+  offscreen).* Shipped alongside: `NightTimeline` overlays — moon track (☾, dashed, only
+  while up), the start-ceiling dotted line, and the scheduled slot bands in series colors.
+- [ ] **#44 — LLM session-planner skill foundation** *(→ PLANNING_ROADMAP Phase 6;
+  post-release follow-on).* Lay the foundation for an M110-native session-planner
+  skill over the deterministic engine — consult the `astro-session-planner` skill +
+  `scripts/`/`workflows/` in ~/Astronomy and work from there. This is the point where
+  an LLM plugs in (explains/tunes/narrates; the engine stays the source of truth).
+
+*Findings from the 2026-07-13 prioritizer/planner review below — reasoning in
+[`prioritizer-review.md`](prioritizer-review.md).*
+
+- [x] **#35 — Single ranked view + retire `priorities.toml`.** *(PLANNING_ROADMAP Phase 1.1,
+  `feature/session-planner`.)* The prioritizer (`prioritize.py`) was already the single
+  source the Planning UI consumes; the real defect was that `build_contexts` read object
+  `type` only from the Library, so every **uncaptured** active-goal member scored as
+  `type:"unknown"` → wrong filter (IRCUT) + the 90-min deep floor instead of the type-aware
+  240/360. Fixed by falling back to the **bundled reference** for type (→ correct
+  filter/threshold across the whole sweep). Also **retired the legacy curated path** end to
+  end: `build_derived` no longer reads `priorities.toml` or writes `priorities.json`;
+  `build_priorities`/`derived.load_priorities`/`select.filter_priorities` deleted; the
+  published site's Priority Targets section dropped (the curated data was personal + not
+  generalizable). `track=false` campaign exclusion is covered by a pin *deprioritize*.
+- [x] **#36 — Moon model "wrong" (planner header).** *(PLANNING_ROADMAP Phase 2,
+  `feature/session-planner`.)* **The astronomy was never wrong** — reproducing the night showed
+  the engine computes Jul 18 correctly (27% / +5.8° / sets ~23:05). The bad plan file was a
+  **date/plan desync**: generated **Jul 13** (its dark window says so) but *titled* Jul 18 —
+  `_save_field_guide` read the date widget at save time while the astronomy was from Generate
+  time, and Jul 13–14 was the **new moon**, hence "0% lit, −17° at dusk". Fixed both ends
+  (the plan's `day` rides in `_plan_meta`; a date/location change invalidates the stale plan),
+  plus the genuine model upgrades: **per-slot moon** (`plan_night` → `{illum, alt, set_time,
+  rise_time, track}`; header "29% lit · up at dusk (+6°) · sets 23:05"), the **Moon column
+  gated on moon-up** at each target's best time ("—" when down), and **filter-aware
+  `moon_impact`** (illumination × proximity, narrowband ≈ near-immune) with an explanation
+  footnote/tooltip. Regression tests pin the Jul 13 (new moon, down all night) and Jul 18
+  (crescent, sets 22–23h) nights + the exact save-desync flow. This is the correctness half of the #193 ask to
+  *explain* moon impact.
+- [x] **#37 — Start-altitude ceiling ignored in slot selection.** *(PLANNING_ROADMAP Phase 3,
+  `feature/session-planner`.)* The 2026-07-18 plan put 4/8 targets at over-ceiling best times
+  (M29 88°, Sh2-112 84°, Sh2-115 83°, M39 82°). Shipped as a **typed per-device ceiling**
+  (2026-07-14 research, table + sources in PLANNING_ROADMAP Phase 3): Seestar S50/S30/S30 Pro =
+  **hard** 78° app start-refusal (S30/S30 Pro assumed from the shared app — unverified);
+  Dwarf 3/Mini alt-az = **soft** ~80° quality guideline (no firmware refusal found).
+  `planning_config.DEVICE_PRESETS` carries the data; `planning.pick_start` (pure; sky.py's `^`
+  semantics) proposes the highest clear sample at/below ceiling−3° margin (the ~75° practical
+  rule) — rising- or setting-side, never the transit; soft-ceiling fallback renders `^`. Field
+  guide + Planning table show **Start** instead of transit; moon impact anchors to the start
+  slot. Live Jul-18: M29 88°→02:55@74.9°, M39→01:35@75.0°, Sh2-112→03:05@74.7°, Sh2-115→00:35@74.9°.
+- [x] **#38 — Feasibility / worthiness gate.** *(PLANNING_ROADMAP Phase 1.3,
+  `feature/session-planner`.)* No new stored fields were needed: the reference already **types**
+  the oddities (M40 = `double_star`, M73 = `asterism` — the type is the non-DSO flag), and mean
+  **surface brightness derives** from the existing `magnitude` + `size`
+  (`prioritize.surface_brightness`, anchored to published values: M31 22.1, M33 23.1 mag/arcsec²).
+  `feasibility_score` **multiplies** the whole score (infeasible can't be rescued by urgency/goal):
+  non-DSO → 0.05 · SB ramp 1.0→0.3 across 22–25 · unknown SB neutral, except mag-less **diffuse
+  nebulae** at a mild 0.8 prior (the faint-Sharpless-on-50mm case — Simbad has no V-mag for most,
+  so a backfill can't gate that set). Ranked rows carry `non_dso` + `factors.feasibility` for UI
+  annotation. Live store: M40 145/146, M73 146/146; top-10 = showpieces.
+- [ ] **#38b — Reference magnitude audit (B-mag leakage) + coverage backfill.** Some
+  SB-floored entries are **data errors**, not faint targets: `seed/objects.toml` lists the
+  **Helix (NGC 7293) at mag 13.5** (real V ≈ 7.3) and NGC 4945 at 14.4 (real ≈ 9.3) — Simbad
+  B-mag/photographic leakage from the build-time fetch. `SB_FLOOR = 0.3` keeps bad data from
+  burying a showpiece, but the fix is in `tools/gen_catalogs.py`: prefer V-mag explicitly,
+  flag suspect rows, and re-run the backfill (coverage gaps today: 145 missing magnitudes,
+  41 missing sizes of 450). Build-time only; runtime stays offline.
+- [x] **#39 — Combined-folder under-count in the prioritizer.** *(PLANNING_ROADMAP Phase 1.2,
+  `feature/session-planner`.)* `prioritize.build_contexts` now rolls each combined/mosaic
+  capture folder's integration up into its constituent **catalog members** (reusing
+  `scan_sessions.folder_to_slugs`) and drops the synthetic combined slug from scoring.
+  Verified on the live store: `m81` → 1870 min (126 solo + 1744 pair), `m82` → 1757 min
+  (13 + 1744), `m81-m82` dropped (was 126/13/1743 fragments with `obs:null`). Scope was
+  **prioritizer-only** by decision — see #40b for the engine-wide rollup.
+- [ ] **#40b — Combined-folder rollup in the *engine* (processing queue + Library).**
+  `build_totals`/`build_processing` still key on `by_folder`, so genuinely-separate on-disk
+  folders (`M81`, `M82`, **and** `M81 M82`) surface as **three rows** in the Processing queue
+  and three objects in the Library — the small solo captures (M81 126 min, M82 13 min) read as
+  "not processed / new". #39 fixed only the prioritizer; extending the family rollup into
+  `build_totals`/`build_processing` (a combined folder subsumes its members' solo folders)
+  would collapse the queue + Library to one target family. Needs a rule for how a solo folder
+  folds into a combined one. *(Superseded in framing by #40c — see there: the queue showing one
+  row per capture **target** is correct; the real defect is upstream.)*
 
 ## Publishing  *(→ ROADMAP item 8)*
 

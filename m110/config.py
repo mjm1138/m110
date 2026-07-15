@@ -28,7 +28,7 @@ INTERNAL_DIRNAME = ".m110_internal_data"
 # capture-target content) — plus Media/, the ingest Inbox/, and the hidden
 # .m110_internal_data/ holding all machine state.
 _SUBDIRS = [
-    "Objects", "Images", "Media", "Inbox",
+    "Objects", "Images", "Media", "Inbox", "Plans",
     INTERNAL_DIRNAME,
     f"{INTERNAL_DIRNAME}/derived",
     f"{INTERNAL_DIRNAME}/renders/hero",
@@ -145,13 +145,14 @@ def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
     global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
-    global PROFILES_DIR, PINS_TOML
+    global PROFILES_DIR, PINS_TOML, PLANS_DIR
     DATA_ROOT = root
     # Visible content axes
     OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
     IMAGES_DIR = root / "Images"            # Images/<target>/{lights,stacks,…}
     MEDIA_DIR = root / "Media"              # Media/<Category>_photo|_video
     STAGING_DIR = root / "Inbox"            # ingest staging
+    PLANS_DIR = root / "Plans"              # saved session-plan field guides (*.md)
     # Hidden machine state
     INTERNAL_DIR = root / INTERNAL_DIRNAME
     LIBRARY_TOML = INTERNAL_DIR / "library.toml"   # the user's object corpus

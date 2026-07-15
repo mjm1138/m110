@@ -57,13 +57,3 @@ def test_filter_processing_recomputes_counts():
     assert list(out["folders"]) == ["M31"]
     assert out["counts"] == {"out_of_date": 0, "not_processed": 0,
                              "up_to_date": 1, "dismissed": 0}
-
-
-def test_filter_priorities_keeps_campaigns_and_publishable():
-    priorities = [
-        {"id": "M31", "track": True, "progress": {"key": "m31"}},
-        {"id": "M81", "track": True, "progress": {"key": "m81"}},
-        {"id": "Veil campaign", "track": False},
-    ]
-    out = select.filter_priorities(priorities, {"m31"})
-    assert [p["id"] for p in out] == ["M31", "Veil campaign"]

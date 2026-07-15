@@ -1,6 +1,6 @@
 """Read the generated derived rollups from the live data store.
 
-These JSONs (totals / priorities / summary / processing) are produced by the
+These JSONs (totals / summary / processing) are produced by the
 Astronomy `build_derived.py` via `rebuild.sh`. In parallel-run mode M110
 *reads* them; recomputing them in-process is a later step (the in-app Refresh
 feature). References go through `config.DERIVED_DIR` dynamically so the path is
@@ -32,10 +32,6 @@ def load_totals() -> dict:
 def totals_by_slug() -> dict:
     """{slug: {integration_hms, integration_min, frames, session_count, status}}."""
     return load_totals().get("by_slug", {})
-
-
-def load_priorities() -> list:
-    return _load("priorities.json") or []
 
 
 def load_summary() -> dict:

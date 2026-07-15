@@ -59,3 +59,31 @@ def test_pushbutton_has_min_height():
     qss = build_qss(tokens.LIGHT)
     btn_block = qss.split("QPushButton {", 1)[1].split("}", 1)[0]
     assert "min-height" in btn_block
+
+
+def test_calendar_popup_escapes_the_table_item_padding():
+    """BUGS #43: the QDateEdit calendar's day grid is a QTableView subclass, so the
+    generic `QTableView::item` padding squeezed its fixed-size day cells until
+    two-digit dates + weekday names elided to "…", and the muted table selection
+    made the picked date read as disabled. The sheet must scope the calendar back
+    out: zero item padding + accent selection. (Offscreen paint can't regression-
+    test this natively — assert on the generated QSS, per the theme gotcha.)"""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        assert "QCalendarWidget QTableView::item {" in qss
+        cal_item = qss.split("QCalendarWidget QTableView::item {", 1)[1].split("}", 1)[0]
+        assert "padding: 0px" in cal_item
+        sel = qss.split("QCalendarWidget QTableView::item:selected {", 1)[1].split("}", 1)[0]
+        assert t.accent in sel and t.accent_text in sel
+
+
+def test_date_edit_is_covered_by_the_input_rules():
+    """QDateEdit is QAbstractSpinBox kin but NOT matched by the QSpinBox selector —
+    omitting it left the Planning "Night:" field on default palette colors, near-
+    unreadable in dark mode (the #43 follow-up nit)."""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        # the selector list ending in "QPlainTextEdit, QTextEdit {" must name it
+        input_selector = qss.split("QPlainTextEdit, QTextEdit {", 1)[0].rsplit("*/", 1)[-1]
+        assert "QDateEdit" in input_selector          # the color/border rule
+        assert "QDateEdit:focus" in qss               # the focus ring rule

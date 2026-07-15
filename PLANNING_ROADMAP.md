@@ -1,0 +1,256 @@
+# Planning / prioritization — tuning roadmap to release
+
+Status target: get the **Planning** pane (prioritizer + session planner) from
+"foundation shipped, output not trustworthy" to **shippable in a release**.
+
+Source material:
+- [`prioritizer-review.md`](prioritizer-review.md) — the 2026-07-13 review of the
+  live derived outputs + the first real planner run (reasoning behind the bug items).
+- [`BUGS.md`](BUGS.md) → *Planning / prioritization* (#35–39 + the Session Planner
+  bullets).
+- ROADMAP **item 1** (auto-prioritizer scoring model + the three checkpoints) and
+  the Astronomy `astro-session-planner` skill / `scripts/sky.py` (the proven logic
+  to port; **use it, don't hand-derive astropy**).
+
+The through-line from the review: **the observability engine is astronomically
+sound; the defects are (a) two derived files that were never joined, (b) a broken
+moon model, (c) device/feasibility constraints not applied to slot selection, and
+(d) the planner emits overlapping "best times" instead of a real sequence.** Fix
+those and the feature is releasable.
+
+---
+
+## Phase 1 — Correct the data the ranker sees  *(highest leverage; everything else builds on it)*
+
+Nothing downstream can be trusted until the ranked view is correct and complete.
+
+### 1.1 — Single ranked view; retire the `priorities.toml` dependency  *(BUGS #35, review §1–2)* ✅ **landed** (`feature/session-planner`)
+> **Shipped:** the prioritizer was already the single source; the real fix was
+> `prioritize.build_contexts` reading object `type` from the bundled **reference** when
+> the Library lacks it (uncaptured goal members were scoring as `type:"unknown"` → IRCUT +
+> the 90-min floor). The legacy `priorities.toml` → `priorities.json` path is retired end
+> to end (`build_priorities`/`load_priorities`/`filter_priorities` deleted; the published
+> site's Priority Targets section dropped). Remaining acceptance below is met.
+The review framed this as "join the two disjoint artifacts" (`prioritized.json` =
+observability, full sweep, but intent-free + `type:"unknown"` for uncaptured;
+`priorities.json` = curated intent + progress, but stale + no astronomy). **Revised
+decision (2026-07-13):** the curated `priorities.toml` is a personal, non-generalizable
+workflow file (it already ships **empty** in `seed/`) — so rather than depend on it,
+**make the engine artifact the single source** and derive its durable fields
+generalizably:
+- `filter` → `prioritize.filter_for_type()` (emission/planetary → LP, else IRCUT).
+- `type` → the **catalog**, for the full sweep (not from session data).
+- `target_integration_min` → `build_derived.deep_threshold` (type-aware).
+- `priority` weight → the scorer (goal + urgency + completion) **+ pins** (#3) for
+  manual intent; a pin-style **exclude** covers the old `track=false` campaign flag.
+- **Recompute** all time-varying fields (season / urgency / window / altitude) from
+  the engine for the requested date; never inherit stale `season` / "target met"
+  strings.
+- **Acceptance:** every uncaptured target carries a real `type` and `filter`; one
+  artifact drives both the Priority-targets table and the planner candidate set;
+  **no code path reads `priorities.toml`** for ranking (the personal workflow leak
+  is gone).
+- Unblocks filter-awareness for the whole sweep.
+
+*What's lost by dropping the curated file:* only the hand-tuned deviations from the
+type defaults (a bespoke per-target integration goal or a manual priority) — both of
+which the scorer + pins express generalizably. See the field-by-field table in the
+session notes.
+
+### 1.2 — Combined-folder rollup before scoring  *(BUGS #39, review §4)* ✅ **landed** (`feature/session-planner`)
+> **Shipped (prioritizer-only, by decision):** `build_contexts` credits each combined
+> folder's integration to its constituent catalog **members** (via
+> `scan_sessions.folder_to_slugs`) and drops the synthetic combined slug. Live store:
+> `m81` → 1870, `m82` → 1757, `m81-m82` dropped. The combined members carry their real
+> reference coordinates, so observability resolves (no more `obs:null`).
+>
+> **Not** addressed here: the Processing queue + Library still show separate solo
+> folders (`M81`, `M82`) as their own rows because those are real on-disk folders —
+> that engine-wide `by_folder` rollup is filed as **BUGS #40b**.
+
+Original acceptance (met for the prioritizer): M81/M82 rank once with a real up-window
+instead of a starved companion + an `obs:null` combined slug.
+
+### 1.3 — Structured feasibility fields in the catalog  *(BUGS #38, review §3, §5d)* ✅ **landed** (`feature/session-planner`)
+> **Shipped, with a re-scope the audit justified:** no new stored fields were needed.
+> The reference already **types** the oddities (M40 = `double_star`, M73 = `asterism`)
+> — the type *is* the non-DSO flag — and mean **surface brightness derives** from the
+> existing `magnitude` + `size` (`prioritize.surface_brightness`, anchored to published
+> values: M31 22.1, M33 23.1). `feasibility_score` is a **multiplier** on the whole
+> score (an infeasible target can't be rescued by urgency/goal): non-DSO → 0.05,
+> SB ramp 1.0 → 0.3 across 22–25 mag/arcsec², missing data → neutral — except mag-less
+> **diffuse nebulae**, which take a mild 0.8 prior (the faint-Sharpless case; Simbad
+> has no V-mag to backfill for most, so a data backfill can't fix that set). Ranked
+> rows carry `non_dso` + `factors.feasibility` for UI annotation.
+> **Live store:** M40 → rank 145/146, M73 → 146/146; the top-10 is showpieces, not
+> mag-less Sharpless.
+>
+> **Follow-ups filed:** the reference-mag audit (BUGS #38b — some floored targets are
+> B-mag leakage: Helix listed 13.5 vs real V≈7.3); coverage gaps = 145 mags / 41 sizes.
+
+Original acceptance (met): M40 and friends are down-ranked + flagged, not proposed as
+deep targets; a surface-brightness gate exists for the ranker to consult.
+
+---
+
+## Phase 2 — Fix the moon model  *(BUGS #36, review §5a–b)* ✅ **landed** (`feature/session-planner`)
+
+> **Root cause was NOT the astronomy.** Reproducing the review's night showed the
+> engine already computed 27%/+5.8°/sets ~23:05 correctly for Jul 18 — the bad plan
+> file (generated **Jul 13**, whose dark window it carries) was a **date/plan
+> desync**: `_save_field_guide` stamped the date *widget's* value on astronomy
+> computed at Generate time. Jul 13-14 was the new moon → "0% lit, −17° at dusk" was
+> *right for the generation day*. Fixed both ends: the plan's `day` rides in
+> `_plan_meta` and the save uses it, **and** a date/location change now invalidates
+> the stale plan outright (regression test drives the exact desync).
+>
+> **Per-slot moon shipped** (2.1): `plan_night` samples the moon across the whole
+> window → `moon = {illum, alt, set_time, rise_time, track}`; the header reads
+> "29% lit · up at dusk (+6°) · sets 23:05" (`fieldguide.moon_headline`), not one
+> snapshot. Regression tests pin both known nights (Jul 13 new-moon: down all night;
+> Jul 18: crescent setting 22–23h, illum bounded 0.20–0.32).
+>
+> **Gating + impact shipped** (2.2): every entry carries `moon_alt_at_best` +
+> `moon_impact` (`planning.moon_impact` — illumination × proximity, narrowband ×0.25
+> ≈ near-immune; `None` when the moon is down). The Moon column (field guide + the
+> Planning table) shows "48° · medium" when up, "—" when down, with the explanation
+> footnote/tooltip (the correctness half of the #41 "explain moon impact" ask —
+> Phase 4's schedule reuses `moon_impact` per sequenced slot).
+
+Original acceptance (met): figures match the review's ground truth within tolerance,
+regression tests pin known nights; moon-down slots show no spurious separations;
+narrowband reads near-immune under a bright moon.
+
+---
+
+## Phase 3 — Apply device + tonight constraints to slot selection  *(BUGS #37, review §5c)* ✅ **landed** (`feature/session-planner`)
+
+> **Per-device ceiling research (2026-07-14)** — the ceiling is a **typed,
+> per-device profile field**, not one constant:
+>
+> | Device | Ceiling | Kind | Evidence |
+> |---|---|---|---|
+> | Seestar S50 | 78° (plan ~75° with margin) | **hard** app start-refusal | Own empirical (M94 rejected @~78°, 2026-04-29); [unofficial wiki](https://unofficialseestar.wiki/doku.php?id=faqs): "won't shoot above 85°", streaking from ~70° |
+> | Seestar S30 / S30 Pro | 78° | **hard** *(assumed — the check lives in the shared Seestar app; no model-specific number documented; UNVERIFIED)* | [ZWO forum](https://bbs.zwoastro.com/d/26239-coordinated-seestar-s30-pro-capture) "limits programmed to avoid flipping over" |
+> | Dwarf 3 / Dwarf Mini (alt-az) | ~80° | **soft** quality guideline (field rotation), **no firmware refusal found** | [DwarfLab docs](https://help.dwarflab.com/en/docs/Trouble-Shooting-Guide-For-DWARF-3-Users) silent; [Cloudy Nights](https://www.cloudynights.com/forums/topic/976142-dwarf-3-rotation-axis-limits-problem/) user tracking @82°; [Belan's Dwarf planning guide](https://martinbelan.com/2026/06/23/how-to-plan-dwarf-3-and-dwarf-mini-astrophotography-sessions-in-stellarium/) gives no ceiling |
+> | Any device, EQ mode | field rotation gone → soft ceiling n/a; Seestar hard check in EQ **undocumented** — stays hard until falsified | | |
+>
+> **Shipped:** `planning_config.Device` gained `ceiling_is_hard` + `DEVICE_PRESETS`
+> (the table above as data). `planning.pick_start` (pure, sky.py's `^` semantics)
+> picks the highest **clear** sample at/below the ceiling — a rising- or setting-side
+> slot, never the over-ceiling transit; hard ceiling with nothing startable → no
+> start ("—"), soft ceiling falls back with an `over_ceiling` flag (rendered `^`).
+> `night_track`/`plan_night` take a `device` (default: the store profile); proposed
+> starts sit `START_CEILING_MARGIN_DEG` (3°) under the refusal threshold — the
+> "~75° practical" rule. The field guide + Planning table now show **Start**
+> (startable slot + altitude) instead of transit, and the **moon annotation anchors
+> to the start slot**. Live Jul-18 check: M29 88°→02:55@74.9°, M39 81.7°→01:35@75.0°,
+> Sh2-112 84.3°→03:05@74.7°, Sh2-115 82.9°→00:35@74.9°.
+
+Original acceptance (met): no proposed start is over the ceiling; high-dec targets
+get a rising- or setting-side slot.
+
+---
+
+## Phase 4 — Real session sequence, not overlapping "best times"  *(BUGS #40–42)* ✅ **landed** (`feature/session-planner`)
+
+> **Shipped:** `planning.sequence_plan` — a pure, deterministic sequencer (no astropy;
+> tested on synthetic plan dicts) implementing the #40 v1 logic exactly: object 1 =
+> highest-priority target **startable at astronomical dark** (clear + under the Phase-3
+> ceiling), object N+1 starts at object N's end, near-equal scores (2-dp quantum) go to
+> the target **closer to setting**. Duration = dark-span ÷ count (10-min floor), capped
+> by **deep-stack remaining minutes** and the target's own up-window; all starts/ends on
+> wall-clock 10-minute ticks; gaps advance tick-by-tick until something rises. Moon
+> impact is re-evaluated **at each slot's start** from the Phase-2 track. Hard ceiling
+> skips over-ceiling ticks; soft ceiling allows them flagged `^`.
+>
+> **UI (4.1):** a **Targets** spinbox (default 4, live re-sequence on change); the plan
+> table renders the schedule (Object · Start · Duration · Alt · Moon); **move up/down
+> reflows** the sequence with the forced order (starts re-chain from dusk), **uncheck
+> excludes** the target and reflows (a replacement may take the slot). The field guide
+> renders a `## Schedule` table (#41 row format: name, start, duration, altitude at
+> start, filter, moon impact + the Phase-2 explanation footnote).
+>
+> **4.3 shipped too:** season labels are no longer printed beside dated
+> recommendations (the guide's Notes now carry only the user's remarks).
+>
+> **Live Jul-18 run** (real store scores): M107 22:30 ×70 min → M25 23:40 ×40 → M18
+> 00:20 ×20 → M52 00:40 ×80 — contiguous ✓ 10-min ✓ ceiling ✓ (M25/M18's short slots
+> are their deep-stack-remaining caps working as specced).
+
+Turn the tonight shortlist into a schedule a user can actually run.
+
+### 4.1 — Target-count control  *(default 4)*
+- User-settable number of targets, default **4**, up to the number of visible targets.
+- Replaces the current "surface everything" behavior (8 proposed on 2026-07-18).
+
+### 4.2 — Non-overlapping sequenced schedule
+Current output is a list of per-target best times that overlap (two share 22:30, two
+share 03:00). Replace with a **sequence**:
+- Object sessions **cannot overlap**; each start = previous start + previous duration
+  (don't model slew/focus time).
+- Start/end times snap to **10-minute increments** (Seestar SSC constraint).
+- **Sequencing logic** (v1, from BUGS):
+  1. Highest-priority object visible **right at astronomical dark** = object 1.
+     Duration = astro-dark span ÷ target count, unless it reaches deep-stack status
+     with a shorter duration.
+  2. Highest-priority object visible at the **end of object 1** = object 2.
+  3. …continue to the target count.
+  4. Tie among equal-priority objects in a window → pick the one **closer to setting**;
+     sequence the other after.
+- **Per-target schedule row:** object name, altitude at start, start time, duration,
+  filter, moon impact (with the plain-language explanation from Phase 2).
+- **Acceptance:** the field guide renders a contiguous, non-overlapping,
+  10-min-aligned schedule; every row respects the start-ceiling from Phase 3.
+
+### 4.3 — Suppress contradictory season decoration ✅ *(shipped with 4.2)*
+Season labels ("Aug–Oct" shown next to a Jul 18 recommendation) are decorative and
+read as contradictory. Suppress or reframe next to a live recommendation.
+
+---
+
+## Phase 5 — Planning UI fixes  *(BUGS #43)* ✅ **landed** (`feature/session-planner`)
+
+> **Date picker fixed:** the calendar's day grid is a **QTableView subclass**, so the
+> theme's generic `QTableView::item` padding squeezed the fixed-size day cells until
+> two-digit dates + weekday names elided to "…", and the muted table selection made
+> the picked date read as disabled — reproduced offscreen (QSS-driven, so Fusion shows
+> it too), fixed with scoped `QCalendarWidget` rules in `theme/qss.py` (zero item
+> padding, accent selection, nav-bar styling), verified by re-render in light + dark.
+> A generated-QSS regression test guards it (per the theme gotcha: native paint can't
+> be pixel-tested offscreen — **worth one eyeball on the live macOS app**).
+>
+> **Timeline overlays shipped:** the `NightTimeline` chart now draws the **moon
+> altitude track** (dashed, ☾, only while up — Phase 2), the **start ceiling** as a
+> dotted line (Phase 3), and the **scheduled slot bands** along the time axis in each
+> target's series color (Phase 4), so the sequence reads against the curves.
+> (The Targets count control shipped in Phase 4.)
+
+---
+
+## Phase 6 — Foundation for the LLM session-planner skill  *(Session Planner bullets)*
+
+Deferred but explicitly called for: "this is a point where an LLM might plug in, so
+lay the foundation of the session-planner skill."
+- Keep the deterministic engine (`plan_night` + the sequencer) as the **source of
+  truth**; the assistant *explains / tunes / narrates*, it doesn't hand-author a plan
+  (mirrors ROADMAP item 1's "engine logic; the assistant layers over it").
+- Port the methodology the Astronomy `astro-session-planner` skill +
+  `workflows/session_planning.md` codify into an M110-native skill/seam that reads the
+  joined ranked view (Phase 1) and calls the engine.
+- **Not required for the release cut** — land Phases 1–5 first; this is the follow-on.
+
+---
+
+## Suggested landing order (review §6, adjusted)
+
+1. **Phase 1** (join + type + rollup + feasibility fields) — unblocks everything.
+2. **Phase 2** (moon model) — correctness + safety.
+3. **Phase 3** (start ceiling) — slot validity.
+4. **Phase 4** (sequence + count) — the actual deliverable users see.
+5. **Phase 5** (UI date-picker + wiring) — can proceed in parallel with 3–4.
+6. **Phase 6** (LLM skill foundation) — post-release-cut follow-on.
+
+**Release gate:** Phases 1–5 green (with regression tests pinning a known night's
+moon + a startable-window sequence), field guide renders a correct non-overlapping
+schedule for 2026-07-18 that matches a hand/`sky.py` check.

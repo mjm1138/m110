@@ -17,6 +17,13 @@ list. The score is a **weighted sum** of named factors (all normalized to ~0..1)
   hours (a soft signal, not the season gate's hard drop).
 * **per-type weight** — an optional multiplier by object type (user preference).
 
+A **feasibility multiplier** (Phase 1.3 / BUGS #38) then scales the whole score:
+non-DSO catalog-completion entries (asterisms/double stars — M40, M73) are
+near-excluded, and faint diffuse targets are graded by **mean surface brightness**
+derived from the catalog magnitude + size (missing data = neutral). A multiplier —
+not a summed factor — because an infeasible target must not be rescued by urgency
+or goal membership.
+
 **Manual overrides** compose over the computed rank: a **pin** floats to the top, a
 **deprioritize** is excluded (``m110/pins.py``).
 
@@ -47,6 +54,22 @@ TONIGHT_GOOD_ALT = 70.0          # …and the altitude that reads as "1"
 TONIGHT_GOOD_HOURS = 4.0         # clear dark hours that read as full marks
 GOAL_BASE = 0.2                  # score floor for a target not in any active goal
 LP_TYPES = ("emission", "emission_snr", "planetary")   # narrowband/LP-friendly
+
+# Feasibility / worthiness gate (Phase 1.3 / BUGS #38). Catalog-completion entries
+# that aren't deep-sky objects (M40 = a double star, M73 = an asterism) must not
+# consume a dark-sky imaging slot; faint diffuse targets get graded by mean surface
+# brightness so a showpiece outranks a stretch target on a small scope. Constants are
+# S50-flavoured calibration defaults (like the tonight/urgency ones above).
+NON_DSO_TYPES = ("asterism", "double_star")
+NON_DSO_FACTOR = 0.05            # near-exclusion; a pin still floats one to the top
+SB_GOOD = 22.0                   # mean SB (mag/arcsec²) at/below which feasibility = 1
+SB_POOR = 25.0                   # …at/above which it bottoms out at SB_FLOOR
+SB_FLOOR = 0.3                   # never zero — hours of integration can still win
+# Diffuse nebulae with *no recorded magnitude* are more often a faint Sharpless
+# stretch target than a showpiece (showpieces have data) — a mild prior, so a
+# data-confirmed bright target outranks an unknown, which outranks a known-faint one.
+DIFFUSE_TYPES = ("emission", "emission_snr", "reflection", "dark_nebula")
+UNKNOWN_DIFFUSE_FACTOR = 0.8
 
 
 @dataclass
@@ -104,6 +127,51 @@ def filter_for_type(obj_type: str) -> str:
     return "LP" if (obj_type or "").lower() in LP_TYPES else "IRCUT"
 
 
+def is_non_dso(obj_type: str) -> bool:
+    """True for catalog-completion entries that aren't imaging targets (asterisms,
+    double stars — M40, M73). The reference *type* is the flag; no separate field."""
+    return (obj_type or "").lower() in NON_DSO_TYPES
+
+
+def surface_brightness(magnitude, size) -> float | None:
+    """Mean surface brightness in **mag/arcsec²** from integrated magnitude +
+    angular size (elliptical area, π/4·a·b). Higher = fainter. ``None`` when either
+    input is missing/unparsable — the gate treats that as neutral, never a penalty.
+    Sanity anchors: M31 ≈ 22.2, M33 ≈ 23.1 (famously hard), M57 ≈ 17.8 (easy)."""
+    import math
+    from .build_derived import parse_size_dims
+    if magnitude is None:
+        return None
+    dims = parse_size_dims(size or "")
+    if not dims:
+        return None
+    area_arcsec2 = math.pi / 4.0 * dims[0] * dims[1] * 3600.0
+    if area_arcsec2 <= 0:
+        return None
+    return float(magnitude) + 2.5 * math.log10(area_arcsec2)
+
+
+def feasibility_score(obj_type: str, magnitude=None, size=None) -> float:
+    """0..1 **multiplier** on the whole score (like the per-type weight): a target a
+    small scope can't do well shouldn't be rescued by urgency or goal membership.
+    Non-DSO types → :data:`NON_DSO_FACTOR`; otherwise a soft surface-brightness ramp
+    (1.0 at ≤ SB_GOOD, down to SB_FLOOR at ≥ SB_POOR). Unknown SB is neutral (1.0),
+    except mag-less *diffuse* nebulae, which take the mild
+    :data:`UNKNOWN_DIFFUSE_FACTOR` prior — the faint-Sharpless-on-a-50mm case the
+    2026-07-13 review flagged (§5d); Simbad has no V-mag to backfill for most."""
+    if is_non_dso(obj_type):
+        return NON_DSO_FACTOR
+    sb = surface_brightness(magnitude, size)
+    if sb is None:
+        return (UNKNOWN_DIFFUSE_FACTOR
+                if (obj_type or "").lower() in DIFFUSE_TYPES else 1.0)
+    if sb <= SB_GOOD:
+        return 1.0
+    if sb >= SB_POOR:
+        return SB_FLOOR
+    return 1.0 - (1.0 - SB_FLOOR) * (sb - SB_GOOD) / (SB_POOR - SB_GOOD)
+
+
 # ── per-factor scores (each ~0..1) ─────────────────────────────────────────────
 
 def completion_factor(integration_min: float, deep_min: float = DEEP_STACK_MIN) -> float:
@@ -156,6 +224,10 @@ class TargetContext:
     in_active_goal: bool = False
     # observability() output (or None when unavailable → degraded ranking).
     obs: dict | None = None
+    # Feasibility inputs (Phase 1.3): catalog magnitude + size string; None → the
+    # surface-brightness gate is neutral (missing data never penalizes).
+    magnitude: float | None = None
+    size: str | None = None
 
 
 def score_target(ctx: TargetContext, weights: Weights, strategy: str) -> dict:
@@ -168,20 +240,22 @@ def score_target(ctx: TargetContext, weights: Weights, strategy: str) -> dict:
     goal = 1.0 if ctx.in_active_goal else GOAL_BASE
     tonight = tonight_score(obs.get("transit_alt"), obs.get("hours_clear"))
     tw = weights.type_weights.get((ctx.obj_type or "").lower(), 1.0)
+    feas = feasibility_score(ctx.obj_type, ctx.magnitude, ctx.size)
     raw = (weights.goal * goal + weights.urgency * urgency
            + weights.completion * completion + weights.tonight * tonight)
     return {
         "slug": ctx.slug,
-        "score": round(raw * tw, 4),
+        "score": round(raw * tw * feas, 4),
         "type": ctx.obj_type,
         "integration_min": round(ctx.integration_min, 2),
         "season": obs.get("season", ""),
         "observable": obs.get("observable"),
         "nights_to_close": obs.get("nights_to_close"),
         "transit_alt": obs.get("transit_alt"),
+        "non_dso": is_non_dso(ctx.obj_type),   # UI annotation ("not a DSO")
         "factors": {"goal": round(goal, 3), "urgency": round(urgency, 3),
                     "completion": round(completion, 3), "tonight": round(tonight, 3),
-                    "type_weight": tw},
+                    "type_weight": tw, "feasibility": round(feas, 3)},
     }
 
 
@@ -205,10 +279,11 @@ def build_contexts(*, day: date | None = None, site=None,
                    observability_fn=None) -> list[TargetContext]:
     """Assemble per-target contexts from the live store — the **slow** part
     (astropy observability). Scores the **union** of active-goal members + captured
-    targets + pinned slugs (bounding the work). Observability comes from the active
-    **site profile** unless ``site`` is passed; with no site/astropy each ``obs`` is
-    ``None`` (→ a degraded goal+completion+pins ranking). ``observability_fn`` is
-    injectable for tests.
+    targets + pinned slugs (bounding the work), after rolling combined/mosaic folders
+    up into their constituent catalog members (#39). Observability comes from the
+    active **site profile** unless ``site`` is passed; with no site/astropy each
+    ``obs`` is ``None`` (→ a degraded goal+completion+pins ranking). ``observability_fn``
+    is injectable for tests.
 
     Split from :func:`rank` on purpose: observability is **strategy-independent**, so
     the UI computes these once (on refresh) and re-ranks instantly as the user moves
@@ -220,13 +295,44 @@ def build_contexts(*, day: date | None = None, site=None,
         lib = catalog.load_library()
     except Exception:
         lib = {}
-    totals = derived.totals_by_slug()
+    ref = catalog.load_reference()          # bundled type/coords for uncaptured goal members
+    totals_all = derived.load_totals()
+    by_slug = totals_all.get("by_slug", {}) if isinstance(totals_all, dict) else {}
+    by_folder = totals_all.get("by_folder", {}) if isinstance(totals_all, dict) else {}
     coords = catalog.load_coords()
+
+    # Combined/mosaic rollup (#39). A combined capture folder ("M81 M82") lands as a
+    # synthetic slug ("m81-m82") that carries the pair's whole integration but isn't a
+    # real catalog object and can't resolve to one coordinate (obs null). Credit each
+    # combined folder's integration to its constituent catalog **members** (reusing the
+    # canonical folder→slug split) and drop the synthetic slug from scoring — otherwise
+    # a companion is scored as starved (M82 @13 min while the pair has ~29 h) and the
+    # combined slug ranks with no observability.
+    from .scan_sessions import folder_to_slugs
+    ref_slugs = set(ref)
+    member_integration: dict[str, float] = {}
+    synthetic: set[str] = set()
+    for folder, ft in by_folder.items():
+        members = folder_to_slugs(folder, ref_slugs)
+        if not members:
+            continue                          # off-catalog target → keep its own slug
+        imin = ft.get("integration_min", 0.0)
+        for m in members:
+            member_integration[m] = member_integration.get(m, 0.0) + imin
+        for s in ft.get("slugs", []):         # the folder's own recorded slug(s)…
+            if s not in ref_slugs and s not in members:
+                synthetic.add(s)              # …e.g. m81-m82 → superseded by members
+
+    def _integration(slug: str) -> float:
+        if slug in member_integration:
+            return member_integration[slug]
+        return (by_slug.get(slug) or {}).get("integration_min", 0.0)
 
     active_members: set[str] = set()
     for gid in goals.active_goal_ids():
         active_members |= set(goals.goal_members(gid))
-    slugs = (active_members | set(totals) | pins.pinned_slugs()) - pins.deprioritized_slugs()
+    slugs = ((active_members | set(by_slug) | pins.pinned_slugs())
+             - pins.deprioritized_slugs() - synthetic)
 
     # Resolve the site + observability function (degrade gracefully).
     obs_fn = observability_fn
@@ -243,8 +349,17 @@ def build_contexts(*, day: date | None = None, site=None,
     contexts = []
     for slug in slugs:
         entry = lib.get(slug) or {}
-        t = totals.get(slug)
-        obj_type = entry.get("type", "unknown")
+        # Prefer a real library type; fall back to the bundled reference so an
+        # uncaptured goal member (absent from the Library) still gets its true type
+        # — which drives the filter (filter_for_type) and the deep threshold. Without
+        # this the whole uncaptured sweep scored as type "unknown" → IRCUT + 90-min.
+        obj_type = entry.get("type")
+        if not obj_type or obj_type == "unknown":
+            obj_type = ref.get(slug, {}).get("type") or "unknown"
+        # Feasibility inputs, same lib→reference fallback as type.
+        rentry = ref.get(slug, {})
+        magnitude = entry.get("magnitude", rentry.get("magnitude"))
+        size = entry.get("size") or rentry.get("size")
         obs = None
         if obs_fn is not None and site is not None and slug in coords:
             ra, dec = coords[slug]
@@ -254,8 +369,9 @@ def build_contexts(*, day: date | None = None, site=None,
                 obs = None
         contexts.append(TargetContext(
             slug=slug, obj_type=obj_type,
-            integration_min=(t or {}).get("integration_min", 0.0),
-            in_active_goal=slug in active_members, obs=obs))
+            integration_min=_integration(slug),
+            in_active_goal=slug in active_members, obs=obs,
+            magnitude=magnitude, size=size))
     return contexts
 
 
@@ -273,13 +389,15 @@ def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTU
 
 def _context_to_dict(c: TargetContext) -> dict:
     return {"slug": c.slug, "type": c.obj_type, "integration_min": c.integration_min,
-            "in_active_goal": c.in_active_goal, "obs": c.obs}
+            "in_active_goal": c.in_active_goal, "obs": c.obs,
+            "magnitude": c.magnitude, "size": c.size}
 
 
 def context_from_dict(d: dict) -> TargetContext:
     return TargetContext(d["slug"], d.get("type", "unknown"),
                          d.get("integration_min", 0.0),
-                         d.get("in_active_goal", False), d.get("obs"))
+                         d.get("in_active_goal", False), d.get("obs"),
+                         d.get("magnitude"), d.get("size"))
 
 
 def write_contexts(contexts: list[TargetContext]) -> None:

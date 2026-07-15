@@ -58,6 +58,17 @@ archived in **[`DONE.md`](DONE.md)**.
 1. **Session planning** — port the positional math (twilight / moon /
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
    build a planning surface; emit the session-plan document.
+   > **Tuning arc complete (2026-07-14) — release-ready.** All five phases of
+   > **[`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md)** landed on
+   > `feature/session-planner`: single ranked source (`priorities.toml` retired) +
+   > combined-folder rollup + feasibility gate · per-slot moon model · per-device
+   > start-altitude ceiling · the night **sequencer** (non-overlapping 10-min
+   > schedule, count control, night fill, marginal-slot ⚠) · calendar/date-edit UI
+   > fixes + timeline overlays. Verified twice against independent astropy ground
+   > truth (the 2026-07-13 [`prioritizer-review.md`](prioritizer-review.md) and the
+   > 2026-07-14 [`PLANNING_BUGS.md`](PLANNING_BUGS.md) harness review + re-review).
+   > Remaining follow-ups are non-blocking: BUGS #38b (reference V-mag audit),
+   > #40d (restore version gate), #44 / Phase 6 (LLM skill foundation).
    **Foundation landed (2026-06-26):** the Qt-free engine is ported —
    `m110/planning.py` (`twilight` / `moon_summary` / `transit_altitude` + the
    seasonal/tonight `observability()` gate returning `{observable, hours_clear,
@@ -186,11 +197,14 @@ archived in **[`DONE.md`](DONE.md)**.
        strategy toggle + per-factor weights, live re-rank of a once/day-cached compute).
        *Follow-ups noted below:* trajectory-aware altitude, per-object integration
        targets, surface-brightness thresholds, and the two-tier session controls.
-     - **B — Session Planner** *(depends on A)*: the Planning view (pick site + night
-       → observable & ranked tonight list with transit/altitude/moon → assemble an
-       ordered plan) + the **plan-file / field-guide emit** (item 2). The shared
-       "tonight feasibility" math is computed once and feeds both the scorer's factor
-       (e) and the planner, so B is mostly UI + plan emit.
+     - **B — Session Planner** *(field-guide slice shipped `feature/session-planner`)*:
+       the **Plan a night** surface (pick site + night → per-target time windows via
+       `planning.night_track`/`plan_night` → an auto-ordered plan (sets-soonest first)
+       with include/reorder controls + a **`NightTimeline`** altitude chart) and the
+       **field-guide emit** (`m110/fieldguide.py` → printable Markdown, saved under the
+       `Plans/` axis, browsable/viewable in-app via `QTextBrowser.setMarkdown`). *Still
+       open here:* **device plan-files** (SSC schedule JSON / NINA — item 2) once the
+       schema/generator is ported + validated on a real device.
      - **C — Assistant** *(item 4; follows)*: the LLM layers over A+B's deterministic
        tools (proposes toggles/weights/plans; the engine still computes).
 

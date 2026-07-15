@@ -51,17 +51,3 @@ def filter_processing(processing: dict, slugs: set[str]) -> dict:
     out = dict(processing)
     out["folders"], out["queue"], out["counts"] = folders, queue, counts
     return out
-
-
-def filter_priorities(priorities: list[dict], slugs: set[str]) -> list[dict]:
-    """Keep campaign entries (untracked) and priority rows whose progress maps to
-    a publishable slug; drop rows that would expose an excluded object."""
-    out = []
-    for p in priorities:
-        if not p.get("track", True):
-            out.append(p)
-            continue
-        key = (p.get("progress") or {}).get("key")
-        if key is None or key in slugs:
-            out.append(p)
-    return out

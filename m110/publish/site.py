@@ -57,7 +57,6 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
     by_slug = totals.get("by_slug", {})
     by_folder = totals.get("by_folder", {})
     sessions = derived.load_sessions()
-    priorities = derived.load_priorities()
     processing = derived.load_processing()
 
     pub = select.publishable_slugs(library)
@@ -68,7 +67,6 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
     summary = build_derived.build_summary(pub_library, totals) if totals else {}
     sessions = select.filter_sessions(sessions, pub)
     processing = select.filter_processing(processing, pub)
-    priorities = select.filter_priorities(priorities, pub)
     proc_folders = processing.get("folders", {})
 
     out = options.output_dir
@@ -144,7 +142,7 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
     if options.has("summary"):
         write("summary.html",
               {"summary": summary, "by_folder": by_folder,
-               "priorities": priorities, "processing": processing},
+               "processing": processing},
               out / "summary.html")
         pages.append("summary.html")
     if options.has("sessions"):

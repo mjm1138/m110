@@ -2,7 +2,6 @@
 - parse_size_arcmin (catalog size string → max dimension in arcmin)
 - default_star_removal_recommended (catalog entry → bool)
 - recommend_star_removal_for_folder (slugs + catalog + override → bool)
-- build_priorities (progress attachment, incl. track=false campaign entries)
 """
 import pytest
 
@@ -11,7 +10,6 @@ from m110.build_derived import (
     parse_size_arcmin,
     default_star_removal_recommended,
     recommend_star_removal_for_folder,
-    build_priorities,
     STAR_REMOVAL_MIN_ARCMIN,
 )
 
@@ -184,50 +182,6 @@ def test_status_up_to_date_when_all_frames_precede_stack(tmp_path, monkeypatch):
     assert f["status"] == "up_to_date"
     assert f["new_lights_since_stack"] == 0
     assert f["stack_meta"]["frames_at_stack"] == 200   # both sessions preceded the stack
-
-
-# ── build_priorities: the track flag ─────────────────────────────────────────
-
-def _totals_with(folder, slug, minutes=300.0):
-    """Minimal totals dict shaped like build_totals output."""
-    rec = {
-        "integration_min": minutes,
-        "integration_hms": "5:00",
-        "frames": 600,
-        "session_count": 3,
-        "status": "deep_stack",
-    }
-    return {"by_folder": {folder: rec}, "by_slug": {slug: rec}}
-
-
-class TestBuildPrioritiesTrack:
-    def test_tracked_entry_gets_progress(self):
-        # A normal entry whose id maps to a folder picks up progress + percent.
-        totals = _totals_with("M81 M82", "m81", minutes=300.0)
-        pri = [{"id": "M81/M82", "target_integration_min": 600}]
-        out = build_priorities(pri, totals, catalog={})
-        assert out[0]["track"] is True
-        assert out[0]["progress"] is not None
-        assert out[0]["percent_complete"] == 50.0
-
-    def test_untracked_campaign_entry_has_no_progress(self):
-        # track=false: even though "M81/M82" *would* match a folder, the
-        # campaign entry must render without an auto-rollup.
-        totals = _totals_with("M81 M82", "m81", minutes=1500.0)
-        pri = [{
-            "id": "M81/M82 (LP Hα)",
-            "target_integration_min": 240,
-            "track": False,
-        }]
-        out = build_priorities(pri, totals, catalog={})
-        assert out[0]["track"] is False
-        assert out[0]["progress"] is None
-        assert out[0]["percent_complete"] is None
-
-    def test_track_defaults_true_when_absent(self):
-        totals = {"by_folder": {}, "by_slug": {}}
-        out = build_priorities([{"id": "M109"}], totals, catalog={})
-        assert out[0]["track"] is True
 
 
 # ── parse_size_arcmin ────────────────────────────────────────────────────────
@@ -413,3 +367,13 @@ class TestThresholdConfig:
         # If someone bumps the threshold, this fails loudly so the change is
         # explicit (rather than a silent tightening / loosening).
         assert STAR_REMOVAL_MIN_ARCMIN == 8.0
+
+
+def test_parse_size_dims():
+    from m110.build_derived import parse_size_dims
+    assert parse_size_dims("27'×14'") == (27.0, 14.0)
+    assert parse_size_dims("3°×1°") == (180.0, 60.0)
+    maj, minr = parse_size_dims('49"')                    # arcsec (M40)
+    assert abs(maj - 49 / 60) < 1e-9 and minr == maj
+    assert parse_size_dims("110'") == (110.0, 110.0)      # single dim = circular
+    assert parse_size_dims("") is None

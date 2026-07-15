@@ -1263,3 +1263,159 @@ def test_site_editor_survives_refresh_while_editing(tmp_path, monkeypatch, qapp)
         assert page.editor._lat.value() == pytest.approx(12.345)   # saved value stays
     finally:
         page.deleteLater(); qapp.processEvents()
+
+
+def test_planning_plan_a_night_and_save_and_view(tmp_path, monkeypatch, qapp):
+    """Generate a night plan (injected fast plan_night), toggle include, save a field
+    guide, and see it in the browser + render it in the viewer dialog."""
+    from datetime import datetime
+    root = seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import prioritize, planning, fieldguide
+    from m110.prioritize import TargetContext
+    obs = {"observable": True, "hours_clear": 3, "transit_alt": 60,
+           "nights_to_close": 20, "season": "summer"}
+    prioritize.write_contexts([TargetContext("m13", "globular", 30, True, obs),
+                               TargetContext("m81", "galaxy", 0, True, obs)])
+    from datetime import timedelta
+    t0 = datetime(2026, 7, 13, 22, 30)
+    t1 = datetime(2026, 7, 14, 3, 30)
+
+    def fake_plan(site, day, slugs, **kw):
+        n = int((t1 - t0).total_seconds() / 60 / 10) + 1
+        samples = [(t0 + timedelta(minutes=10 * i), 50.0, True) for i in range(n)]
+        return {"window": (t0, datetime(2026, 7, 14, 3, 50)),
+                "moon": {"illum": 0.1, "alt": -17.0, "set_time": None,
+                         "rise_time": None, "track": []},
+                "start_ceiling_deg": 75.0, "ceiling_is_hard": True,
+                "entries": [{"slug": s, "transit_time": t0, "transit_alt": 50.0,
+                             "best_alt": 50.0, "start_time": t0, "start_alt": 50.0,
+                             "over_ceiling": False, "up_start": t0, "up_end": t1,
+                             "moon_sep_deg": 70.0, "samples": samples}
+                            for s in slugs[:2]]}
+    monkeypatch.setattr(planning, "plan_night", fake_plan)
+
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._on_generate()
+        qapp.processEvents()
+        if page._planner is not None:
+            page._planner.wait()
+            qapp.processEvents()
+        assert len(page._entries) == 2
+        # the sequencer schedules both (count=4, only 2 candidates), chained slots
+        assert page._plan_table.rowCount() == 2
+        assert len(page._slots) == 2
+        assert page._slots[1]["start"] == page._slots[0]["end"]
+        assert page._slots[0]["start"].minute % 10 == 0
+        assert "Astro dark" in page._plan_summary.text()
+
+        # reorder: move row 1 up → forced-order reflow, starts re-chain from dusk
+        page._plan_table.selectRow(1)
+        first_before = page._slots[0]["slug"]
+        page._move_selected(-1)
+        assert page._slots[1]["slug"] == first_before
+        assert page._slots[0]["start"].minute % 10 == 0
+
+        # uncheck the first slot → excluded + reflowed (no replacement available)
+        page._plan_table.item(0, 0).setCheckState(Qt.Unchecked)
+        assert len(page._slots) == 1
+
+        # save a field guide (the remaining scheduled target)
+        from PySide6.QtWidgets import QInputDialog
+        monkeypatch.setattr(QInputDialog, "getText",
+                            staticmethod(lambda *a, **k: ("My Plan", True)))
+        page._save_field_guide()
+        guides = fieldguide.list_guides()
+        assert len(guides) == 1
+        assert "## Schedule (1 targets)" in fieldguide.read(guides[0]["path"])
+        assert page._guides_table.rowCount() == 1
+
+        # the viewer dialog renders the saved markdown
+        from m110.ui.field_guide_dialog import FieldGuideDialog
+        dlg = FieldGuideDialog(guides[0]["path"])
+        assert "Observing plan" in dlg._view.toPlainText() or \
+               "My Plan" in dlg._view.toPlainText()
+        dlg.deleteLater()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_night_timeline_sets_plan_without_error(qapp):
+    from datetime import datetime
+    from m110.ui.night_timeline import NightTimeline
+    tl = NightTimeline()
+    tl.set_plan(None)                      # empty → "no darkness" path, no crash
+    t0 = datetime(2026, 7, 13, 22, 0)
+    t_mid = datetime(2026, 7, 14, 1, 0)
+    tl.set_plan({"window": (t0, datetime(2026, 7, 14, 4, 0)),
+                 # Phase 2/3/4 overlays: moon track + ceiling + schedule bands all
+                 # paint without error alongside the target curves.
+                 "moon": {"illum": 0.3, "alt": 5.0, "set_time": None,
+                          "rise_time": None,
+                          "track": [(t0, 5.0), (t_mid, -10.0)]},
+                 "start_ceiling_deg": 75.0, "ceiling_is_hard": True,
+                 "schedule": [{"slug": "m13", "start": t0, "end": t_mid,
+                               "duration_min": 180, "alt_start": 40.0,
+                               "moon_sep_deg": 70.0, "moon_alt_at_best": 5.0,
+                               "moon_impact": "low", "over_ceiling": False}],
+                 "entries": [{"slug": "m13",
+                              "samples": [(t0, 40.0, True),
+                                          (t_mid, 85.0, True)]}]})
+    tl.resize(400, 200)
+    tl.grab()                              # force a paint pass
+    tl.deleteLater()
+
+
+def test_planning_page_save_uses_plan_day_and_invalidates_on_change(
+        tmp_path, monkeypatch, qapp):
+    """BUGS #36 root cause: a plan generated for day X, then the date widget moved
+    to day Y, must (a) save the guide stamped with X's astronomy — never relabel —
+    and (b) actually get *cleared* when the date changes (stale-plan invalidation),
+    so the relabel can't happen at all."""
+    from datetime import date, datetime
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110.ui.pages.planning import PlanningPage
+    from PySide6.QtCore import QDate
+    from PySide6.QtWidgets import QInputDialog
+    page = PlanningPage()
+    try:
+        gen_day = date(2026, 7, 13)
+        t0 = datetime(2026, 7, 13, 22, 30)
+        entry = {"slug": "m13", "transit_time": t0, "transit_alt": 85.0,
+                 "best_alt": 85.0, "up_start": t0,
+                 "up_end": datetime(2026, 7, 14, 3, 30), "moon_sep_deg": 70.0,
+                 "moon_alt_at_best": -20.0, "moon_impact": None, "samples": []}
+        page._entries = [entry]
+        page._included = {"m13"}
+        page._plan_meta = {"window": (t0, datetime(2026, 7, 14, 3, 50)),
+                           "moon": {"illum": 0.02, "alt": -17.0,
+                                    "set_time": None, "rise_time": None, "track": []},
+                           "day": gen_day}
+
+        # The widget wanders to another night; the save must still stamp gen_day.
+        page._date.blockSignals(True)                  # isolate (a) from (b)
+        page._date.setDate(QDate(2026, 7, 18))
+        page._date.blockSignals(False)
+        saved = {}
+        monkeypatch.setattr(QInputDialog, "getText",
+                            staticmethod(lambda *a, **k: ("T", True)))
+        from m110 import fieldguide
+        real_render = fieldguide.render_markdown
+        def spy(site, day, plan, **kw):
+            saved["day"] = day
+            return real_render(site, day, plan, **kw)
+        monkeypatch.setattr(fieldguide, "render_markdown", spy)
+        page._save_field_guide()
+        assert saved["day"] == gen_day                 # not the widget's Jul 18
+
+        # And a real date change invalidates the stale plan outright.
+        page._date.setDate(QDate(2026, 7, 25))
+        assert page._entries == [] and page._plan_meta == {}
+        assert "generate the plan again" in page._plan_status.text().lower()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

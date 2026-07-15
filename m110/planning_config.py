@@ -88,13 +88,43 @@ class Site:
 @dataclass
 class Device:
     name: str = "ZWO Seestar S50"
-    start_alt_ceiling_deg: float = 78.0  # device rejects a start above this
+    start_alt_ceiling_deg: float = 78.0  # device rejects a start above this (None = no ceiling)
+    # Whether the ceiling is a **hard** app/firmware start-refusal (Seestar: the app
+    # rejects a capture whose target is above the ceiling at the slot's *start* —
+    # it may ride through zenith once running) or a **soft** quality guideline
+    # (Dwarf alt-az: field rotation degrades near zenith but the firmware doesn't
+    # refuse). The planner never schedules a start above a hard ceiling; above a
+    # soft one it avoids when possible and annotates otherwise.
+    ceiling_is_hard: bool = True
     low_alt_floor_deg: float = 10.0      # atmosphere/seeing limit
     max_exposure_s: int = 30
     default_exposure_s: int = 20
     one_exposure_per_plan: bool = True
     gain: int = 80
     retry_wait_s: int = 300
+
+
+# Per-device ceiling presets (2026-07-14 research — PLANNING_ROADMAP Phase 3):
+# * S50: hard app-level start refusal, empirically ~78° (M94 rejected 2026-04-29;
+#   the unofficial Seestar wiki says "won't shoot above 85°", streaking from ~70°).
+# * S30 / S30 Pro: the check lives in the shared Seestar app + same alt-az
+#   geometry → same ceiling assumed; no model-specific number is documented
+#   anywhere public (UNVERIFIED — revisit if a user reports otherwise).
+# * Dwarf 3 / Dwarf Mini: NO hard firmware refusal found (DwarfLab docs silent;
+#   a Cloudy Nights user tracks at 82° alt-az). Community guidance avoids >~80°
+#   in alt-az for field rotation → a *soft* ceiling.
+# * EQ mode (any device) removes field rotation — the soft ceiling stops
+#   applying; whether the Seestar app still enforces its hard check in EQ mode
+#   is undocumented, so the Seestar presets stay hard until falsified.
+DEVICE_PRESETS: dict[str, Device] = {
+    "seestar_s50": Device(),
+    "seestar_s30": Device(name="ZWO Seestar S30"),
+    "seestar_s30_pro": Device(name="ZWO Seestar S30 Pro"),
+    "dwarf_3": Device(name="DwarfLab Dwarf 3", start_alt_ceiling_deg=80.0,
+                      ceiling_is_hard=False),
+    "dwarf_mini": Device(name="DwarfLab Dwarf Mini", start_alt_ceiling_deg=80.0,
+                         ceiling_is_hard=False),
+}
 
 
 def _load_toml(path) -> dict:

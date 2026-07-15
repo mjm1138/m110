@@ -135,6 +135,64 @@ def test_build_prioritized_over_a_store(tmp_path, monkeypatch):
     assert [r["rank"] for r in rows] == list(range(1, len(rows) + 1))
 
 
+def test_uncaptured_goal_member_gets_type_from_reference(tmp_path, monkeypatch):
+    """An active-goal member that hasn't been captured is absent from the Library,
+    so its type must come from the bundled reference — not default to "unknown".
+    Otherwise the whole uncaptured sweep scored as IRCUT + the 90-min floor instead
+    of its true filter + type-aware deep threshold (PLANNING_ROADMAP Phase 1.1)."""
+    from tests._helpers import seed_root
+    from m110.build_derived import deep_threshold
+    seed_root(tmp_path, monkeypatch)      # empty Library, default Messier goal active
+
+    def fake_obs(target, day, site, **kw):
+        return {"observable": True, "hours_clear": 3.0, "transit_alt": 55.0,
+                "nights_to_close": 20, "season": "summer"}
+
+    contexts = pr.build_contexts(observability_fn=fake_obs, site=object())
+    by_slug = {c.slug: c for c in contexts}
+    assert "m8" in by_slug, "an uncaptured Messier member should still be scored"
+    m8 = by_slug["m8"]
+    assert m8.obj_type == "emission"                     # from the reference, not "unknown"
+    assert pr.filter_for_type(m8.obj_type) == "LP"       # emission → narrowband
+    assert deep_threshold(m8.obj_type) == 360            # type-aware, not the 90-min floor
+
+
+def test_combined_folder_rolls_up_into_members(tmp_path, monkeypatch):
+    """A combined capture folder ("M81 M82" → synthetic slug "m81-m82") must credit
+    its integration to the constituent catalog members and drop the synthetic slug —
+    otherwise the companion looks starved (M82 @13 min while the pair has ~29 h) and
+    the combined slug ranks with no observability (PLANNING_ROADMAP Phase 1.2 / #39)."""
+    from tests._helpers import seed_root
+    from m110 import catalog, derived, goals, pins
+    seed_root(tmp_path, monkeypatch)
+
+    # Real M81/M82 exist in the bundled reference; the store has three folders: two
+    # small solo captures plus the deep combined pair (a synthetic m81-m82 slug).
+    totals = {
+        "by_slug": {
+            "m81": {"integration_min": 126.0},
+            "m82": {"integration_min": 13.0},
+            "m81-m82": {"integration_min": 1744.0},
+        },
+        "by_folder": {
+            "M81": {"integration_min": 126.0, "slugs": ["m81"]},
+            "M82": {"integration_min": 13.0, "slugs": ["m82"]},
+            "M81 M82": {"integration_min": 1744.0, "slugs": ["m81-m82"]},
+        },
+    }
+    monkeypatch.setattr(derived, "load_totals", lambda: totals)
+    monkeypatch.setattr(goals, "active_goal_ids", lambda: [])   # score via totals alone
+    monkeypatch.setattr(pins, "pinned_slugs", lambda: set())
+    monkeypatch.setattr(pins, "deprioritized_slugs", lambda: set())
+
+    contexts = pr.build_contexts(observability_fn=lambda *a, **k: _obs(), site=object())
+    by = {c.slug: c for c in contexts}
+    assert "m81-m82" not in by                     # synthetic combined slug dropped
+    assert by["m81"].integration_min == 126.0 + 1744.0   # solo + combined
+    assert by["m82"].integration_min == 13.0 + 1744.0    # no longer starved
+    assert by["m81"].obj_type == "galaxy"          # from the reference
+
+
 def test_contexts_cache_roundtrips_and_reranks(tmp_path, monkeypatch):
     """Contexts are cached (slow obs computed once) and re-ranked live — a strategy
     flip re-orders without recomputing observability."""
@@ -185,3 +243,56 @@ def test_scorer_uses_per_type_threshold():
     assert glob["factors"]["urgency"] == 0.0        # globular finished at 90 → no urgency
     assert neb["factors"]["urgency"] > 0.0          # emission still needs hours
     assert neb["factors"]["completion"] > glob["factors"]["completion"]
+
+
+# ── feasibility / worthiness gate (Phase 1.3 / BUGS #38) ─────────────────────
+
+def test_surface_brightness_anchors():
+    """Formula sanity against published mean-SB values (mag/arcsec²)."""
+    assert abs(pr.surface_brightness(3.4, "3°×1°") - 22.1) < 0.2      # M31
+    assert abs(pr.surface_brightness(5.7, "73'×45'") - 23.1) < 0.2    # M33
+    assert pr.surface_brightness(None, "10'") is None                 # no mag
+    assert pr.surface_brightness(9.0, None) is None                   # no size
+    assert pr.surface_brightness(9.6, '49"') is not None              # arcsec form
+
+
+def test_feasibility_non_dso_and_sb_ramp():
+    assert pr.feasibility_score("asterism") == pr.NON_DSO_FACTOR                 # M73
+    assert pr.feasibility_score("double_star", 9.6, '49"') == pr.NON_DSO_FACTOR  # M40
+    assert pr.feasibility_score("planetary", 8.8, "4'×3'") == 1.0     # bright → full
+    assert pr.feasibility_score("galaxy", 3.4, "3°×1°") > 0.95        # M31: just on the ramp
+    mid = pr.feasibility_score("galaxy", 5.7, "73'×45'")              # M33 → graded
+    assert pr.SB_FLOOR < mid < 1.0
+    assert pr.feasibility_score("galaxy", 14.4, "20'×4'") == pr.SB_FLOOR  # very faint
+    # unknown SB: neutral for compact types, the mild prior for diffuse nebulae
+    # (a mag-less emission target is more often a faint Sharpless than a showpiece)
+    assert pr.feasibility_score("globular", None, None) == 1.0
+    assert pr.feasibility_score("emission", None, None) == pr.UNKNOWN_DIFFUSE_FACTOR
+
+
+def test_non_dso_ranks_below_an_identical_real_target():
+    """A catalog-completion oddity (M40) must not out-rank a real galaxy in the same
+    state — the completion goal surfaced M40 into a dark-sky slot (review §5d)."""
+    w = Weights()
+    dso = TargetContext("gal", "galaxy", 0, True, _obs())
+    oddity = TargetContext("m40", "double_star", 0, True, _obs())
+    ranked = pr.rank([oddity, dso], w, pr.STRATEGY_CAPTURE, {})
+    assert ranked[0]["slug"] == "gal"
+    assert ranked[-1]["non_dso"] is True
+    assert ranked[-1]["factors"]["feasibility"] == pr.NON_DSO_FACTOR
+
+
+def test_build_contexts_carries_feasibility_inputs(tmp_path, monkeypatch):
+    """M40's type/magnitude/size flow from the bundled reference into the context,
+    and the cache round-trip preserves them (feasibility survives a reload)."""
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)          # empty Library, Messier goal active
+    contexts = pr.build_contexts(observability_fn=lambda *a, **k: _obs(), site=object())
+    by = {c.slug: c for c in contexts}
+    m40 = by["m40"]
+    assert m40.obj_type == "double_star" and m40.magnitude is not None
+    row = pr.score_target(m40, Weights(), pr.STRATEGY_CAPTURE)
+    assert row["non_dso"] and row["factors"]["feasibility"] == pr.NON_DSO_FACTOR
+    pr.write_contexts(contexts)
+    got = {c.slug: c for c in pr.load_contexts()}
+    assert got["m40"].magnitude == m40.magnitude and got["m40"].size == m40.size

@@ -159,6 +159,36 @@ QHeaderView::section {{
 }}
 QTableCornerButton::section {{ background-color: {t.surface_alt}; border: none; }}
 
+/* ── calendar popup (QDateEdit's picker) ──
+   The calendar's day grid is a QTableView SUBCLASS, so the generic table rules
+   above land on it: the item padding squeezed the small fixed day cells until
+   two-digit dates + weekday names elided to "…", and the muted table selection
+   made the picked date read as disabled (BUGS #43). Scope them back out. */
+QCalendarWidget QTableView {{
+    border: none;
+    border-radius: 0;
+    alternate-background-color: {t.surface};
+    selection-background-color: {t.accent};
+    selection-color: {t.accent_text};
+}}
+QCalendarWidget QTableView::item {{ padding: 0px; }}
+QCalendarWidget QTableView::item:selected {{
+    background-color: {t.accent};
+    color: {t.accent_text};
+}}
+QCalendarWidget QWidget#qt_calendar_navigationbar {{
+    background-color: {t.surface_alt};
+}}
+QCalendarWidget QToolButton {{
+    color: {t.text_primary};
+    background: transparent;
+    border: none;
+    border-radius: {r['sm']}px;
+    padding: {SPACE['xs']}px {SPACE['sm']}px;
+}}
+QCalendarWidget QToolButton:hover {{ background-color: {t.surface}; }}
+QCalendarWidget QToolButton::menu-indicator {{ image: none; }}
+
 /* ── buttons ── */
 QPushButton {{
     background-color: {t.surface};
@@ -176,7 +206,11 @@ QPushButton:default {{ border-color: {t.accent}; }}
 QPushButton:disabled {{ color: {t.text_disabled}; border-color: {t.divider}; }}
 
 /* ── inputs ── */
-QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
+/* QDateEdit/QDateTimeEdit are QAbstractSpinBox kin but NOT covered by the
+   QSpinBox selector — omitting them left the Planning "Night:" field on default
+   palette colors, near-unreadable in dark mode (the #43 follow-up nit). */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QDateTimeEdit,
+QPlainTextEdit, QTextEdit {{
     background-color: {t.surface};
     color: {t.text_primary};
     border: 1px solid {t.border};
@@ -186,7 +220,7 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
     selection-color: {t.selection_text};
 }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-QPlainTextEdit:focus, QTextEdit:focus {{
+QDateEdit:focus, QDateTimeEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {t.focus_ring};
 }}
 QComboBox QAbstractItemView {{

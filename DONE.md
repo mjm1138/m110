@@ -113,6 +113,51 @@ Checkpoints B (session planner + plan-file emit) and C (assistant) remain open.
 
 ---
 
+## Later phase 1 — Session planning: **Checkpoint B** *(done 2026-07-13)*
+
+Turns the Checkpoint-A prioritizer into a plan for a **specific night** + a saved,
+browsable **field guide** (`feature/session-planner`). Device plan-files (SSC/NINA,
+the deferred half of item 2) and the Checkpoint C assistant (item 4) remain open.
+
+- **Per-target night math** (`m110/planning.py`, Qt-free, reusing `twilight` /
+  `moon_summary` / `to_utc` / `_location`). `night_track(target, day, site, filter=)`
+  samples a target's alt/az across the astro-dark window and returns its **transit
+  time + altitude**, the **longest contiguous up-window** (above `min_alt` AND the
+  filter-aware horizon+glow floor), **moon separation** at transit, and the
+  `(local_time, alt, clear)` **sample series** for the timeline chart. `plan_night`
+  returns `{window, moon, entries}` — every observable target's track,
+  **auto-ordered by `up_end`** (the target *setting soonest* goes first; tiebreak by
+  prioritizer score); `order="manual"` preserves the caller's order. Twilight (the
+  18h sun scan) is computed **once** and reused via `window=` (~0.9 s for 15 targets,
+  vs. per-target). Astropy moon-separation frame-transform warnings suppressed.
+- **Field guide artifact + store** (`m110/fieldguide.py`, Qt-free). `render_markdown`
+  → a printable observing plan: header (date, site, dark window, moon illum/altitude)
+  + an ordered target table (best time = transit, altitude, up-window, moon°, filter
+  from `prioritize.filter_for_type`) + per-target season/notes. Plain Markdown so the
+  app renders it with **`QTextBrowser.setMarkdown`** (Qt-native — no dependency) and it
+  prints/shares. `save`/`list_guides`/`read` manage saved guides under a **new visible
+  `Plans/` axis** (`config.PLANS_DIR`, `Plans/<date>_<slug>.md`, created idempotently
+  by `ensure_data_root` — additive external output, **no `.store_version` bump**).
+- **Plan-a-night UI** (`pages/planning.py`). A **Plan a night** section: a date picker
+  → a background `_PlannerWorker` runs `plan_night` over the **top-ranked candidates**
+  (reusing the cached prioritizer contexts to bound the astropy work) → a dark-window
+  + moon summary, an ordered **target table** with include-checkboxes + **Move up/down**
+  (the manual-reorder option), and a **`NightTimeline`** widget
+  (`m110/ui/night_timeline.py`) painting each included target's altitude curve across
+  dusk→dawn + the min-alt floor line. **Save field guide…** writes the Markdown via
+  `fieldguide`. A **Saved field guides** browser section lists guides with **View**
+  (`FieldGuideDialog`, `m110/ui/field_guide_dialog.py`) / **Reveal** / **Delete**.
+- **Worker discipline.** Both astropy workers (`_PrioritizerWorker` on `ensure_ranking`,
+  `_PlannerWorker` on **Generate**) fire only on **explicit user actions** — never from
+  widget construction / reload / focus-refresh — so a background refresh never runs
+  astropy and offscreen tests can't spawn/leak the thread (verified: no teardown
+  aborts across repeated full-suite runs).
+- **Decisions (with the user):** field-guide-only export (browsable/viewable in-app;
+  SSC/NINA later) · a visual altitude timeline · auto-ordered plan with a manual
+  reorder option.
+
+---
+
 ## Later phase 5 — Library, catalogs & goals *(done; catalog library still growing)*
 
 5. **Library, catalogs & goals — multi-list tracking + arbitrary objects.**
