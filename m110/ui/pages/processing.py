@@ -30,6 +30,8 @@ _GROUPS = [
 # it "Object" made solo captures alongside a combined one read as duplicate objects.
 _COLS = ["Target", "Raw integ", "In stack", "Rejected", "+ new", "Latest stack",
          "Last capture", "Notes"]
+# Default sort: most new-lights first — "what needs restacking most" on top.
+_DEFAULT_SORT = (_COLS.index("+ new"), Qt.DescendingOrder)
 
 
 class ProcessingPage(QScrollArea):
@@ -44,6 +46,9 @@ class ProcessingPage(QScrollArea):
         self.setWidget(self._content)
         self._thumb_loader = ThumbnailLoader(self)
         self._thumbs = RowThumbnails(self._thumb_loader)
+        # Per-group sort choice, keyed by group id — survives reload() (the tables
+        # are rebuilt on every sync, incl. the window-focus auto-sync).
+        self._sort: dict[str, tuple[int, Qt.SortOrder]] = {}
         self.reload()
 
     def _clear(self):
@@ -80,12 +85,12 @@ class ProcessingPage(QScrollArea):
         # status groups, so an object with output to pull in shows once, at the top.
         ready = [f for f in queue if f.get("ready_for_import")]
         rest = [f for f in queue if not f.get("ready_for_import")]
-        groups = ([("Ready to import — finished Siril output waiting", ready)] if ready
-                  else [])
-        groups += [(label, [f for f in rest if f.get("status") == status])
+        groups = ([("ready", "Ready to import — finished Siril output waiting", ready)]
+                  if ready else [])
+        groups += [(status, label, [f for f in rest if f.get("status") == status])
                    for status, label in _GROUPS]
 
-        for label, rows in groups:
+        for key, label, rows in groups:
             if not rows:
                 continue
             h = QLabel(f"<h3>{label}</h3>")
@@ -123,10 +128,13 @@ class ProcessingPage(QScrollArea):
                     f.get("last_capture") or "—", f.get("last_capture") or ""))
                 tbl.setItem(r, 7, QTableWidgetItem(f.get("note") or ""))
             tbl.resizeColumnsToContents()
-            # Enable click-to-sort, but keep the meaningful queue order until the
-            # user actually picks a column (no active sort indicator).
+            # Sort by the remembered per-group choice (default: "+ new" desc), then
+            # start recording header clicks so the choice survives the next reload.
             tbl.setSortingEnabled(True)
-            tbl.horizontalHeader().setSortIndicator(-1, Qt.AscendingOrder)
+            col, order = self._sort.get(key, _DEFAULT_SORT)
+            tbl.horizontalHeader().setSortIndicator(col, order)
+            tbl.horizontalHeader().sortIndicatorChanged.connect(
+                lambda c, o, k=key: self._sort.__setitem__(k, (c, o)))
             # Fit every row (the page scrolls, not each table) + a half-row pad so a
             # single-row group isn't clipped.
             fit_table_height(tbl)

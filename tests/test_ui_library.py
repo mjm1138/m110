@@ -270,3 +270,48 @@ def test_processing_row_gets_async_thumbnail(tmp_path, monkeypatch, qapp, qtbot)
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+def test_processing_sorts_by_new_desc_and_survives_reload(tmp_path, monkeypatch, qapp):
+    from PySide6.QtCore import Qt
+    seed_root(tmp_path, monkeypatch)
+    members = iter(catalog.load_bundled_catalog("messier")["members"].items())
+    _, tid_a = next(members)
+    _, tid_b = next(members)
+    # Both unstacked → "+ new" = light count: tid_a +1, tid_b +3.
+    for tid, n in ((tid_a, 1), (tid_b, 3)):
+        lights = config.lights_dir(tid)
+        lights.mkdir(parents=True)
+        for i in range(n):
+            (lights / f"Light_{tid}_30.0s_LP_2026052{i}-010101.fit").write_text("x")
+    refresh.run_refresh(render=False)
+
+    from m110.ui.pages.processing import ProcessingPage, _DEFAULT_SORT
+
+    def first_table(page):
+        for i in range(page._lay.count()):
+            w = page._lay.itemAt(i).widget()
+            if hasattr(w, "rowCount"):
+                return w
+        raise AssertionError("no table on the Processing page")
+
+    page = ProcessingPage()
+    try:
+        tbl = first_table(page)
+        hdr = tbl.horizontalHeader()
+        # Default: "+ new" descending — the target with the most new lights on top.
+        assert (hdr.sortIndicatorSection(), hdr.sortIndicatorOrder()) == _DEFAULT_SORT
+        assert tbl.item(0, 0).text() == tid_b
+
+        # The user picks Target ascending; a reload (the focus auto-sync rebuilds
+        # every table) must keep that choice, not reset to the default.
+        hdr.setSortIndicator(0, Qt.AscendingOrder)
+        page.reload()
+        tbl = first_table(page)
+        hdr = tbl.horizontalHeader()
+        assert hdr.sortIndicatorSection() == 0
+        assert hdr.sortIndicatorOrder() == Qt.AscendingOrder
+        assert tbl.item(0, 0).text() == sorted([tid_a, tid_b])[0]
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

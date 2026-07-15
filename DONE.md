@@ -351,6 +351,14 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ### Archived from BUGS.md, 2026-07-15 housecleaning
 
+- [x] **Processing tables: default sort + sort persistence** *(2026-07-15,
+  `feature/processing-sort`)*. The grouped tables now default to **"+ new"
+  descending** (most new lights on top — "what needs restacking most"), and the
+  user's per-group sort choice is remembered across `reload()` — previously the
+  window-focus auto-sync rebuilt every table and reset the sort indicator to
+  none. In-memory per session (`ProcessingPage._sort`, keyed by group), recorded
+  via `sortIndicatorChanged`. Test in `tests/test_ui_library.py`.
+
 - [x] **Processing page fixes.** (1) Tables are now **sortable by column**
   (click a header; numeric columns sort by value via `NumItem`, not string) —
   the queue order is the initial view until a column is picked. (2) Each grouped
