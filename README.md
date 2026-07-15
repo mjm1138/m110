@@ -32,8 +32,13 @@ a north-star goal to chase.
   another night.
 - **Siril processing-prep** — arranges a clean, contained Siril sandbox per target
   (lights linked, a tuned preset ready), then imports your finished work back.
-- **A goal to chase** — track progress toward completing a catalog, and see what's
-  worth shooting tonight.
+- **A goal to chase** — track progress toward completing a catalog, with your
+  targets **ranked automatically** — by season urgency, integration still needed,
+  and how well each sits in *your* sky tonight.
+- **Plan a night** — pick a date and get a real schedule: back-to-back slots with
+  start times your telescope will accept, durations that adapt, moon impact per
+  slot, an altitude timeline, and a printable **field guide**. Site profiles carry
+  your horizon and an estimated light dome.
 - **Safe by design** — local-first, open source, with built-in hardlinked backups.
 
 ### It never touches your originals
@@ -46,7 +51,7 @@ say-so.
 
 New here? The **[user guide](docs/README.md)** covers ingest, the library layout,
 processing prep (and what M110's use of **hardlinks** means for your files), backup,
-and getting around the app.
+**session planning**, and getting around the app.
 
 ## Download
 

@@ -315,6 +315,32 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Deps-missing path:** with the `publish` extra uninstalled, Publish shows a
       clear "pip install 'm110[publish]'" message (no crash).
 
+### G4. Planning — ranking, plan-a-night, field guides  ⚙ *(engine + sequencer + moon model automated — `test_planning_night.py`, `test_prioritize.py`, `test_fieldguide.py`; UI flows in `test_ui_pages.py`)*
+- [ ] **Priority targets:** open Planning → the ranked table populates (a background
+      recompute runs once/day; **Recompute** forces it). Flip **Strategy**
+      (capture-many ↔ go-deep) and nudge a **weight** → the order changes *instantly*
+      (no worker spin-up). Right-click **Pin** → floats to #1 with ▲.
+- [ ] **Site profiles:** create a profile (coordinates via **Look up location…** if
+      online), import a `.hrz`, **Compute light-dome…** → a `<profile>.glow.hrz`
+      appears beside the profile. Switching **Location** re-ranks.
+- [ ] **Date picker (regression, #43):** open the **Night:** calendar popup — every
+      day number and weekday name renders (no "…"), the selected date is a clear
+      accent block, and the **Night:** field itself is readable in **dark mode**.
+- [ ] **Generate plan:** pick a date + **Targets** count → schedule rows are
+      back-to-back (each Start = previous end), starts on 10-minute marks, no
+      **Alt** above ~75° (regression, #37), and the **Moon** column shows "—"
+      whenever the moon is down at that slot (regression, #36). Changing **Targets**
+      re-sequences instantly; changing the date **clears** the plan ("Night
+      changed…" — regression for the #36 desync).
+- [ ] **Reorder/exclude:** Move up/down re-chains start times from dusk; unchecking
+      a row drops it (a substitute may appear).
+- [ ] **Timeline:** target curves + dashed moon track (☾) + dotted **ceiling** line +
+      colored slot bands along the bottom; repaints on theme change.
+- [ ] **Field guide:** Save → appears under Saved field guides + as
+      `Plans/<date>_<slug>.md`; the header describes the whole night's moon
+      ("… · sets HH:MM"), the footer carries **both** the generation date and the
+      plan night; ⚠ appears only on short window-cut descending slots.
+
 ### H. Cross-check with the source workflow (optional)
 - [ ] Refresh output (sessions/derived) for a shared object matches the reference
       Astronomy `rebuild.sh` (aside from `processing.json`'s `generated_at`).

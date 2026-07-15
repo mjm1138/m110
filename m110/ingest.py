@@ -435,10 +435,6 @@ def staging_available() -> bool:
     return _staging().is_dir()
 
 
-def seestar_available() -> bool:
-    return config.find_seestar_myworks() is not None
-
-
 # kind → per-target destination dir (media routes to MEDIA_DIR, handled separately)
 _KIND_DIR = {
     "light": config.lights_dir,

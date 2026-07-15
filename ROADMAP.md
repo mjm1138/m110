@@ -59,14 +59,14 @@ archived in **[`DONE.md`](DONE.md)**.
    transit-altitude / obstruction / start-altitude ceiling) into `planning.py`;
    build a planning surface; emit the session-plan document.
    > **Tuning arc complete (2026-07-14) — release-ready.** All five phases of
-   > **[`PLANNING_ROADMAP.md`](PLANNING_ROADMAP.md)** landed on
+   > **[`PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md)** landed on
    > `feature/session-planner`: single ranked source (`priorities.toml` retired) +
    > combined-folder rollup + feasibility gate · per-slot moon model · per-device
    > start-altitude ceiling · the night **sequencer** (non-overlapping 10-min
    > schedule, count control, night fill, marginal-slot ⚠) · calendar/date-edit UI
    > fixes + timeline overlays. Verified twice against independent astropy ground
-   > truth (the 2026-07-13 [`prioritizer-review.md`](prioritizer-review.md) and the
-   > 2026-07-14 [`PLANNING_BUGS.md`](PLANNING_BUGS.md) harness review + re-review).
+   > truth (the 2026-07-13 [`prioritizer-review.md`](docs-archive/prioritizer-review.md) and the
+   > 2026-07-14 [`PLANNING_BUGS.md`](docs-archive/PLANNING_BUGS.md) harness review + re-review).
    > Remaining follow-ups are non-blocking: BUGS #38b (reference V-mag audit),
    > #40d (restore version gate), #44 / Phase 6 (LLM skill foundation).
    **Foundation landed (2026-06-26):** the Qt-free engine is ported —
@@ -515,7 +515,7 @@ archived in **[`DONE.md`](DONE.md)**.
     FITS header**, or only the stack — if subs lack pointing, fall back to the folder name
     / `shotsInfo.json` for object + pointing (still fully workable). *Action:* recruit a
     Dwarf II/3 owner from the same forums to share a real `Astronomy/` dump to confirm
-    both. Cross-ref: item 6 (import), 6d (multi-device), BETA.md §3.
+    both. Cross-ref: item 6 (import), 6d (multi-device).
 
 ---
 
