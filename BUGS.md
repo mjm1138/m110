@@ -136,9 +136,11 @@ Legend: `[ ]` open · `[~]` partially done
   optional **auto-publish on refresh**. `publish.PUBLISHERS` + `PublishOptions` are the
   stable seams; each target is an adapter.
 - [ ] Publishing: User should have the option to add a copyright notice to published images
-- *(2026-07-15 live-library test findings — deploy progress bar, no-save-without-publish,
-  push timeout, cancel→beach-ball/orphaned push, working-files upload bloat — all fixed
-  on `feature/publish-ghpages` before merge; see DONE.md.)*
+- *(2026-07-15 live-library test findings, rounds 1+2 — deploy progress bar,
+  no-save-without-publish, push timeout, cancel→beach-ball/orphaned push,
+  working-files upload bloat, stale-output-never-torn-down, three-level gallery
+  selection, GitHub-setup docs, processing-page/app alignment — all fixed on
+  `feature/publish-ghpages` before merge; see DONE.md.)*
 **Other Publishing Targets**: Astrobin, Cloudynights, Other fora?
 
 ## UI niceties (backlog)

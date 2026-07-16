@@ -387,6 +387,22 @@ quietly instead of raising a "failed" dialog (the kill also unblocks the
 teardown `wait()` that beach-balled the app). Cancel-kill is regression-tested
 with a stalling `pre-receive` hook on the bare-repo remote.
 
+**Round 2 (same branch):** (6) **stale output is swept** — `site.render` tracks
+every file it emits and `_sweep_stale` deletes anything else under the
+renderer-owned `img/`/`objects/` + the optional top-level pages, so narrowing
+options genuinely shrinks the folder *and the deployed branch* (previously
+"finished-only" hid images from pages but the stale derivatives still uploaded;
+verified e2e: branch 37→24 files on a re-publish); a cancelled render never
+sweeps (incomplete emit set). (7) `finished_only` generalized to a **three-level
+`gallery_level`** — finished / +device stacks / all — via `_image_tier` (explicit
+curation wins outright; device stacks are their own tier), a combo in the
+dialog. (8) **`docs/publishing.md`** — user-guide page covering
+sections/privacy/gallery levels + the GitHub Pages setup (SSH check, repo,
+enable Pages, URL, force-replace caveat); linked from the guide index. (9)
+**processing.html mirrors the app's Processing page** — "Ready to import" group
+first, up-to-date omitted, Target column + Rejected/Latest stack/Notes.
+(Sessions/summary already matched.)
+
 Incremental backups to a user-defined destination + selective restore + retention.
 Qt-free engine `m110/backup.py` writes **hardlinked dated snapshots**
 (`rsync --link-dest` semantics in pure Python): each snapshot is a full, browsable

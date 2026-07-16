@@ -23,7 +23,7 @@ class PublishOptions:
     sections: set[str] = field(default_factory=lambda: set(DEFAULT_SECTIONS))
     exclude_journals: bool = False        # global privacy: omit all journal notes
     site_title: str = DEFAULT_SITE_TITLE
-    finished_only: bool = True            # galleries: finished images only (no working files)
+    gallery_level: str = "finished"       # "finished" | "device-stacks" | "all"
     github_repo: str = ""                 # owner/repo or git URL (github-pages target)
     github_branch: str = "gh-pages"
 
@@ -31,6 +31,9 @@ class PublishOptions:
         self.output_dir = Path(self.output_dir)
         # Normalise to the known section vocabulary (ignore stray ids).
         self.sections = {s for s in self.sections if s in ALL_SECTIONS}
+        from .images import GALLERY_LEVELS
+        if self.gallery_level not in GALLERY_LEVELS:
+            self.gallery_level = "finished"
 
     def has(self, section: str) -> bool:
         return section in self.sections

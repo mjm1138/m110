@@ -14,6 +14,27 @@ from .. import build_images, config, objects
 
 FULL_MAX = 1920  # longest-edge cap for lightbox images
 
+# Gallery inclusion levels (PublishOptions.gallery_level) — what tier of images
+# the published galleries carry. Order matters: each level includes the last.
+GALLERY_LEVELS = ("finished", "device-stacks", "all")
+_LEVEL_TIERS = {
+    "finished": {"finished"},
+    "device-stacks": {"finished", "device"},
+    "all": {"finished", "device", "working"},
+}
+
+
+def _image_tier(name: str, label: str, curation: dict) -> str:
+    """"finished" | "device" | "working" for gallery selection. An explicit
+    per-image curation override wins outright (a stack marked finished
+    publishes at every level; a demoted finished render only under "all");
+    otherwise the tier follows the source folder."""
+    if name in curation:
+        return "finished" if curation[name] == "finished" else "working"
+    if label == "Finished render":
+        return "finished"
+    return "device" if label == "Seestar in-app stack" else "working"
+
 
 def make_full(src: Path, dest_dir: Path) -> Path | None:
     """Full-size lightbox JPEG (≤FULL_MAX px) for a viewable source, cached by
@@ -42,21 +63,22 @@ def make_full(src: Path, dest_dir: Path) -> Path | None:
 
 def emit_gallery(slug: str, folders: list[str], by_folder: dict,
                  img_dir: Path, *, galleries: bool,
-                 finished_only: bool = False) -> list[dict]:
+                 gallery_level: str = "finished") -> list[dict]:
     """Discover an object's gallery images and emit web derivatives into
-    `img_dir`. With `galleries=False` returns no records (gallery omitted);
-    with `finished_only=True` working files (stacks, device stacks — anything
-    `objects.image_state` doesn't call "finished") are excluded, keeping the
-    published site to deliberate deliverables (and a fraction of the size)."""
+    `img_dir`. With `galleries=False` returns no records (gallery omitted).
+    `gallery_level` picks the tiers published: "finished" (deliberate
+    deliverables only — the default, and a fraction of the size),
+    "device-stacks" (+ Seestar/Dwarf in-app stacks), or "all" (+ Siril stacks
+    and other working files)."""
     if not galleries:
         return []
     img_dir.mkdir(parents=True, exist_ok=True)
     full_dir = img_dir / "full"
-    curation = objects.get_curation(slug) if finished_only else {}
+    tiers = _LEVEL_TIERS.get(gallery_level, _LEVEL_TIERS["finished"])
+    curation = objects.get_curation(slug)
     records = []
     for im in build_images.discover_images(slug, folders, by_folder):
-        if finished_only and objects.image_state(
-                im["name"], im["label"], curation) != "finished":
+        if _image_tier(im["name"], im["label"], curation) not in tiers:
             continue
         thumb = build_images.make_thumb(im["path"], img_dir)
         full = make_full(im["path"], full_dir) if im["viewable"] else None

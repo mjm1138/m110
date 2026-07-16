@@ -336,10 +336,11 @@ re-run when its area changes and you want eyes on the visuals).
       mid-upload returns to the dialog within a second or two (no beach ball) and
       `ps | grep "git push"` shows **no leftover push process**; the remote branch
       is unchanged.
-- [ ] **Finished-only:** with "Finished images only" on (the default), the
-      published galleries contain finished/ images (+ any per-image "Mark as
-      finished" curation) but no stacks/working files — the site folder should be
-      dramatically smaller than a full-gallery publish.
+- [ ] **Gallery level:** the combo under Image galleries picks finished-only
+      (default) / +device stacks / all. Publish at "All", then re-publish at
+      "Finished images only" → the output folder **and** the deployed branch
+      shrink (stale derivatives + unchecked section pages are swept, not left
+      behind).
 - [ ] **Save:** change settings → **Save** → dialog closes, nothing publishes;
       reopen → choices kept.
 

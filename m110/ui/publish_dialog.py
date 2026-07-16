@@ -12,8 +12,9 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton, QVBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGroupBox,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton,
+    QVBoxLayout,
 )
 
 from m110 import config, publish
@@ -34,7 +35,13 @@ _SECTIONS_KEY = "publish_sections"
 _EXCLUDE_KEY = "publish_exclude_journals"
 _TITLE_KEY = "publish_site_title"
 _GH_REPO_KEY = "publish_github_repo"
-_FINISHED_ONLY_KEY = "publish_finished_only"
+_GALLERY_LEVEL_KEY = "publish_gallery_level"
+# Combo order = engine level order (publish.images.GALLERY_LEVELS).
+_GALLERY_LEVELS = [
+    ("finished", "Finished images only"),
+    ("device-stacks", "Finished + device stacks"),
+    ("all", "All images (working files too)"),
+]
 
 
 class _PublishWorker(QThread):
@@ -93,18 +100,24 @@ class PublishDialog(QDialog):
             cb.setChecked(sid in enabled)
             sec_l.addWidget(cb)
             self._sec_checks[sid] = cb
-        # Finished-only rides under "Image galleries" (the last section row) —
-        # working files (stacks, device stacks) are usually not for the public
-        # site, and dominate its size/upload time.
-        fin_row = QHBoxLayout()
-        fin_row.addSpacing(s["lg"])
-        self._finished_only = QCheckBox("Finished images only (exclude working files)")
-        self._finished_only.setChecked(bool(config.get_setting(_FINISHED_ONLY_KEY, True)))
+        # Gallery level rides under "Image galleries" (the last section row) —
+        # working files dominate the site's size/upload time, so the default
+        # publishes deliberate deliverables only.
+        lvl_row = QHBoxLayout()
+        lvl_row.addSpacing(s["lg"])
+        self._gallery_level = QComboBox()
+        for lid, label in _GALLERY_LEVELS:
+            self._gallery_level.addItem(label, lid)
+        saved_level = config.get_setting(_GALLERY_LEVEL_KEY, "finished")
+        idx = next((i for i, (lid, _) in enumerate(_GALLERY_LEVELS)
+                    if lid == saved_level), 0)
+        self._gallery_level.setCurrentIndex(idx)
         gal_cb = self._sec_checks["galleries"]
-        self._finished_only.setEnabled(gal_cb.isChecked())
-        gal_cb.toggled.connect(self._finished_only.setEnabled)
-        fin_row.addWidget(self._finished_only)
-        sec_l.addLayout(fin_row)
+        self._gallery_level.setEnabled(gal_cb.isChecked())
+        gal_cb.toggled.connect(self._gallery_level.setEnabled)
+        lvl_row.addWidget(self._gallery_level)
+        lvl_row.addStretch(1)
+        sec_l.addLayout(lvl_row)
         self._exclude_journals = QCheckBox("Exclude all journal notes (privacy)")
         self._exclude_journals.setChecked(bool(config.get_setting(_EXCLUDE_KEY, False)))
         sec_l.addWidget(self._exclude_journals)
@@ -185,7 +198,7 @@ class PublishDialog(QDialog):
         config.save_setting(_OUTPUT_KEY, self._out_edit.text().strip())
         config.save_setting(_SECTIONS_KEY, sorted(self._selected_sections()))
         config.save_setting(_EXCLUDE_KEY, self._exclude_journals.isChecked())
-        config.save_setting(_FINISHED_ONLY_KEY, self._finished_only.isChecked())
+        config.save_setting(_GALLERY_LEVEL_KEY, self._gallery_level.currentData())
         config.save_setting(_TITLE_KEY,
                             self._title.text().strip() or publish.DEFAULT_SITE_TITLE)
         config.save_setting(_GH_REPO_KEY, self._gh_repo.text().strip())
@@ -216,7 +229,7 @@ class PublishDialog(QDialog):
             output_dir=Path(out), sections=self._selected_sections(),
             exclude_journals=self._exclude_journals.isChecked(),
             site_title=self._title.text().strip() or publish.DEFAULT_SITE_TITLE,
-            finished_only=self._finished_only.isChecked(),
+            gallery_level=self._gallery_level.currentData(),
             github_repo=gh_repo)
 
         self._cancel_event = threading.Event()

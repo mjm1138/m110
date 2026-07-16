@@ -217,34 +217,64 @@ def test_image_state_rule():
     assert objects.image_state("a.png", "Finished render", {"a.png": "working"}) == "working"
 
 
-@needs_git
-def test_finished_only_excludes_working_files(tmp_path, monkeypatch):
-    """finished_only=True publishes finished/ images but not stacks/device
-    stacks; finished_only=False publishes both (the 8a behaviour)."""
-    pytest.importorskip("jinja2")
-    pytest.importorskip("markdown")
-    PIL = pytest.importorskip("PIL")
+def _seeded_three_tier_store(tmp_path, monkeypatch):
+    """A capture with one image per tier: finished render, device stack,
+    Siril (working) stack. Returns the store root."""
     from PIL import Image
     from m110 import config, refresh
-    from m110.publish import site as pub_site
     from tests._helpers import seed_root as _seed, seed_capture
 
     root = _seed(tmp_path, monkeypatch)
     _, tid = seed_capture(root)
-    fin = config.finished_dir(tid) / f"{tid}_final.png"
-    fin.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (64, 64), (40, 80, 160)).save(fin)
-    wrk = config.seestar_stacks_dir(tid) / f"{tid}_device.jpg"
-    wrk.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (64, 64), (160, 80, 40)).save(wrk)
+    for d, name, color in [
+            (config.finished_dir(tid), f"{tid}_final.png", (40, 80, 160)),
+            (config.seestar_stacks_dir(tid), f"{tid}_device.jpg", (160, 80, 40)),
+            (config.stacks_dir(tid), f"{tid}_stack.png", (80, 160, 40))]:
+        d.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 64), color).save(d / name)
     refresh.run_refresh(render=False)
+    return root
 
-    def names(finished_only):
-        out = tmp_path / ("site-fin" if finished_only else "site-all")
-        res = pub_site.render(PublishOptions(output_dir=out,
-                                             finished_only=finished_only))
-        assert res["pages"] >= 1
+
+def test_gallery_levels_pick_tiers(tmp_path, monkeypatch):
+    pytest.importorskip("jinja2")
+    pytest.importorskip("markdown")
+    pytest.importorskip("PIL")
+    from m110.publish import site as pub_site
+    _seeded_three_tier_store(tmp_path, monkeypatch)
+
+    def n_images(level):
+        res = pub_site.render(PublishOptions(output_dir=tmp_path / f"site-{level}",
+                                             gallery_level=level))
         return res["images"]
 
-    assert names(finished_only=False) == 2
-    assert names(finished_only=True) == 1
+    assert n_images("finished") == 1
+    assert n_images("device-stacks") == 2
+    assert n_images("all") == 3
+    # unknown level normalizes to the default
+    assert PublishOptions(output_dir=tmp_path / "x",
+                          gallery_level="bogus").gallery_level == "finished"
+
+
+def test_rerender_sweeps_stale_output(tmp_path, monkeypatch):
+    """Re-rendering with narrower options genuinely shrinks the output folder:
+    stale gallery derivatives and section pages from the previous render are
+    deleted, so a deploy never uploads what the options exclude."""
+    pytest.importorskip("jinja2")
+    pytest.importorskip("markdown")
+    pytest.importorskip("PIL")
+    from m110.publish import site as pub_site
+    _seeded_three_tier_store(tmp_path, monkeypatch)
+    out = tmp_path / "site"
+
+    pub_site.render(PublishOptions(output_dir=out, gallery_level="all"))
+    all_imgs = {p.name for p in (out / "img").rglob("*") if p.is_file()}
+    assert (out / "processing.html").exists()
+
+    pub_site.render(PublishOptions(output_dir=out, gallery_level="finished",
+                                   sections={"library", "galleries"}))
+    fin_imgs = {p.name for p in (out / "img").rglob("*") if p.is_file()}
+    assert fin_imgs < all_imgs                     # stale derivatives removed
+    assert not (out / "processing.html").exists()  # unchecked page removed
+    assert not (out / "sessions.html").exists()
+    assert (out / "index.html").exists()

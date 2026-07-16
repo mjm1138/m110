@@ -36,13 +36,13 @@ def test_dialog_github_repo_field_follows_checkbox(tmp_path, monkeypatch, qapp):
     assert dlg._selected_targets() == ["static-site", "github-pages"]
 
 
-def test_dialog_finished_only_follows_galleries(tmp_path, monkeypatch, qapp):
+def test_dialog_gallery_level_follows_galleries(tmp_path, monkeypatch, qapp):
     seed_root(tmp_path, monkeypatch)
     dlg = PublishDialog()
-    assert dlg._finished_only.isChecked() is True        # default: finished only
-    assert dlg._finished_only.isEnabled() is True        # galleries on by default
+    assert dlg._gallery_level.currentData() == "finished"   # default level
+    assert dlg._gallery_level.isEnabled() is True           # galleries on by default
     dlg._sec_checks["galleries"].setChecked(False)
-    assert dlg._finished_only.isEnabled() is False
+    assert dlg._gallery_level.isEnabled() is False
 
 
 def test_dialog_save_persists_without_publishing(tmp_path, monkeypatch, qapp):
@@ -50,11 +50,11 @@ def test_dialog_save_persists_without_publishing(tmp_path, monkeypatch, qapp):
     dlg = PublishDialog()
     dlg._title.setText("My Saved Site")
     dlg._gh_repo.setText("mjm1138/astro-site")
-    dlg._finished_only.setChecked(False)
+    dlg._gallery_level.setCurrentIndex(2)                   # "all"
     dlg._do_save()
-    assert dlg._worker is None                            # nothing ran
+    assert dlg._worker is None                              # nothing ran
     assert config.get_setting("publish_site_title") == "My Saved Site"
     assert config.get_setting("publish_github_repo") == "mjm1138/astro-site"
-    assert config.get_setting("publish_finished_only") is False
+    assert config.get_setting("publish_gallery_level") == "all"
     from PySide6.QtWidgets import QDialog
     assert dlg.result() == QDialog.DialogCode.Accepted
