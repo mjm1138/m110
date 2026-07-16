@@ -574,6 +574,16 @@ def _job_dirs(base: Path) -> list[Path]:
     return filt if filt else [base]
 
 
+def working_dirs(target: str) -> list[Path]:
+    """The Siril working directories to offer for a target: the per-filter job
+    dirs if the sandbox is split by filter, else the sandbox root. Empty when no
+    sandbox exists yet. This is what "Process in Siril" points `-d` at."""
+    base = config.siril_dir(target)
+    if not base.is_dir():
+        return []
+    return _job_dirs(base)
+
+
 def _archive_run(target: str) -> str:
     """Move each job's run output/intermediates/scratch into
     `<job>/archive/<timestamp>/`, keeping lights/ + presets/ for the next run.

@@ -20,7 +20,10 @@ from PySide6.QtWidgets import (
 from m110 import build_images, config, derived, objects, siril
 from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
-from m110.ui.widgets import status_label, targets_for_slug, make_table, fit_table_height
+from m110.ui.widgets import (
+    status_label, targets_for_slug, make_table, fit_table_height,
+    process_in_siril, open_in_default, reveal_in_manager,
+)
 
 
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
@@ -253,6 +256,12 @@ class DetailPane(QScrollArea):
                 imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
                 btn_row.addWidget(imp_btn)
             if self._has_working_folder(slug):
+                proc_btn = QPushButton("Process in Siril")
+                proc_btn.setToolTip("Launch Siril with this object's working "
+                                    "folder set as the working directory")
+                proc_btn.clicked.connect(
+                    lambda _=False, s=slug: process_in_siril(self, s))
+                btn_row.addWidget(proc_btn)
                 rev_btn = QPushButton("Reveal working folder")
                 rev_btn.setToolTip("Open this object's Siril working folder "
                                    "(Images/<target>/siril/). Point Siril's "
@@ -498,11 +507,18 @@ class DetailPane(QScrollArea):
         else:
             mark_act = menu.addAction("Mark as finished")
             target = "finished"
+        menu.addSeparator()
+        open_act = menu.addAction("Open in default app")
+        reveal_act = menu.addAction("Reveal in file manager")
         chosen = menu.exec(gallery.viewport().mapToGlobal(pos))
         if chosen is hero_act:
             self._set_hero(name)
         elif chosen is mark_act:
             self._set_curation(name, target)
+        elif chosen is open_act:
+            open_in_default(gi["path"])
+        elif chosen is reveal_act:
+            reveal_in_manager(gi["path"])
 
     def _set_hero(self, name: str):
         slug, e, t = self._current

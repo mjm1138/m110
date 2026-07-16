@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
+    QWidget, QVBoxLayout, QLabel, QScrollArea, QTableWidgetItem, QMenu,
 )
 
-from m110 import derived
+from m110 import derived, siril
 from m110.ui.widgets import (
     make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails,
-    ROW_THUMB_SIZE, fit_table_height,
+    ROW_THUMB_SIZE, fit_table_height, process_target_in_siril,
 )
 
 # Status-keyed groups (Up to date is intentionally omitted — fully-processed objects
@@ -63,6 +63,22 @@ class ProcessingPage(QScrollArea):
             if slug:
                 self.open_object.emit(slug)
         table.itemDoubleClicked.connect(go)
+
+    def _wire_context(self, table):
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        def show(pos):
+            item = table.itemAt(pos)
+            if item is None:
+                return
+            folder = table.item(item.row(), 0).text()
+            if not folder or not siril.working_dirs(folder):
+                return
+            menu = QMenu(self)
+            act = menu.addAction("Process in Siril")
+            if menu.exec(table.viewport().mapToGlobal(pos)) is act:
+                process_target_in_siril(self, folder)
+        table.customContextMenuRequested.connect(show)
 
     def reload(self):
         self._clear()
@@ -139,6 +155,7 @@ class ProcessingPage(QScrollArea):
             # single-row group isn't clipped.
             fit_table_height(tbl)
             self._wire_open(tbl)
+            self._wire_context(tbl)
             self._lay.addWidget(tbl)
 
         if not queue:

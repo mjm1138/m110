@@ -11,6 +11,14 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Process in Siril, in one click.** Right-click an object (or use the button on its
+  detail page, or right-click a row on the Processing page) → **Process in Siril** and
+  M110 launches Siril already pointed at that object's working folder — no more browsing
+  to the right directory yourself. M110 finds Siril automatically in the usual place;
+  if it's installed somewhere else, set the path under *Preferences → Processing tools*.
+  When Siril can't be found, M110 offers to open the working folder instead.
+- **"Open in…" for gallery images.** Right-click any image on an object's page to **Open
+  in default app** (your usual image viewer/editor) or **Reveal in file manager**.
 - **"Reveal working folder" on an object.** The object detail pane now has a button that
   opens that object's Siril processing folder (`Images/<target>/siril/`) directly — so
   you can set Siril's *working directory* to the right place instead of hunting for it.

@@ -22,6 +22,7 @@ from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
+    can_process_slug, process_in_siril,
 )
 
 LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid"
@@ -623,6 +624,10 @@ class CatalogPage(QWidget):
         fill_act.setEnabled(missing)
         online_act = menu.addAction("Enrich online")
         online_act.setEnabled(has_gaps and self._enrich_worker is None)
+        process_act = None
+        if can_process_slug(slug):
+            menu.addSeparator()
+            process_act = menu.addAction("Process in Siril")
         menu.addSeparator()
         published = entry.get("publish", True) is not False
         publish_act = menu.addAction(
@@ -641,6 +646,8 @@ class CatalogPage(QWidget):
             self._fill_one(slug)
         elif chosen is online_act and has_gaps:
             self._enrich_one_online(slug)
+        elif process_act is not None and chosen is process_act:
+            process_in_siril(self, slug)
         elif chosen is publish_act:
             self._toggle_publish(slug, not published)
         elif chosen is pin_act:

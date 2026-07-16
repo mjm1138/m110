@@ -160,6 +160,22 @@ def test_scan_finished_keeps_pipeline_step_tokens_in_final_name(tmp_path, monkey
                      f"{base}_processed.fit": "stack"}
 
 
+def test_working_dirs_single_multi_and_absent(tmp_path, monkeypatch):
+    """working_dirs() feeds "Process in Siril": the sandbox root for a
+    single-filter target, the per-filter job dirs when split, [] with no
+    sandbox."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    assert siril.working_dirs(target) == []          # no sandbox prepared yet
+
+    siril.apply_prep(siril.plan_prep(target))
+    assert siril.working_dirs(target) == [config.siril_dir(target)]
+
+    multi = _make_target(tmp_path, monkeypatch, ircut=120, lp=40, name="M27")
+    siril.apply_prep(siril.plan_prep(multi))
+    sb = config.siril_dir(multi)
+    assert set(siril.working_dirs(multi)) == {sb / "IRCUT", sb / "LP"}
+
+
 def test_scan_finished_picks_up_output_loose_in_object_dir(tmp_path, monkeypatch):
     """The mis-pointed-working-directory case: Siril's working dir was set to
     Images/<target>/ instead of the siril/ sandbox, so the run's output landed

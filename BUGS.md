@@ -63,11 +63,20 @@ Legend: `[ ]` open · `[~]` partially done
   (only processing/intermediate files cost disk). Custom workspaces must be easily
   discoverable by name on the filesystem. Also support custom **split** workflow
   directories, like the LP / no-filter splits created automatically today.
-- [ ] **#19 — Open In… / Process in…** (cross-platform launch is the main risk.)
-  Right-click an **image** → "Open In…" a compatible processing/viewing app (Finder-
-  style). Right-click an **object** → "Process in…" (Siril/PixInsight/…) which opens
-  the tool, creating/selecting the appropriate working directory first (or a custom one
-  per #18). Pure **guide**, not control.
+- [~] **#19 — Open In… / Process in…** (cross-platform launch is the main risk.)
+  **Core shipped** (`feature/reimport-object-root`). Right-click an **object** (Library,
+  Processing page, or the detail-pane button) → **"Process in Siril"** launches Siril with
+  the object's working directory set (`siril -d <sandbox>`; a chooser when the sandbox is
+  split per-filter). Right-click a gallery **image** → **"Open in default app"** /
+  **"Reveal in file manager"**. Pure **guide**, not control — M110 starts the tool and gets
+  out of the way. Cross-platform launch lives in the Qt-free `m110/launch.py`: settings
+  override (`external_app_paths`) → OS-standard locations (macOS `/Applications/Siril.app`,
+  Linux `siril`/`siril-cli` in PATH, Windows Program Files) → graceful reveal-folder
+  fallback; the path is settable in *Preferences → Processing tools*. **Open:** (a) a
+  configurable multi-app list for the image "Open In…" submenu (only default-app + reveal
+  today); (b) PixInsight/DSS/APP as launchable targets (registered in `processing.WORKFLOWS`
+  but not yet in `launch._TOOLS`); (c) custom/combined workspaces per #18. **Verify on real
+  Linux/Windows** — auto-detect paths are coded but only exercised on macOS + in tests.
 
 ## Import
 

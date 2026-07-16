@@ -28,6 +28,27 @@ next time — it never deletes your lights or your work.
 You don't trigger any of this by hand: prep is automatic and idempotent. If you edit
 a preset, M110 preserves your edits and won't overwrite them.
 
+## Opening Siril at the right folder
+
+The one easy mistake is pointing Siril's **working directory** at the object folder
+(`Images/<target>/`) instead of its `siril/` sub-folder. If you do, Siril saves your
+results one level too high, and they don't show up when you import.
+
+Two ways to avoid it:
+
+- **Process in Siril** — right-click an object (in the Library or on the Processing
+  page), or use the button on its detail page. M110 launches Siril already pointed at
+  the right working folder. It finds Siril automatically; if yours is installed
+  somewhere unusual, set its location under **Preferences → Processing tools**.
+- **Reveal working folder** — the button beside it opens the `siril/` folder in your
+  file manager, so you can set it as Siril's working directory yourself.
+
+(And if you do save outside the sandbox anyway, M110 also scans the object folder as a
+fallback when importing, so your work isn't lost.)
+
+You can also right-click any image in an object's gallery to **Open in default app**
+or **Reveal in file manager**.
+
 ---
 
 ## Hardlinks — what they are, and why it matters

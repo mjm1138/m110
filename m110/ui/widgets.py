@@ -3,14 +3,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, Signal
-from PySide6.QtGui import QColor, QIcon, QImage, QImageReader, QPainter, QPixmap
+from PySide6.QtCore import Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, QUrl, Signal
+from PySide6.QtGui import (
+    QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPixmap,
+)
 from PySide6.QtWidgets import (
-    QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
-    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
+    QApplication, QMenu, QMessageBox, QStyle, QStyledItemDelegate,
+    QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout,
+    QToolButton,
 )
 
-from m110 import derived, objects
+from m110 import derived, objects, siril
 from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
@@ -99,6 +102,92 @@ def targets_for_slug(slug: str) -> list[str]:
     """Capture targets (Images/<target>/) that feed this catalog object."""
     by_folder = derived.load_totals().get("by_folder", {})
     return [f for f, info in by_folder.items() if slug in info.get("slugs", [])]
+
+
+# ── external-app launch (#19: Process in… / Open In…) ────────────────────────
+
+def working_dirs_for_slug(slug: str) -> list[tuple[str, Path]]:
+    """(label, dir) for every Siril working directory across an object's capture
+    targets — one (target, sandbox) for the common case, or one row per
+    per-filter job folder when the sandbox is split. Single-filter sandbox dirs
+    are named "siril"; per-filter job dirs carry the filter name."""
+    out: list[tuple[str, Path]] = []
+    for tgt in targets_for_slug(slug):
+        out.extend(_labelled_dirs(tgt))
+    return out
+
+
+def can_process_slug(slug: str) -> bool:
+    """True if the object has a processing working folder to launch/reveal."""
+    return bool(working_dirs_for_slug(slug))
+
+
+def _labelled_dirs(target: str) -> list[tuple[str, Path]]:
+    """(label, dir) for one capture target's Siril working dirs."""
+    return [(target if d.name == "siril" else f"{target} · {d.name}", d)
+            for d in siril.working_dirs(target)]
+
+
+def process_in_siril(parent, slug: str) -> None:
+    """Launch Siril pointed at the object's working folder (across all its
+    capture targets)."""
+    _process_dirs(parent, working_dirs_for_slug(slug))
+
+
+def process_target_in_siril(parent, target: str) -> None:
+    """Launch Siril pointed at one capture target's working folder."""
+    _process_dirs(parent, _labelled_dirs(target))
+
+
+def _process_dirs(parent, dirs: list[tuple[str, Path]]) -> None:
+    """Launch Siril for a set of candidate working dirs. Multiple job folders →
+    a chooser; not-found/launch-error → offer to reveal the folder instead."""
+    if not dirs:
+        QMessageBox.information(
+            parent, "Process in Siril",
+            "No processing working folder exists yet — it's created "
+            "automatically after you import captures.")
+        return
+    if len(dirs) == 1:
+        _launch_siril(parent, dirs[0][1])
+        return
+    menu = QMenu(parent)
+    acts = {menu.addAction(f"Open {lbl} in Siril"): d for lbl, d in dirs}
+    chosen = menu.exec(QCursor.pos())
+    if chosen is not None:
+        _launch_siril(parent, acts[chosen])
+
+
+def _launch_siril(parent, working_dir: Path) -> None:
+    from m110 import launch
+    try:
+        launch.launch_processing("siril", working_dir)
+    except launch.LaunchError as exc:
+        box = QMessageBox(parent)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Process in Siril")
+        box.setText(str(exc))
+        box.setInformativeText(
+            "Opening the working folder instead — set it as Siril's working "
+            "directory. You can set Siril's location in Preferences → "
+            "Processing tools.")
+        reveal_btn = box.addButton("Reveal folder", QMessageBox.AcceptRole)
+        box.addButton("OK", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is reveal_btn:
+            reveal_in_manager(working_dir)
+
+
+def open_in_default(path) -> None:
+    """Open a file/dir with the OS default application."""
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+
+def reveal_in_manager(path) -> None:
+    """Show a file/dir in the OS file manager (for a file, opens its folder)."""
+    p = Path(path)
+    target = p if p.is_dir() else p.parent
+    QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
 
 def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
