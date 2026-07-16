@@ -289,6 +289,11 @@ def _next_steps_md(plan: PrepPlan) -> str:
         "M110 set this up so Siril has a clean, self-contained working folder "
         "(your content tiers stay tidy). M110 does not run Siril for you.",
         "",
+        f"> ⚠ **Set Siril's working directory to `{plan.siril_dir}` (or a job "
+        "folder below) — not the folder above it.** Output saved above this "
+        "folder won't be found when you import. (If you did already, no harm: "
+        "M110 also scans the object folder as a fallback.)",
+        "",
         "## Jobs",
     ]
     for job in plan.jobs:
@@ -429,6 +434,15 @@ def _classify(path: Path, target: str):
 # inputs, Siril's scratch, the preset, and prior archived runs.
 _SKIP_DIRS = {"lights", "process", "presets", "archive"}
 
+# Object-root subdirs skipped when scanning Images/<target>/ for output a run
+# left there directly (the mis-pointed-working-directory case, #): the managed
+# content tiers (already-imported or raw inputs), and `siril/` — which
+# `_sandbox_outputs` already walks — plus Siril's own `process/` scratch.
+_ROOT_SKIP_DIRS = {
+    "lights", "stacks", "finished", "seestar-stacks", "previews",
+    "darks", "flats", "biases", "siril", "process",
+}
+
 
 def _sandbox_outputs(target: str):
     """Yield (path, kind, dest) for finished outputs in the sandbox, skipping
@@ -446,19 +460,47 @@ def _sandbox_outputs(target: str):
             yield p, c[0], c[1]
 
 
+def _root_outputs(target: str):
+    """Yield finished outputs a run left directly in the object dir instead of
+    the sandbox — the easy-to-make "I set Siril's working directory to
+    Images/<target>/ rather than Images/<target>/siril/" mistake. Skips the
+    managed tiers, raw inputs, and the sandbox itself (already walked)."""
+    base = config.target_dir(target)
+    if not base.is_dir():
+        return
+    for p in base.rglob("*"):
+        if not p.is_file():
+            continue
+        if _ROOT_SKIP_DIRS & set(p.relative_to(base).parts[:-1]):
+            continue
+        c = _classify(p, target)
+        if c:
+            yield p, c[0], c[1]
+
+
+def _finished_outputs(target: str):
+    """Every importable finished output for a target: the siril/ sandbox plus
+    any a run left loose in the object dir. No src is yielded twice — the root
+    walk skips siril/, which the sandbox walk owns."""
+    yield from _sandbox_outputs(target)
+    yield from _root_outputs(target)
+
+
 def has_unimported_output(target: str) -> bool:
-    """True if the sandbox has a finished output not already in finished/stacks."""
-    for p, _kind, dest in _sandbox_outputs(target):
+    """True if there's a finished output (in the sandbox or loose in the object
+    dir) not already in finished/stacks."""
+    for p, _kind, dest in _finished_outputs(target):
         if not dest.exists():
             return True
     return False
 
 
 def scan_finished(target: str, should_cancel=None) -> ImportPlan:
-    """Read-only: finished outputs in the sandbox, classified + routed."""
+    """Read-only: finished outputs in the sandbox (and loose in the object
+    dir), classified + routed."""
     items: list[FinishedItem] = []
     heroes: list[str] = []
-    for p, kind, dest in sorted(_sandbox_outputs(target), key=lambda t: str(t[0])):
+    for p, kind, dest in sorted(_finished_outputs(target), key=lambda t: str(t[0])):
         if should_cancel and should_cancel():
             raise PrepCancelled()
         already = dest.exists()

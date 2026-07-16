@@ -10,6 +10,18 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **"Reveal working folder" on an object.** The object detail pane now has a button that
+  opens that object's Siril processing folder (`Images/<target>/siril/`) directly — so
+  you can set Siril's *working directory* to the right place instead of hunting for it.
+
+### Fixed
+- **Processed images saved in the wrong folder are now picked up.** If you set Siril's
+  working directory to the object folder (`Images/<target>/`) instead of its `siril/`
+  sub-folder, your finished renders and stacks used to be invisible to *Import finished
+  work*. M110 now also scans the object folder as a fallback, so that easy mistake no
+  longer strands your processing output.
+
 ## [0.2.0-beta.2] - 2026-07-15
 
 ### Added

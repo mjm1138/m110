@@ -10,6 +10,17 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
+  If Siril's working directory was set to `Images/<target>/` instead of its `siril/`
+  sub-folder, the run's renders/stacks landed loose in the object dir and *Import finished
+  work* never saw them (`siril._sandbox_outputs` only walked `siril/`). Fix:
+  `siril._root_outputs` also scans the object dir (skipping the managed tiers, raw inputs,
+  and the sandbox itself), and `has_unimported_output`/`scan_finished` draw from both via
+  `_finished_outputs`. Paired with a **"Reveal working folder"** button on the object
+  detail pane (opens `Images/<target>/siril/` so Siril's working dir is set to the right
+  place) and a bolder callout in the sandbox `next-steps.md`. A lightweight down-payment on
+  the object-side "Process in…" of **#19**; the full launcher is still open.
+
 - [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
   M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
   that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
