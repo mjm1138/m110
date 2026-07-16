@@ -33,6 +33,7 @@ _OUTPUT_KEY = "publish_output_dir"
 _SECTIONS_KEY = "publish_sections"
 _EXCLUDE_KEY = "publish_exclude_journals"
 _TITLE_KEY = "publish_site_title"
+_GH_REPO_KEY = "publish_github_repo"
 
 
 class _PublishWorker(QThread):
@@ -75,8 +76,8 @@ class PublishDialog(QDialog):
         layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
         layout.setSpacing(s["md"])
         layout.addWidget(QLabel(
-            "Render a static website of your collection to a local folder. "
-            "Push or host the folder yourself."))
+            "Render a static website of your collection to a local folder, "
+            "and optionally deploy it straight to GitHub Pages."))
 
         # ── what to publish ──
         sec_box = QGroupBox("Include")
@@ -105,6 +106,19 @@ class PublishDialog(QDialog):
             cb.setChecked(p.available and p.id in enabled_targets)
             tgt_l.addWidget(cb)
             self._tgt_checks[p.id] = cb
+            if p.id == "github-pages":
+                # Repository field, indented under its checkbox and only live
+                # while the target is selected. The branch is the gh-pages
+                # convention (not a knob).
+                repo_row = QHBoxLayout()
+                repo_row.addSpacing(s["lg"])
+                repo_row.addWidget(QLabel("Repository:"))
+                self._gh_repo = QLineEdit(str(config.get_setting(_GH_REPO_KEY, "")))
+                self._gh_repo.setPlaceholderText("owner/repo or git URL")
+                self._gh_repo.setEnabled(cb.isChecked())
+                cb.toggled.connect(self._gh_repo.setEnabled)
+                repo_row.addWidget(self._gh_repo)
+                tgt_l.addLayout(repo_row)
         layout.addWidget(tgt_box)
 
         # ── site title ──
@@ -156,6 +170,13 @@ class PublishDialog(QDialog):
         if not targets:
             QMessageBox.warning(self, "Publish", "Choose at least one target.")
             return
+        gh_repo = self._gh_repo.text().strip()
+        if "github-pages" in targets and not gh_repo:
+            QMessageBox.warning(
+                self, "Publish",
+                "Enter the GitHub repository to deploy to (owner/repo or a "
+                "git URL).")
+            return
 
         sections = self._selected_sections()
         exclude_journals = self._exclude_journals.isChecked()
@@ -166,9 +187,11 @@ class PublishDialog(QDialog):
         config.save_setting(_SECTIONS_KEY, sorted(sections))
         config.save_setting(_EXCLUDE_KEY, exclude_journals)
         config.save_setting(_TITLE_KEY, title)
+        config.save_setting(_GH_REPO_KEY, gh_repo)
 
         options = PublishOptions(output_dir=Path(out), sections=sections,
-                                 exclude_journals=exclude_journals, site_title=title)
+                                 exclude_journals=exclude_journals, site_title=title,
+                                 github_repo=gh_repo)
 
         self._cancel_event = threading.Event()
         pd = QProgressDialog("Publishing…", "Cancel", 0, 0, self)
@@ -202,14 +225,26 @@ class PublishDialog(QDialog):
         self.published.emit(result)
         sub = result.get("static-site") or next(iter(result.values()), {})
         out_dir = sub.get("output_dir", "")
+        gh = result.get("github-pages") or {}
+        text = f"Published {sub.get('pages', gh.get('pages', 0))} pages to:\n{out_dir}"
+        if gh:
+            where = gh.get("url") or gh.get("repo", "")
+            text += (f"\n\nDeployed to GitHub Pages:\n{where}\n"
+                     "(the site can take a minute or two to update)")
         msg = QMessageBox(self)
         msg.setWindowTitle("Published")
-        msg.setText(f"Published {sub.get('pages', 0)} pages to:\n{out_dir}")
+        msg.setText(text)
         open_btn = msg.addButton("Open folder", QMessageBox.AcceptRole)
+        site_btn = (msg.addButton("Open site", QMessageBox.AcceptRole)
+                    if gh.get("url") else None)
         msg.addButton("Close", QMessageBox.RejectRole)
         msg.exec()
         if msg.clickedButton() is open_btn and out_dir:
             self._open_folder(out_dir)
+        elif site_btn is not None and msg.clickedButton() is site_btn:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            QDesktopServices.openUrl(QUrl(gh["url"]))
         self.accept()
 
     def _on_failed(self, message):

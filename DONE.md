@@ -342,12 +342,30 @@ testable selection/privacy; `images.py` reuses `build_images`. Per-object `publi
 flag (`catalog.set_publish_flag`, Library right-click) + journal `private` frontmatter.
 **Library → Publish / share…** dialog (sections/target/output) on a threaded worker.
 Optional `publish` extra (jinja2 + markdown; degrades via `PublishDepsMissing`).
-*Deferred follow-ups (BUGS #27):* GitHub Pages deploy, Netlify/S3/CMS targets, per-list
+*Deferred follow-ups (BUGS #27):* Netlify/S3/CMS targets, per-list
 flags, cross-publish cache reuse, auto-publish.
 
----
-
-## Later phase 10 — Library backup *(v1 done 2026-07-02)*
+**GitHub Pages deploy** *(done 2026-07-15, `feature/publish-ghpages` — BUGS #27a;
+the port of the Astronomy `deploy.sh`/ghp-import workflow, the last piece of that
+workflow M110 hadn't absorbed).* New Qt-free `m110/publish/ghpages.py`: shells out
+to the user's installed **git** (no new dependency; auth = their existing SSH key /
+credential helper), builds a fresh single-commit orphan branch in a scratch repo
+(`--git-dir`/`--work-tree`, local commit identity) and **force-pushes** it to
+`gh-pages` — ghp-import `-f` semantics, so the remote stays lean no matter how
+often heroes/thumbnails re-render. Writes `.nojekyll` (ghp-import `-n`); refuses to
+push a folder with no `index.html`; git stderr surfaces in a `PublishError` so
+auth/repo problems are actionable. `normalize_repo` accepts `owner/repo` (→ SSH
+URL), https, or ssh forms; `pages_url` derives the served
+`https://<owner>.github.io/<repo>/` URL (root for an `<owner>.github.io` repo).
+Registry: `github-pages` flipped available; `run_publish` now runs publishers in
+registry order and passes `prior=` (the static-site result) so enabling both
+targets renders **once** and deploys that folder. `PublishOptions` gained
+`github_repo`/`github_branch`. Dialog: a Repository field under the GitHub Pages
+checkbox (persisted `publish_github_repo`, enabled with the target), validation,
+and a success message with the pages URL + **Open site**. Tests
+(`tests/test_publish_ghpages.py`) run against a local `file://` bare repo — no
+network: nojekyll/content assertions, force-replace keeps `rev-list --count` at 1,
+missing-git/missing-index/empty-repo errors, `prior` reuse, registry chaining.
 
 Incremental backups to a user-defined destination + selective restore + retention.
 Qt-free engine `m110/backup.py` writes **hardlinked dated snapshots**

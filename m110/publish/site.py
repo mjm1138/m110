@@ -47,8 +47,9 @@ def _env(jinja2):
     return env
 
 
-def render(options, *, should_cancel=None, progress=None) -> dict:
-    """Render the static site. Returns {pages, objects, images, output_dir}."""
+def render(options, *, should_cancel=None, progress=None, prior=None) -> dict:
+    """Render the static site. Returns {pages, objects, images, output_dir}.
+    (`prior` is part of the publisher contract; the renderer ignores it.)"""
     jinja2, md_lib = _require_deps()
     cancelled = should_cancel or (lambda: False)
 

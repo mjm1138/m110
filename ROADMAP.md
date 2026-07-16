@@ -21,7 +21,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open ↓)* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
 | 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open ↓)* | [`DONE.md`](DONE.md) |
 | 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open ↓)* | [`DONE.md`](DONE.md) |
-| 8 | **Publishing** — selective static-site export + publisher registry | ✅ 8a shipped *(more targets open ↓)* | [`DONE.md`](DONE.md) |
+| 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open ↓)* | [`DONE.md`](DONE.md) |
 | 10 | **Library backup** — hardlinked snapshots, verify, selective restore, auto-backup | ✅ shipped | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open ↓ | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | ↓ |
@@ -180,11 +180,12 @@ Finished/Working curation gallery **shipped** — see [`DONE.md`](DONE.md).)
 
 ### 8 — Publishing: remaining targets
 
-8a (local static-site export + the publisher registry) shipped; the registry
-(`publish.PUBLISHERS` + `PublishOptions`) is the stable seam — each new target
-is an adapter. The follow-up list is BUGS **#27**: GitHub Pages deploy,
-Netlify / S3·CloudFront / WordPress·Ghost, per-list publish flags, cross-publish
-image-cache reuse, auto-publish on refresh; possibly Astrobin/forum exports.
+8a (local static-site export + the publisher registry) and the **GitHub Pages
+deploy** (2026-07-15) shipped; the registry (`publish.PUBLISHERS` +
+`PublishOptions`) is the stable seam — each new target is an adapter. The
+follow-up list is BUGS **#27**: Netlify / S3·CloudFront / WordPress·Ghost,
+per-list publish flags, cross-publish image-cache reuse, auto-publish on
+refresh; possibly Astrobin/forum exports.
 
 ### 5 — Catalog growth
 

@@ -300,7 +300,8 @@ re-run when its area changes and you want eyes on the visuals).
 ### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
 > Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
 - [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target
-      list (only **Static website** enabled; GitHub Pages/Netlify show **"(soon)"**),
+      list (**Static website** + **GitHub Pages** enabled; Netlify shows **"(soon)"**),
+      the Repository field under GitHub Pages (enabled only while it's checked),
       site-title field, output-folder chooser.
 - [ ] Pick a **throwaway output folder** (NOT inside the data store), click **Publish**
       → modal progress (Cancel works) → "Published N pages" → **Open folder**.
@@ -314,6 +315,22 @@ re-run when its area changes and you want eyes on the visuals).
       (or tick **Exclude all journal notes**) → its notes are absent from the site.
 - [ ] **Deps-missing path:** with the `publish` extra uninstalled, Publish shows a
       clear "pip install 'm110[publish]'" message (no crash).
+
+### G3b. Publishing — GitHub Pages deploy (BUGS #27a)  ⚙ *(git deploy automated against a local bare repo — `test_publish_ghpages.py`)*
+> Needs `git` on PATH and a **real GitHub repo you own** with push access via your
+> normal auth (SSH key or credential helper). Use a **scratch repo**, not your live
+> site's, unless you intend to replace it — the deploy **force-pushes** `gh-pages`.
+- [ ] In Publish / share…, check **GitHub Pages**, enter the repo as `owner/repo`
+      (or a full git URL) → Publish → progress → success message shows the
+      `https://<owner>.github.io/<repo>/` URL + an **Open site** button.
+- [ ] In the repo: a `gh-pages` branch with exactly **one commit**
+      ("Publish <date> (M110)"), the site files, and `.nojekyll`. Re-publish →
+      still one commit (force-replaced, not appended).
+- [ ] First time only: repo **Settings → Pages → deploy from `gh-pages`** — then
+      the URL serves the site (allow a minute or two).
+- [ ] **Error paths:** unchecked repo field → validation warning; a repo you can't
+      push to → "Publish failed" showing git's actual stderr (auth/not-found), no
+      crash; app works offline as before when GitHub Pages is unchecked.
 
 ### G4. Planning — ranking, plan-a-night, field guides  ⚙ *(engine + sequencer + moon model automated — `test_planning_night.py`, `test_prioritize.py`, `test_fieldguide.py`; UI flows in `test_ui_pages.py`)*
 - [ ] **Priority targets:** open Planning → the ranked table populates (a background

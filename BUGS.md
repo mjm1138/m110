@@ -125,10 +125,11 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Publishing  *(→ ROADMAP item 8)*
 
-- [ ] **#27 — Publishing follow-ups** (8a landed — local static-site export). Targets/
-  refinements that build on the `publish/` engine + registry: (a) a **GitHub Pages
-  deploy** target (git/`ghp-import` push to `gh-pages`, repo from settings, image-cache
-  preservation) — the registered-disabled `github-pages` placeholder; (b) **Netlify /
+- [~] **#27 — Publishing follow-ups** (8a landed — local static-site export). Targets/
+  refinements that build on the `publish/` engine + registry: (a) ✅ **GitHub Pages
+  deploy** *(done 2026-07-15, `feature/publish-ghpages` — see DONE.md)*: system-git
+  force-push of the rendered site to `gh-pages` (`m110/publish/ghpages.py`), repo from
+  the dialog/settings; (b) **Netlify /
   S3·CloudFront / WordPress·Ghost** targets; (c) **per-list (goal) publish flags** (8a
   ships per-object `publish` + per-journal `private` only); (d) **cross-publish image-cache
   reuse** (8a regenerates web derivatives each run; the publish analogue of #14); (e)

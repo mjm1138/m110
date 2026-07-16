@@ -21,14 +21,15 @@ def test_enabled_targets_reads_setting(tmp_path, monkeypatch):
 
 def test_run_publish_skips_unavailable(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
-    config.save_setting(publish.SETTING_KEY, ["github-pages"])  # registered-disabled
+    config.save_setting(publish.SETTING_KEY, ["netlify"])  # registered-disabled
     res = publish.run_publish(PublishOptions(output_dir=tmp_path / "site"))
     assert res == {}  # nothing available ran
 
 
-def test_static_site_is_available():
+def test_publisher_availability():
     assert publish.PUBLISHERS_BY_ID["static-site"].available is True
-    assert publish.PUBLISHERS_BY_ID["github-pages"].available is False
+    assert publish.PUBLISHERS_BY_ID["github-pages"].available is True
+    assert publish.PUBLISHERS_BY_ID["netlify"].available is False
 
 
 def test_missing_deps_raises_clear_error(tmp_path, monkeypatch):

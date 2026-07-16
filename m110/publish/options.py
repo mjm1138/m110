@@ -23,6 +23,8 @@ class PublishOptions:
     sections: set[str] = field(default_factory=lambda: set(DEFAULT_SECTIONS))
     exclude_journals: bool = False        # global privacy: omit all journal notes
     site_title: str = DEFAULT_SITE_TITLE
+    github_repo: str = ""                 # owner/repo or git URL (github-pages target)
+    github_branch: str = "gh-pages"
 
     def __post_init__(self):
         self.output_dir = Path(self.output_dir)
