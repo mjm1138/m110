@@ -222,6 +222,25 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   a brief done entry) — plus [`DATA_MODEL.md`](DATA_MODEL.md) / [`TESTING.md`](TESTING.md)
   when the change touches the data model or the manual-test surface. Docs ship *with*
   the code, not later.
+  **User-facing changes also get their [`CHANGELOG.md`](CHANGELOG.md) `[Unreleased]`
+  entry in the same PR** — written for a *user* (what they'll notice), not a
+  contributor; the engineering detail belongs in [`DONE.md`](DONE.md).
+  `tools/release.py` only *moves* `[Unreleased]` into a dated section and
+  hard-fails when it's empty ("the script moves them, it can't author them"), so
+  leaving the prose to release time is what made the changelog trail both
+  0.1.0-beta.3 and 0.2.0-beta.1.
+- **Full disclosure on user-facing security bugs.** M110 is open source, so a
+  security fix that affected users is **disclosed plainly** in
+  [`CHANGELOG.md`](CHANGELOG.md) under a `### Security` section — never buried in a
+  vague "hardening" line, and never omitted because the bug was ours. Name the
+  **vector** and the **real impact** in the user's terms (e.g. "a crafted capture
+  file could write outside your data folder — an object name from a FITS `OBJECT`
+  header went into the destination path unsanitized"), and link the assessment
+  behind it ([`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md)).
+  **Calibrate honestly in both directions:** don't soften real exposure, and don't
+  inflate it either — if an advisory is in a code path M110 never exercises, say so
+  (that's calibration the reader needs, not spin). Users decide what the risk meant
+  for them; the changelog's job is to give them the facts to decide with.
 - **Record data-model changes in [`DATA_MODEL.md`](DATA_MODEL.md).** Any change to
   the on-disk layout, a file format, a derived-JSON shape, or `.store_version`
   **must** be reflected there (it's canonical). On-disk changes additionally bump
