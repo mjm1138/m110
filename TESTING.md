@@ -326,6 +326,13 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] In the repo: a `gh-pages` branch with exactly **one commit**
       ("Publish <date> (M110)"), the site files, and `.nojekyll`. Re-publish →
       still one commit (force-replaced, not appended).
+- [ ] **Incremental uploads:** set **Uploads → "Upload only what changed"**, publish
+      → the deploy is dramatically faster than the replace-mode publish, and the
+      branch gains a **second** commit (history kept). Change one image, re-publish
+      → only that image uploads (watch the object count in the progress dialog).
+      Switch back to **Replace** → the branch collapses to one commit again.
+      *(The blob-less tip fetch is only exercisable against a real GitHub remote —
+      local bare repos disallow filters by default and take the fallback path.)*
 - [ ] First time only: repo **Settings → Pages → deploy from `gh-pages`** — then
       the URL serves the site (allow a minute or two).
 - [ ] **Error paths:** unchecked repo field → validation warning; a repo you can't

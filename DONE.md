@@ -403,6 +403,33 @@ enable Pages, URL, force-replace caveat); linked from the guide index. (9)
 first, up-to-date omitted, Target column + Rejected/Latest stack/Notes.
 (Sessions/summary already matched.)
 
+**Round 3 — incremental deploy mode + the global-excludes guard.** A live deploy
+measured ~4–5 Mbit/s (a single TCP stream on a residential uplink, not GitHub
+throttling), which makes force-replace's "re-upload the whole site every time"
+the dominant cost once a gallery is large (185 MB at *finished + device stacks*
+≈ 6 min per publish, even for a one-line journal edit). So `deploy` gained a
+second **mode** (`DEPLOY_MODES`, `PublishOptions.github_deploy_mode`, default
+**replace** — repo hygiene stays the default): **`incremental`** fetches the
+deployed tip and commits on top of it, so the push transfers only objects the
+remote lacks (**5 vs 17** objects in the test; because web derivatives are
+content-hashed, an unchanged image *is* the same blob and never re-uploads).
+The tip fetch uses **`--filter=blob:none --depth 1`** — the trees alone
+negotiate the push, so reading the tip costs ~3 objects instead of
+re-downloading the site (verified against a bare repo with
+`uploadpack.allowFilter`, GitHub's config); servers without filter support fall
+back to a plain shallow fetch, and a missing branch (first deploy) proceeds
+parentless. Cost: history keeps every superseded image — one publish in
+`replace` mode collapses it again. **Load-bearing detail:** `deploy` must never
+`checkout`/`reset --hard` (the work tree *is* the user's rendered site) —
+`update-ref` + an empty index + `add -A` makes the commit tree mirror the folder
+exactly, so the stale-sweep's deletions propagate in both modes. Also fixed a
+latent stranger-bug the Astronomy `webhosting.md` had flagged: the deploy repo
+now **neutralises `core.excludesFile`** and excludes only OS junk via
+`info/exclude`, so a user's global `*.jpg`/`*.png` rule can't silently strip the
+gallery (regression-tested with a global-ignore fixture; this machine's globals
+are benign, which is why it never bit). `_push` generalized to **`_git_stream`**
+(shared by fetch + push).
+
 Incremental backups to a user-defined destination + selective restore + retention.
 Qt-free engine `m110/backup.py` writes **hardlinked dated snapshots**
 (`rsync --link-dest` semantics in pure Python): each snapshot is a full, browsable

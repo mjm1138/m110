@@ -3,9 +3,18 @@ branch (BUGS #27a; the port of the Astronomy `deploy.sh` / ghp-import workflow).
 
 Shells out to the user's installed **git**, so auth rides on their existing
 setup (SSH key / credential helper) — no new dependency, no tokens handled
-here. Each deploy is a fresh single-commit orphan branch, **force-pushed**
-(ghp-import `-f` semantics): the remote repo stays lean regardless of how many
-times heroes/thumbnails are re-rendered. Qt-free.
+here. Qt-free.
+
+Two deploy modes trade repo size against upload time:
+
+* **replace** (default) — each deploy is a fresh single-commit orphan branch,
+  force-pushed (ghp-import `-f` semantics). The remote stays lean forever no
+  matter how often renders churn, but every publish re-uploads the whole site.
+* **incremental** — the deployed tip is fetched first and the new commit
+  descends from it, so the push sends only objects the remote lacks. Uploads
+  are a fraction of the site once it's up (web derivatives are content-hashed,
+  so an unchanged image is literally the same blob), at the cost of a history
+  that accumulates every superseded image forever.
 """
 from __future__ import annotations
 
@@ -23,14 +32,23 @@ from . import site
 from .errors import PublishError
 
 DEFAULT_BRANCH = "gh-pages"
+DEPLOY_MODES = ("replace", "incremental")
+DEFAULT_DEPLOY_MODE = "replace"
+
 _GIT_TIMEOUT = 600     # seconds — local plumbing only (init/add/commit); the
-                       # network push has NO wall-clock cap (a first full-site
-                       # upload can legitimately take arbitrarily long on a slow
-                       # uplink) — Cancel is the escape hatch, and it kills the
-                       # push process for real.
-_PUSH_POLL_S = 0.2
-# git push --progress writes "Writing objects:  42% (123/291), 88.10 MiB | 1.2 MiB/s"
-_WRITING_RE = re.compile(rb"Writing objects:\s+\d+%\s+\((\d+)/(\d+)\)")
+                       # network transfers have NO wall-clock cap (a first
+                       # full-site upload can legitimately take arbitrarily long
+                       # on a slow uplink) — Cancel is the escape hatch, and it
+                       # kills the git process for real.
+_STREAM_POLL_S = 0.2
+# git --progress writes "Writing objects:  42% (123/291), 88.10 MiB | 1.2 MiB/s"
+# (and "Receiving objects: …" when fetching).
+_PROGRESS_RE = re.compile(rb"(?:Writing|Receiving) objects:\s+\d+%\s+\((\d+)/(\d+)\)")
+# The site folder is generated content that must publish verbatim, so the deploy
+# repo neutralises the user's global excludes — a global "*.jpg"/"*.png" rule
+# would otherwise silently strip the whole gallery (the hazard ghp-import
+# sidesteps by force-adding). Only OS junk is excluded instead.
+_JUNK_EXCLUDES = (".DS_Store", "Thumbs.db", "._*")
 
 _OWNER_REPO_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+$")
 _GH_URL_RE = re.compile(
@@ -75,19 +93,19 @@ def _run_git(args, *, cwd=None, action="run git"):
     return res
 
 
-def _push(git_dir_args: list, url: str, branch: str, *,
-          should_cancel=None, progress=None):
-    """`git push --force --progress`, streamed: object-upload progress is parsed
-    from stderr into `progress(sent, total)`, cancellation **kills the push
-    process** (no orphaned uploads racing a later deploy), and there is no
-    wall-clock timeout — big first pushes on slow uplinks are legitimate."""
+def _git_stream(args, *, should_cancel=None, progress=None) -> tuple[int, str]:
+    """Run a network git command with its `--progress` stderr streamed.
+
+    Object counts are parsed into `progress(done, total)`; cancellation **kills
+    the process** (no orphaned transfer racing a later deploy); there is no
+    wall-clock timeout. Returns (returncode, stderr tail) — the caller decides
+    whether a failure is fatal.
+    """
     cancelled = should_cancel or (lambda: False)
-    proc = subprocess.Popen(
-        ["git", *git_dir_args, "push", "--force", "--progress", url,
-         f"HEAD:refs/heads/{branch}"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(["git", *args], stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE)
     tail: deque[bytes] = deque(maxlen=30)   # last stderr lines, for the error
-    counts = [0, 0]                          # (sent, total) from Writing objects
+    counts = [0, 0]
 
     def _read_stderr():
         buf = b""
@@ -103,7 +121,7 @@ def _push(git_dir_args: list, url: str, branch: str, *,
                 line, buf = buf[:m.start()], buf[m.end():]
                 if line:
                     tail.append(line)
-                    pm = _WRITING_RE.search(line)
+                    pm = _PROGRESS_RE.search(line)
                     if pm:
                         counts[0], counts[1] = int(pm.group(1)), int(pm.group(2))
         if buf:
@@ -120,27 +138,52 @@ def _push(git_dir_args: list, url: str, branch: str, *,
         if progress and counts[1] and tuple(counts) != reported:
             reported = tuple(counts)
             progress(*reported)
-        time.sleep(_PUSH_POLL_S)
+        time.sleep(_STREAM_POLL_S)
     reader.join(timeout=5)
-    if proc.returncode != 0:
-        detail = b"\n".join(tail).decode("utf-8", "replace").strip()
-        raise PublishError(f"git failed to push to {url}:\n{detail}")
-    if progress and counts[1]:
+    if progress and counts[1] and proc.returncode == 0:
         progress(counts[1], counts[1])
+    return proc.returncode, b"\n".join(tail).decode("utf-8", "replace").strip()
+
+
+def _fetch_tip(git_dir_args: list, url: str, branch: str, *,
+               should_cancel=None, progress=None) -> bool:
+    """Fetch the deployed branch's tip so the next commit can descend from it.
+
+    Tries a **blob-less** shallow fetch first: the commit's trees alone are
+    enough for the push to work out what the remote already has, so this costs
+    a few KB instead of re-downloading the whole deployed site. Falls back to a
+    plain shallow fetch where the server doesn't support partial clone.
+    Returns False when the branch doesn't exist yet (first deploy) or the
+    remote can't be read — the deploy then proceeds parentless, and a genuine
+    auth/URL problem surfaces on the push, where the message is actionable.
+    """
+    for extra in (["--filter=blob:none"], []):
+        rc, err = _git_stream([*git_dir_args, "fetch", "--depth", "1",
+                               "--progress", *extra, url, branch],
+                              should_cancel=should_cancel, progress=progress)
+        if rc == 0:
+            return True
+        if "couldn't find remote ref" in err.lower():
+            return False          # no deployed branch yet
+    return False
 
 
 def deploy(site_dir: Path, repo: str, branch: str = DEFAULT_BRANCH, *,
-           should_cancel=None, progress=None, status=None) -> dict:
-    """Force-push `site_dir` as a single-commit `branch` to `repo`.
+           mode: str = DEFAULT_DEPLOY_MODE, should_cancel=None, progress=None,
+           status=None) -> dict:
+    """Publish `site_dir` to `branch` on `repo` (see the module docstring for
+    the two modes).
 
-    Returns {"repo", "branch", "url"}. Raises PublishError on any failure
-    (git missing, nothing rendered, push rejected) with git's own stderr so
-    an auth/repo problem is actionable. `progress`/`status` surface the
-    upload (objects sent / total; a stage label) in the UI.
+    Returns {"repo", "branch", "mode", "url", "incremental"}. Raises
+    PublishError on any failure (git missing, nothing rendered, push rejected)
+    with git's own stderr so an auth/repo problem is actionable.
+    `progress`/`status` surface the transfer (objects done / total; a stage
+    label) in the UI.
     """
     cancelled = should_cancel or (lambda: False)
     site_dir = Path(site_dir)
     url = normalize_repo(repo)
+    mode = mode if mode in DEPLOY_MODES else DEFAULT_DEPLOY_MODE
     if not url:
         raise PublishError("Enter a GitHub repository (owner/repo or a git URL).")
     if shutil.which("git") is None:
@@ -158,8 +201,8 @@ def deploy(site_dir: Path, repo: str, branch: str = DEFAULT_BRANCH, *,
         nojekyll.write_text("", encoding="utf-8")
 
     with tempfile.TemporaryDirectory(prefix="m110-ghpages-") as tmp:
-        git_dir = ["--git-dir", str(Path(tmp) / ".git"),
-                   "--work-tree", str(site_dir)]
+        gd = Path(tmp) / ".git"
+        git_dir = ["--git-dir", str(gd), "--work-tree", str(site_dir)]
         if status:
             status("Preparing deploy…")
         _run_git(["init", "-q", str(tmp)], action="initialise the deploy repo")
@@ -168,20 +211,54 @@ def deploy(site_dir: Path, repo: str, branch: str = DEFAULT_BRANCH, *,
         _run_git([*git_dir, "config", "user.name", "M110"], action="configure")
         _run_git([*git_dir, "config", "user.email", "m110@localhost"],
                  action="configure")
+        _run_git([*git_dir, "config", "core.excludesFile", ""], action="configure")
+        (gd / "info").mkdir(parents=True, exist_ok=True)
+        (gd / "info" / "exclude").write_text("\n".join(_JUNK_EXCLUDES) + "\n",
+                                             encoding="utf-8")
+        # Deterministic branch name regardless of the user's init.defaultBranch.
+        _run_git([*git_dir, "symbolic-ref", "HEAD", "refs/heads/deploy"],
+                 action="configure")
+
+        incremental = False
+        if mode == "incremental":
+            if status:
+                status("Checking the deployed site…")
+            if _fetch_tip(git_dir, url, branch, should_cancel=should_cancel,
+                          progress=progress):
+                # Point the branch at the deployed tip **without touching the
+                # work tree** — it *is* the rendered site, so `checkout` /
+                # `reset --hard` must never be used here. The index stays
+                # empty, so the commit below records exactly what's on disk,
+                # with the deployed tip as its parent → the push sends only
+                # objects the remote lacks, and files swept from the render are
+                # simply absent from the new tree (deleted on the branch).
+                _run_git([*git_dir, "update-ref", "refs/heads/deploy",
+                          "FETCH_HEAD"], action="read the deployed site")
+                incremental = True
+
         if cancelled():
             raise PublishError("Cancelled.")
+        if status:
+            status("Preparing deploy…")
         _run_git([*git_dir, "add", "-A"], action="stage the site")
-        _run_git([*git_dir, "commit", "-q", "-m",
+        # --allow-empty: an unchanged incremental re-publish is a no-op commit,
+        # not an error.
+        _run_git([*git_dir, "commit", "-q", "--allow-empty", "-m",
                   f"Publish {datetime.now().strftime('%Y-%m-%d %H:%M')} (M110)"],
                  action="commit the site")
         if cancelled():
             raise PublishError("Cancelled.")
         if status:
             status("Uploading to GitHub…")
-        _push(git_dir, url, branch, should_cancel=should_cancel,
-              progress=progress)
+        rc, err = _git_stream(
+            [*git_dir, "push", "--force", "--progress", url,
+             f"HEAD:refs/heads/{branch}"],
+            should_cancel=should_cancel, progress=progress)
+        if rc != 0:
+            raise PublishError(f"git failed to push to {url}:\n{err}")
 
-    return {"repo": url, "branch": branch, "url": pages_url(repo)}
+    return {"repo": url, "branch": branch, "mode": mode,
+            "incremental": incremental, "url": pages_url(repo)}
 
 
 def render(options, *, should_cancel=None, progress=None, status=None,
@@ -197,6 +274,6 @@ def render(options, *, should_cancel=None, progress=None, status=None,
     if should_cancel and should_cancel():
         raise PublishError("Cancelled.")
     dep = deploy(options.output_dir, options.github_repo,
-                 options.github_branch, should_cancel=should_cancel,
-                 progress=progress, status=status)
+                 options.github_branch, mode=options.github_deploy_mode,
+                 should_cancel=should_cancel, progress=progress, status=status)
     return {**result, **dep}

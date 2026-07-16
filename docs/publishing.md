@@ -47,8 +47,9 @@ or token.
    GitHub's guide: *Settings → SSH and GPG keys → New SSH key*.)
 2. **Create a repository** for the site (e.g. `you/astro-site`). Public repos get
    Pages on every plan; note the *site* is always publicly viewable either way.
-3. In the Publish dialog, check **GitHub Pages** and enter the repository as
-   `owner/repo` (or paste a full git URL). Click **Publish**.
+3. In the Publish dialog, check **GitHub Pages**, enter the repository as
+   `owner/repo` (or paste a full git URL), and pick an upload mode (see below).
+   Click **Publish**.
 4. **First time only:** on GitHub, open the repo's **Settings → Pages** and set the
    source to **deploy from the `gh-pages` branch**.
 
@@ -56,14 +57,32 @@ Your site serves at **`https://<owner>.github.io/<repo>/`** (the success dialog
 shows the exact URL with an **Open site** button). The first deploy — and each
 update — can take a minute or two to appear.
 
+### Upload modes
+
+Publishing uploads over your home connection, which is usually far slower going up
+than down — a few hundred KB/s is normal, so a large site can take many minutes.
+The **Uploads** setting picks how M110 spends that time:
+
+| Mode | What happens | Best when |
+|---|---|---|
+| **Replace the site each time** *(default)* | Every publish replaces the `gh-pages` branch with a single fresh commit — the whole site uploads each time. The repo never grows. | Smaller sites, or infrequent publishing. |
+| **Upload only what changed** | M110 reads what's already deployed and sends only new files. Re-publishing after a small edit takes seconds. The branch keeps a deploy history, so superseded images stay in the repo forever. | Large galleries you publish often. |
+
+M110 names each web image after a hash of its contents, so in "only what changed"
+mode an image you haven't re-processed is recognized as already-deployed and skipped
+entirely — typically only your edits go up.
+
+The trade-off is repo size: history mode keeps every version of every image you've
+ever published. If the repo gets unwieldy, publish once in **Replace** mode — that
+collapses it back to a single commit.
+
 **Good to know:**
 
-- Each publish **replaces** the `gh-pages` branch entirely (a single fresh commit),
-  so the repo stays small no matter how often you publish. Don't point M110 at a
-  branch you keep other work on.
-- Uploads happen over your internet connection — a first full-site push takes as
-  long as it takes; the progress dialog shows upload progress and **Cancel** stops
-  it cleanly.
+- M110 **owns the `gh-pages` branch** — don't keep other work on it.
+- Deleting or excluding something re-publishes correctly in both modes: the site
+  always mirrors your current selections.
+- **Cancel** during an upload stops it cleanly and leaves the deployed site as it
+  was.
 - If the push is rejected, the error dialog shows git's own message — usually an
   authentication or repo-name problem.
 

@@ -31,8 +31,11 @@ def test_dialog_github_repo_field_follows_checkbox(tmp_path, monkeypatch, qapp):
     assert cb.isEnabled() and not cb.isChecked()
     assert dlg._gh_repo.text() == "mjm1138/astro-site"   # persisted value loads
     assert dlg._gh_repo.isEnabled() is False             # target unchecked
+    assert dlg._gh_mode.isEnabled() is False
+    assert dlg._gh_mode.currentData() == "replace"       # default deploy mode
     cb.setChecked(True)
     assert dlg._gh_repo.isEnabled() is True
+    assert dlg._gh_mode.isEnabled() is True
     assert dlg._selected_targets() == ["static-site", "github-pages"]
 
 
@@ -51,10 +54,12 @@ def test_dialog_save_persists_without_publishing(tmp_path, monkeypatch, qapp):
     dlg._title.setText("My Saved Site")
     dlg._gh_repo.setText("mjm1138/astro-site")
     dlg._gallery_level.setCurrentIndex(2)                   # "all"
+    dlg._gh_mode.setCurrentIndex(1)                         # "incremental"
     dlg._do_save()
     assert dlg._worker is None                              # nothing ran
     assert config.get_setting("publish_site_title") == "My Saved Site"
     assert config.get_setting("publish_github_repo") == "mjm1138/astro-site"
     assert config.get_setting("publish_gallery_level") == "all"
+    assert config.get_setting("publish_github_deploy_mode") == "incremental"
     from PySide6.QtWidgets import QDialog
     assert dlg.result() == QDialog.DialogCode.Accepted

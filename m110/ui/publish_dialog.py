@@ -35,6 +35,12 @@ _SECTIONS_KEY = "publish_sections"
 _EXCLUDE_KEY = "publish_exclude_journals"
 _TITLE_KEY = "publish_site_title"
 _GH_REPO_KEY = "publish_github_repo"
+_GH_MODE_KEY = "publish_github_deploy_mode"
+# Combo order = engine mode order (publish.ghpages.DEPLOY_MODES).
+_DEPLOY_MODES = [
+    ("replace", "Replace the site each time (smallest repo)"),
+    ("incremental", "Upload only what changed (keeps history)"),
+]
 _GALLERY_LEVEL_KEY = "publish_gallery_level"
 # Combo order = engine level order (publish.images.GALLERY_LEVELS).
 _GALLERY_LEVELS = [
@@ -147,6 +153,24 @@ class PublishDialog(QDialog):
                 cb.toggled.connect(self._gh_repo.setEnabled)
                 repo_row.addWidget(self._gh_repo)
                 tgt_l.addLayout(repo_row)
+                # Upload mode: replace re-uploads the whole site every publish
+                # but keeps the repo lean; incremental sends only changed
+                # objects at the cost of an ever-growing history.
+                mode_row = QHBoxLayout()
+                mode_row.addSpacing(s["lg"])
+                mode_row.addWidget(QLabel("Uploads:"))
+                self._gh_mode = QComboBox()
+                for mid, label in _DEPLOY_MODES:
+                    self._gh_mode.addItem(label, mid)
+                saved_mode = config.get_setting(_GH_MODE_KEY, "replace")
+                self._gh_mode.setCurrentIndex(
+                    next((i for i, (mid, _) in enumerate(_DEPLOY_MODES)
+                          if mid == saved_mode), 0))
+                self._gh_mode.setEnabled(cb.isChecked())
+                cb.toggled.connect(self._gh_mode.setEnabled)
+                mode_row.addWidget(self._gh_mode)
+                mode_row.addStretch(1)
+                tgt_l.addLayout(mode_row)
         layout.addWidget(tgt_box)
 
         # ── site title ──
@@ -202,6 +226,7 @@ class PublishDialog(QDialog):
         config.save_setting(_TITLE_KEY,
                             self._title.text().strip() or publish.DEFAULT_SITE_TITLE)
         config.save_setting(_GH_REPO_KEY, self._gh_repo.text().strip())
+        config.save_setting(_GH_MODE_KEY, self._gh_mode.currentData())
 
     def _do_save(self):
         self._save_settings(self._selected_targets())
@@ -230,7 +255,8 @@ class PublishDialog(QDialog):
             exclude_journals=self._exclude_journals.isChecked(),
             site_title=self._title.text().strip() or publish.DEFAULT_SITE_TITLE,
             gallery_level=self._gallery_level.currentData(),
-            github_repo=gh_repo)
+            github_repo=gh_repo,
+            github_deploy_mode=self._gh_mode.currentData())
 
         self._cancel_event = threading.Event()
         pd = QProgressDialog("Rendering site…", "Cancel", 0, 0, self)

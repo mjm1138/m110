@@ -171,6 +171,128 @@ def test_run_publish_chains_static_site_into_ghpages(tmp_path, monkeypatch):
     assert _branch_file(remote, "gh-pages", "index.html") is not None
 
 
+# ── incremental deploy mode ──────────────────────────────────────────────────
+
+def _site_n(tmp_path: Path, n: int, marker: str = "v1") -> Path:
+    """A site dir with `n` distinct binary "images" + an index."""
+    site = tmp_path / "site"
+    (site / "img").mkdir(parents=True, exist_ok=True)
+    (site / "index.html").write_text(f"<html>{marker}</html>", encoding="utf-8")
+    for i in range(n):
+        (site / "img" / f"{i}.jpg").write_bytes(b"\xff\xd8" + bytes([i]) * 4096)
+    return site
+
+
+@needs_git
+def test_incremental_keeps_history_and_sends_only_changes(tmp_path):
+    """Incremental descends from the deployed tip: history accumulates, and the
+    second push transfers far fewer objects than the first (the whole point —
+    an unchanged image is the same content-hashed blob the remote already has)."""
+    remote = _bare_repo(tmp_path)
+    first, second = [], []
+    site = _site_n(tmp_path, 12, "v1")
+    ghpages.deploy(site, remote, mode="incremental",
+                   progress=lambda i, t: first.append(t))
+    assert _commit_count(remote, "gh-pages") == 1
+
+    # One image changes; the other 11 stay byte-identical.
+    site = _site_n(tmp_path, 12, "v2")
+    (site / "img" / "0.jpg").write_bytes(b"\xff\xd8changed")
+    ghpages.deploy(site, remote, mode="incremental",
+                   progress=lambda i, t: second.append(t))
+
+    assert _commit_count(remote, "gh-pages") == 2          # history kept
+    assert _branch_file(remote, "gh-pages", "index.html") == b"<html>v2</html>"
+    # The push is the last phase, so the final progress report is its object
+    # count: the whole site went up first, only the changed objects second.
+    assert second[-1] < first[-1]
+    assert first[-1] >= 12          # every image + index + .nojekyll + tree/commit
+
+
+@needs_git
+def test_incremental_tip_fetch_is_blobless_when_server_allows_filters(tmp_path):
+    """GitHub supports partial clone, so reading the deployed tip costs a few
+    objects (commit + trees) rather than re-downloading the whole site. The
+    plain-shallow fallback (servers without filter support) is what the other
+    incremental tests exercise, since a bare repo disallows filters by default."""
+    remote = _bare_repo(tmp_path)
+    subprocess.run(["git", "--git-dir", remote.removeprefix("file://"),
+                    "config", "uploadpack.allowFilter", "true"], check=True)
+    site = _site_n(tmp_path, 12)
+    ghpages.deploy(site, remote, mode="incremental")
+
+    stage = [""]
+    phases = []          # (stage label, objects) — the split the UI shows
+    ghpages.deploy(site, remote, mode="incremental",
+                   status=lambda s: stage.__setitem__(0, s),
+                   progress=lambda i, t: phases.append((stage[0], t)))
+    fetched = [t for s, t in phases if "deployed site" in s]
+    assert fetched, "the tip fetch reported no progress"
+    assert max(fetched) < 12          # trees only — no blobs came back down
+
+
+@needs_git
+def test_incremental_first_deploy_without_branch(tmp_path):
+    """No gh-pages yet → nothing to descend from; deploy proceeds parentless."""
+    remote = _bare_repo(tmp_path)
+    res = ghpages.deploy(_site(tmp_path), remote, mode="incremental")
+    assert res["incremental"] is False        # no tip existed
+    assert res["mode"] == "incremental"
+    assert _commit_count(remote, "gh-pages") == 1
+    assert _branch_file(remote, "gh-pages", "index.html") == b"<html>v1</html>"
+
+
+@needs_git
+def test_incremental_propagates_deletions(tmp_path):
+    """A file swept from the render is gone from the branch — incremental still
+    mirrors the folder exactly, it just uploads less."""
+    remote = _bare_repo(tmp_path)
+    site = _site_n(tmp_path, 3)
+    ghpages.deploy(site, remote, mode="incremental")
+    assert _branch_file(remote, "gh-pages", "img/2.jpg") is not None
+    (site / "img" / "2.jpg").unlink()
+    ghpages.deploy(site, remote, mode="incremental")
+    assert _branch_file(remote, "gh-pages", "img/2.jpg") is None
+    assert _branch_file(remote, "gh-pages", "img/1.jpg") is not None
+
+
+@needs_git
+def test_replace_mode_still_force_replaces_after_incremental(tmp_path):
+    """The modes interoperate: switching back to replace collapses history."""
+    remote = _bare_repo(tmp_path)
+    site = _site_n(tmp_path, 2)
+    ghpages.deploy(site, remote, mode="incremental")
+    ghpages.deploy(site, remote, mode="incremental")
+    assert _commit_count(remote, "gh-pages") == 2
+    ghpages.deploy(site, remote, mode="replace")
+    assert _commit_count(remote, "gh-pages") == 1
+
+
+def test_deploy_mode_normalizes(tmp_path):
+    opts = PublishOptions(output_dir=tmp_path / "x", github_deploy_mode="bogus")
+    assert opts.github_deploy_mode == "replace"
+    assert PublishOptions(output_dir=tmp_path / "x",
+                          github_deploy_mode="incremental"
+                          ).github_deploy_mode == "incremental"
+
+
+@needs_git
+def test_global_excludes_cannot_strip_site_images(tmp_path, monkeypatch):
+    """A user's global gitignore must not silently drop the gallery (the
+    ghp-import force-add lesson: a global "*.jpg" is a real-world config)."""
+    excludes = tmp_path / "global_ignore"
+    excludes.write_text("*.jpg\n.DS_Store\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
+    subprocess.run(["git", "config", "--global", "core.excludesFile",
+                    str(excludes)], check=True)
+    remote = _bare_repo(tmp_path)
+    site = _site(tmp_path)
+    (site / ".DS_Store").write_bytes(b"junk")
+    ghpages.deploy(site, remote)
+    assert _branch_file(remote, "gh-pages", "img/hero.jpg") is not None  # kept
+    assert _branch_file(remote, "gh-pages", ".DS_Store") is None         # junk
+
+
 # ── push progress + cancellation ─────────────────────────────────────────────
 
 @needs_git
