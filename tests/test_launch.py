@@ -1,5 +1,6 @@
 """Tests for the external-app launcher (launch.py) — the guide side of #19.
 No app is actually started: _spawn is monkeypatched to capture argv."""
+import os
 import sys
 
 import pytest
@@ -84,3 +85,47 @@ def test_launch_wraps_os_error(tmp_path, monkeypatch):
     monkeypatch.setattr(launch, "_spawn", boom)
     with pytest.raises(launch.LaunchError, match="Couldn't start"):
         launch.launch_processing("siril", "/dir")
+
+
+# ── child environment: don't leak our Python/venv into the tool (Siril venv) ──
+
+def test_child_env_strips_our_python_and_venv(monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", "/proj/.venv")
+    monkeypatch.setenv("PYTHONHOME", "/proj/.venv")
+    monkeypatch.setenv("PYTHONPATH", "/proj/src")
+    monkeypatch.setenv("PATH", os.pathsep.join(["/proj/.venv/bin", "/usr/bin", "/bin"]))
+    env = launch._child_env()
+    assert "VIRTUAL_ENV" not in env
+    assert "PYTHONHOME" not in env and "PYTHONPATH" not in env
+    parts = env["PATH"].split(os.pathsep)
+    assert "/proj/.venv/bin" not in parts        # our venv bin dropped
+    assert "/usr/bin" in parts and "/bin" in parts  # system dirs kept
+
+
+def test_child_env_restores_bundle_libpath(monkeypatch):
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/bundle/lib")
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/system/lib")
+    env = launch._child_env()
+    assert env["LD_LIBRARY_PATH"] == "/system/lib"   # restored from _ORIG
+    assert "LD_LIBRARY_PATH_ORIG" not in env
+
+
+def test_child_env_drops_bundle_libpath_without_orig(monkeypatch):
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.setenv("DYLD_LIBRARY_PATH", "/bundle/lib")
+    monkeypatch.delenv("DYLD_LIBRARY_PATH_ORIG", raising=False)
+    env = launch._child_env()
+    assert "DYLD_LIBRARY_PATH" not in env
+
+
+def test_child_env_keeps_system_bin_when_not_venv(monkeypatch):
+    """Outside a venv/frozen build we must NOT strip the interpreter's dir — it's
+    a shared system bin the tool may need."""
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.setattr(sys, "base_prefix", sys.prefix)   # look like system python
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "executable", "/usr/bin/python3")
+    monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", "/bin"]))
+    env = launch._child_env()
+    assert "/usr/bin" in env["PATH"].split(os.pathsep)

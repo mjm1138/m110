@@ -128,10 +128,64 @@ def find_app(tool_id: str) -> str | None:
 
 # ── launch ───────────────────────────────────────────────────────────────────
 
+# Environment variables that would leak M110's own Python/venv (or a PyInstaller
+# bundle) into a launched app. A tool that embeds its own Python — Siril 1.4's
+# `sirilpy` — otherwise discovers *our* interpreter and fails its version check
+# ("Failed to initialize Python virtual environment: Python version check
+# failed"). Stripping these makes the child see the environment it would from
+# the Dock/Start menu.
+_PY_LEAK_VARS = (
+    "PYTHONHOME", "PYTHONPATH", "PYTHONEXECUTABLE", "PYTHONSTARTUP",
+    "PYTHONNOUSERSITE", "PYTHONDONTWRITEBYTECODE", "PYTHONSAFEPATH",
+    "VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT", "PYVENV_LAUNCHER", "__PYVENV_LAUNCHER__",
+    "_MEIPASS", "_MEIPASS2", "_PYI_APPLICATION_HOME_DIR",
+)
+
+# Library-search paths a bundle (PyInstaller/AppImage) overrides, stashing the
+# originals in `<VAR>_ORIG`. Restore the original, else drop the bundle path.
+_LIBPATH_VARS = ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH")
+
+
+def _strip_path_entry(env: dict, entry: str) -> None:
+    """Remove one directory from the child's PATH (used to de-list our venv's
+    bin so the child doesn't resolve `python` to ours)."""
+    path = env.get("PATH")
+    if not (path and entry):
+        return
+    want = os.path.normpath(entry)
+    kept = [p for p in path.split(os.pathsep) if os.path.normpath(p) != want]
+    env["PATH"] = os.pathsep.join(kept)
+
+
+def _child_env() -> dict:
+    """A copy of the environment with M110's own Python/venv + bundle internals
+    stripped, so an app we launch starts clean (see `_PY_LEAK_VARS`)."""
+    env = dict(os.environ)
+    for var in _PY_LEAK_VARS:
+        env.pop(var, None)
+    for var in _LIBPATH_VARS:
+        orig = env.pop(var + "_ORIG", None)
+        if orig is not None:
+            env[var] = orig
+        else:
+            env.pop(var, None)
+    # Drop the venv's bin (or, when frozen, the app dir) from the front of PATH —
+    # but never a shared system bin dir (only when we're actually in a venv/app).
+    venv = os.environ.get("VIRTUAL_ENV")
+    if venv:
+        _strip_path_entry(env, os.path.join(venv, "bin"))
+        _strip_path_entry(env, os.path.join(venv, "Scripts"))   # Windows
+    elif sys.prefix != getattr(sys, "base_prefix", sys.prefix) or \
+            getattr(sys, "frozen", False):
+        _strip_path_entry(env, os.path.dirname(os.path.realpath(sys.executable)))
+    return env
+
+
 def _spawn(argv: list[str]) -> None:
-    """Start the app detached so it outlives M110 and never blocks the UI.
-    Isolated for tests to monkeypatch."""
-    kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    """Start the app detached so it outlives M110 and never blocks the UI, with
+    a sanitized environment (`_child_env`). Isolated for tests to monkeypatch."""
+    kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                    "env": _child_env()}
     if os.name == "posix":
         kwargs["start_new_session"] = True                     # own process group
     else:

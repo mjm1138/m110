@@ -356,6 +356,17 @@ control.
   (`start_new_session` on POSIX). The auto-detect paths are only exercised on macOS +
   in tests — **verify the Linux/Windows locations on real machines** before relying on
   them. Everything degrades to reveal-the-folder when the tool isn't found.
+- **Launched tools must NOT inherit our Python env (`launch._child_env`).** Siril 1.4
+  embeds its own Python (`sirilpy`); when we `Popen` it from a dev venv (or a PyInstaller
+  bundle), it inherits our `VIRTUAL_ENV` / `PYTHONHOME` / `PYTHONPATH` and our `.venv/bin`
+  at the front of `PATH`, discovers **our** interpreter, and dies with "Failed to
+  initialize Python virtual environment: Python version check failed". `_spawn` therefore
+  runs with a sanitized env — strip `_PY_LEAK_VARS` (Python + PyInstaller `_MEI*`),
+  restore bundle library paths from `<VAR>_ORIG` (else drop them), and remove the venv's
+  bin from `PATH` (only when actually in a venv/frozen build — never a shared system bin).
+  Any future launched tool inherits this automatically. If Siril still reports the Python
+  error *and* it also fails when launched from the Dock, that's a Siril-side venv setup
+  issue (its Preferences → Scripts → "Reset python venv"), not ours.
 - **FITS extensions: `.fit` AND `.fits`.** Seestar/the Astronomy port use `.fit`;
   the Dwarf 3 (and most other rigs) write `.fits`. Any new extension check must go
   through `config.FIT_EXTS`/`config.is_fits_file` — never a bare `endswith(".fit")`
