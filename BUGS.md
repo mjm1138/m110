@@ -72,7 +72,14 @@ Legend: `[ ]` open · `[~]` partially done
   out of the way. Cross-platform launch lives in the Qt-free `m110/launch.py`: settings
   override (`external_app_paths`) → OS-standard locations (macOS `/Applications/Siril.app`,
   Linux `siril`/`siril-cli` in PATH, Windows Program Files) → graceful reveal-folder
-  fallback; the path is settable in *Preferences → Processing tools*. **Open:** (a) a
+  fallback; the path is settable in *Preferences → Processing tools*. **macOS must launch
+  via `open`** (`_launch_macos`), not a direct `Popen`: Siril's bundled Python is
+  hardened-runtime + library-validated, so it only spawns when Siril is its own *responsible
+  process* — a child-process launch left M110 responsible and Siril SIGKILLed its own Python
+  ("unable to spawn python" / "version check failed"). Trade-off: `open --args -d` sets the
+  working dir only on a **cold start** (ignored if Siril is already open — a small UX gap; a
+  future `open -n` new-instance option could close it if Siril tolerates concurrent
+  instances). **Open:** (a) a
   configurable multi-app list for the image "Open In…" submenu (only default-app + reveal
   today); (b) PixInsight/DSS/APP as launchable targets (registered in `processing.WORKFLOWS`
   but not yet in `launch._TOOLS`); (c) custom/combined workspaces per #18. **Verify on real

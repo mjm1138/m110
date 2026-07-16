@@ -157,7 +157,7 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached. **Hero cache keys on source *identity*** (a `hero/<slug>.src` sidecar = source rel-path + `img_hash`), not mtime — so a set-hero to an *older* image re-renders instead of leaving a stale hero (#17). `rebuild_hero(slug)` re-renders one object's hero synchronously (interactive set-hero, no full refresh) |
 | `ingest.py` | staging/Seestar scan **plan** (read-only) + gated `apply_ops` (the only writer into the content tree); cancellable. **One deterministic scanner (#32):** all entry points go through the recursive `scan_directory_plan` (`os.walk`, depth-agnostic) — `scan_seestar_plan`/`scan_staging_plan` delegate to it (the old shallow one-level `_scan_base` was retired, it silently missed nested subfolders); the walk logs every dir visited + its layout + pruned subtrees + a final `scan_summary` (`m110` logger → `~/.m110/logs/m110.log`), and `scan_summary(ops)` gives the UI headline counts (objects / to-import / to-holding). Holding area (6c): `scan_holding`/`assign`/`discard_holding` + **`annotate_holding`/`identify_holding`** (#26 aids — per held group, `frame_info` header facts + suggested object [OBJECT header → slug via `_slug_for_object`, else nearest catalog by RA/Dec within `IDENTIFY_TOL_DEG`] + suggested kind [IMAGETYP]). **Per-sub preview import** (#25, default off — `import_sub_previews` setting): the `_sub` branch optionally routes the Seestar's per-sub `.jpg` previews to `Images/<target>/previews/` (new `"preview"` kind) instead of ignoring them. **DwarfLab Dwarf 3** (`dwarf` layout, `_classify_dwarf_dir`, keyed on the `DWARF_RAW_*`/`STARTRAILS_*` session-folder prefix): `.fits` subs → `lights/` (object from `OBJECT` header), in-app `stacked-16_*` + `stacked.jpg` → the `seestar-stacks/` device-stack tier, `Thumbnail/` (added to `_SKIP_DIRS`) + aux rasters (`img_*`, `*_thumbnail`) ignored, **startrails** → `Media/Startrails_{video,photo}/`. `_usable_object` treats `OBJECT` of `''`/`Unknown` as absent → holding area (identify-by-pointing). Loose re-grouped Dwarf FITS fall to `raw-fits` (routed by `OBJECT`) |
 | `siril.py` | processing-prep **round-trip** (prepare-and-guide). Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset tuned by frame count — drizzle + star-quality filters — and **preserved once hand-edited** via `is_default_preset`, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs; never deletes, never escapes `siril/`). **Finished-output discovery = sandbox + object-dir fallback** (`_finished_outputs` = `_sandbox_outputs` ∪ `_root_outputs`): the fallback scans `Images/<target>/` too — skipping the managed tiers/raw inputs/`siril/`/`process/` — so output from a run whose Siril **working directory was mis-set to the object dir** (one level above the sandbox) is still picked up. `working_dirs(target)` = the working dirs to offer "Process in Siril" (per-filter job dirs if split, else the sandbox root; `[]` when no sandbox). Bundled-guidance access |
-| `launch.py` | **external-app launcher** (#19 "Process in…" / "Open In…", Qt-free). Starts a processing/viewer tool and gets out of the way — never controls it. `find_app(tool_id)` = user override (`external_app_paths` setting) → OS-standard locations (macOS `/Applications/Siril.app/Contents/MacOS/siril`, Linux `siril`/`siril-cli` via `which`, Windows Program Files) → `None`; `launch_processing(tool_id, working_dir)` builds the tool's working-dir argv (Siril `-d <dir>`) and `_spawn`s it detached (`LaunchError` when not found / spawn fails). `_TOOLS` registry (Siril only today; extensible). The UI (`ui/widgets.process_in_siril`) falls back to revealing the folder on `LaunchError` |
+| `launch.py` | **external-app launcher** (#19 "Process in…" / "Open In…", Qt-free). Starts a processing/viewer tool and gets out of the way — never controls it. `find_app(tool_id)` = user override (`external_app_paths` setting) → OS-standard locations (macOS `/Applications/Siril.app/Contents/MacOS/siril`, Linux `siril`/`siril-cli` via `which`, Windows Program Files) → `None`; `launch_processing(tool_id, working_dir)` builds the tool's working-dir argv (Siril `-d <dir>`): **macOS** goes through `_launch_macos` (`/usr/bin/open -a <Siril.app bundle> --args -d <dir>` — LaunchServices makes Siril its own *responsible process* so its hardened bundled Python can spawn; see the gotcha), **elsewhere** `_spawn`s the binary detached; both with a sanitized `_child_env()` (strips our `VIRTUAL_ENV`/`PYTHON*`/PyInstaller `_MEI*` + restores bundle libpaths) so a launched tool's own Python isn't poisoned by ours. `LaunchError` when not found / spawn fails. `_TOOLS` registry (Siril only today; extensible). The UI (`ui/widgets.process_in_siril`) falls back to revealing the folder on `LaunchError` |
 | `hints.py` | **finished / intermediate filename hints** (#17) — the single, user-editable vocabulary deciding whether a filename marks a *finished* deliverable vs an *intermediate* by-product. Case-insensitive substring keywords (defaults `processed/final/finished` + `starless/starmask`), persisted in `settings.json` under `finished_hints`, read live. `is_finished_name`/`is_intermediate_name` + `get_hints`/`set_hints`. **Three consumers** draw from it (replacing their old hardcoded regexes, the source of stranger-file misclassification): `siril._classify` (import finished work), `ingest._is_finished_raster` (loose finished-render recognizer), `build_images._is_intermediate_fit` (hero-tier selection). Edited in Preferences |
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero, `get/set_frontmatter_list` for JSON-array keys); **per-image curation** (#17) `get_curation`/`set_curation` (filename→`"finished"`\|`"working"` overrides in `finished_extra`/`working_extra` frontmatter, one list each); slug→id folder name; hero path |
 | `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync) |
@@ -346,27 +346,35 @@ control.
 
 ## Gotchas / lessons learned
 
-- **Launching Siril: run the binary with `-d <dir>`, don't `open --args` (#19).**
-  Siril sets its working directory from `-d <working_directory>` (verified: works for
-  both the `siril` GUI and `siril-cli`). On macOS `open -a Siril --args -d <dir>` is
-  unreliable — LaunchServices only forwards `--args` when the app **isn't already
-  running**, so a second "Process in Siril" on an open Siril silently ignores the new
-  dir. `launch.py` therefore resolves the actual executable (inside `Siril.app/Contents/
-  MacOS/` on macOS) and `subprocess.Popen`s it directly with `-d`, detached
-  (`start_new_session` on POSIX). The auto-detect paths are only exercised on macOS +
-  in tests — **verify the Linux/Windows locations on real machines** before relying on
-  them. Everything degrades to reveal-the-folder when the tool isn't found.
-- **Launched tools must NOT inherit our Python env (`launch._child_env`).** Siril 1.4
-  embeds its own Python (`sirilpy`); when we `Popen` it from a dev venv (or a PyInstaller
-  bundle), it inherits our `VIRTUAL_ENV` / `PYTHONHOME` / `PYTHONPATH` and our `.venv/bin`
-  at the front of `PATH`, discovers **our** interpreter, and dies with "Failed to
-  initialize Python virtual environment: Python version check failed". `_spawn` therefore
-  runs with a sanitized env — strip `_PY_LEAK_VARS` (Python + PyInstaller `_MEI*`),
-  restore bundle library paths from `<VAR>_ORIG` (else drop them), and remove the venv's
-  bin from `PATH` (only when actually in a venv/frozen build — never a shared system bin).
-  Any future launched tool inherits this automatically. If Siril still reports the Python
-  error *and* it also fails when launched from the Dock, that's a Siril-side venv setup
-  issue (its Preferences → Scripts → "Reset python venv"), not ours.
+- **On macOS, launch Siril via `open` (LaunchServices), NOT a direct `Popen` (#19).**
+  Siril bundles its own **hardened-runtime, library-validated** Python
+  (`Siril.app/Contents/Frameworks/Python.framework`, signed team `SW3D6BB6A6`). That
+  Python only runs when the **responsible process** is Siril itself. A direct child-process
+  launch (`Popen [.../MacOS/siril, -d, dir]`) leaves **M110** as the responsible process,
+  so the moment Siril spawns its Python macOS SIGKILLs it — Siril reports "unable to spawn
+  python" / "Python version check failed" (reproduced: the framework python is `Killed: 9`
+  even from a clean-env shell, `env -i`; it is NOT an environment problem). `open -a
+  Siril.app` makes Siril its own responsible process (the Dock/Finder context), so its
+  Python works. `launch._launch_macos` therefore runs `/usr/bin/open -a <bundle> --args -d
+  <dir>` with a sanitized env (`open` forwards *its* env to the app, so `_child_env` still
+  keeps our venv out). Trade-off: LaunchServices honors `--args -d` only on a **cold
+  start** — if Siril is already open, the working dir isn't changed (user sets it, or uses
+  Reveal working folder). Siril *does* accept `-d <working_directory>` (verified for `siril`
+  + `siril-cli`); the reason we don't `Popen` it directly is the signing context, not the
+  flag. Non-macOS keeps the direct `Popen`. Auto-detect paths are only exercised on macOS +
+  in tests — **verify Linux/Windows locations on real machines**. Degrades to
+  reveal-the-folder when the tool isn't found.
+- **Also don't leak our Python env into launched tools (`launch._child_env`).** Secondary
+  to the responsible-process fix above, but still correct defense-in-depth: strip
+  `_PY_LEAK_VARS` (`VIRTUAL_ENV`/`PYTHON*` + PyInstaller `_MEI*`), restore bundle library
+  paths from `<VAR>_ORIG` (else drop them), and remove the venv's bin from `PATH` (only when
+  actually in a venv/frozen build — never a shared system bin). Passed to both `_spawn` and
+  the macOS `open` (which forwards its own env to the app). Every launched tool inherits
+  this. (During debugging, sanitizing the env alone appeared to move Siril *past* the
+  version check — but the framework Python is SIGKILLed even with `env -i`, so the real
+  fix was launching via `open`; keep both.) If Siril still reports the Python error *and*
+  it also fails launched from the Dock, that's a Siril-side venv setup issue (its Get
+  Scripts → "Reset python venv") — not ours.
 - **FITS extensions: `.fit` AND `.fits`.** Seestar/the Astronomy port use `.fit`;
   the Dwarf 3 (and most other rigs) write `.fits`. Any new extension check must go
   through `config.FIT_EXTS`/`config.is_fits_file` — never a bare `endswith(".fit")`

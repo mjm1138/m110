@@ -181,6 +181,9 @@ def _child_env() -> dict:
     return env
 
 
+_OPEN_TIMEOUT = 30   # seconds for `open` to hand the app to LaunchServices
+
+
 def _spawn(argv: list[str]) -> None:
     """Start the app detached so it outlives M110 and never blocks the UI, with
     a sanitized environment (`_child_env`). Isolated for tests to monkeypatch."""
@@ -191,6 +194,41 @@ def _spawn(argv: list[str]) -> None:
     else:
         kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0)
     subprocess.Popen(argv, **kwargs)
+
+
+def _macos_app_bundle(binary: str) -> str | None:
+    """The `.app` bundle enclosing a macOS executable, or None (e.g. a bare
+    `siril-cli`)."""
+    for parent in Path(binary).parents:
+        if parent.suffix == ".app":
+            return str(parent)
+    return None
+
+
+def _launch_macos(binary: str, args: list[str]) -> None:
+    """Launch through LaunchServices (`open`) rather than as a child process.
+
+    Siril bundles its own **hardened-runtime, library-validated** Python; that
+    Python only runs when the *responsible process* is Siril itself (same signing
+    team). A direct `Popen` leaves **M110** responsible, so Siril's Python is
+    SIGKILLed the moment it spawns — Siril reports "unable to spawn python" /
+    "Python version check failed". `open` makes Siril its own responsible process
+    (exactly the Dock/Finder context), so its Python works. We still pass a
+    sanitized env (`_child_env`) — `open` forwards its own environment to the
+    app, so this keeps our venv from leaking in. `-d <dir>` rides in via
+    `--args`; LaunchServices honors it on a **cold start** (ignored if Siril is
+    already running, in which case the user sets the working dir themselves)."""
+    bundle = _macos_app_bundle(binary)
+    if not bundle:                                   # not in a .app → run directly
+        _spawn([binary, *args])
+        return
+    argv = ["/usr/bin/open", "-a", bundle]
+    if args:
+        argv += ["--args", *args]
+    res = subprocess.run(argv, env=_child_env(), capture_output=True, text=True,
+                         timeout=_OPEN_TIMEOUT)
+    if res.returncode != 0:
+        raise LaunchError(res.stderr.strip() or f"`open` exited {res.returncode}")
 
 
 def launch_processing(tool_id: str, working_dir) -> str:
@@ -205,7 +243,10 @@ def launch_processing(tool_id: str, working_dir) -> str:
     spec = _TOOLS[tool_id]
     args = [a.format(dir=str(working_dir)) for a in spec.get("workdir_args", [])]
     try:
-        _spawn([app, *args])
-    except OSError as exc:
+        if sys.platform == "darwin":
+            _launch_macos(app, args)
+        else:
+            _spawn([app, *args])
+    except (OSError, subprocess.SubprocessError) as exc:
         raise LaunchError(f"Couldn't start {tool_label(tool_id)}: {exc}") from exc
     return app

@@ -70,6 +70,51 @@ def test_launch_builds_workdir_argv(tmp_path, monkeypatch, captured_spawn):
     assert captured_spawn == [[str(binary), "-d", str(wd)]]
 
 
+def test_macos_launch_uses_open_with_bundle_and_clean_env(tmp_path, monkeypatch):
+    """On macOS we must launch via `open` (LaunchServices) so Siril is its own
+    responsible process and its hardened-runtime Python can spawn — a direct
+    child launch gets it SIGKILLed."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    binary = tmp_path / "Siril.app" / "Contents" / "MacOS" / "siril"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("x")
+    monkeypatch.setattr(launch, "find_app", lambda tid: str(binary))
+    monkeypatch.setenv("VIRTUAL_ENV", "/proj/.venv")
+
+    seen = {}
+
+    class _Res:
+        returncode = 0
+        stderr = ""
+
+    def fake_run(argv, **kw):
+        seen["argv"] = argv
+        seen["env"] = kw.get("env")
+        return _Res()
+    monkeypatch.setattr(launch.subprocess, "run", fake_run)
+
+    wd = tmp_path / "Images" / "M10" / "siril"
+    launch.launch_processing("siril", wd)
+    assert seen["argv"] == ["/usr/bin/open", "-a", str(tmp_path / "Siril.app"),
+                            "--args", "-d", str(wd)]
+    assert "VIRTUAL_ENV" not in seen["env"]          # sanitized env handed to open
+
+
+def test_macos_open_failure_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    binary = tmp_path / "Siril.app" / "Contents" / "MacOS" / "siril"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("x")
+    monkeypatch.setattr(launch, "find_app", lambda tid: str(binary))
+
+    class _Res:
+        returncode = 1
+        stderr = "Unable to find application named 'Siril'"
+    monkeypatch.setattr(launch.subprocess, "run", lambda argv, **kw: _Res())
+    with pytest.raises(launch.LaunchError, match="Unable to find application"):
+        launch.launch_processing("siril", "/dir")
+
+
 def test_launch_raises_when_not_found(monkeypatch, captured_spawn):
     monkeypatch.setattr(launch, "find_app", lambda tid: None)
     with pytest.raises(launch.LaunchError, match="Set its location"):
