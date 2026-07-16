@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-07-15
+
 ### Added
 - **Publish straight to GitHub Pages.** *Library → Publish / share* can now deploy your
   site to a GitHub repository instead of only writing a folder you host yourself. Enter
