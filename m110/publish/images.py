@@ -10,7 +10,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from .. import build_images, config
+from .. import build_images, config, objects
 
 FULL_MAX = 1920  # longest-edge cap for lightbox images
 
@@ -41,15 +41,23 @@ def make_full(src: Path, dest_dir: Path) -> Path | None:
 
 
 def emit_gallery(slug: str, folders: list[str], by_folder: dict,
-                 img_dir: Path, *, galleries: bool) -> list[dict]:
+                 img_dir: Path, *, galleries: bool,
+                 finished_only: bool = False) -> list[dict]:
     """Discover an object's gallery images and emit web derivatives into
-    `img_dir`. With `galleries=False` returns no records (gallery omitted)."""
+    `img_dir`. With `galleries=False` returns no records (gallery omitted);
+    with `finished_only=True` working files (stacks, device stacks — anything
+    `objects.image_state` doesn't call "finished") are excluded, keeping the
+    published site to deliberate deliverables (and a fraction of the size)."""
     if not galleries:
         return []
     img_dir.mkdir(parents=True, exist_ok=True)
     full_dir = img_dir / "full"
+    curation = objects.get_curation(slug) if finished_only else {}
     records = []
     for im in build_images.discover_images(slug, folders, by_folder):
+        if finished_only and objects.image_state(
+                im["name"], im["label"], curation) != "finished":
+            continue
         thumb = build_images.make_thumb(im["path"], img_dir)
         full = make_full(im["path"], full_dir) if im["viewable"] else None
         records.append({

@@ -47,11 +47,14 @@ def _env(jinja2):
     return env
 
 
-def render(options, *, should_cancel=None, progress=None, prior=None) -> dict:
+def render(options, *, should_cancel=None, progress=None, status=None,
+           prior=None) -> dict:
     """Render the static site. Returns {pages, objects, images, output_dir}.
     (`prior` is part of the publisher contract; the renderer ignores it.)"""
     jinja2, md_lib = _require_deps()
     cancelled = should_cancel or (lambda: False)
+    if status:
+        status("Rendering site…")
 
     library = catalog.load_library()
     totals = derived.load_totals()
@@ -99,7 +102,8 @@ def render(options, *, should_cancel=None, progress=None, prior=None) -> dict:
                                 extensions=["fenced_code", "tables"])
                 if (visible and body.strip()) else "")
         imgs = pub_images.emit_gallery(slug, folders, by_folder, img_dir,
-                                       galleries=options.has("galleries"))
+                                       galleries=options.has("galleries"),
+                                       finished_only=options.finished_only)
         n_images += len(imgs)
         hero = pub_images.emit_hero(slug, img_dir)
         if hero is None and imgs:

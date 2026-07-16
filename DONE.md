@@ -367,6 +367,26 @@ and a success message with the pages URL + **Open site**. Tests
 network: nojekyll/content assertions, force-replace keeps `rev-list --count` at 1,
 missing-git/missing-index/empty-repo errors, `prior` reuse, registry chaining.
 
+**Live-library hardening (same branch, pre-merge)** — a real 224 MB publish
+surfaced five defects, all fixed: (1) **finished-only galleries**
+(`PublishOptions.finished_only`, default **on**; the shared
+`objects.image_state` rule — curation override over tier — now backs both the
+detail-pane groups and the publish filter), cutting the published site to
+deliberate deliverables instead of every stack/working file; (2) the push
+**wall-clock timeout removed** (`_GIT_TIMEOUT` now guards only local plumbing) —
+a first full-site upload on a home uplink legitimately exceeds any fixed cap;
+(3) **cancel kills the push process** (`_push` = `Popen` + poll loop + `kill()`)
+— previously a cancelled/quit publish left an orphaned `git push` racing the
+next deploy for the branch (observed live: two concurrent force-pushes); (4)
+**real deploy progress** — `git push --progress` stderr is streamed and parsed
+("Writing objects: n/m" → `progress`), with a `status` stage-label channel
+through the publisher contract ("Rendering site…" / "Uploading to GitHub…"), so
+the bar no longer sits at a stale 100% during the upload; (5) a **Save** button
+persists every dialog choice without publishing, and a user cancel closes
+quietly instead of raising a "failed" dialog (the kill also unblocks the
+teardown `wait()` that beach-balled the app). Cancel-kill is regression-tested
+with a stalling `pre-receive` hook on the bare-repo remote.
+
 Incremental backups to a user-defined destination + selective restore + retention.
 Qt-free engine `m110/backup.py` writes **hardlinked dated snapshots**
 (`rsync --link-dest` semantics in pure Python): each snapshot is a full, browsable

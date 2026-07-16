@@ -23,6 +23,7 @@ class PublishOptions:
     sections: set[str] = field(default_factory=lambda: set(DEFAULT_SECTIONS))
     exclude_journals: bool = False        # global privacy: omit all journal notes
     site_title: str = DEFAULT_SITE_TITLE
+    finished_only: bool = True            # galleries: finished images only (no working files)
     github_repo: str = ""                 # owner/repo or git URL (github-pages target)
     github_branch: str = "gh-pages"
 

@@ -169,3 +169,82 @@ def test_run_publish_chains_static_site_into_ghpages(tmp_path, monkeypatch):
     assert res["github-pages"]["branch"] == "gh-pages"
     assert res["github-pages"]["pages"] == res["static-site"]["pages"]
     assert _branch_file(remote, "gh-pages", "index.html") is not None
+
+
+# ── push progress + cancellation ─────────────────────────────────────────────
+
+@needs_git
+def test_deploy_reports_push_progress(tmp_path):
+    remote = _bare_repo(tmp_path)
+    seen = []
+    ghpages.deploy(_site(tmp_path), remote,
+                   progress=lambda i, t: seen.append((i, t)))
+    assert seen, "no progress reported from git push --progress"
+    i, t = seen[-1]
+    assert i == t > 0          # ends complete (all objects sent)
+
+
+@needs_git
+def test_cancel_mid_push_kills_the_push(tmp_path):
+    """Cancel during the network phase must kill the git process (no orphaned
+    upload racing a later deploy) and surface as a cancelled PublishError."""
+    import time as _time
+    remote = _bare_repo(tmp_path)
+    # A pre-receive hook that stalls the push long enough to cancel mid-flight.
+    hook = Path(remote.removeprefix("file://")) / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\nsleep 30\n", encoding="utf-8")
+    hook.chmod(0o755)
+
+    t0 = _time.monotonic()
+    with pytest.raises(PublishError, match="Cancelled"):
+        ghpages.deploy(_site(tmp_path), remote,
+                       should_cancel=lambda: _time.monotonic() - t0 > 0.5)
+    assert _time.monotonic() - t0 < 10          # did not wait out the hook
+    # The push never landed.
+    res = subprocess.run(
+        ["git", "--git-dir", remote.removeprefix("file://"),
+         "rev-parse", "--verify", "gh-pages"], capture_output=True)
+    assert res.returncode != 0
+
+
+# ── finished-only galleries ──────────────────────────────────────────────────
+
+def test_image_state_rule():
+    from m110 import objects
+    assert objects.image_state("a.png", "Finished render", {}) == "finished"
+    assert objects.image_state("s.fit", "Siril stack", {}) == "working"
+    assert objects.image_state("s.fit", "Siril stack", {"s.fit": "finished"}) == "finished"
+    assert objects.image_state("a.png", "Finished render", {"a.png": "working"}) == "working"
+
+
+@needs_git
+def test_finished_only_excludes_working_files(tmp_path, monkeypatch):
+    """finished_only=True publishes finished/ images but not stacks/device
+    stacks; finished_only=False publishes both (the 8a behaviour)."""
+    pytest.importorskip("jinja2")
+    pytest.importorskip("markdown")
+    PIL = pytest.importorskip("PIL")
+    from PIL import Image
+    from m110 import config, refresh
+    from m110.publish import site as pub_site
+    from tests._helpers import seed_root as _seed, seed_capture
+
+    root = _seed(tmp_path, monkeypatch)
+    _, tid = seed_capture(root)
+    fin = config.finished_dir(tid) / f"{tid}_final.png"
+    fin.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (64, 64), (40, 80, 160)).save(fin)
+    wrk = config.seestar_stacks_dir(tid) / f"{tid}_device.jpg"
+    wrk.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (64, 64), (160, 80, 40)).save(wrk)
+    refresh.run_refresh(render=False)
+
+    def names(finished_only):
+        out = tmp_path / ("site-fin" if finished_only else "site-all")
+        res = pub_site.render(PublishOptions(output_dir=out,
+                                             finished_only=finished_only))
+        assert res["pages"] >= 1
+        return res["images"]
+
+    assert names(finished_only=False) == 2
+    assert names(finished_only=True) == 1

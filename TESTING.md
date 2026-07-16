@@ -331,6 +331,17 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Error paths:** unchecked repo field → validation warning; a repo you can't
       push to → "Publish failed" showing git's actual stderr (auth/not-found), no
       crash; app works offline as before when GitHub Pages is unchecked.
+- [ ] **Progress + cancel:** during a big deploy the label switches "Rendering
+      site…" → "Uploading to GitHub…" with object-count progress; **Cancel**
+      mid-upload returns to the dialog within a second or two (no beach ball) and
+      `ps | grep "git push"` shows **no leftover push process**; the remote branch
+      is unchanged.
+- [ ] **Finished-only:** with "Finished images only" on (the default), the
+      published galleries contain finished/ images (+ any per-image "Mark as
+      finished" curation) but no stacks/working files — the site folder should be
+      dramatically smaller than a full-gallery publish.
+- [ ] **Save:** change settings → **Save** → dialog closes, nothing publishes;
+      reopen → choices kept.
 
 ### G4. Planning — ranking, plan-a-night, field guides  ⚙ *(engine + sequencer + moon model automated — `test_planning_night.py`, `test_prioritize.py`, `test_fieldguide.py`; UI flows in `test_ui_pages.py`)*
 - [ ] **Priority targets:** open Planning → the ranked table populates (a background

@@ -34,10 +34,12 @@ _SECTIONS_KEY = "publish_sections"
 _EXCLUDE_KEY = "publish_exclude_journals"
 _TITLE_KEY = "publish_site_title"
 _GH_REPO_KEY = "publish_github_repo"
+_FINISHED_ONLY_KEY = "publish_finished_only"
 
 
 class _PublishWorker(QThread):
     progressed = Signal(int, int)
+    status = Signal(str)
     done = Signal(dict)
     failed = Signal(str)
 
@@ -51,7 +53,8 @@ class _PublishWorker(QThread):
             res = publish.run_publish(
                 self._options,
                 should_cancel=self._cancel.is_set,
-                progress=lambda i, t: self.progressed.emit(i, t))
+                progress=lambda i, t: self.progressed.emit(i, t),
+                status=self.status.emit)
             self.done.emit(res)
         except publish.PublishError as exc:
             self.failed.emit(str(exc))
@@ -90,6 +93,18 @@ class PublishDialog(QDialog):
             cb.setChecked(sid in enabled)
             sec_l.addWidget(cb)
             self._sec_checks[sid] = cb
+        # Finished-only rides under "Image galleries" (the last section row) —
+        # working files (stacks, device stacks) are usually not for the public
+        # site, and dominate its size/upload time.
+        fin_row = QHBoxLayout()
+        fin_row.addSpacing(s["lg"])
+        self._finished_only = QCheckBox("Finished images only (exclude working files)")
+        self._finished_only.setChecked(bool(config.get_setting(_FINISHED_ONLY_KEY, True)))
+        gal_cb = self._sec_checks["galleries"]
+        self._finished_only.setEnabled(gal_cb.isChecked())
+        gal_cb.toggled.connect(self._finished_only.setEnabled)
+        fin_row.addWidget(self._finished_only)
+        sec_l.addLayout(fin_row)
         self._exclude_journals = QCheckBox("Exclude all journal notes (privacy)")
         self._exclude_journals.setChecked(bool(config.get_setting(_EXCLUDE_KEY, False)))
         sec_l.addWidget(self._exclude_journals)
@@ -141,6 +156,9 @@ class PublishDialog(QDialog):
         layout.addLayout(out_row)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
+        # Save persists every choice without publishing (mirrors backup_dialog).
+        save_btn = buttons.addButton("Save", QDialogButtonBox.ActionRole)
+        save_btn.clicked.connect(self._do_save)
         self._publish_btn = buttons.addButton("Publish", QDialogButtonBox.AcceptRole)
         self._publish_btn.clicked.connect(self._do_publish)
         buttons.rejected.connect(self.reject)
@@ -161,6 +179,21 @@ class PublishDialog(QDialog):
                 if cb.isEnabled() and cb.isChecked()]
 
     # ---- run ----
+    def _save_settings(self, targets):
+        """Persist every dialog choice (targets take effect via the setting key)."""
+        config.save_setting(publish.SETTING_KEY, targets)
+        config.save_setting(_OUTPUT_KEY, self._out_edit.text().strip())
+        config.save_setting(_SECTIONS_KEY, sorted(self._selected_sections()))
+        config.save_setting(_EXCLUDE_KEY, self._exclude_journals.isChecked())
+        config.save_setting(_FINISHED_ONLY_KEY, self._finished_only.isChecked())
+        config.save_setting(_TITLE_KEY,
+                            self._title.text().strip() or publish.DEFAULT_SITE_TITLE)
+        config.save_setting(_GH_REPO_KEY, self._gh_repo.text().strip())
+
+    def _do_save(self):
+        self._save_settings(self._selected_targets())
+        self.accept()
+
     def _do_publish(self):
         out = self._out_edit.text().strip()
         if not out:
@@ -178,23 +211,16 @@ class PublishDialog(QDialog):
                 "git URL).")
             return
 
-        sections = self._selected_sections()
-        exclude_journals = self._exclude_journals.isChecked()
-        title = self._title.text().strip() or publish.DEFAULT_SITE_TITLE
-        # Persist choices for next time (targets take effect via the setting key).
-        config.save_setting(publish.SETTING_KEY, targets)
-        config.save_setting(_OUTPUT_KEY, out)
-        config.save_setting(_SECTIONS_KEY, sorted(sections))
-        config.save_setting(_EXCLUDE_KEY, exclude_journals)
-        config.save_setting(_TITLE_KEY, title)
-        config.save_setting(_GH_REPO_KEY, gh_repo)
-
-        options = PublishOptions(output_dir=Path(out), sections=sections,
-                                 exclude_journals=exclude_journals, site_title=title,
-                                 github_repo=gh_repo)
+        self._save_settings(targets)
+        options = PublishOptions(
+            output_dir=Path(out), sections=self._selected_sections(),
+            exclude_journals=self._exclude_journals.isChecked(),
+            site_title=self._title.text().strip() or publish.DEFAULT_SITE_TITLE,
+            finished_only=self._finished_only.isChecked(),
+            github_repo=gh_repo)
 
         self._cancel_event = threading.Event()
-        pd = QProgressDialog("Publishing…", "Cancel", 0, 0, self)
+        pd = QProgressDialog("Rendering site…", "Cancel", 0, 0, self)
         pd.setWindowTitle("Publishing")
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)
@@ -206,6 +232,7 @@ class PublishDialog(QDialog):
         self._publish_btn.setEnabled(False)
         self._worker = _PublishWorker(options, self._cancel_event, self)
         self._worker.progressed.connect(self._on_progress)
+        self._worker.status.connect(self._on_status)
         self._worker.done.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
@@ -215,6 +242,15 @@ class PublishDialog(QDialog):
         if self._progress is not None:
             self._progress.setMaximum(total)
             self._progress.setValue(i)
+
+    def _on_status(self, text):
+        # New stage → new label, and the bar resets to busy until that stage
+        # reports its own (i, total) — so "Uploading to GitHub…" never sits on a
+        # stale 100% from the render phase.
+        if self._progress is not None:
+            self._progress.setLabelText(text)
+            self._progress.setMaximum(0)
+            self._progress.setValue(0)
 
     def _on_done(self, result):
         self._finish_worker()
@@ -250,6 +286,11 @@ class PublishDialog(QDialog):
     def _on_failed(self, message):
         self._finish_worker()
         self._close_progress()
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            # User cancelled — the engine reports it as an error, but it isn't
+            # one worth a dialog. Leave the window open for another go.
+            self._publish_btn.setEnabled(True)
+            return
         QMessageBox.warning(self, "Publish failed", message)
         self._publish_btn.setEnabled(True)
 

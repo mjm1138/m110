@@ -31,9 +31,10 @@ class Publisher:
     id: str
     label: str
     available: bool                       # False → shown disabled ("soon")
-    # (options, *, should_cancel, progress, prior) -> dict; `prior` is the
-    # static-site result from the same run, so a deploy target can reuse the
-    # rendered folder instead of rendering twice.
+    # (options, *, should_cancel, progress, status, prior) -> dict; `prior` is
+    # the static-site result from the same run, so a deploy target can reuse
+    # the rendered folder instead of rendering twice; `status` takes a stage
+    # label ("Uploading to GitHub…") for the progress dialog.
     render: Callable | None = None
 
 
@@ -51,7 +52,8 @@ def enabled_target_ids() -> list[str]:
     return list(val) if isinstance(val, list) else list(DEFAULT_TARGETS)
 
 
-def run_publish(options: PublishOptions, should_cancel=None, progress=None) -> dict:
+def run_publish(options: PublishOptions, should_cancel=None, progress=None,
+                status=None) -> dict:
     """Run every enabled + available publisher, in registry order (static-site
     first, so deploy targets can reuse its render). Returns {publisher_id: result}."""
     enabled = set(enabled_target_ids())
@@ -59,6 +61,6 @@ def run_publish(options: PublishOptions, should_cancel=None, progress=None) -> d
     for p in PUBLISHERS:
         if p.id in enabled and p.available and p.render:
             results[p.id] = p.render(options, should_cancel=should_cancel,
-                                     progress=progress,
+                                     progress=progress, status=status,
                                      prior=results.get("static-site"))
     return results
