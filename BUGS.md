@@ -143,6 +143,33 @@ Legend: `[ ]` open · `[~]` partially done
   `feature/publish-ghpages` before merge; see DONE.md.)*
 **Other Publishing Targets**: Astrobin, Cloudynights, Other fora?
 
+## Packaging & release
+
+- [ ] **`hdiutil create` is deprecated (macOS 27).** `packaging/macos/make_dmg.sh:26`
+  builds the DMG with `hdiutil create -volname … -srcfolder …`; macOS 27 warns
+  *"'hdiutil create -volname -format …' is deprecated. Please use 'diskutil image
+  create from/blank --volumeName --format …' instead."* Cosmetic today — the DMG builds,
+  signs, and notarizes fine (0.2.0-beta.2 shipped through it), and deprecated ≠ removed.
+  **Don't switch naively:** `diskutil image create` needs a very recent macOS while
+  `hdiutil` works everywhere, and although the DMG is built locally by the maintainer
+  today, `.github/workflows/release.yml` documents moving the macOS build into CI as a
+  later step — GitHub's macOS runners lag OS versions, so a hard switch would build here
+  and break there. The safe form is a version/capability guard that falls back to
+  `hdiutil` (verify the result still codesigns + passes
+  `spctl -a -t open --context context:primary-signature`). Act when Apple actually
+  removes `hdiutil`, or when the macOS-in-CI move happens — whichever comes first.
+
+- [ ] **`release.py` smoke phase can watch the wrong run.** `tools/release.py`'s `smoke`
+  sleeps 12s after `gh workflow run`, then takes the newest `workflow_dispatch` run —
+  falling back to a **completed** one if the new dispatch hasn't registered yet. With
+  older successful `workflow_dispatch` runs in the list (there are some on
+  `deps/artifact-actions`), a slow dispatch would make the script report "smoke build
+  green" without having smoke-tested anything — defeating the phase's whole purpose
+  (catching a broken pipeline *before* the tag exists). It picked correctly during
+  0.2.0-beta.2, so this is latent, not observed. Fix: pin the run by `createdAt` after
+  the dispatch (or match `headBranch == main` + a not-completed status), rather than
+  "newest of that event".
+
 ## UI niceties (backlog)
 
 - [ ] **Surface skipped files** after an import ("N already present, skipped") — copies
