@@ -23,11 +23,21 @@ class PublishOptions:
     sections: set[str] = field(default_factory=lambda: set(DEFAULT_SECTIONS))
     exclude_journals: bool = False        # global privacy: omit all journal notes
     site_title: str = DEFAULT_SITE_TITLE
+    gallery_level: str = "finished"       # "finished" | "device-stacks" | "all"
+    github_repo: str = ""                 # owner/repo or git URL (github-pages target)
+    github_branch: str = "gh-pages"
+    github_deploy_mode: str = "replace"   # "replace" | "incremental"
 
     def __post_init__(self):
         self.output_dir = Path(self.output_dir)
         # Normalise to the known section vocabulary (ignore stray ids).
         self.sections = {s for s in self.sections if s in ALL_SECTIONS}
+        from .ghpages import DEFAULT_DEPLOY_MODE, DEPLOY_MODES
+        from .images import GALLERY_LEVELS
+        if self.gallery_level not in GALLERY_LEVELS:
+            self.gallery_level = "finished"
+        if self.github_deploy_mode not in DEPLOY_MODES:
+            self.github_deploy_mode = DEFAULT_DEPLOY_MODE
 
     def has(self, section: str) -> bool:
         return section in self.sections

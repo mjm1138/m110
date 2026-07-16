@@ -16,7 +16,8 @@ each page links to the next.
 4. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, and *what hardlinks mean for your files* (important)
 5. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
 6. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
-7. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
+7. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
+8. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
 
 ---
 

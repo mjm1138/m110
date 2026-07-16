@@ -189,6 +189,16 @@ def get_curation(slug: str) -> dict[str, str]:
     return out
 
 
+def image_state(name: str, label: str, curation: dict[str, str]) -> str:
+    """"finished" | "working" for a gallery image — the curation override wins
+    over the tier default (finished/ folder = finished, stacks etc. = working).
+    The single rule shared by the detail-pane gallery groups and the publish
+    finished-only filter."""
+    if name in curation:
+        return curation[name]
+    return "finished" if label == "Finished render" else "working"
+
+
 def set_curation(slug: str, name: str, state: str | None) -> Path | None:
     """Force `name` to "finished" or "working" (or None to clear the override).
     A name is only ever in one list. Returns the written path, or None if nothing

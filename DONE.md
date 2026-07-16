@@ -342,12 +342,93 @@ testable selection/privacy; `images.py` reuses `build_images`. Per-object `publi
 flag (`catalog.set_publish_flag`, Library right-click) + journal `private` frontmatter.
 **Library → Publish / share…** dialog (sections/target/output) on a threaded worker.
 Optional `publish` extra (jinja2 + markdown; degrades via `PublishDepsMissing`).
-*Deferred follow-ups (BUGS #27):* GitHub Pages deploy, Netlify/S3/CMS targets, per-list
+*Deferred follow-ups (BUGS #27):* Netlify/S3/CMS targets, per-list
 flags, cross-publish cache reuse, auto-publish.
 
----
+**GitHub Pages deploy** *(done 2026-07-15, `feature/publish-ghpages` — BUGS #27a;
+the port of the Astronomy `deploy.sh`/ghp-import workflow, the last piece of that
+workflow M110 hadn't absorbed).* New Qt-free `m110/publish/ghpages.py`: shells out
+to the user's installed **git** (no new dependency; auth = their existing SSH key /
+credential helper), builds a fresh single-commit orphan branch in a scratch repo
+(`--git-dir`/`--work-tree`, local commit identity) and **force-pushes** it to
+`gh-pages` — ghp-import `-f` semantics, so the remote stays lean no matter how
+often heroes/thumbnails re-render. Writes `.nojekyll` (ghp-import `-n`); refuses to
+push a folder with no `index.html`; git stderr surfaces in a `PublishError` so
+auth/repo problems are actionable. `normalize_repo` accepts `owner/repo` (→ SSH
+URL), https, or ssh forms; `pages_url` derives the served
+`https://<owner>.github.io/<repo>/` URL (root for an `<owner>.github.io` repo).
+Registry: `github-pages` flipped available; `run_publish` now runs publishers in
+registry order and passes `prior=` (the static-site result) so enabling both
+targets renders **once** and deploys that folder. `PublishOptions` gained
+`github_repo`/`github_branch`. Dialog: a Repository field under the GitHub Pages
+checkbox (persisted `publish_github_repo`, enabled with the target), validation,
+and a success message with the pages URL + **Open site**. Tests
+(`tests/test_publish_ghpages.py`) run against a local `file://` bare repo — no
+network: nojekyll/content assertions, force-replace keeps `rev-list --count` at 1,
+missing-git/missing-index/empty-repo errors, `prior` reuse, registry chaining.
 
-## Later phase 10 — Library backup *(v1 done 2026-07-02)*
+**Live-library hardening (same branch, pre-merge)** — a real 224 MB publish
+surfaced five defects, all fixed: (1) **finished-only galleries**
+(`PublishOptions.finished_only`, default **on**; the shared
+`objects.image_state` rule — curation override over tier — now backs both the
+detail-pane groups and the publish filter), cutting the published site to
+deliberate deliverables instead of every stack/working file; (2) the push
+**wall-clock timeout removed** (`_GIT_TIMEOUT` now guards only local plumbing) —
+a first full-site upload on a home uplink legitimately exceeds any fixed cap;
+(3) **cancel kills the push process** (`_push` = `Popen` + poll loop + `kill()`)
+— previously a cancelled/quit publish left an orphaned `git push` racing the
+next deploy for the branch (observed live: two concurrent force-pushes); (4)
+**real deploy progress** — `git push --progress` stderr is streamed and parsed
+("Writing objects: n/m" → `progress`), with a `status` stage-label channel
+through the publisher contract ("Rendering site…" / "Uploading to GitHub…"), so
+the bar no longer sits at a stale 100% during the upload; (5) a **Save** button
+persists every dialog choice without publishing, and a user cancel closes
+quietly instead of raising a "failed" dialog (the kill also unblocks the
+teardown `wait()` that beach-balled the app). Cancel-kill is regression-tested
+with a stalling `pre-receive` hook on the bare-repo remote.
+
+**Round 2 (same branch):** (6) **stale output is swept** — `site.render` tracks
+every file it emits and `_sweep_stale` deletes anything else under the
+renderer-owned `img/`/`objects/` + the optional top-level pages, so narrowing
+options genuinely shrinks the folder *and the deployed branch* (previously
+"finished-only" hid images from pages but the stale derivatives still uploaded;
+verified e2e: branch 37→24 files on a re-publish); a cancelled render never
+sweeps (incomplete emit set). (7) `finished_only` generalized to a **three-level
+`gallery_level`** — finished / +device stacks / all — via `_image_tier` (explicit
+curation wins outright; device stacks are their own tier), a combo in the
+dialog. (8) **`docs/publishing.md`** — user-guide page covering
+sections/privacy/gallery levels + the GitHub Pages setup (SSH check, repo,
+enable Pages, URL, force-replace caveat); linked from the guide index. (9)
+**processing.html mirrors the app's Processing page** — "Ready to import" group
+first, up-to-date omitted, Target column + Rejected/Latest stack/Notes.
+(Sessions/summary already matched.)
+
+**Round 3 — incremental deploy mode + the global-excludes guard.** A live deploy
+measured ~4–5 Mbit/s (a single TCP stream on a residential uplink, not GitHub
+throttling), which makes force-replace's "re-upload the whole site every time"
+the dominant cost once a gallery is large (185 MB at *finished + device stacks*
+≈ 6 min per publish, even for a one-line journal edit). So `deploy` gained a
+second **mode** (`DEPLOY_MODES`, `PublishOptions.github_deploy_mode`, default
+**replace** — repo hygiene stays the default): **`incremental`** fetches the
+deployed tip and commits on top of it, so the push transfers only objects the
+remote lacks (**5 vs 17** objects in the test; because web derivatives are
+content-hashed, an unchanged image *is* the same blob and never re-uploads).
+The tip fetch uses **`--filter=blob:none --depth 1`** — the trees alone
+negotiate the push, so reading the tip costs ~3 objects instead of
+re-downloading the site (verified against a bare repo with
+`uploadpack.allowFilter`, GitHub's config); servers without filter support fall
+back to a plain shallow fetch, and a missing branch (first deploy) proceeds
+parentless. Cost: history keeps every superseded image — one publish in
+`replace` mode collapses it again. **Load-bearing detail:** `deploy` must never
+`checkout`/`reset --hard` (the work tree *is* the user's rendered site) —
+`update-ref` + an empty index + `add -A` makes the commit tree mirror the folder
+exactly, so the stale-sweep's deletions propagate in both modes. Also fixed a
+latent stranger-bug the Astronomy `webhosting.md` had flagged: the deploy repo
+now **neutralises `core.excludesFile`** and excludes only OS junk via
+`info/exclude`, so a user's global `*.jpg`/`*.png` rule can't silently strip the
+gallery (regression-tested with a global-ignore fixture; this machine's globals
+are benign, which is why it never bit). `_push` generalized to **`_git_stream`**
+(shared by fetch + push).
 
 Incremental backups to a user-defined destination + selective restore + retention.
 Qt-free engine `m110/backup.py` writes **hardlinked dated snapshots**

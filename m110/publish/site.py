@@ -20,6 +20,34 @@ from .errors import PublishDepsMissing
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _PROC_STATUS_RANK = {"out_of_date": 0, "not_processed": 1, "up_to_date": 2,
                      "dismissed": 3}
+# Top-level pages the renderer may emit (beyond the always-present index.html) —
+# swept when a re-render with fewer sections no longer produces them.
+_OPTIONAL_PAGES = ("summary.html", "sessions.html", "processing.html",
+                   "journal.html")
+
+
+def _sweep_stale(out: Path, emitted: set[str]):
+    """Delete previously-rendered files this render did not emit, so the output
+    folder (and anything deployed from it) always mirrors the current options —
+    unchecking a section or narrowing the gallery level genuinely shrinks the
+    site. Only renderer-owned locations are touched: everything under `img/`
+    and `objects/` (fully generated), and the known top-level pages."""
+    for sub in ("img", "objects"):
+        base = out / sub
+        if not base.is_dir():
+            continue
+        for f in sorted(base.rglob("*"), reverse=True):   # depth-first
+            rel = f.relative_to(out).as_posix()
+            if f.is_file() and rel not in emitted:
+                f.unlink()
+            elif f.is_dir():
+                try:
+                    f.rmdir()                              # empty dirs only
+                except OSError:
+                    pass
+    for page in _OPTIONAL_PAGES:
+        if page not in emitted:
+            (out / page).unlink(missing_ok=True)
 
 
 def _require_deps():
@@ -47,10 +75,14 @@ def _env(jinja2):
     return env
 
 
-def render(options, *, should_cancel=None, progress=None) -> dict:
-    """Render the static site. Returns {pages, objects, images, output_dir}."""
+def render(options, *, should_cancel=None, progress=None, status=None,
+           prior=None) -> dict:
+    """Render the static site. Returns {pages, objects, images, output_dir}.
+    (`prior` is part of the publisher contract; the renderer ignores it.)"""
     jinja2, md_lib = _require_deps()
     cancelled = should_cancel or (lambda: False)
+    if status:
+        status("Rendering site…")
 
     library = catalog.load_library()
     totals = derived.load_totals()
@@ -73,10 +105,12 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
     img_dir = out / "img"
     (out / "objects").mkdir(parents=True, exist_ok=True)
     img_dir.mkdir(parents=True, exist_ok=True)
+    emitted: set[str] = set()   # out-relative paths this render produced
     for asset in ("style.css", "sortable.js"):
         src = TEMPLATES_DIR / asset
         if src.exists():
             shutil.copyfile(src, out / asset)
+            emitted.add(asset)
 
     env = _env(jinja2)
 
@@ -98,9 +132,14 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
                                 extensions=["fenced_code", "tables"])
                 if (visible and body.strip()) else "")
         imgs = pub_images.emit_gallery(slug, folders, by_folder, img_dir,
-                                       galleries=options.has("galleries"))
+                                       galleries=options.has("galleries"),
+                                       gallery_level=options.gallery_level)
         n_images += len(imgs)
+        for im in imgs:
+            emitted.update(p for p in (im.get("thumb"), im.get("full")) if p)
         hero = pub_images.emit_hero(slug, img_dir)
+        if hero:
+            emitted.add(hero)
         if hero is None and imgs:
             hero = next((im["thumb"] for im in imgs if im.get("thumb")), None)
         proc = sorted((proc_folders[f] for f in folders if f in proc_folders),
@@ -136,6 +175,7 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
     def write(name, ctx, dest, root=""):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(env.get_template(name).render(root=root, **base, **ctx), encoding="utf-8")
+        emitted.add(dest.relative_to(out).as_posix())
 
     pages = ["index.html"]
     write("index.html", {"rows": rows, "summary": summary}, out / "index.html")
@@ -164,6 +204,10 @@ def render(options, *, should_cancel=None, progress=None) -> dict:
         write("object.html", {"obj": o},
               out / "objects" / f"{o['slug']}.html", root="../")
         n_pages += 1
+
+    # A cancelled render has an incomplete emit set — never sweep on it.
+    if not cancelled():
+        _sweep_stale(out, emitted)
 
     return {"pages": n_pages, "objects": len(objs), "images": n_images,
             "output_dir": str(out)}

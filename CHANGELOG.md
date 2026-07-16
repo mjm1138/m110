@@ -10,6 +10,59 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Publish straight to GitHub Pages.** *Library → Publish / share* can now deploy your
+  site to a GitHub repository instead of only writing a folder you host yourself. Enter
+  your repository as `owner/repo`; M110 uses the `git` and GitHub sign-in you already
+  have, so no passwords or tokens are handled by the app. Your site lands at
+  `https://<owner>.github.io/<repo>/`, and the success dialog links straight to it.
+  Uploads happen in the background with real progress, and **Cancel** stops them
+  cleanly. See the new **[Publishing guide](docs/publishing.md)** for the one-time
+  repository and SSH setup.
+- **Choose how uploads work.** *Replace the site each time* (the default) keeps the
+  repository small forever but re-uploads everything on each publish; *Upload only what
+  changed* makes re-publishing a large gallery take seconds, at the cost of keeping
+  every superseded image in the repository's history.
+- **Save your publish settings without publishing.** Change what's included, the site
+  title, or the destination, and keep it for next time — no export required.
+
+### Changed
+- **Published galleries now show your finished images only**, by default. Working files
+  (Siril stacks and other by-products) no longer go on the public site — they were the
+  bulk of its size and upload time. A control under *Image galleries* lets you publish
+  **finished + your telescope's in-app stacks**, or **everything**, if you'd rather.
+  Images you've marked *finished* by right-clicking always publish.
+- **The published Processing page now mirrors the app's** — a *Ready to import* group at
+  the top, no clutter from fully-processed targets, and the same Target / Rejected /
+  Latest stack / Notes columns you see in the window.
+
+### Fixed
+- **Re-publishing removes what you've excluded.** Unchecking a section or narrowing your
+  galleries used to leave the old pages and images behind in the output folder — and if
+  you were deploying them, they kept getting uploaded even though nothing linked to them.
+  The published site now always mirrors your current selections.
+- **The Processing queue sorts by "+ new" first**, so the targets with the most
+  unstacked frames are on top — and when you pick a different sort, it now survives
+  clicking away from M110 and back.
+- **The update check works on a clean install.** A dependency it needs at runtime wasn't
+  declared, so in a fresh environment the check could silently do nothing.
+
+### Security
+From an internal threat-model review of M110's real attack surface — the files you
+import. Full assessment in
+[`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md).
+- **A crafted capture file can no longer write outside your data folder.** An object name
+  read from a FITS `OBJECT` header (fully attacker-controlled in a hand-made file), or a
+  source folder name, flowed into the destination path unsanitized. Object names are now
+  reduced to a single safe path segment, and the importer — the only code that writes
+  into your library — hard-refuses any operation resolving outside your data folder.
+- **Pillow raised to 12.3 or newer**, clearing five advisories flagged by `pip-audit`.
+  M110 decodes untrusted images with Pillow; those specific issues were in code paths
+  M110 doesn't use, but the old floor allowed years-old builds.
+- **Image decompression bombs are capped.** Rendering now refuses absurdly large images
+  (over 300 megapixels — far beyond any real frame or mosaic) instead of trying to
+  allocate them.
+
 ## [0.2.0-beta.1] - 2026-07-15
 
 ### Added

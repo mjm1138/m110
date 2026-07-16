@@ -397,12 +397,10 @@ class DetailPane(QScrollArea):
 
     @staticmethod
     def _img_state(im: dict, curation: dict) -> str:
-        """"finished" | "working" for a gallery image — the curation override wins
-        over the tier default (finished/ folder = finished, stacks = working)."""
-        name = im.get("name") or ""
-        if name in curation:
-            return curation[name]
-        return "finished" if im.get("label") == "Finished render" else "working"
+        """"finished" | "working" for a gallery image (`objects.image_state` —
+        shared with the publish finished-only filter)."""
+        return objects.image_state(im.get("name") or "", im.get("label") or "",
+                                   curation)
 
     def _add_gallery_group(self, title, imgs: list, slug: str):
         """One labelled icon-grid of gallery images; items index into the shared

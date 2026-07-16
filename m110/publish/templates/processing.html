@@ -3,34 +3,45 @@
 {% block content %}
 <h1>Processing Queue</h1>
 
+{% set ready = processing.queue|selectattr('ready_for_import')|list %}
 <div class="stat-row">
+  {% if ready %}
+  <div class="stat"><span class="big">{{ ready|length }}</span> ready to import</div>
+  {% endif %}
   <div class="stat"><span class="big">{{ processing.counts.out_of_date }}</span> out of date</div>
   <div class="stat"><span class="big">{{ processing.counts.not_processed }}</span> not processed</div>
-  <div class="stat"><span class="big">{{ processing.counts.up_to_date }}</span> up to date</div>
   {% if processing.counts.dismissed %}
   <div class="stat"><span class="big">{{ processing.counts.dismissed }}</span> dismissed</div>
   {% endif %}
 </div>
 
-{% set status_groups = [
-  ('out_of_date',   'Out of date — restack to incorporate new lights'),
-  ('not_processed', 'Not processed — first stack needed'),
-  ('up_to_date',    'Up to date'),
-] %}
+{# Mirrors the app's Processing page: "Ready to import" takes precedence, then
+   the status groups; fully-processed ("up to date") targets aren't listed —
+   nothing to do. One row = one capture target. #}
+{% set rest = processing.queue|rejectattr('ready_for_import')|list %}
+{% set groups = [('Ready to import — finished Siril output waiting', ready),
+                 ('Out of date — restack to incorporate new lights',
+                  rest|selectattr('status', 'equalto', 'out_of_date')|list),
+                 ('Not processed — first stack needed',
+                  rest|selectattr('status', 'equalto', 'not_processed')|list),
+                 ('Dismissed',
+                  rest|selectattr('status', 'equalto', 'dismissed')|list)] %}
 
-{% for status, label in status_groups %}
-  {% set group_rows = processing.queue|selectattr('status', 'equalto', status)|list %}
+{% for label, group_rows in groups %}
   {% if group_rows %}
   <section>
     <h2>{{ label }}</h2>
     <table class="catalog">
       <thead>
         <tr>
-          <th>Folder</th>
+          <th>Target</th>
           <th class="num">Raw integration</th>
           <th class="num">In stack</th>
+          <th class="num">Rejected</th>
           <th class="num">New since stack</th>
+          <th>Latest stack</th>
           <th>Last capture</th>
+          <th>Notes</th>
         </tr>
       </thead>
       <tbody>
@@ -42,8 +53,17 @@
             {% if f.stack_meta %}{{ f.stack_meta.stack_integration_hms }}<br><span class="muted">{{ f.stack_meta.stack_frames }} fr</span>
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
+          <td class="num">
+            {% if f.stack_meta and f.stack_meta.stack_rejection_pct is defined %}{{ f.stack_meta.stack_rejection_pct }}%
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
           <td class="num">{% if f.new_lights_since_stack > 0 %}<span class="delta-add">+{{ f.new_lights_since_stack }}</span>{% else %}—{% endif %}</td>
+          <td>
+            {% if f.latest_processed %}{{ f.latest_processed }}<br><span class="muted">{{ f.latest_processed_at or '' }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
           <td><span class="muted">{{ f.last_capture or '—' }}</span></td>
+          <td><span class="muted">{{ f.note or '' }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

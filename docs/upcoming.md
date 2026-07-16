@@ -23,12 +23,11 @@ the report.
 ## Publishing & sharing
 
 **What works now.** **Library → Publish / share** exports a selective static website
-of your collection to a local folder — pick which sections and objects to include,
-keep journals private, and open the result in your browser.
+of your collection to a local folder **or straight to GitHub Pages** — see
+**[Publishing your collection](publishing.md)**.
 
-**What's coming.** One-click deploy targets (GitHub Pages, Netlify, and similar) so
-publishing goes straight to the web instead of a local folder. These appear in the
-Publish dialog marked *"(soon)"*.
+**What's coming.** More one-click deploy targets (Netlify and similar) — these
+appear in the Publish dialog marked *"(soon)"*.
 
 ## Other processing tools
 
