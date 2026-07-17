@@ -16,7 +16,10 @@ changes a **user** would notice, per release.
   M110 launches Siril already pointed at that object's working folder — no more browsing
   to the right directory yourself. M110 finds Siril automatically in the usual place;
   if it's installed somewhere else, set the path under *Preferences → Processing tools*.
-  When Siril can't be found, M110 offers to open the working folder instead.
+  When Siril can't be found, M110 offers to open the working folder instead. **Quit Siril
+  when you finish an object** — M110 sets the working directory only as Siril starts, so
+  if Siril is already open it won't switch to the next object's folder. (See the
+  [processing guide](docs/processing.md).)
 - **"Open in…" for gallery images.** Right-click any image on an object's page to **Open
   in default app** (your usual image viewer/editor) or **Reveal in file manager**.
 - **"Reveal working folder" on an object.** The object detail pane now has a button that

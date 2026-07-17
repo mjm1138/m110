@@ -308,12 +308,16 @@ def _next_steps_md(plan: PrepPlan) -> str:
         "",
         "## Steps",
         "1. Open **Siril** with a job folder above as the working directory "
-        "(it contains a literal `lights/` and a `presets/` the script auto-loads).",
+        "(it contains a literal `lights/` and a `presets/` the script auto-loads). "
+        "Tip: in M110, **Process in Siril** does this for you.",
         "2. Run the **Naztronomy Smart Telescope Processing** script → Load preset.",
         "3. Save your stack and finished render anywhere in this sandbox.",
         "4. Back in M110, reopen this object and click **Import finished work** — "
         "M110 brings your renders into the gallery, the stack into `stacks/`, and "
         "offers to clean the sandbox up.",
+        "5. **Quit Siril before processing the next object.** M110 sets the working "
+        "directory only when Siril *starts* — if Siril is already open, launching it "
+        "for another object won't switch folders, and you'd process in the wrong place.",
         "",
         "_The preset is a starting point — refine it in the script's GUI._",
     ]
