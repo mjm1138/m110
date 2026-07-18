@@ -211,17 +211,17 @@ def test_sequence_tie_goes_to_the_setter():
     assert [s["slug"] for s in slots] == ["sets-early", "sets-late"]
 
 
-def test_sequence_deep_remaining_caps_duration():
-    """#40.1: a target that reaches deep-stack sooner gets a shorter slot; the next
-    object starts at its (earlier) end."""
+def test_sequence_overshoots_deep_target():
+    """2026-07-17 tuning: a nearly-deep primary is NOT trimmed to hit its deep-stack
+    target — it runs its full base slot (max integration on the chosen objects)
+    rather than being cut to seed another slot."""
     d0 = datetime(2026, 7, 18, 22, 25)
     d1 = datetime(2026, 7, 19, 3, 55)
     plan = _synthetic_plan([_entry("nearly-deep", d0, d1), _entry("new", d0, d1)])
     slots = planning.sequence_plan(plan, count=2,
-                                   scores={"nearly-deep": 9, "new": 1},
-                                   deep_remaining={"nearly-deep": 35.0, "new": 240.0})
+                                   scores={"nearly-deep": 9, "new": 1})
     assert slots[0]["slug"] == "nearly-deep"
-    assert slots[0]["duration_min"] == 40               # 35 min → next 10-min tick
+    assert slots[0]["duration_min"] == 160              # full base — overshoots, not 40
     assert slots[1]["start"] == slots[0]["end"]
 
 
@@ -289,26 +289,25 @@ def test_moon_separation_is_topocentric_at_the_start(  # BUG 1
     assert 42.0 <= tr["moon_sep_deg"] <= 48.0            # ≈45°, never ~101°
 
 
-def test_sequence_fills_the_whole_night():  # GAP 1
-    """Shortened slots must not strand the back half of the night: after `count`
-    targets, the sequencer keeps scheduling until dawn or candidates run out."""
+def test_sequence_fills_after_early_setters():  # GAP 1
+    """Early-setting targets take short (window-capped) slots, stranding dark; with
+    fill on the sequencer keeps scheduling past `count` until dawn, and fill=False
+    restores the strict count cut-off."""
     d0 = datetime(2026, 7, 18, 22, 25)
     d1 = datetime(2026, 7, 19, 3, 55)
-    entries = [_entry(f"t{i}", d0, d1) for i in range(8)]
-    plan = _synthetic_plan(entries)
-    # deep caps make the first four slots short (40 min each = 160 of ~320 min)
-    deep = {f"t{i}": 35.0 for i in range(4)}
-    slots = planning.sequence_plan(plan, count=4, deep_remaining=deep,
-                                   scores={f"t{i}": 10 - i for i in range(8)})
-    assert len(slots) > 4                                # kept going past count
+    early0 = _entry("early0", d0, datetime(2026, 7, 18, 23, 10))   # ~40-min window
+    early1 = _entry("early1", d0, datetime(2026, 7, 18, 23, 50))
+    allnight = [_entry(f"t{i}", d0, d1) for i in range(4)]
+    scores = {"early0": 100, "early1": 90, "t0": 8, "t1": 7, "t2": 6, "t3": 5}
+    plan = _synthetic_plan([early0, early1, *allnight])
+    slots = planning.sequence_plan(plan, count=2, scores=scores)
+    assert len(slots) > 2                                # kept going past count
     assert slots[-1]["end"] >= datetime(2026, 7, 19, 3, 40)   # night actually used
     for a, b in zip(slots, slots[1:]):
         assert b["start"] == a["end"]
     # fill=False restores the strict count cut-off
-    strict = planning.sequence_plan(plan, count=4, deep_remaining=deep,
-                                    scores={f"t{i}": 10 - i for i in range(8)},
-                                    fill=False)
-    assert len(strict) == 4
+    strict = planning.sequence_plan(plan, count=2, scores=scores, fill=False)
+    assert len(strict) == 2
 
 
 def test_sequence_flags_marginal_last_chance_slot():  # GAP 2
@@ -329,9 +328,18 @@ def test_sequence_flags_marginal_last_chance_slot():  # GAP 2
                                    scores={"sink": 9.0, "steady": 1.0})
     by = {s["slug"]: s for s in slots}
     assert by["sink"]["marginal"] is True                # window-cut + descending
-    assert by["steady"]["marginal"] is False
-    # deep-cap shortening alone isn't marginal
-    slots2 = planning.sequence_plan(_synthetic_plan([steady]), count=1,
-                                    scores={"steady": 5.0},
-                                    deep_remaining={"steady": 35.0})
-    assert slots2[0]["marginal"] is False
+    assert by["steady"]["marginal"] is False             # full slot, not sinking away
+
+
+def test_sequence_drops_sub_min_slots():
+    """A slot under the 30-min floor is dropped, not tokened in (no 10-min stubs
+    after slew/focus); a large `count` floors the base at 30 min rather than 10."""
+    d0 = datetime(2026, 7, 18, 22, 25)
+    d1 = datetime(2026, 7, 19, 3, 55)
+    tiny = _entry("tiny", d0, datetime(2026, 7, 18, 22, 45))   # ~20-min window
+    assert planning.sequence_plan(_synthetic_plan([tiny]),
+                                  count=1, scores={"tiny": 5.0}) == []
+    entries = [_entry(f"t{i}", d0, d1) for i in range(12)]
+    slots = planning.sequence_plan(_synthetic_plan(entries), count=20,
+                                   scores={f"t{i}": 12 - i for i in range(12)})
+    assert slots and all(s["duration_min"] >= 30 for s in slots)

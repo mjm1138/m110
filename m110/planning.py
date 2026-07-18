@@ -56,6 +56,12 @@ START_CEILING_MARGIN_DEG = 3.0
 # minutes (2026-07-14 harness review, GAP 2). Longer last-grabs still pay.
 MARGINAL_SLOT_MIN = 30
 
+# Shortest slot the sequencer will schedule (minutes). Below this, a slot isn't
+# worth the slew + autofocus overhead (a 10-min stub after setup yields almost
+# nothing usable), so the target is dropped for tonight rather than tokened in
+# (2026-07-17 tuning call). Also the floor for the night÷count base duration.
+MIN_SLOT_MIN = 30
+
 
 # ── coordinate / season helpers ──────────────────────────────────────────────
 
@@ -501,7 +507,7 @@ def _sample_at(entry: dict, t: datetime, tick_min: int = 10):
 
 
 def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
-                  filters: dict | None = None, deep_remaining: dict | None = None,
+                  filters: dict | None = None, min_slot_min: int = MIN_SLOT_MIN,
                   tick_min: int = 10, forced_order: list | None = None,
                   fill: bool = True) -> list[dict]:
     """Turn ``plan_night`` output into a **non-overlapping schedule** (Phase 4 /
@@ -513,18 +519,23 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
 
     1. Object 1 = the highest-priority target **startable right at astronomical
        dark** (clear at that tick, under the start ceiling, and with at least one
-       tick of window left). Base duration = dark span ÷ ``count`` (10-min floor),
-       shortened when the target reaches **deep-stack** status sooner
-       (``deep_remaining[slug]`` minutes) or when its own up-window ends.
+       tick of window left). Base duration = dark span ÷ ``count`` (floored to a
+       ``min_slot_min`` minimum), shortened **only** when the target's own
+       up-window (or dawn) ends. A primary is left to **overshoot** its deep-stack
+       target rather than be trimmed to free time for another slot — max
+       integration on the ``count`` chosen objects (2026-07-17 tuning call).
     2. Object N+1 = the highest-priority target startable at object N's end — no
        overlap, no slew/focus modelling.
     3. Near-equal priority (scores quantized to 2 dp) → the one **closer to
        setting** (earlier ``up_end``) goes first.
 
-    ``count`` sizes the slots (the night ÷ count split); with ``fill`` on (the
-    default) the sequencer **keeps scheduling past count** when shortened slots
-    leave dark unused, until dawn or candidates run out — the 2026-07-14 harness
-    review caught a plan ending at 01:00 with ~3 h of dark left (GAP 1).
+    ``count`` sizes the slots (the night ÷ count split, at least ``min_slot_min``);
+    with ``fill`` on (the default) the sequencer **keeps scheduling past count**
+    when early-setting targets leave dark unused, until dawn or candidates run out
+    — the 2026-07-14 harness review caught a plan ending at 01:00 with ~3 h of dark
+    left (GAP 1). A slot that would come out **shorter than ``min_slot_min``** is
+    **dropped, not scheduled** — no 10-minute stubs that a slew + autofocus would
+    eat whole.
 
     A slot cut short by its **own closing window** while the target is
     *descending* is flagged ``marginal`` ("last chance" — heavy frame rejection
@@ -541,7 +552,6 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
         return []
     scores = scores or {}
     filters = filters or {}
-    deep_remaining = deep_remaining or {}
     ceiling = plan.get("start_ceiling_deg")
     hard = plan.get("ceiling_is_hard", True)
     moon = plan.get("moon") or {}
@@ -558,7 +568,8 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
     if span < tick_min:
         return []
     n = max(1, int(count))
-    base = max(tick_min, int(span / n // tick_min) * tick_min)
+    floor_min = max(tick_min, int(min_slot_min))
+    base = max(floor_min, int(span / n // tick_min) * tick_min)
 
     by_slug = {e["slug"]: e for e in entries}
     if forced_order is not None:
@@ -599,14 +610,14 @@ def sequence_plan(plan: dict, *, count: int = 4, scores: dict | None = None,
             continue
         slug, alt, over = pick
         e = by_slug[slug]
-        dur = base
-        rem = deep_remaining.get(slug)
-        if rem is not None and rem > 0:               # deep-stack sooner → shorter slot
-            dur = min(dur, int(-(-rem // tick_min)) * tick_min)
+        # Primaries run the full base slot, capped only by the target's own closing
+        # up-window and by dawn — no deep-stack trim (overshoot beats seeding a
+        # marginal slot; 2026-07-17). A slot that comes out under the min is dropped
+        # (mark the target spent, try the next) rather than scheduled as a stub.
         window_cap = int((e["up_end"] - t).total_seconds() / 60.0 // tick_min) * tick_min
-        dur = min(dur, window_cap,                     # …its own window / dawn
-                  int((t_end - t).total_seconds() / 60.0 // tick_min) * tick_min)
-        if dur < tick_min:
+        dawn_cap = int((t_end - t).total_seconds() / 60.0 // tick_min) * tick_min
+        dur = min(base, window_cap, dawn_cap)
+        if dur < floor_min:
             used.add(slug)
             continue
         # Last-chance guard (GAP 2): a SHORT slot truncated by the target's own

@@ -87,6 +87,62 @@ SETTING_STRATEGY = "prioritizer_strategy"
 SETTING_WEIGHTS = "prioritizer_weights"
 _FACTOR_KEYS = ("goal", "urgency", "completion", "tonight")
 
+# Object-type **groups** exposed as user weight controls (the Planning "Object
+# types" sliders). Each maps to the underlying catalog types the scorer sees, so a
+# single "Nebulae" control moves emission/planetary/reflection/dark together. Boost
+# galaxies/nebulae + damp clusters to break up a cluster-heavy catalog like Messier.
+TYPE_GROUPS: dict[str, tuple[str, ...]] = {
+    "galaxy": ("galaxy",),
+    "globular": ("globular",),
+    "open_cluster": ("open_cluster",),
+    "nebula": ("emission", "emission_snr", "planetary", "reflection", "dark_nebula"),
+}
+# Display labels for the groups (UI); ordered.
+TYPE_GROUP_LABELS: list[tuple[str, str]] = [
+    ("galaxy", "Galaxies"),
+    ("globular", "Globular clusters"),
+    ("open_cluster", "Open clusters"),
+    ("nebula", "Nebulae"),
+]
+
+
+def type_weights_from_groups(group_vals: dict) -> dict[str, float]:
+    """Expand per-group multipliers into the flat ``type → weight`` dict the scorer
+    consumes. Only groups nudged off the 1.0 default contribute (keeps the stored
+    dict small and a fresh install's weights empty)."""
+    tw: dict[str, float] = {}
+    for gid, types in TYPE_GROUPS.items():
+        v = group_vals.get(gid)
+        if v is None or abs(float(v) - 1.0) < 1e-9:
+            continue
+        for t in types:
+            tw[t] = float(v)
+    return tw
+
+
+def groups_from_type_weights(type_weights: dict) -> dict[str, float]:
+    """Collapse a flat ``type → weight`` dict back to per-group values (a group's
+    first present member type, else 1.0) — to populate the group controls."""
+    out: dict[str, float] = {}
+    for gid, types in TYPE_GROUPS.items():
+        vals = [type_weights[t] for t in types if t in type_weights]
+        out[gid] = float(vals[0]) if vals else 1.0
+    return out
+
+
+SETTING_VISIBLE_TONIGHT = "planning_visible_tonight"
+
+
+def load_visible_tonight() -> bool:
+    """Whether the priority table hides objects not up tonight (default on)."""
+    from . import config
+    return bool(config.get_setting(SETTING_VISIBLE_TONIGHT, True))
+
+
+def save_visible_tonight(on: bool) -> None:
+    from . import config
+    config.save_setting(SETTING_VISIBLE_TONIGHT, bool(on))
+
 
 def load_strategy() -> str:
     from . import config
@@ -271,6 +327,15 @@ def rank(contexts, weights: Weights, strategy: str, pin_state: dict) -> list[dic
     for i, r in enumerate(rows, 1):
         r["rank"] = i
     return rows
+
+
+def filter_visible_tonight(rows: list[dict]) -> list[dict]:
+    """Keep only rows observable tonight — the "what should I shoot tonight" view,
+    dropping out-of-season targets (M44 in July, etc.). A row whose observability
+    is **unknown** (``None`` — no site/astropy, degraded ranking) is *kept*: we
+    can't claim it's out. Only an explicit ``observable is False`` is hidden. The
+    ``rank`` numbers are preserved (they still reflect the full ranking)."""
+    return [r for r in rows if r.get("observable") is not False]
 
 
 # ── orchestration (loads app data, computes observability) ─────────────────────

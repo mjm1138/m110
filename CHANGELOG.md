@@ -32,6 +32,22 @@ changes a **user** would notice, per release.
   sub-folder, your finished renders and stacks used to be invisible to *Import finished
   work*. M110 now also scans the object folder as a fallback, so that easy mistake no
   longer strands your processing output.
+### Changed
+- **Priority targets now default to what's actually up tonight.** The Planning page's
+  priority list has a new **"Visible tonight"** checkbox (on by default) that hides
+  objects out of season for tonight — so winter/spring targets like M44, M97, or M42 no
+  longer sit near the top of a July list. Uncheck it to see the full ranking when you're
+  planning a future date.
+- **"Plan a night" respects the Targets number.** The night sequencer now schedules
+  roughly the number of targets you ask for, gives each one its **full slot** rather than
+  cutting a primary short, and **never schedules a slot under 30 minutes** — no more
+  10-minute stubs that a slew and autofocus would eat whole.
+
+### Added
+- **Weight object types in your priority ranking.** Planning → *Tuning weights* gains
+  **Galaxies / Globular clusters / Open clusters / Nebulae** controls — turn galaxies and
+  nebulae up and clusters down (or vice-versa) to shape what gets prioritized in a
+  cluster-heavy catalog like Messier.
 
 ## [0.2.0-beta.2] - 2026-07-15
 
