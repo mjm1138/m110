@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.4] - 2026-07-18
+
 ### Fixed
 - **"Process in Siril" no longer crashes Siril's scripts (macOS).** Launching Siril from
   the packaged M110 app could make Siril's Python scripts abort on startup with a "two sets
