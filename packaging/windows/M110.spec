@@ -12,7 +12,7 @@ NOTE: PyInstaller is not a cross-compiler — a Windows build must run on Window
 """
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # SPECPATH = the directory holding this spec (packaging\windows).
 ROOT = Path(SPECPATH).resolve().parents[1]                       # repo root
@@ -21,7 +21,9 @@ HOOKS = ROOT / "packaging" / "common" / "pyinstaller-hooks"      # shared hook o
 ICON = ROOT / "packaging" / "windows" / "M110.ico"               # from make_ico.py
 
 datas = collect_data_files("m110")          # engine package data (seed, guidance, fonts, brand)
+datas += collect_data_files("tzdata")       # IANA tz db — Windows has no system copy (#56)
 hiddenimports = ["tifffile", "PIL"]         # astropy handled by the shared hook override
+hiddenimports += collect_submodules("tzdata")   # zoneinfo loads these region subpackages
 
 block_cipher = None
 

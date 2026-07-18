@@ -515,6 +515,21 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **#56 — Windows build crashed on launch (`tzdata` / `zoneinfo`)** *(2026-07-17,
+  `fix/windows-tzdata`; reported by @devonjones on 0.2.0-beta)*. The frozen Windows app
+  quit at import with `zoneinfo._common.ZoneInfoNotFoundError: 'No time zone found with
+  key UTC'` — `planning.py` resolves `_UTC = ZoneInfo("UTC")` at module import (reached
+  from `main` via `night_timeline → planning`), and **Windows ships no system IANA tz
+  database**, so `zoneinfo` needs the `tzdata` PyPI package as its fallback. `tzdata` was
+  neither a declared dependency nor collected by the PyInstaller specs, so nothing was
+  bundled. Fix: add **`tzdata`** to core `dependencies` (unconditional — harmless on
+  macOS/Linux, which search the OS db first and only fall back to the package), and
+  collect it in all three specs (`collect_data_files("tzdata")` for the ~600 tz files +
+  `collect_submodules("tzdata")` so `zoneinfo`'s region subpackages import). Reproduced
+  locally with `zoneinfo.reset_tzpath([])` (no system db) → the exact error; guarded by
+  `test_zoneinfo_resolves_without_a_system_tzdb`. macOS/Linux were unaffected (system tz
+  db present) but now bundle it too, for self-contained builds.
+
 ### Archived from BUGS.md, 2026-07-15 housecleaning
 
 - [x] **Processing tables: default sort + sort persistence** *(2026-07-15,

@@ -27,6 +27,10 @@ changes a **user** would notice, per release.
   you can set Siril's *working directory* to the right place instead of hunting for it.
 
 ### Fixed
+- **Windows: the app no longer crashes on launch.** The Windows build was missing the
+  time-zone database that the planning features rely on, so it quit immediately with a
+  `zoneinfo` / `tzdata` error before the window ever appeared. The database is now bundled
+  in the build. (Thanks to @devonjones for the report — issue #56.)
 - **Processed images saved in the wrong folder are now picked up.** If you set Siril's
   working directory to the object folder (`Images/<target>/`) instead of its `siril/`
   sub-folder, your finished renders and stacks used to be invisible to *Import finished
