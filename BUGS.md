@@ -10,6 +10,17 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
+  If Siril's working directory was set to `Images/<target>/` instead of its `siril/`
+  sub-folder, the run's renders/stacks landed loose in the object dir and *Import finished
+  work* never saw them (`siril._sandbox_outputs` only walked `siril/`). Fix:
+  `siril._root_outputs` also scans the object dir (skipping the managed tiers, raw inputs,
+  and the sandbox itself), and `has_unimported_output`/`scan_finished` draw from both via
+  `_finished_outputs`. Paired with a **"Reveal working folder"** button on the object
+  detail pane (opens `Images/<target>/siril/` so Siril's working dir is set to the right
+  place) and a bolder callout in the sandbox `next-steps.md`. A lightweight down-payment on
+  the object-side "Process in…" of **#19**; the full launcher is still open.
+
 - [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
   M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
   that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
@@ -52,11 +63,27 @@ Legend: `[ ]` open · `[~]` partially done
   (only processing/intermediate files cost disk). Custom workspaces must be easily
   discoverable by name on the filesystem. Also support custom **split** workflow
   directories, like the LP / no-filter splits created automatically today.
-- [ ] **#19 — Open In… / Process in…** (cross-platform launch is the main risk.)
-  Right-click an **image** → "Open In…" a compatible processing/viewing app (Finder-
-  style). Right-click an **object** → "Process in…" (Siril/PixInsight/…) which opens
-  the tool, creating/selecting the appropriate working directory first (or a custom one
-  per #18). Pure **guide**, not control.
+- [~] **#19 — Open In… / Process in…** (cross-platform launch is the main risk.)
+  **Core shipped** (`feature/reimport-object-root`). Right-click an **object** (Library,
+  Processing page, or the detail-pane button) → **"Process in Siril"** launches Siril with
+  the object's working directory set (`siril -d <sandbox>`; a chooser when the sandbox is
+  split per-filter). Right-click a gallery **image** → **"Open in default app"** /
+  **"Reveal in file manager"**. Pure **guide**, not control — M110 starts the tool and gets
+  out of the way. Cross-platform launch lives in the Qt-free `m110/launch.py`: settings
+  override (`external_app_paths`) → OS-standard locations (macOS `/Applications/Siril.app`,
+  Linux `siril`/`siril-cli` in PATH, Windows Program Files) → graceful reveal-folder
+  fallback; the path is settable in *Preferences → Processing tools*. **macOS must launch
+  via `open`** (`_launch_macos`), not a direct `Popen`: Siril's bundled Python is
+  hardened-runtime + library-validated, so it only spawns when Siril is its own *responsible
+  process* — a child-process launch left M110 responsible and Siril SIGKILLed its own Python
+  ("unable to spawn python" / "version check failed"). Trade-off: `open --args -d` sets the
+  working dir only on a **cold start** (ignored if Siril is already open — a small UX gap; a
+  future `open -n` new-instance option could close it if Siril tolerates concurrent
+  instances). **Open:** (a) a
+  configurable multi-app list for the image "Open In…" submenu (only default-app + reveal
+  today); (b) PixInsight/DSS/APP as launchable targets (registered in `processing.WORKFLOWS`
+  but not yet in `launch._TOOLS`); (c) custom/combined workspaces per #18. **Verify on real
+  Linux/Windows** — auto-detect paths are coded but only exercised on macOS + in tests.
 
 ## Import
 

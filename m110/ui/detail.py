@@ -9,18 +9,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QPixmap, QIcon, QImageReader
+from PySide6.QtCore import Qt, QSize, QUrl, Signal
+from PySide6.QtGui import QPixmap, QIcon, QImageReader, QDesktopServices
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
-    QToolButton, QMenu,
+    QToolButton, QMenu, QMessageBox,
 )
 
 from m110 import build_images, config, derived, objects, siril
 from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
-from m110.ui.widgets import status_label, targets_for_slug, make_table, fit_table_height
+from m110.ui.widgets import (
+    status_label, targets_for_slug, make_table, fit_table_height,
+    process_in_siril, open_in_default, reveal_in_manager,
+)
 
 
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
@@ -150,6 +153,26 @@ class DetailPane(QScrollArea):
     def _has_finished_work(slug: str) -> bool:
         return any(siril.has_unimported_output(t) for t in targets_for_slug(slug))
 
+    @staticmethod
+    def _has_working_folder(slug: str) -> bool:
+        return any(config.siril_dir(t).is_dir() for t in targets_for_slug(slug))
+
+    def _reveal_working_folder(self, slug: str):
+        """Open the object's Siril sandbox(es) in the file manager, so the user
+        sets Siril's working directory to the sandbox itself (not the object dir
+        one level up, where output goes unnoticed by the importer)."""
+        opened = False
+        for tgt in targets_for_slug(slug):
+            sb = config.siril_dir(tgt)
+            if sb.is_dir():
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(sb)))
+                opened = True
+        if not opened:
+            QMessageBox.information(
+                self, "Reveal working folder",
+                "No processing working folder exists yet for this object — it's "
+                "created automatically after you import captures.")
+
     def _clear(self):
         self._gallery = None
         self._galleries = []
@@ -222,15 +245,31 @@ class DetailPane(QScrollArea):
             stat_row.addStretch(1)
             self._lay.addLayout(stat_row)
             # Processing-prep happens automatically (per the Preferences workflow
-            # setting), so no manual "Prepare" button — only offer import when a
-            # sandbox has finished output to bring back.
+            # setting), so no manual "Prepare" button — offer import when a
+            # sandbox has finished output to bring back, and a Reveal that opens
+            # the sandbox so Siril's working directory is set to the right place.
+            btn_row = QHBoxLayout()
             if self._has_finished_work(slug):
-                btn_row = QHBoxLayout()
                 imp_btn = QPushButton("Import finished work…")
                 imp_btn.setToolTip("Bring your processed renders/stack into the "
                                    "Library and tidy the working folder")
                 imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
                 btn_row.addWidget(imp_btn)
+            if self._has_working_folder(slug):
+                proc_btn = QPushButton("Process in Siril")
+                proc_btn.setToolTip("Launch Siril with this object's working "
+                                    "folder set as the working directory")
+                proc_btn.clicked.connect(
+                    lambda _=False, s=slug: process_in_siril(self, s))
+                btn_row.addWidget(proc_btn)
+                rev_btn = QPushButton("Reveal working folder")
+                rev_btn.setToolTip("Open this object's Siril working folder "
+                                   "(Images/<target>/siril/). Point Siril's "
+                                   "working directory here — not the folder above it.")
+                rev_btn.clicked.connect(
+                    lambda _=False, s=slug: self._reveal_working_folder(s))
+                btn_row.addWidget(rev_btn)
+            if btn_row.count():
                 btn_row.addStretch(1)
                 self._lay.addLayout(btn_row)
         else:
@@ -468,11 +507,18 @@ class DetailPane(QScrollArea):
         else:
             mark_act = menu.addAction("Mark as finished")
             target = "finished"
+        menu.addSeparator()
+        open_act = menu.addAction("Open in default app")
+        reveal_act = menu.addAction("Reveal in file manager")
         chosen = menu.exec(gallery.viewport().mapToGlobal(pos))
         if chosen is hero_act:
             self._set_hero(name)
         elif chosen is mark_act:
             self._set_curation(name, target)
+        elif chosen is open_act:
+            open_in_default(gi["path"])
+        elif chosen is reveal_act:
+            reveal_in_manager(gi["path"])
 
     def _set_hero(self, name: str):
         slug, e, t = self._current

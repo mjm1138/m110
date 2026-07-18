@@ -10,6 +10,28 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Process in Siril, in one click.** Right-click an object (or use the button on its
+  detail page, or right-click a row on the Processing page) → **Process in Siril** and
+  M110 launches Siril already pointed at that object's working folder — no more browsing
+  to the right directory yourself. M110 finds Siril automatically in the usual place;
+  if it's installed somewhere else, set the path under *Preferences → Processing tools*.
+  When Siril can't be found, M110 offers to open the working folder instead. **Quit Siril
+  when you finish an object** — M110 sets the working directory only as Siril starts, so
+  if Siril is already open it won't switch to the next object's folder. (See the
+  [processing guide](docs/processing.md).)
+- **"Open in…" for gallery images.** Right-click any image on an object's page to **Open
+  in default app** (your usual image viewer/editor) or **Reveal in file manager**.
+- **"Reveal working folder" on an object.** The object detail pane now has a button that
+  opens that object's Siril processing folder (`Images/<target>/siril/`) directly — so
+  you can set Siril's *working directory* to the right place instead of hunting for it.
+
+### Fixed
+- **Processed images saved in the wrong folder are now picked up.** If you set Siril's
+  working directory to the object folder (`Images/<target>/`) instead of its `siril/`
+  sub-folder, your finished renders and stacks used to be invisible to *Import finished
+  work*. M110 now also scans the object folder as a fallback, so that easy mistake no
+  longer strands your processing output.
 ### Changed
 - **Priority targets now default to what's actually up tonight.** The Planning page's
   priority list has a new **"Visible tonight"** checkbox (on by default) that hides

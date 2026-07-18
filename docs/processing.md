@@ -28,6 +28,45 @@ next time — it never deletes your lights or your work.
 You don't trigger any of this by hand: prep is automatic and idempotent. If you edit
 a preset, M110 preserves your edits and won't overwrite them.
 
+## Process in Siril (one click)
+
+You don't have to find the working folder yourself. **Right-click an object** — in the
+Library, on the Processing page, or use the **Process in Siril** button on its detail
+page — and M110 launches Siril already pointed at that object's `siril/` sandbox as its
+**working directory**.
+
+M110 finds Siril automatically in the usual place. If yours is installed somewhere
+unusual, set its location under **Preferences → Processing tools** (on macOS you can pick
+`Siril.app` directly; elsewhere, the Siril executable).
+
+> ### ⚠ Quit Siril when you finish an object
+>
+> **When you're done processing an object, quit Siril before moving to the next one.**
+>
+> M110 can only set Siril's working directory *as Siril launches*. If Siril is **already
+> open**, clicking "Process in Siril" for a different object just brings the existing
+> window to the front — it **does not** switch the working directory. You'd then be
+> processing the new object while Siril is still pointed at the previous object's folder,
+> and your results would land in the wrong place.
+>
+> Quitting Siril between objects guarantees the next "Process in Siril" opens fresh, at
+> the correct folder. (If you'd rather keep Siril open, use **Reveal working folder** and
+> set the directory yourself — see below.)
+
+### If you prefer to open Siril yourself
+
+The one easy mistake when doing it by hand is pointing Siril's working directory at the
+object folder (`Images/<target>/`) instead of its `siril/` sub-folder — Siril then saves
+your results one level too high. To avoid it, use **Reveal working folder** (the button
+beside Process in Siril, and a right-click option): it opens the `siril/` folder in your
+file manager so you can set *that* as Siril's working directory.
+
+(And if you do save outside the sandbox anyway, M110 also scans the object folder as a
+fallback when importing, so your work isn't lost.)
+
+You can also right-click any image in an object's gallery to **Open in default app** or
+**Reveal in file manager**.
+
 ---
 
 ## Hardlinks — what they are, and why it matters

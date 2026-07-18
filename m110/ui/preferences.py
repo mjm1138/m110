@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox,
 )
 
-from m110 import config, hints, ingest, processing, updates
+from m110 import config, hints, ingest, launch, processing, updates
 from m110.ui import theme
 
 
@@ -58,6 +58,28 @@ class PreferencesDialog(QDialog):
         for cb in self._wf_checks.values():
             cb.toggled.connect(self._save_workflows)
         lay.addWidget(box)
+
+        # ── processing tools (external app paths; persist live) ──────────────
+        tbox = QGroupBox("Processing tools")
+        tl = QVBoxLayout(tbox)
+        tl.addWidget(QLabel(
+            "“Process in Siril” launches Siril with the object's working "
+            "folder set as its working directory. M110 finds Siril automatically in "
+            "the usual place — set a path here only if it's installed elsewhere."))
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Siril:"))
+        self._siril_edit = QLineEdit(self._siril_override())
+        detected = launch.find_app("siril")
+        self._siril_edit.setPlaceholderText(
+            f"Auto-detected: {detected}" if detected
+            else "Not found — Browse to your Siril application")
+        sbrowse = QPushButton("Browse…")
+        sbrowse.clicked.connect(self._browse_siril)
+        srow.addWidget(self._siril_edit, 1)
+        srow.addWidget(sbrowse)
+        tl.addLayout(srow)
+        self._siril_edit.editingFinished.connect(self._save_app_paths)
+        lay.addWidget(tbox)
 
         # ── finished-image hints (persist live on edit) ──────────────────────
         hbox = QGroupBox("Finished-image hints")
@@ -157,6 +179,32 @@ class PreferencesDialog(QDialog):
         chosen = [wid for wid, cb in self._wf_checks.items()
                   if cb.isEnabled() and cb.isChecked()]
         config.save_setting(processing.SETTING_KEY, chosen)
+
+    def _siril_override(self) -> str:
+        paths = config.get_setting(launch.APP_PATHS_SETTING, {}) or {}
+        return str(paths.get("siril") or "")
+
+    def _browse_siril(self):
+        # Siril is an .app bundle on macOS (selectable as a file in the native
+        # dialog) and a plain executable elsewhere.
+        import sys
+        start = self._siril_edit.text() or (
+            "/Applications" if sys.platform == "darwin" else "")
+        f, _ = QFileDialog.getOpenFileName(self, "Choose the Siril application", start)
+        if f:
+            self._siril_edit.setText(f)
+            self._save_app_paths()
+
+    def _save_app_paths(self, *_):
+        """Persist the external-app path override (read at launch time — no
+        restart). Empty clears the override → back to auto-detection."""
+        paths = dict(config.get_setting(launch.APP_PATHS_SETTING, {}) or {})
+        val = self._siril_edit.text().strip()
+        if val:
+            paths["siril"] = val
+        else:
+            paths.pop("siril", None)
+        config.save_setting(launch.APP_PATHS_SETTING, paths)
 
     def _save_hints(self, *_):
         """Persist the finished/intermediate filename hints (read at classify

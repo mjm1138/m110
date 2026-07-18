@@ -160,6 +160,61 @@ def test_scan_finished_keeps_pipeline_step_tokens_in_final_name(tmp_path, monkey
                      f"{base}_processed.fit": "stack"}
 
 
+def test_working_dirs_single_multi_and_absent(tmp_path, monkeypatch):
+    """working_dirs() feeds "Process in Siril": the sandbox root for a
+    single-filter target, the per-filter job dirs when split, [] with no
+    sandbox."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    assert siril.working_dirs(target) == []          # no sandbox prepared yet
+
+    siril.apply_prep(siril.plan_prep(target))
+    assert siril.working_dirs(target) == [config.siril_dir(target)]
+
+    multi = _make_target(tmp_path, monkeypatch, ircut=120, lp=40, name="M27")
+    siril.apply_prep(siril.plan_prep(multi))
+    sb = config.siril_dir(multi)
+    assert set(siril.working_dirs(multi)) == {sb / "IRCUT", sb / "LP"}
+
+
+def test_scan_finished_picks_up_output_loose_in_object_dir(tmp_path, monkeypatch):
+    """The mis-pointed-working-directory case: Siril's working dir was set to
+    Images/<target>/ instead of the siril/ sandbox, so the run's output landed
+    directly in the object dir. It must still be found — and the managed tiers,
+    raw inputs, and Siril's process/ scratch must be excluded."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    root = config.target_dir(target)
+
+    # Output the run dropped loose in the object dir.
+    (root / f"{target}_processed.png").write_text("PNG")   # render → finished/
+    (root / f"{target}_processed.fit").write_text("STACK")  # stack → stacks/
+    # Noise that must be ignored: bare intermediate, raw sub, siril scratch, and
+    # a file already sitting in a managed tier.
+    (root / f"{target}_og.fit").write_text("i")            # intermediate → skip
+    (root / "process").mkdir()
+    (root / "process" / f"{target}_processed.fit").write_text("scratch")  # skip
+    (config.finished_dir(target) / f"old_processed.png").parent.mkdir(
+        parents=True, exist_ok=True)
+    (config.finished_dir(target) / "old_processed.png").write_text("done")  # tier
+
+    assert siril.has_unimported_output(target) is True
+    plan = siril.scan_finished(target)
+    got = {it.name: (it.kind, it.dest) for it in plan.items}
+    assert got == {
+        f"{target}_processed.png": ("render", str(config.finished_dir(target)
+                                                  / f"{target}_processed.png")),
+        f"{target}_processed.fit": ("stack", str(config.stacks_dir(target)
+                                                 / f"{target}_processed.fit")),
+    }
+
+    siril.apply_import(target, [it.src for it in plan.items], cleanup="none")
+    assert (config.finished_dir(target) / f"{target}_processed.png").is_file()
+    assert (config.stacks_dir(target) / f"{target}_processed.fit").is_file()
+    # Now imported (dest exists) → no longer nags, even though the loose
+    # originals remain in the object dir (we never delete outside the sandbox).
+    assert siril.has_unimported_output(target) is False
+
+
 def test_apply_import_routes_sets_hero_and_archives(tmp_path, monkeypatch):
     target = _make_target(tmp_path, monkeypatch, ircut=120)
     siril.apply_prep(siril.plan_prep(target))

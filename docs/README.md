@@ -13,7 +13,7 @@ each page links to the next.
 1. [Getting started](#getting-started) — install, first launch, your data folder
 2. [Getting around](#getting-around) — the navigation rail, page by page
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
-4. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, and *what hardlinks mean for your files* (important)
+4. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), and *what hardlinks mean for your files* (important)
 5. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
 6. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
 7. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
