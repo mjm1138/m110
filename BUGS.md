@@ -95,6 +95,19 @@ Legend: `[ ]` open · `[~]` partially done
   the archived scoring-model design + Astronomy-prototype findings). *Still open:*
   the **session-time controls + night presets** (the second tuning tier) and the
   other refinements listed under ROADMAP → "Session-planning follow-ups".
+  - ✅ **Priority-list tuning (2026-07-17 in-app review, `feature/prioritizer-tuning`).**
+    Three fixes surfaced planning a real July night — detail in [`DONE.md`](DONE.md):
+    - **"Visible tonight" toggle** (default on) filters the ranking to targets actually
+      up tonight (`prioritize.filter_visible_tonight` — hides `observable is False`, keeps
+      unknown/degraded). Fixes out-of-season Messiers (M44/M97/M3/M35/M36…) floating into
+      the top on goal+completion while the scorer only *softly* graded observability.
+    - **Sequencer honors `count`.** `sequence_plan` no longer trims a primary to hit its
+      deep-stack target (each chosen object runs its **full slot** — overshoot beats
+      seeding a marginal one) and **drops any slot < `MIN_SLOT_MIN` (30 min)** — no
+      10-minute stubs. The `deep_remaining` duration cap was removed.
+    - **Per-type weight controls** — Planning → *Tuning weights* exposes Galaxies /
+      Globular / Open clusters / Nebulae multipliers (`prioritize.TYPE_GROUPS`; the engine
+      already applied `type_weights`).
 *Session-planner items (#40–44) are phased in [`PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md).*
 
 - [ ] **#44 — LLM session-planner skill foundation** *(→ PLANNING_ROADMAP Phase 6;

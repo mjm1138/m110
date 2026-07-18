@@ -296,3 +296,33 @@ def test_build_contexts_carries_feasibility_inputs(tmp_path, monkeypatch):
     pr.write_contexts(contexts)
     got = {c.slug: c for c in pr.load_contexts()}
     assert got["m40"].magnitude == m40.magnitude and got["m40"].size == m40.size
+
+
+# ── visible-tonight filter (BUGS: out-of-season targets in the priority list) ───
+
+def test_filter_visible_tonight_hides_only_explicit_false():
+    rows = [{"slug": "up", "observable": True},
+            {"slug": "out", "observable": False},
+            {"slug": "unknown", "observable": None}]
+    kept = [r["slug"] for r in pr.filter_visible_tonight(rows)]
+    assert kept == ["up", "unknown"]        # False hidden; None (degraded) kept
+
+
+# ── per-type group weights (the Planning "Object types" controls) ──────────────
+
+def test_type_group_weight_roundtrip():
+    groups = {"galaxy": 1.5, "open_cluster": 0.5, "globular": 1.0, "nebula": 2.0}
+    tw = pr.type_weights_from_groups(groups)
+    assert tw["galaxy"] == 1.5 and tw["open_cluster"] == 0.5
+    assert "globular" not in tw                          # neutral 1.0 isn't stored
+    assert tw["emission"] == 2.0 and tw["planetary"] == 2.0   # whole nebula group
+    back = pr.groups_from_type_weights(tw)
+    assert back == {"galaxy": 1.5, "globular": 1.0, "open_cluster": 0.5, "nebula": 2.0}
+
+
+def test_type_weight_lifts_matching_type_score():
+    ctx = TargetContext("g", obj_type="galaxy", integration_min=0.0, in_active_goal=True)
+    s0 = pr.score_target(ctx, Weights(), pr.STRATEGY_CAPTURE)["score"]
+    s1 = pr.score_target(ctx, Weights(type_weights={"galaxy": 2.0}),
+                         pr.STRATEGY_CAPTURE)["score"]
+    assert s1 > s0                                       # galaxy multiplier lifts it
