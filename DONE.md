@@ -515,6 +515,23 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Siril script crash from a packaged launch (two Qt sets in one process)** *(2026-07-18,
+  `fix/siril-qt-env-leak`; reported on 0.2.0-beta.3 macOS)*. "Process in Siril" from the
+  **frozen** M110.app made Siril's `sirilpy` (PyQt6) scripts SIGABRT at startup: objc
+  duplicate-class warnings + "loading two sets of Qt binaries" + "Could not load the Qt
+  platform plugin cocoa", because M110's PySide6 QtCore/QtGui frameworks loaded alongside
+  Siril's own PyQt6. Vector: the PyInstaller PySide6 runtime hook exports **`QT_PLUGIN_PATH`**
+  + **`QML2_IMPORT_PATH`** into `M110.app/Contents/Frameworks` (and prepends `_MEIPASS` to
+  `DYLD_LIBRARY_PATH`); `open` forwards our env to Siril, so Siril's Python was pointed at
+  *our* Qt plugins and pulled in our Qt. `launch._child_env` already cleared the DYLD half
+  (via `_LIBPATH_VARS`, dropped since the hook saves no `_ORIG`) but not the Qt plugin
+  paths. Fix: strip **`_QT_LEAK_VARS`** (`QT_PLUGIN_PATH`/`QT_QPA_PLATFORM_PLUGIN_PATH`/
+  `QML*_IMPORT_PATH`) in `_child_env`. Only manifests in the **frozen** build (from source
+  those vars are unset), so it's guarded by an env-sanitizer unit test
+  (`test_child_env_strips_qt_plugin_paths`), not a live launch — the definitive check is a
+  packaged M110.app driving a Siril script. Confirms the CLAUDE.md rule that a dev-run can't
+  catch bundle-only env leaks.
+
 - [x] **#56 — Windows build crashed on launch (`tzdata` / `zoneinfo`)** *(2026-07-17,
   `fix/windows-tzdata`; reported by @devonjones on 0.2.0-beta)*. The frozen Windows app
   quit at import with `zoneinfo._common.ZoneInfoNotFoundError: 'No time zone found with

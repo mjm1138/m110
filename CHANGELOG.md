@@ -10,6 +10,13 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **"Process in Siril" no longer crashes Siril's scripts (macOS).** Launching Siril from
+  the packaged M110 app could make Siril's Python scripts abort on startup with a "two sets
+  of Qt binaries" error — M110 was leaking the location of its own bundled Qt to Siril, and
+  Siril's scripts (which use their own Qt) loaded both at once. M110 now hands Siril a clean
+  environment, so its scripts run normally.
+
 ## [0.2.0-beta.3] - 2026-07-17
 
 ### Added

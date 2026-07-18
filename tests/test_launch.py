@@ -164,6 +164,22 @@ def test_child_env_drops_bundle_libpath_without_orig(monkeypatch):
     assert "DYLD_LIBRARY_PATH" not in env
 
 
+def test_child_env_strips_qt_plugin_paths(monkeypatch):
+    """Frozen M110 exports QT_PLUGIN_PATH / QML2_IMPORT_PATH into its own bundled Qt
+    (the PyInstaller PySide6 runtime hook). A launched tool that ships its own Qt —
+    Siril's PyQt6 scripts — must NOT inherit them, or two Qt sets load into one
+    process and it SIGABRTs (the 2026-07-18 Siril script crash)."""
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    frameworks = "/Applications/M110.app/Contents/Frameworks/PySide6/Qt"
+    monkeypatch.setenv("QT_PLUGIN_PATH", f"{frameworks}/plugins")
+    monkeypatch.setenv("QT_QPA_PLATFORM_PLUGIN_PATH", f"{frameworks}/plugins/platforms")
+    monkeypatch.setenv("QML2_IMPORT_PATH", f"{frameworks}/qml")
+    env = launch._child_env()
+    assert "QT_PLUGIN_PATH" not in env
+    assert "QT_QPA_PLATFORM_PLUGIN_PATH" not in env
+    assert "QML2_IMPORT_PATH" not in env
+
+
 def test_child_env_keeps_system_bin_when_not_venv(monkeypatch):
     """Outside a venv/frozen build we must NOT strip the interpreter's dir — it's
     a shared system bin the tool may need."""

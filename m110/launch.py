@@ -145,6 +145,20 @@ _PY_LEAK_VARS = (
 # originals in `<VAR>_ORIG`. Restore the original, else drop the bundle path.
 _LIBPATH_VARS = ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH")
 
+# Qt/QML discovery paths that point at *our* bundled Qt. When M110 is frozen, the
+# PyInstaller PySide6 runtime hook exports `QT_PLUGIN_PATH` / `QML2_IMPORT_PATH`
+# into the app's Frameworks. `open` forwards our env to the launched app, so a tool
+# that ships its **own** Qt — Siril's `sirilpy` scripts use PyQt6 — would then load
+# M110's Qt plugins (the cocoa platform plugin) *alongside* its own, pulling two
+# QtCore/QtGui frameworks into one process → "loading two sets of Qt binaries" →
+# SIGABRT (the 2026-07-18 Siril script crash). Drop them so the child uses its own
+# Qt. (`DYLD_LIBRARY_PATH`, which the same hook prepends our Frameworks to, is
+# already cleared via `_LIBPATH_VARS`.)
+_QT_LEAK_VARS = (
+    "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH",
+    "QML_IMPORT_PATH", "QML2_IMPORT_PATH",
+)
+
 
 def _strip_path_entry(env: dict, entry: str) -> None:
     """Remove one directory from the child's PATH (used to de-list our venv's
@@ -159,9 +173,11 @@ def _strip_path_entry(env: dict, entry: str) -> None:
 
 def _child_env() -> dict:
     """A copy of the environment with M110's own Python/venv + bundle internals
-    stripped, so an app we launch starts clean (see `_PY_LEAK_VARS`)."""
+    stripped, so an app we launch starts clean (see `_PY_LEAK_VARS`, `_QT_LEAK_VARS`)."""
     env = dict(os.environ)
     for var in _PY_LEAK_VARS:
+        env.pop(var, None)
+    for var in _QT_LEAK_VARS:
         env.pop(var, None)
     for var in _LIBPATH_VARS:
         orig = env.pop(var + "_ORIG", None)
