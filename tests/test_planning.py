@@ -86,3 +86,20 @@ def test_glow_floor_gates_observability(tmp_path):
                                   horizon_days=7, grid_days=7)["observable"] is True
     assert planning.observability("m51", day, site_glow,
                                   horizon_days=7, grid_days=7)["observable"] is False
+
+
+def test_zoneinfo_resolves_without_a_system_tzdb():
+    """Regression guard for issue #56 (Windows launch crash). Windows ships no system
+    tz database, so `zoneinfo` must fall back to the bundled `tzdata` package — which
+    means `tzdata` has to be a declared dependency (and bundled by the PyInstaller
+    specs). Simulate a system with no tz db by clearing the search path; both the UTC
+    anchor (`planning._UTC`, resolved at import) and a real site zone must still load."""
+    import zoneinfo
+    from zoneinfo import ZoneInfo
+    saved = list(zoneinfo.TZPATH)
+    try:
+        zoneinfo.reset_tzpath([])                 # emulate Windows: no /usr/share/zoneinfo
+        assert ZoneInfo("UTC") is not None        # the crash site (planning.py import)
+        assert ZoneInfo("America/Denver") is not None   # site-profile localization
+    finally:
+        zoneinfo.reset_tzpath(saved)              # restore for the rest of the session

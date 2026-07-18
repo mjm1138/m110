@@ -10,7 +10,7 @@ the sibling scripts + README) so the unsigned build stays fast to iterate on.
 """
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules  # noqa: F401
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # --- project layout -------------------------------------------------------
 # SPECPATH is provided by PyInstaller = the directory holding this spec.
@@ -43,11 +43,13 @@ SHORT_VERSION, FULL_VERSION = _versions()
 # Bundle the engine's package data (seed catalogs, guidance, fonts, brand,
 # publish templates). collect_data_files reads pyproject's package-data globs.
 datas = collect_data_files("m110")
+datas += collect_data_files("tzdata")       # IANA tz db — self-contained zoneinfo (#56)
 
 # astropy is handled by the local hook override in pyinstaller-hooks/ (the contrib
 # hook's blanket collect_submodules chokes on the matplotlib-requiring wcsaxes
 # module). Here we only name the non-astropy dynamic bits.
 hiddenimports = ["tifffile", "PIL"]
+hiddenimports += collect_submodules("tzdata")   # zoneinfo loads these region subpackages
 
 block_cipher = None
 

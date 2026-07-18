@@ -27,6 +27,11 @@ dependencies = [
     "packaging>=23",    # updates.py: PEP 440 release-tag comparison (previously an
                         # undeclared transitive — a clean venv would silently
                         # disable the update check)
+    "tzdata",           # IANA time-zone database for `zoneinfo` (planning uses site
+                        # timezones + a UTC anchor at import). Windows has NO system tz
+                        # db, so the frozen build crashed on launch without this bundled
+                        # (issue #56). Harmless everywhere else — zoneinfo searches the
+                        # OS db first and only falls back to this package.
     # macOS-only: lets the app-menu / dock show "M110" instead of "Python" when run
     # unbundled from source (patches NSBundle's CFBundleName). Optional at runtime.
     "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
