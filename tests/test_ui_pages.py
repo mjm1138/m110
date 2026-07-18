@@ -1218,6 +1218,67 @@ def test_planning_page_ranks_cached_contexts(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_planning_visible_tonight_toggle_filters(tmp_path, monkeypatch, qapp):
+    """The 'Visible tonight' toggle (default on) hides not-up targets and persists;
+    unchecking reveals the full ranking."""
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import prioritize
+    from m110.prioritize import TargetContext
+    up = {"observable": True, "hours_clear": 3.0, "transit_alt": 60.0,
+          "nights_to_close": 20, "season": "summer"}
+    out = {"observable": False, "hours_clear": 0.0, "transit_alt": 70.0,
+           "nights_to_close": None, "season": "winter"}
+    prioritize.write_contexts([TargetContext("m13", "globular", 0, True, up),
+                               TargetContext("m42", "emission", 0, True, out)])
+    from m110.ui.pages.planning import PlanningPage
+    from PySide6.QtWidgets import QTableWidget
+    page = PlanningPage()
+    try:
+        def ptable():
+            # The ranking table is rebuilt on each re-render (old one deleteLater'd
+            # but briefly still in the tree) — take the freshest 7-col table.
+            return [t for t in page.findChildren(QTableWidget)
+                    if t.columnCount() == 7][-1]          # #,Object,…,Closes
+
+        def slugs():
+            t = ptable()
+            return {t.item(r, 1).data(Qt.UserRole) for r in range(t.rowCount())}
+
+        assert page._visible_chk.isChecked()             # default on
+        assert slugs() == {"m13"}                         # out-of-season m42 hidden
+        page._visible_chk.setChecked(False)
+        qapp.processEvents()                              # flush the old table's deleteLater
+        assert prioritize.load_visible_tonight() is False
+        assert slugs() == {"m13", "m42"}                  # full ranking now
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_planning_type_weight_spin_persists(tmp_path, monkeypatch, qapp):
+    """Nudging a type-group spinbox persists a per-type multiplier the scorer reads."""
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import prioritize
+    from m110.prioritize import TargetContext
+    prioritize.write_contexts([TargetContext(
+        "m13", "globular", 0, True,
+        {"observable": True, "hours_clear": 3.0, "transit_alt": 60.0,
+         "nights_to_close": 20, "season": "summer"})])
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._type_spins["galaxy"].setValue(1.6)
+        w = prioritize.load_weights()
+        assert w.type_weights.get("galaxy") == pytest.approx(1.6)
+        assert prioritize.groups_from_type_weights(
+            w.type_weights)["galaxy"] == pytest.approx(1.6)
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_site_editor_computes_and_saves_glow(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     from m110 import glow, planning_config as pc

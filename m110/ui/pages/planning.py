@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt, QThread, QDate, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QComboBox,
     QTableWidget, QTableWidgetItem, QMenu, QFrame, QPushButton, QDoubleSpinBox,
-    QApplication, QDateEdit, QInputDialog, QMessageBox, QSpinBox,
+    QApplication, QDateEdit, QInputDialog, QMessageBox, QSpinBox, QCheckBox,
 )
 
 from m110 import catalog, pins, prioritize
@@ -79,6 +79,7 @@ class PlanningPage(QScrollArea):
         self._plan_meta = {}          # {window, moon, ceiling, day} of the current plan
         self._strategy = prioritize.load_strategy()
         self._weights = prioritize.load_weights()
+        self._visible_only = prioritize.load_visible_tonight()
 
         content = QWidget()
         lay = QVBoxLayout(content)
@@ -143,6 +144,13 @@ class PlanningPage(QScrollArea):
         self._strategy_combo.setCurrentIndex(i if i >= 0 else 0)
         self._strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
         row.addWidget(self._strategy_combo)
+        self._visible_chk = QCheckBox("Visible tonight")
+        self._visible_chk.setChecked(self._visible_only)
+        self._visible_chk.setToolTip(
+            "Show only targets that are actually up tonight from this site. Uncheck "
+            "to see the full ranking (e.g. to plan a future date).")
+        self._visible_chk.toggled.connect(self._on_visible_toggled)
+        row.addWidget(self._visible_chk)
         row.addStretch(1)
         self._status = QLabel("")
         self._status.setProperty("caption", True)
@@ -157,9 +165,10 @@ class PlanningPage(QScrollArea):
         # Factor-weight tuning (live re-rank; persisted).
         tune = CollapsibleSection("Tuning weights", expanded=False)
         self._weight_spins = {}
-        wrow = QHBoxLayout()
+        frow = QHBoxLayout()
+        frow.addWidget(QLabel("Factors:"))
         for label, key in _FACTOR_LABELS:
-            wrow.addWidget(QLabel(label))
+            frow.addWidget(QLabel(label))
             sp = QDoubleSpinBox()
             sp.setRange(0.0, 3.0)
             sp.setSingleStep(0.1)
@@ -167,9 +176,28 @@ class PlanningPage(QScrollArea):
             sp.setValue(getattr(self._weights, key))
             sp.valueChanged.connect(self._on_weight_changed)
             self._weight_spins[key] = sp
-            wrow.addWidget(sp)
-        wrow.addStretch(1)
-        tune.body.addLayout(wrow)
+            frow.addWidget(sp)
+        frow.addStretch(1)
+        tune.body.addLayout(frow)
+
+        # Per-type multipliers — boost galaxies/nebulae, damp clusters (1.0 = neutral).
+        groups = prioritize.groups_from_type_weights(self._weights.type_weights)
+        self._type_spins = {}
+        trow = QHBoxLayout()
+        trow.addWidget(QLabel("Object types:"))
+        for gid, label in prioritize.TYPE_GROUP_LABELS:
+            trow.addWidget(QLabel(label))
+            sp = QDoubleSpinBox()
+            sp.setRange(0.0, 3.0)
+            sp.setSingleStep(0.1)
+            sp.setDecimals(1)
+            sp.setValue(groups.get(gid, 1.0))
+            sp.setToolTip(f"Relative weight for {label.lower()} (1.0 = neutral).")
+            sp.valueChanged.connect(self._on_weight_changed)
+            self._type_spins[gid] = sp
+            trow.addWidget(sp)
+        trow.addStretch(1)
+        tune.body.addLayout(trow)
         body.addWidget(tune)
 
         self._ptable_holder = QVBoxLayout()
@@ -271,13 +299,9 @@ class PlanningPage(QScrollArea):
         scores = {r["slug"]: r["score"] for r in ranked}
         filters = {r["slug"]: prioritize.filter_for_type(r.get("type", ""))
                    for r in ranked}
-        # Deep-stack remaining minutes per target — caps a slot's duration when the
-        # target reaches deep-stack status sooner than the even split (#40 step 1).
-        from m110.build_derived import deep_threshold
-        deep_remaining = {c.slug: max(0.0, deep_threshold(c.obj_type) - c.integration_min)
-                          for c in contexts}
-        self._seq_args = {"scores": scores, "filters": filters,
-                          "deep_remaining": deep_remaining}
+        # Each chosen target runs its full slot (max integration; the sequencer no
+        # longer trims a primary to hit its deep-stack target — 2026-07-17).
+        self._seq_args = {"scores": scores, "filters": filters}
         self._excluded = set()
         qd = self._date.date()
         day = date(qd.year(), qd.month(), qd.day())
@@ -610,6 +634,16 @@ class PlanningPage(QScrollArea):
             self._ptable_holder.addWidget(hint)
             return
         rows = prioritize.rank(contexts, self._weights, self._strategy, pins.load())
+        total = len(rows)
+        if self._visible_only:
+            rows = prioritize.filter_visible_tonight(rows)
+        hidden = total - len(rows)
+        if self._visible_only and hidden:
+            cap = QLabel(f"{hidden} more target(s) not up tonight — uncheck "
+                         "“Visible tonight” to see the full ranking.")
+            cap.setProperty("caption", True)
+            cap.setWordWrap(True)
+            self._ptable_holder.addWidget(cap)
         try:
             lib = catalog.load_library()
         except Exception:
@@ -707,7 +741,14 @@ class PlanningPage(QScrollArea):
     def _on_weight_changed(self, *_):
         for key, sp in self._weight_spins.items():
             setattr(self._weights, key, sp.value())
+        self._weights.type_weights = prioritize.type_weights_from_groups(
+            {gid: sp.value() for gid, sp in self._type_spins.items()})
         prioritize.save_weights(self._weights)
+        self._render_ranking()
+
+    def _on_visible_toggled(self, on: bool):
+        self._visible_only = on
+        prioritize.save_visible_tonight(on)
         self._render_ranking()
 
     # ---- selector / editor wiring ----

@@ -191,6 +191,45 @@ Alongside the arc: **#40c** — a capture *target* is not a catalog *object*
 (`add_captured_objects` promotes a combined folder's **members**; store **v3→v4**
 prunes the synthetic pseudo-objects; Processing's first column renamed **Target**).
 
+## Later phase 1 — Session planning: **priority-list tuning** *(done 2026-07-17; `feature/prioritizer-tuning`)*
+
+A second tuning pass driven by planning a real night in the app (2026-07-17). Three
+independent complaints, three fixes — engine stays the source of truth, UI is thin:
+
+- **Out-of-season targets no longer clutter the priority list.** The scorer only
+  *softly* graded observability, and half of `tonight_score` came from the **season-blind
+  transit altitude** (`90 − |lat − dec|`, a geometric max that ignores whether that
+  transit happens in daylight). So an uncaptured winter Messier (M44 transits 70°… at 2 pm
+  in July) still banked ~0.5 tonight credit and, with goal=1.0 + a shallow-object
+  completion, planted itself in the top 20 (M44/M97/M3/M35/M36…). Fix chosen (over
+  re-scoring, to keep the full list usable for future-date planning): a **"Visible
+  tonight"** toggle on the Planning page (default on, persisted `planning_visible_tonight`)
+  that filters the rendered ranking via `prioritize.filter_visible_tonight` — hides
+  `observable is False`, **keeps** `None` (degraded / no-astropy) so a site-less ranking
+  isn't emptied. A caption reports the hidden count; unchecking shows the full ranking.
+- **The night sequencer now honors the Targets count.** Root cause of "always 7 targets,
+  some 10-min slots": `sequence_plan` ran `fill=True` and its `deep_remaining` cap trimmed
+  every near-deep primary to a stub, which `fill` then backfilled to dawn. Per the user's
+  call — *"overshoot a primary's integration rather than cut it to free 30 min for
+  something marginal"* — the **deep-stack duration cap was removed** (each of the N chosen
+  objects runs its full `base = span ÷ count` slot, capped only by its own up-window and
+  dawn), a **`MIN_SLOT_MIN = 30`** floor **drops** any sub-30 slot instead of scheduling a
+  stub (and floors `base`), and `fill` is retained so early-*setting* targets still don't
+  strand the back half of the night. `count` now genuinely sizes the plan (count=2 → ~2–3
+  long slots; count=7 → ~30–40 min each). `deep_remaining` removed from the engine
+  signature + the UI caller.
+- **Per-type weight controls.** `Weights.type_weights` (a per-type score multiplier) had
+  been applied by the scorer since Checkpoint A but had no UI. Added **`TYPE_GROUPS`** +
+  `type_weights_from_groups`/`groups_from_type_weights` (Galaxies / Globular / Open
+  clusters / Nebulae → underlying catalog types; Nebulae = emission/planetary/reflection/
+  dark/SNR), surfaced as four spinboxes in Planning → *Tuning weights* alongside the factor
+  weights — boost galaxies/nebulae, damp clusters to break up a cluster-heavy Messier.
+  Neutral (1.0) groups aren't stored, so a fresh install's weights stay empty.
+
+Tests: `test_planning_night` (overshoot, min-slot drop, fill-after-setters rewritten off
+the removed deep-cap), `test_prioritize` (visible filter, group↔type-weight round-trip,
+type-weight lift), `test_ui_pages` (toggle filters + persists, type spin persists).
+
 ## Later phase 5 — Library, catalogs & goals *(done; catalog library still growing)*
 
 5. **Library, catalogs & goals — multi-list tracking + arbitrary objects.**
