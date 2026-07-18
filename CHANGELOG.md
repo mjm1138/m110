@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.3] - 2026-07-17
+
 ### Added
 - **Process in Siril, in one click.** Right-click an object (or use the button on its
   detail page, or right-click a row on the Processing page) → **Process in Siril** and
