@@ -10,6 +10,17 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **Session planning works in the installed app again.** In the packaged builds (macOS,
+  Windows, and Linux), the whole Planning pane was quietly broken: **"Plan a night"**
+  always reported *"No astronomical darkness for that night here"* even in the middle of
+  summer, and **Recompute** finished almost instantly and produced only a generic ranking
+  (no season/tonight information, nothing hidden as "not up tonight"). The cause was that
+  the astronomy library M110 uses (astropy) wasn't being bundled completely — one of the
+  physical-constants modules it loads on demand was left out, so every sky calculation
+  failed silently. All of astropy is now bundled, and planning computes real twilight,
+  moon, and observability again. (Running from source was never affected.)
+
 ## [0.2.0-beta.4] - 2026-07-18
 
 ### Fixed
