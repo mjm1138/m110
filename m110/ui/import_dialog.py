@@ -161,7 +161,8 @@ class ImportDialog(QDialog):
             self.table.setItem(r, 0, chk)
             self.table.setItem(r, 1, QTableWidgetItem(it.name))
             tier = "finished/" if it.kind == "render" else "stacks/"
-            self.table.setItem(r, 2, QTableWidgetItem(tier))
+            self.table.setItem(r, 2, QTableWidgetItem(
+                f"{tier}  ({it.note})" if it.note else tier))
             self.table.setItem(r, 3, QTableWidgetItem(_fmt_size(it.size_bytes)))
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)

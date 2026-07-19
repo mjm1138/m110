@@ -515,6 +515,23 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Import silently skipped (then archived) a re-processed same-name file** *(2026-07-18,
+  `feature/import-collision-policy`)*. *Import finished work* routed a finished `.png`/stack
+  to `finished/`/`stacks/` and, on a name collision, did `if dest.exists(): skipped` — the
+  incoming file was **not** imported, and the default `cleanup="archive"` then swept it into
+  `siril/[<FILTER>/]archive/<ts>/`. So a re-processed, *improved* render saved under the same
+  name appeared to vanish (it was moved, never discarded — but out of `finished/` and out of
+  the sandbox root). Fix: **content-aware keep-both** (`_resolve_import_dest` + `_same_bytes`):
+  a byte-identical incoming file is a true duplicate → skip (no pile-up; dedupes against every
+  existing `<stem>-N` sibling), a **different** one lands as the first free `<stem>-N<ext>` so
+  both are kept. `has_unimported_output` now uses the same disposition (a differing same-name
+  file counts as unimported, so the Processing "Ready to import" flag fires); `scan_finished`
+  marks only true duplicates `already` (a re-process is checked by default) and carries a
+  `note` ("kept as M42-2.png") the import dialog shows; **hero pinning follows the name the
+  render actually landed under** (a renamed hero would otherwise point at a missing file).
+  Deliberately not `filecmp.cmp` — its stat-signature cache can return a stale verdict when a
+  same-size file is rewritten within the mtime resolution. Never clobbers, matching the store's
+  non-destructive ethos.
 - [x] **"Enrich online" dead in packaged builds — astroquery never bundled** *(2026-07-19,
   `fix/bundle-astroquery-online`; issue #64, reported by @devonjones on Windows 0.2.0-beta.4)*.
   Right-click → **Enrich online** (or Add object → **Look up online**) in a packaged build

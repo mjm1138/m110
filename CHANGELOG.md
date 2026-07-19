@@ -13,6 +13,13 @@ changes a **user** would notice, per release.
 ## [0.2.0-beta.5] - 2026-07-19
 
 ### Fixed
+- **A re-processed image with the same filename is no longer silently lost on import.**
+  When you *Import finished work* and a file has the **same name** as one already in
+  `finished/` (or `stacks/`), M110 used to skip it — and then the cleanup step swept your
+  new version into the sandbox's `archive/` folder, so an improved re-process could seem to
+  vanish. Now: if the incoming file is **identical** it's skipped (a true duplicate), but if
+  it's **different** it's imported alongside the old one under a numbered name (e.g.
+  `M42-2.png`), so nothing is lost. The import preview shows exactly what will happen.
 - **"Enrich online" and "Look up online" now work in the installed app.** These
   Simbad lookups (fill in an object's type/magnitude/size/coordinates, or look up a new
   object you're adding) depend on a library (astroquery) that the packaged builds weren't

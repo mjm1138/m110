@@ -406,10 +406,11 @@ class FinishedItem:
     src: str
     name: str
     kind: str            # "render" (→finished/) | "stack" (→stacks/)
-    dest: str
+    dest: str            # base destination (finished/<name> | stacks/<name>)
     size_bytes: int
     default: bool        # pre-checked in the UI
-    already: bool        # already present at dest
+    already: bool        # a byte-identical copy is already imported → will skip
+    note: str = ""       # UI hint, e.g. "kept as M42-2.png" for a re-processed name
 
 
 @dataclass
@@ -490,11 +491,56 @@ def _finished_outputs(target: str):
     yield from _root_outputs(target)
 
 
+def _same_bytes(a: Path, b: Path, chunk: int = 1 << 16) -> bool:
+    """True if two files have identical content. Size-checks first (a fast reject),
+    then compares chunk-by-chunk with an early exit. Deliberately **not** ``filecmp.cmp``,
+    whose stat-signature cache can return a stale verdict when a same-size file is
+    rewritten within the mtime resolution. Any OS error → ``False`` (treat as different)."""
+    try:
+        if a.stat().st_size != b.stat().st_size:
+            return False
+        with a.open("rb") as fa, b.open("rb") as fb:
+            while True:
+                ca, cb = fa.read(chunk), fb.read(chunk)
+                if ca != cb:
+                    return False
+                if not ca:
+                    return True
+    except OSError:
+        return False
+
+
+def _resolve_import_dest(dest: Path, src: Path) -> tuple[Path, str]:
+    """Where an incoming finished file should land — **keeping both** on a *content*
+    collision rather than clobbering or silently skipping. Returns ``(path, disposition)``:
+
+    * ``(dest, "new")``        — nothing at ``dest`` yet; copy there.
+    * ``(match, "duplicate")`` — ``src`` is byte-identical to ``dest`` (or an existing
+      ``<stem>-N`` sibling); it's already imported → skip (``match`` is the existing copy).
+    * ``(free, "renamed")``    — ``dest`` (and any same-named siblings) exist with
+      **different** bytes → copy to the first free ``<stem>-N<ext>`` so a re-processed
+      render is preserved alongside the old one instead of vanishing into the archive.
+
+    Dedupes against **every** ``<stem>-N`` sibling, so re-running an import doesn't pile
+    up ``-2``/``-3`` copies of an already-imported file. Pure read-only (no writes)."""
+    if not dest.exists():
+        return dest, "new"
+    stem, ext = dest.stem, dest.suffix
+    cand, n = dest, 1
+    while cand.exists():
+        if _same_bytes(src, cand):
+            return cand, "duplicate"
+        n += 1
+        cand = dest.with_name(f"{stem}-{n}{ext}")
+    return cand, "renamed"
+
+
 def has_unimported_output(target: str) -> bool:
-    """True if there's a finished output (in the sandbox or loose in the object
-    dir) not already in finished/stacks."""
+    """True if there's a finished output (in the sandbox or loose in the object dir)
+    not yet imported — including a **re-processed file with an existing name but new
+    content** (a plain `dest.exists()` check would miss that, the collision footgun)."""
     for p, _kind, dest in _finished_outputs(target):
-        if not dest.exists():
+        if _resolve_import_dest(dest, p)[1] != "duplicate":
             return True
     return False
 
@@ -507,14 +553,18 @@ def scan_finished(target: str, should_cancel=None) -> ImportPlan:
     for p, kind, dest in sorted(_finished_outputs(target), key=lambda t: str(t[0])):
         if should_cancel and should_cancel():
             raise PrepCancelled()
-        already = dest.exists()
+        resolved, disp = _resolve_import_dest(dest, p)
+        already = disp == "duplicate"          # a byte-identical copy already imported
         try:
             size = p.stat().st_size
         except OSError:
             size = 0
+        # A re-processed file with an existing name but new content imports under a
+        # `<stem>-N` name (both kept) — surface that in the preview so it's not a surprise.
+        note = f"kept as {resolved.name}" if disp == "renamed" else ""
         items.append(FinishedItem(
             src=str(p), name=p.name, kind=kind, dest=str(dest),
-            size_bytes=size, default=not already, already=already))
+            size_bytes=size, default=not already, already=already, note=note))
         if kind == "render":
             heroes.append(str(p))
     return ImportPlan(target=target, items=items, hero_candidates=heroes)
@@ -542,17 +592,24 @@ def apply_import(target: str, selected_srcs, hero_src: str | None = None,
     chosen = [it for it in plan.items if it.src in selected]
     imported = skipped = 0
     cancelled = False
+    hero_name = None
     for i, it in enumerate(chosen, 1):
         if should_cancel and should_cancel():
             cancelled = True
             break
-        dest = Path(it.dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
+        base_dest = Path(it.dest)
+        base_dest.parent.mkdir(parents=True, exist_ok=True)
+        # Resolve live (the filesystem may have changed since scan; sequential copies
+        # in this loop also update it): identical → skip, different name-collision →
+        # land as `<stem>-N` so both are kept.
+        final, disp = _resolve_import_dest(base_dest, Path(it.src))
+        if disp == "duplicate":
             skipped += 1
         else:
-            shutil.copyfile(it.src, dest)   # bytes only (mirrors ingest)
+            shutil.copyfile(it.src, final)   # bytes only (mirrors ingest)
             imported += 1
+        if hero_src and it.src == hero_src:
+            hero_name = final.name           # the name it ACTUALLY landed under (#)
         if progress:
             progress(i, len(chosen))
 
@@ -560,11 +617,13 @@ def apply_import(target: str, selected_srcs, hero_src: str | None = None,
         return {"imported": imported, "skipped": skipped,
                 "cleaned": "none", "cancelled": True}
 
-    # Hero: the chosen render now lives in finished/ — pin it by filename
-    # (build_images._hero_source matches frontmatter `hero` to the image name).
-    # hero_src=None → leave the current hero as-is ("keep current").
+    # Hero: the chosen render now lives in finished/ — pin it by the filename it
+    # actually landed under (build_images._hero_source matches frontmatter `hero` to
+    # the image name; a re-processed render can land as `<stem>-N`, so we can't just
+    # use the source name). hero_src=None → leave the current hero ("keep current").
     if hero_src and hero_slug:
-        objects.set_frontmatter_key(hero_slug, "hero", Path(hero_src).name)
+        objects.set_frontmatter_key(
+            hero_slug, "hero", hero_name or Path(hero_src).name)
 
     cleaned = _archive_run(target) if cleanup == "archive" else "none"
     return {"imported": imported, "skipped": skipped,
