@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.5] - 2026-07-19
+
 ### Fixed
 - **"Enrich online" and "Look up online" now work in the installed app.** These
   Simbad lookups (fill in an object's type/magnitude/size/coordinates, or look up a new
