@@ -532,6 +532,49 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
   `FOCUSPOS`. `mount_mode` is display-only (Sessions table + publish templates), so no logic
   changed. Sibling `pre_new_start` (`NEW_START = 2026-04-04`) is still a store-specific
   guess — noted, not fixed (it's a collection-reset marker, not a header fact).
+- [x] **Planning fails loudly, not silently, when astropy can't load** *(2026-07-18,
+  `fix/planning-astropy-diagnostics`)*. Follow-up to the packaged-build astropy breakage:
+  the reason that bug was invisible for so long is that the engine **swallowed** every
+  astropy failure with no signal. `prioritize.build_contexts` caught each per-target
+  `observability()` exception into `obs=None` and returned a quietly degraded ranking; the
+  planner worker caught `plan_night`'s exception into `plan=None`, and the UI rendered that
+  as *"No astronomical darkness for that night here"* — misreporting an engine failure as
+  an astronomical fact. Now: (a) `build_contexts` logs one WARNING (with the first
+  traceback) when observability fails for any target, and `_PlannerWorker` logs the
+  `plan_night` traceback — so the real error (`ModuleNotFoundError: astropy.constants.
+  codata2018`, or anything else) lands in `~/.m110/logs/m110.log` and the crash report; (b)
+  the Planning page distinguishes **`plan is None`** (engine unavailable → "the astronomy
+  engine isn't available") from a real plan with an **empty window** (genuine no-astro-dark
+  night → keeps the darkness message); (c) Recompute's status says "ranking degraded —
+  astronomy engine unavailable" when no target got an observability result, instead of the
+  reassuring "up to date". Engine stays Qt-free (stdlib `logging`). Tests: a raising
+  `observability_fn` still returns contexts + logs the warning; the planner-ready handler's
+  two branches produce distinct messages; the degraded-status path.
+- [x] **Session planning dead in every packaged build (astropy dynamic submodules missing)**
+  *(2026-07-18, `fix/packaging-astropy-dynamic-submodules`; reported on 0.2.0-beta.4 macOS)*.
+  In the **frozen** app (all three platforms), the entire Planning pane was silently broken:
+  **Recompute** returned in <0.1 s with a degraded goal+completion ranking (every target's
+  `obs=None` — verified in the live `derived/prioritized.json`), and **Plan a night** always
+  reported *"No astronomical darkness for that night here."* Root cause: the local
+  `packaging/common/pyinstaller-hooks/hook-astropy.py` override had replaced the upstream
+  hook's `collect_submodules("astropy")` with **four explicit `hiddenimports`**, which left
+  out astropy's **dynamically-imported** submodules — the load-bearing one being
+  `astropy.constants.codata2018`, which `astropy.constants.config` pulls via
+  `importlib.import_module()` (invisible to static analysis). So in the bundle every
+  `import astropy.units`/`astropy.coordinates` raised `ModuleNotFoundError: No module named
+  'astropy.constants.codata2018'` — swallowed per-target by `prioritize.build_contexts`
+  (`except Exception: obs = None`) and caught by the planner worker (→ the misleading "no
+  darkness" message). The override existed because the upstream blanket
+  `collect_submodules("astropy")` imports `astropy.visualization.wcsaxes`, whose
+  `pytest.importorskip("matplotlib")` raises pytest's `Skipped` (a `BaseException`) and
+  aborts the build. Fix: `collect_submodules("astropy", filter=<exclude
+  astropy.visualization>)` — collects all the dynamic submodules (verified: 921 modules incl.
+  `codata2018`/`iau2015`/`codata2022`) while the filter stops the walker from importing the
+  matplotlib-requiring subtree, so the build no longer chokes. Diagnosed by extracting the
+  app's `PYZ.pyz` and reproducing the frozen import (`ModuleNotFoundError` on `codata2018`),
+  then confirming end-to-end that supplying the missing constants modules restores the
+  sun/moon transforms. Bundle-only (running from source was never affected); the shared hook
+  fixes macOS/Linux/Windows at once. **Requires a rebuild to reach users.**
 
 - [x] **Siril script crash from a packaged launch (two Qt sets in one process)** *(2026-07-18,
   `fix/siril-qt-env-leak`; reported on 0.2.0-beta.3 macOS)*. "Process in Siril" from the
