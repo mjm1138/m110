@@ -46,7 +46,10 @@ online = ["astroquery>=0.4"]
 publish = ["jinja2>=3", "markdown>=3"]
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3"]  # astroquery also build-time (tools/gen_caldwell.py)
 # Packaging the desktop app into native bundles/installers (see packaging/).
-build = ["pyinstaller>=6.6"]        # packaging moved to core deps (updates.py uses it)
+# Pulls in `online` (astroquery) so the packaged app bundles Simbad enrichment — a
+# frozen build has no pip, so an app user can't add the extra themselves (issue #64).
+# Source installs stay lean: `online` remains opt-in for `pip install m110`.
+build = ["pyinstaller>=6.6", "m110[online]"]
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"
