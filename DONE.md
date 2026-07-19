@@ -515,6 +515,25 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Planning fails loudly, not silently, when astropy can't load** *(2026-07-18,
+  `fix/planning-astropy-diagnostics`)*. Follow-up to the packaged-build astropy breakage:
+  the reason that bug was invisible for so long is that the engine **swallowed** every
+  astropy failure with no signal. `prioritize.build_contexts` caught each per-target
+  `observability()` exception into `obs=None` and returned a quietly degraded ranking; the
+  planner worker caught `plan_night`'s exception into `plan=None`, and the UI rendered that
+  as *"No astronomical darkness for that night here"* — misreporting an engine failure as
+  an astronomical fact. Now: (a) `build_contexts` logs one WARNING (with the first
+  traceback) when observability fails for any target, and `_PlannerWorker` logs the
+  `plan_night` traceback — so the real error (`ModuleNotFoundError: astropy.constants.
+  codata2018`, or anything else) lands in `~/.m110/logs/m110.log` and the crash report; (b)
+  the Planning page distinguishes **`plan is None`** (engine unavailable → "the astronomy
+  engine isn't available") from a real plan with an **empty window** (genuine no-astro-dark
+  night → keeps the darkness message); (c) Recompute's status says "ranking degraded —
+  astronomy engine unavailable" when no target got an observability result, instead of the
+  reassuring "up to date". Engine stays Qt-free (stdlib `logging`). Tests: a raising
+  `observability_fn` still returns contexts + logs the warning; the planner-ready handler's
+  two branches produce distinct messages; the degraded-status path.
+
 - [x] **Siril script crash from a packaged launch (two Qt sets in one process)** *(2026-07-18,
   `fix/siril-qt-env-leak`; reported on 0.2.0-beta.3 macOS)*. "Process in Siril" from the
   **frozen** M110.app made Siril's `sirilpy` (PyQt6) scripts SIGABRT at startup: objc

@@ -10,6 +10,15 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **Planning tells you the truth when it can't run.** If the astronomy calculations fail
+  to start, *"Plan a night"* now says the astronomy engine isn't available (and records the
+  details in the log for a problem report) instead of the misleading *"No astronomical
+  darkness for that night here"* — which now appears only when it's actually true (a
+  high-latitude summer night with no real darkness). The priority-ranking status likewise
+  says when it's running in a **degraded** mode rather than reporting "up to date". This
+  makes a broken-astronomy situation obvious instead of silent.
+
 ## [0.2.0-beta.4] - 2026-07-18
 
 ### Fixed
