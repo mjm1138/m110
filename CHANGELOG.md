@@ -10,6 +10,13 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **Unavailable right-click menu options now look disabled instead of dead.** When a
+  menu entry doesn't apply — e.g. **Fill in missing metadata** / **Enrich online** on an
+  object that already has complete details — it's now clearly greyed out, rather than
+  looking normal but doing nothing when clicked. (A styling gap meant disabled items in
+  M110's menus kept full-strength text; they're now dimmed like disabled buttons.)
+
 ## [0.2.0-beta.5] - 2026-07-19
 
 ### Fixed

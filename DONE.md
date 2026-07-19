@@ -515,6 +515,23 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Disabled menu items didn't look disabled** *(2026-07-19,
+  `fix/menu-disabled-items-greyed`; #64 follow-up)*. A beta user found the Library
+  right-click **Fill in missing metadata** / **Enrich online** items "non-functional" —
+  they weren't recognized as *greyed out*, just as dead (no hover highlight, no response).
+  Root cause: the theme QSS styles `QMenu::item` (padding + `:selected`), and once a
+  subcontrol is stylesheet-drawn Qt stops auto-greying its **disabled** state — so a
+  disabled entry rendered at full-strength text. Buttons already had the fix
+  (`QPushButton:disabled { color: text_disabled }`); menus never got the equivalent. Fix:
+  add `QMenu::item:disabled { color: text_disabled }` — app-wide, every menu. Kept the
+  data-gating (Fill/Enrich are correctly disabled when an object has no fillable gaps —
+  most catalog objects carry full reference metadata) rather than the earlier
+  always-selectable-then-modal approach (rejected: a modal to dismiss per complete object).
+  Extracted `_object_menu` (build menu + actions, no `exec`) from `_on_context_menu` so the
+  enabled state is testable headless — PySide6's `QMenu.exec` can't be monkeypatched (it
+  blocks). Guarded by `test_disabled_menu_items_are_greyed` (asserts the QSS rule, per the
+  can't-paint-native-menus-offscreen gotcha) + `test_context_menu_fill_enrich_reflect_gaps`.
+
 - [x] **Import silently skipped (then archived) a re-processed same-name file** *(2026-07-18,
   `feature/import-collision-policy`)*. *Import finished work* routed a finished `.png`/stack
   to `finished/`/`stacks/` and, on a name collision, did `if dest.exists(): skipped` — the
