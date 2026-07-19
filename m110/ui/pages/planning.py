@@ -58,6 +58,11 @@ class _PlannerWorker(QThread):
             from m110 import planning
             plan = planning.plan_night(site, day, slugs, scores=scores, filters=filters)
         except Exception:
+            # Log the traceback so an engine failure (most often astropy not loading)
+            # is diagnosable — the UI reports it truthfully rather than as "no darkness".
+            import logging
+            logging.getLogger("m110").warning(
+                "plan_night failed — session plan unavailable", exc_info=True)
             plan = None
         self.done.emit(plan)
 
@@ -314,7 +319,21 @@ class PlanningPage(QScrollArea):
 
     def _on_plan_ready(self, plan):
         self._planner = None
-        if not plan or not (plan.get("window") or (None, None))[0]:
+        if plan is None:
+            # The worker hit an exception (most often astropy failing to load), NOT a
+            # genuine "no astronomical darkness" — don't misreport an engine failure as
+            # an astronomical fact. The traceback is in the log (Help → Report a problem).
+            self._plan_status.setText(
+                "Couldn't compute a plan — the astronomy engine isn't available. "
+                "See Help → Report a problem for details.")
+            self._entries = []
+            self._included = set()
+            self._slots = []
+            self._render_plan()
+            return
+        if not (plan.get("window") or (None, None))[0]:
+            # A real plan came back but the night has no astronomical darkness
+            # (high-latitude summer) — this message is the truthful one here.
             self._plan_status.setText("No astronomical darkness for that night here.")
             self._entries = []
             self._included = set()
@@ -694,7 +713,13 @@ class PlanningPage(QScrollArea):
     def _on_worker_done(self):
         self._worker = None
         self._recompute_btn.setEnabled(True)
-        self._status.setText("ranking up to date")
+        contexts = prioritize.load_contexts()
+        if contexts and all(c.obs is None for c in contexts):
+            # Not one target got an observability result — the astronomy engine is
+            # unavailable. Say so plainly; "up to date" would read as everything's fine.
+            self._status.setText("ranking degraded — astronomy engine unavailable")
+        else:
+            self._status.setText("ranking up to date")
         self._render_ranking()
 
     def _stop_worker(self):

@@ -39,10 +39,13 @@ and a "tune with the user against real data" follow-up.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date
 
 from .build_derived import DEEP_STACK_MIN, deep_threshold
+
+_log = logging.getLogger("m110")
 
 # ── strategy + calibration defaults ────────────────────────────────────────────
 STRATEGY_CAPTURE = "capture"     # breadth — favour new / under-threshold targets
@@ -409,8 +412,15 @@ def build_contexts(*, day: date | None = None, site=None,
                 from . import planning_config
                 site = planning_config.load_active_site()
         except Exception:
+            # planning/astropy or the site profile couldn't load — the ranking will
+            # degrade to goal+completion+pins. Log it (with the traceback) so this
+            # isn't a silent, unexplained downgrade of the whole Planning feature.
+            _log.warning("prioritizer: planning engine or site profile unavailable — "
+                         "ranking without season/tonight factors", exc_info=True)
             obs_fn = None
 
+    obs_errors = 0
+    first_obs_error: Exception | None = None
     contexts = []
     for slug in slugs:
         entry = lib.get(slug) or {}
@@ -430,13 +440,25 @@ def build_contexts(*, day: date | None = None, site=None,
             ra, dec = coords[slug]
             try:
                 obs = obs_fn((ra, dec), day, site, filter=filter_for_type(obj_type))
-            except Exception:
+            except Exception as exc:
                 obs = None
+                obs_errors += 1
+                if first_obs_error is None:
+                    first_obs_error = exc
         contexts.append(TargetContext(
             slug=slug, obj_type=obj_type,
             integration_min=_integration(slug),
             in_active_goal=slug in active_members, obs=obs,
             magnitude=magnitude, size=size))
+    if obs_errors:
+        # Every observability call throwing almost always means astropy failed to
+        # import (e.g. an incompletely-bundled build). Surface it once, with the
+        # first traceback, instead of returning a quietly degraded ranking — this is
+        # exactly what hid the packaged-build astropy breakage. See planning.observability.
+        _log.warning("prioritizer: observability failed for %d/%d target(s) — ranking "
+                     "degraded (no season/tonight factors); this usually means the "
+                     "astronomy engine (astropy) could not be loaded. First error: %r",
+                     obs_errors, len(slugs), first_obs_error, exc_info=first_obs_error)
     return contexts
 
 

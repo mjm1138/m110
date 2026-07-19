@@ -1218,6 +1218,49 @@ def test_planning_page_ranks_cached_contexts(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_planning_plan_ready_distinguishes_engine_failure_from_no_dark(
+        tmp_path, monkeypatch, qapp):
+    """A planner-worker failure (plan is None — e.g. astropy didn't load) must read as
+    an engine problem, NOT as 'no astronomical darkness' (that misreports a bug as an
+    astronomical fact). A real plan with an empty window is the genuine no-dark case
+    and keeps that message."""
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._on_plan_ready(None)                      # worker raised (engine failure)
+        s1 = page._plan_status.text().lower()
+        assert "astronomy engine" in s1 and "darkness" not in s1
+        assert page._entries == [] and page._slots == []
+
+        page._on_plan_ready({"window": (None, None), "moon": {}, "entries": []})
+        assert "no astronomical darkness" in page._plan_status.text().lower()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_planning_recompute_status_flags_degraded_ranking(tmp_path, monkeypatch, qapp):
+    """When cached contexts have no observability at all (astropy unavailable), the
+    Recompute status says the ranking is degraded rather than the reassuring 'up to
+    date'."""
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import prioritize
+    from m110.prioritize import TargetContext
+    prioritize.write_contexts([TargetContext("m13", "globular", 0, True, None),
+                               TargetContext("m81", "galaxy", 0, True, None)])
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._on_worker_done()
+        assert "degraded" in page._status.text().lower()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_planning_visible_tonight_toggle_filters(tmp_path, monkeypatch, qapp):
     """The 'Visible tonight' toggle (default on) hides not-up targets and persists;
     unchecking reveals the full ranking."""

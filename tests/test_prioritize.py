@@ -298,6 +298,35 @@ def test_build_contexts_carries_feasibility_inputs(tmp_path, monkeypatch):
     assert got["m40"].magnitude == m40.magnitude and got["m40"].size == m40.size
 
 
+def test_build_contexts_logs_when_observability_fails(tmp_path, monkeypatch, caplog):
+    """If every observability call raises (the packaged-build astropy breakage — an
+    incompletely-bundled astropy makes each transform throw), build_contexts must
+    still return contexts with obs=None (degraded ranking, not dropped targets) AND
+    log a warning carrying the first error — so the failure isn't silent."""
+    import logging
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)          # empty Library, Messier goal active
+
+    def boom(*a, **k):
+        raise ModuleNotFoundError("No module named 'astropy.constants.codata2018'")
+
+    # The m110 logger stops propagating once logsetup.setup_logging() has run (which
+    # another test in the suite may have done), so attach caplog's handler directly —
+    # otherwise capture is order-dependent.
+    m110_log = logging.getLogger("m110")
+    m110_log.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="m110")
+    try:
+        contexts = pr.build_contexts(observability_fn=boom, site=object())
+    finally:
+        m110_log.removeHandler(caplog.handler)
+    assert contexts, "targets should still be scored (degraded), not dropped"
+    assert all(c.obs is None for c in contexts)
+    msg = " ".join(r.getMessage() for r in caplog.records)
+    assert "observability failed" in msg
+    assert "codata2018" in msg                # the first error's repr is surfaced
+
+
 # ── visible-tonight filter (BUGS: out-of-season targets in the priority list) ───
 
 def test_filter_visible_tonight_hides_only_explicit_false():
