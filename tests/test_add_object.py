@@ -137,3 +137,26 @@ def test_online_graceful_without_astroquery(monkeypatch):
     monkeypatch.setitem(sys.modules, "astroquery.simbad", None)
     with pytest.raises(catalog.OnlineLookupError):
         catalog.resolve_object_online(["NGC 6992"])
+
+
+def test_astroquery_missing_message_is_build_aware(monkeypatch):
+    """A frozen app has no pip, so the 'astroquery missing' message must NOT tell the
+    user to `pip install` there (issue #64) — packaged builds bundle it, so its absence
+    is a report-worthy build defect. From source, the extra is the real fix."""
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    frozen_msg = catalog._astroquery_missing_message()
+    assert "pip install" not in frozen_msg
+    assert "report" in frozen_msg.lower()
+
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    source_msg = catalog._astroquery_missing_message()
+    assert "pip install 'm110[online]'" in source_msg
+
+
+def test_online_error_message_follows_frozen_state(monkeypatch):
+    """The raised OnlineLookupError carries the build-aware message end-to-end."""
+    monkeypatch.setitem(sys.modules, "astroquery.simbad", None)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    with pytest.raises(catalog.OnlineLookupError) as ei:
+        catalog.resolve_object_online(["NGC 6992"])
+    assert "pip install" not in str(ei.value)

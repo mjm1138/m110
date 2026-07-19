@@ -14,7 +14,7 @@ AppImage runs on newer distros too).
 """
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 # SPECPATH = the directory holding this spec (packaging/linux).
 ROOT = Path(SPECPATH).resolve().parents[1]                       # repo root
@@ -25,6 +25,19 @@ datas = collect_data_files("m110")          # engine package data (seed, guidanc
 datas += collect_data_files("tzdata")       # IANA tz db — bundle so zoneinfo is self-contained (#56)
 hiddenimports = ["tifffile", "PIL"]         # astropy handled by the shared hook override
 hiddenimports += collect_submodules("tzdata")   # zoneinfo loads these region subpackages
+
+# Online enrichment (Simbad via astroquery) — bundled so packaged users get "Enrich
+# online" / "Look up online" (issue #64). The source `online` extra stays opt-in; the
+# `build` extra pulls it in for builds. No PyInstaller-contrib hooks exist for these and
+# they load submodules/data dynamically (keyring's backends via entry points, astroquery's
+# per-service modules), so collect them explicitly — the hook-astropy lesson: name the
+# package, collect its submodules; don't hand-pick. certifi/urllib3/charset_normalizer
+# carry their own contrib hooks; requests/bs4/html5lib are static-import only.
+for _pkg in ("astroquery", "pyvo", "keyring"):
+    hiddenimports += collect_submodules(_pkg)
+    datas += collect_data_files(_pkg, excludes=["**/tests/**", "**/test/**"])
+datas += copy_metadata("astroquery")            # version / entry points
+datas += copy_metadata("keyring")               # keyring finds its backends via entry points
 
 block_cipher = None
 
