@@ -163,6 +163,60 @@ Legend: `[ ]` open · `[~]` partially done
   folds into a combined one. *(Superseded in framing by #40c — see there: the queue showing one
   row per capture **target** is correct; the real defect is upstream.)*
 
+## Session analytics / capture diagnostics
+
+- [ ] **#45 — Per-session capture diagnostics (why is rejection high?).** Analyse an
+  incoming session's sub timestamps to explain the yield the app already shows. Grounded in
+  a read-only proof of concept over real data (4,799 subs parsed in ~20 ms) + the
+  2026-07-18 discussion; corrected framing below (an earlier draft had two facts wrong).
+
+  **The signal is nearly free.** `scan_sessions` already parses the Seestar filename's
+  `…-<YYYYMMDD>-<HHMMSS>.fit` and *discards the time*. Keeping it gives per-sub timestamps
+  with zero new I/O for Seestar; the Dwarf/header path already reads `DATE-OBS`.
+
+  **Two acceptance gates, not one** — name them distinctly:
+  1. **Capture gate** — the Seestar/Dwarf reject frames *in real time* and **don't save
+     them** ("Save Every Frame" does **not** save the rejected ones — community-confirmed).
+     So gaps in the *saved* cadence are the real-time-drop signal, and **number-of-saved-FITS
+     vs altitude/declination is a valid metric** (a community experiment used exactly this).
+     This is the altitude-sensitive gate and the one M110 doesn't measure yet.
+  2. **Stack gate** — `STACKCNT`/`LIVETIME` rejection at integration. **Already computed**
+     by `build_processing`.
+     The prize is the **loss ledger** joining both: `expected (cadence×window) → saved
+     (capture gate) → stacked (stack gate)`.
+
+  **Metrics (Tier 1, cheap, filename-only for Seestar):** first/last light; real cadence &
+  per-frame overhead (median inter-frame Δ − exposure); **capture acceptance = saved ÷
+  expected**; duty cycle (integration ÷ wall-clock span); gap-size histogram (**small
+  single-frame drops** = per-frame quality rejection, attributable to a precise altitude;
+  **large gaps** = interruptions — meridian/azimuth flip, refocus, clouds — *not* per-frame
+  rejections); contiguous capture blocks; largest-gap clock times.
+
+  **Altitude / declination correlation (Tier 2, astropy, lazy):** for each *saved* sub we
+  know its exact altitude (timestamp + coords + observer), so compute **acceptance per
+  altitude band** directly — no need to guess a dropped frame's time (that earlier
+  "can't know the altitude of a rejected frame" claim was wrong: the gap is bounded by the
+  saved frames on either side and altitude varies <~0.25°/min, so drops *are* attributable
+  to well within any band). **Self-contained on Seestar** — its header carries `SITELAT`/
+  `SITELONG` alongside `RA`/`DEC`/`DATE-OBS`, so altitude needs no site profile; **Dwarf
+  headers lack `SITELAT`/`SITELONG`**, so Dwarf altitude falls back to the active site
+  profile. Expect a **mount-mode-dependent shape**: alt-az field rotation ∝ 1/cos(alt) →
+  worst near zenith (users report 90–95% rejection >75°); EQ mode nulls that, leaving
+  declination-drift + low-altitude airmass. **`mount_mode` now comes from the header
+  `EQMODE` card** (the `fix/mount-mode-eqmode` change), so the analysis can split on it
+  honestly.
+
+  **Gotchas:** (a) analyse per **observing night**, not calendar date — the PoC's date
+  bucketing fused two nights into a bogus 1,149-min "gap"; split on any multi-hour gap.
+  (b) Dwarf `DATE-OBS` is *"end of exposure"* vs Seestar's start — offset by one exposure
+  when computing cadence. (c) Tier-3 header-only extras (`FOCUSPOS` focus drift, `CCD-TEMP`/
+  `DET-TEMP`, gain) need a per-sub header read → opt-in.
+
+  **Home:** fold `session_stats` into `scan_sessions` (Tier 1, on refresh; store the summary,
+  not raw timestamps); surface in the `DetailPane` Sessions table; reuse `NightTimeline` for
+  the Tier-2 altitude-vs-time chart with gaps overlaid. Companion to the `build_processing`
+  rejection number.
+
 ## Publishing  *(→ ROADMAP item 8)*
 
 - [~] **#27 — Publishing follow-ups** (8a landed — local static-site export). Targets/

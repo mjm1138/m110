@@ -515,6 +515,24 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Mount mode was a hardcoded date guess, not reported data** *(2026-07-18,
+  `fix/mount-mode-eqmode`)*. `scan_sessions` set `mount_mode` from `EQ_FROM = 2026-03-17`
+  (this store's Seestar switchover) — a Mike-Seestar-specific constant that would mislabel
+  **every other user** (an alt-az-only shooter's post-March sessions all tagged "EQ") and
+  **every other device** (a Dwarf date-stamped after the cutover → "EQ"). Turns out the
+  truth is in the header: **both** the Seestar and the DwarfLab Dwarf 3 write an `EQMODE`
+  card (int `1`=Equatorial / `0`=Alt-Az, comment "Equatorial mode") — verified across real
+  files of both devices (Seestar back to its first 2026-03-13 alt-az night = `EQMODE 0`;
+  Dwarf startrails `0`, M86 EQ run `1`; absent only on Dec-2025 pre-firmware Dwarf subs).
+  Fix: `_read_eqmode` + `_mount_mode` read `EQMODE` (device-agnostic) and fall back to the
+  legacy date heuristic **only** when it's absent, read **once per session-segment** (mount
+  mode is constant within a capture run — negligible next to the filename fast-path). Also
+  surfaced two Seestar-only header niceties for the rejection-analysis backlog: `SITELAT`/
+  `SITELONG` (so altitude is self-contained per Seestar sub — Dwarf headers lack them) and
+  `FOCUSPOS`. `mount_mode` is display-only (Sessions table + publish templates), so no logic
+  changed. Sibling `pre_new_start` (`NEW_START = 2026-04-04`) is still a store-specific
+  guess — noted, not fixed (it's a collection-reset marker, not a header fact).
+
 - [x] **Siril script crash from a packaged launch (two Qt sets in one process)** *(2026-07-18,
   `fix/siril-qt-env-leak`; reported on 0.2.0-beta.3 macOS)*. "Process in Siril" from the
   **frozen** M110.app made Siril's `sirilpy` (PyQt6) scripts SIGABRT at startup: objc

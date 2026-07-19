@@ -10,6 +10,13 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **The Sessions "Mount" column now shows your real EQ / Alt-Az mode.** It used to be a
+  guess based on a fixed calendar date, which was only ever right for the developer's own
+  telescope — everyone else's sessions could be mislabeled. M110 now reads the actual mode
+  recorded in each capture's file (both Seestar and Dwarf 3 record it), and only falls back
+  to a date guess for older files that predate that recording.
+
 ## [0.2.0-beta.4] - 2026-07-18
 
 ### Fixed
