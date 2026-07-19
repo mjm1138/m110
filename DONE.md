@@ -515,6 +515,23 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Right-click Fill / Enrich greyed out with no explanation** *(2026-07-19,
+  `fix/enrich-menu-always-selectable`; #64 follow-up)*. After astroquery shipped, a beta
+  user found **"Fill in missing metadata"** and **"Enrich online"** unselectable on the
+  Library right-click menu (macOS). Not a bug in the new bundling — the items were
+  data-gated (`setEnabled(missing)` / `setEnabled(has_gaps)`), and catalog objects carry
+  full reference metadata, so on the objects a user is most likely to right-click both
+  greyed out silently (only 2/45 fillable, 9/45 enrich-able in the reporter-like live
+  store). The handlers already report "Nothing to fill / enrich" for a complete object,
+  and `fill_missing_metadata(online=True)` only queries Simbad when there's a real gap, so
+  a complete-object click is a cheap self-explaining no-op — the pre-disable just hid that.
+  Fix: drop the gating (Enrich keeps only a double-start guard). Extracted `_object_menu`
+  (build the menu + actions, no `exec`) from `_on_context_menu` so the action/enabled state
+  is **testable headless** — a modal `QMenu.exec` can't run offscreen and, verified, PySide6's
+  `QMenu.exec` can't be monkeypatched (setattr doesn't override the C++ slot; it blocks). Guarded
+  by `test_context_menu_fill_enrich_always_selectable`. The bulk **Library → Enrich online…**
+  menu path was never gated and already worked.
+
 - [x] **"Enrich online" dead in packaged builds — astroquery never bundled** *(2026-07-19,
   `fix/bundle-astroquery-online`; issue #64, reported by @devonjones on Windows 0.2.0-beta.4)*.
   Right-click → **Enrich online** (or Add object → **Look up online**) in a packaged build

@@ -19,6 +19,11 @@ changes a **user** would notice, per release.
   bundle it, so online enrichment works out of the box. (Thanks to @devonjones for the
   report — issue #64.) If a build ever still lacks it, the message now says so plainly
   instead of pointing at an impossible install command.
+- **"Fill in missing metadata" and "Enrich online" are always clickable now.** When you
+  right-clicked an object that already had complete details (most catalog objects do),
+  both options were greyed out with no explanation — so the feature looked broken. They're
+  now always selectable; pick one on an already-complete object and M110 simply tells you
+  there's nothing to add (an online lookup on a complete object doesn't touch the network).
 - **The Sessions "Mount" column now shows your real EQ / Alt-Az mode.** It used to be a
   guess based on a fixed calendar date, which was only ever right for the developer's own
   telescope — everyone else's sessions could be mislabeled. M110 now reads the actual mode

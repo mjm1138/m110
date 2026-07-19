@@ -611,19 +611,23 @@ class CatalogPage(QWidget):
         idx = self.grid_view.indexAt(pos)
         return idx.data(KEY_ROLE) if idx.isValid() else None
 
-    def _on_context_menu(self, pos):
-        slug = self._slug_at(pos)
-        if slug is None:
-            return
+    def _object_menu(self, slug):
+        """Build the object right-click menu; return ``(menu, actions)``. Separated
+        from :meth:`_on_context_menu`'s ``exec`` so the action set + enabled state is
+        testable headless — a modal ``exec`` can't run offscreen and PySide6's
+        ``QMenu.exec`` can't be monkeypatched."""
         entry = self._cat.get(slug, {})
-        missing = bool(catalog_mod._compute_fill(entry, catalog_mod.load_reference().get(slug, {})))
-        has_gaps = catalog_mod._has_gaps({**entry,
-            **catalog_mod._compute_fill(entry, catalog_mod.load_reference().get(slug, {}))})
         menu = QMenu(self)
+        # Keep Fill / Enrich always selectable. They used to be pre-disabled when the
+        # object had no fillable gaps — but most catalog objects carry full reference
+        # metadata, so on those (the ones a user is most likely to right-click) both
+        # just greyed out with no explanation and the feature looked broken. The
+        # handlers already report "Nothing to fill / enrich" for a complete object,
+        # and fill_missing_metadata(online=True) only queries Simbad when there's an
+        # actual gap — so clicking a complete object is a cheap, self-explaining no-op.
         fill_act = menu.addAction("Fill in missing metadata")
-        fill_act.setEnabled(missing)
         online_act = menu.addAction("Enrich online")
-        online_act.setEnabled(has_gaps and self._enrich_worker is None)
+        online_act.setEnabled(self._enrich_worker is None)   # avoid a double-start only
         process_act = None
         if can_process_slug(slug):
             menu.addSeparator()
@@ -640,21 +644,31 @@ class CatalogPage(QWidget):
                                    else "Deprioritize")
         menu.addSeparator()
         remove_act = menu.addAction("Remove from Library")
+        return menu, {"fill": fill_act, "online": online_act, "process": process_act,
+                      "publish": publish_act, "pin": pin_act, "depri": depri_act,
+                      "remove": remove_act, "published": published, "state": state}
+
+    def _on_context_menu(self, pos):
+        slug = self._slug_at(pos)
+        if slug is None:
+            return
+        menu, act = self._object_menu(slug)
         viewport = self.table.viewport() if self._view_mode == "list" else self.grid_view.viewport()
         chosen = menu.exec(viewport.mapToGlobal(pos))
-        if chosen is fill_act and missing:
+        state = act["state"]
+        if chosen is act["fill"]:
             self._fill_one(slug)
-        elif chosen is online_act and has_gaps:
+        elif chosen is act["online"]:
             self._enrich_one_online(slug)
-        elif process_act is not None and chosen is process_act:
+        elif act["process"] is not None and chosen is act["process"]:
             process_in_siril(self, slug)
-        elif chosen is publish_act:
-            self._toggle_publish(slug, not published)
-        elif chosen is pin_act:
+        elif chosen is act["publish"]:
+            self._toggle_publish(slug, not act["published"])
+        elif chosen is act["pin"]:
             self._set_pin(slug, None if state == pins.PIN else pins.PIN)
-        elif chosen is depri_act:
+        elif chosen is act["depri"]:
             self._set_pin(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
-        elif chosen is remove_act:
+        elif chosen is act["remove"]:
             self._remove_one(slug)
 
     def _set_pin(self, slug: str, state):

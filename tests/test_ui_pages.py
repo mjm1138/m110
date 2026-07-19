@@ -411,6 +411,31 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_context_menu_fill_enrich_always_selectable(tmp_path, monkeypatch, qapp):
+    """Right-click Fill / Enrich stay selectable even on a fully-populated object.
+    They used to pre-disable when the object had no gaps, but catalog objects carry
+    full reference metadata — so on the objects a user is most likely to try, both
+    greyed out with no explanation and the feature looked broken. The handlers already
+    say "nothing to fill/enrich" for a complete object; a complete-object enrich is a
+    no-op that never hits the network. Uses the exec-free `_object_menu` builder (a
+    modal exec can't run headless / can't be monkeypatched in PySide6)."""
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {"m13": {           # every fillable field present → no gaps
+        "id": "M13", "name": "Hercules Globular", "type": "globular",
+        "magnitude": 5.8, "size": "20", "season": "Jun–Aug",
+        "filter": "IRCUT", "ra_deg": 250.42, "dec_deg": 36.46}})
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        _menu, act = page._object_menu("m13")
+        assert act["fill"].isEnabled() is True
+        assert act["online"].isEnabled() is True
+        _menu.deleteLater()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_library_detail_hidden_until_selection_then_closable(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     add_library(root, {"m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"}})
