@@ -527,6 +527,19 @@ class OnlineLookupError(Exception):
     entry in the result dict). The UI turns this into a friendly message."""
 
 
+def _astroquery_missing_message() -> str:
+    """The message for "astroquery can't be imported", tailored to how M110 is run.
+    A **frozen** app has no pip, so telling the user to `pip install` is impossible —
+    and packaged builds are *meant* to bundle astroquery (issue #64), so its absence
+    there is a build defect worth reporting. From **source**, the extra is the fix."""
+    import sys
+    if getattr(sys, "frozen", False):
+        return ("Online lookup isn't available in this build. It should be included — "
+                "please report it via Help → Report a problem.")
+    return ("Online lookup needs the optional 'online' extra "
+            "(pip install 'm110[online]').")
+
+
 # Simbad object-type code → our vocabulary (mirrors gen_caldwell._our_type, which
 # maps Wikipedia prose; this maps Simbad's otype short codes — incl. AGN/Seyfert/
 # QSO galaxy subtypes and the various nebula codes).
@@ -602,9 +615,7 @@ def resolve_object_online(names) -> dict[str, dict]:
         socket.setdefaulttimeout(15)
         from astroquery.simbad import Simbad
     except Exception as e:                                # astroquery not installed
-        raise OnlineLookupError(
-            "Online lookup needs the optional 'online' extra "
-            "(pip install 'm110[online]').") from e
+        raise OnlineLookupError(_astroquery_missing_message()) from e
     try:
         sim = Simbad()
         sim.add_votable_fields("V", "dim", "otype")

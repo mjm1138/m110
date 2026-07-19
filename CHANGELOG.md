@@ -18,6 +18,14 @@ changes a **user** would notice, per release.
   vanish. Now: if the incoming file is **identical** it's skipped (a true duplicate), but if
   it's **different** it's imported alongside the old one under a numbered name (e.g.
   `M42-2.png`), so nothing is lost. The import preview shows exactly what will happen.
+- **"Enrich online" and "Look up online" now work in the installed app.** These
+  Simbad lookups (fill in an object's type/magnitude/size/coordinates, or look up a new
+  object you're adding) depend on a library (astroquery) that the packaged builds weren't
+  shipping — so clicking them just showed an error telling you to `pip install` something,
+  which isn't possible in an installed app. The packaged macOS/Windows/Linux builds now
+  bundle it, so online enrichment works out of the box. (Thanks to @devonjones for the
+  report — issue #64.) If a build ever still lacks it, the message now says so plainly
+  instead of pointing at an impossible install command.
 - **The Sessions "Mount" column now shows your real EQ / Alt-Az mode.** It used to be a
   guess based on a fixed calendar date, which was only ever right for the developer's own
   telescope — everyone else's sessions could be mislabeled. M110 now reads the actual mode

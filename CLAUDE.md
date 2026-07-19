@@ -281,9 +281,14 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   guard anyway (defense in depth).
 - **Dependencies:** core = PySide6, astropy, numpy, pillow, tifffile (FITS
   stack-metadata reads + image rendering). Optional `online` extra = astroquery
-  (Simbad lookups for Add object / Enrich online — runtime stays offline unless
-  installed; the online actions degrade gracefully via `OnlineLookupError`). Dev =
-  pytest (+ astroquery for `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
+  (Simbad lookups for Add object / Enrich online — from **source**, runtime stays
+  offline unless installed; the online actions degrade gracefully via
+  `OnlineLookupError`, whose "not installed" message is build-aware). **Packaged
+  builds bundle astroquery** — the `build` extra self-references `m110[online]` so
+  `pip install -e '.[build]'` pulls it, and the three specs `collect_submodules`/
+  `collect_data_files`/`copy_metadata` it (+ pyvo/keyring), since a frozen app user
+  can't add the extra themselves (issue #64). Dev = pytest (+ astroquery for
+  `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
 
 ---
 

@@ -532,9 +532,31 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
   Deliberately not `filecmp.cmp` — its stat-signature cache can return a stale verdict when a
   same-size file is rewritten within the mtime resolution. Never clobbers, matching the store's
   non-destructive ethos.
+- [x] **"Enrich online" dead in packaged builds — astroquery never bundled** *(2026-07-19,
+  `fix/bundle-astroquery-online`; issue #64, reported by @devonjones on Windows 0.2.0-beta.4)*.
+  Right-click → **Enrich online** (or Add object → **Look up online**) in a packaged build
+  raised `OnlineLookupError("… pip install 'm110[online]'")` — useless advice for a frozen app
+  with no pip. Two-part root cause: (1) astroquery is the optional **`online`** extra, and the
+  build scripts / CI install only **`.[build]`**, so astroquery wasn't present at build time
+  and PyInstaller couldn't bundle it; (2) even once installed, astroquery/pyvo/keyring have
+  **no PyInstaller-contrib hooks** and load submodules/data dynamically (keyring discovers its
+  backends via entry points; `astroquery.query` imports keyring at import), so a naive bundle
+  would still miss pieces — the hook-astropy `codata2018` lesson. Fix: (a) the **`build`** extra
+  now self-references **`m110[online]`**, so every `pip install -e '.[build]'` pulls astroquery
+  (source installs stay lean — `online` is still opt-in); (b) all three specs `collect_submodules`
+  + `collect_data_files(..., excludes=["**/tests/**"])` + `copy_metadata` for astroquery/pyvo/
+  keyring (certifi/urllib3/charset_normalizer have their own contrib hooks; requests/bs4/html5lib
+  are static). Excluding test fixtures kept the real runtime data (incl. `simbad/data/
+  query_criteria_fields.json`) while dropping ~430 test files → the added bundle weight is
+  mostly code, not the feared 28 MB. Also made the "astroquery missing" message **build-aware**
+  (`catalog._astroquery_missing_message`): frozen builds say "not available in this build —
+  please report" instead of the impossible pip line; source keeps the extra hint. Validated the
+  specs compile + the collection runs (692 modules, Simbad core + data + a keyring backend
+  present); **the frozen import still needs a per-OS build to confirm** (esp. keyring on Windows).
+  Guarded by `test_packaging_deps` (build→online) + build-aware-message tests. **Rebuild required.**
 
 - [x] **Mount mode was a hardcoded date guess, not reported data** *(2026-07-18,
-  `fix/mount-mode-eqmode`)*. `scan_sessions` set `mount_mode` from `EQ_FROM = 2026-03-17`
+  `fix/mount-mode-eqmode`)*. `scan_sessions` set `mount_mode` from `EQ_FROM = 2026-03-17` `scan_sessions` set `mount_mode` from `EQ_FROM = 2026-03-17`
   (this store's Seestar switchover) — a Mike-Seestar-specific constant that would mislabel
   **every other user** (an alt-az-only shooter's post-March sessions all tagged "EQ") and
   **every other device** (a Dwarf date-stamped after the cutover → "EQ"). Turns out the
