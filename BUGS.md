@@ -113,6 +113,32 @@ Legend: `[ ]` open · `[~]` partially done
   stale pseudo-object rows would linger until manually removed. Worth a version-mismatch warning
   on restore (and/or forcing `.store_version` to be restored with `library.toml`).
 
+## Library & metadata enrichment
+
+- [ ] **Metadata enrichment: discoverability + smarter sources.** Today the offline
+  reference fill is effectively automatic (a capture → `add_captured_objects` pulls full
+  reference metadata), and online (Simbad) enrichment is a deliberate **explicit** action —
+  it makes external network calls, so it's kept off the deterministic offline refresh path
+  (also: many faint targets genuinely have no Simbad mag/size, so an auto-on-refresh pass
+  would re-query them forever without a "tried, got nothing" cache). Grew out of the #64
+  discussion. **No behavior change wanted now** — backlog of improvements:
+  - **Surface objects that need enrichment.** You currently discover gaps only by
+    right-clicking one object at a time (the greyed-out-menu confusion was a symptom — now
+    fixed to always-selectable). Make it first-class: a Library filter / badge / count for
+    "has metadata gaps," so a user can see *which* objects to enrich and enrich them in bulk
+    without hunting object-by-object.
+  - **Prefer a common name over the bare catalog id.** When a well-known common name exists
+    (e.g. "Hercules Cluster" for M13, "Ring Nebula" for M57), surface it alongside/instead of
+    the Library id in labels — sourced from the reference/Simbad during enrichment.
+  - **Plate-solve as a last resort.** When name/designation lookup can't identify or position
+    an object, plate-solve a frame to recover identity/coordinates — a tier below reference →
+    Simbad. Overlaps the import-triage plate-solver (see "Full import triage toolkit" under
+    **Import**); share the dependency.
+  - *(Optional, low-risk):* also run the offline `fill_all_missing_metadata()` on refresh so
+    pre-existing / off-catalog entries self-heal from the bundled reference without a manual
+    step (network still stays explicit). Reference-data quality itself is tracked separately
+    under **Planning / prioritization** (the Simbad-magnitude item).
+
 ## Planning / prioritization
 
 - [~] **#21 — Auto-prioritizer / target scoring.** The scoring engine **shipped**
