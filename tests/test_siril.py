@@ -258,6 +258,65 @@ def test_archive_per_filter_jobs(tmp_path, monkeypatch):
     assert (sb / "IRCUT" / "lights").is_dir()
 
 
+def test_resolve_import_dest_dispositions(tmp_path):
+    src = tmp_path / "src.png"; src.write_bytes(b"AAA")
+    dest = tmp_path / "M42.png"
+    assert siril._resolve_import_dest(dest, src) == (dest, "new")   # nothing there
+    dest.write_bytes(b"AAA")
+    assert siril._resolve_import_dest(dest, src) == (dest, "duplicate")  # identical → skip
+    dest.write_bytes(b"BBB")                                        # same name, new content
+    assert siril._resolve_import_dest(dest, src) == (tmp_path / "M42-2.png", "renamed")
+    (tmp_path / "M42-2.png").write_bytes(b"CCC")                    # -2 taken (different)
+    assert siril._resolve_import_dest(dest, src) == (tmp_path / "M42-3.png", "renamed")
+    (tmp_path / "M42-3.png").write_bytes(b"AAA")                    # src already here as -3
+    assert siril._resolve_import_dest(dest, src) == (tmp_path / "M42-3.png", "duplicate")
+
+
+def _sandbox_render(tmp_path, monkeypatch, content: bytes, existing: bytes | None):
+    """A target whose sandbox holds one render; optionally pre-seed finished/ with a
+    same-named file of `existing` bytes to force a collision."""
+    target = _make_target(tmp_path, monkeypatch, ircut=10)
+    sb = config.siril_dir(target); sb.mkdir(parents=True, exist_ok=True)
+    render = sb / f"{target}_processed.png"; render.write_bytes(content)
+    if existing is not None:
+        fin = config.finished_dir(target); fin.mkdir(parents=True, exist_ok=True)
+        (fin / f"{target}_processed.png").write_bytes(existing)
+    return target, render
+
+
+def test_apply_import_keeps_both_on_content_collision(tmp_path, monkeypatch):
+    """A re-processed render (same name, new bytes) imports as `<stem>-2.png`; the old
+    finished file is kept untouched — the footgun that used to skip it + archive it."""
+    target, render = _sandbox_render(tmp_path, monkeypatch, b"REPROCESSED", b"ORIGINAL")
+    assert siril.has_unimported_output(target) is True             # not "already imported"
+    it = next(i for i in siril.scan_finished(target).items if i.src == str(render))
+    assert it.already is False and "processed-2.png" in it.note
+    res = siril.apply_import(target, [str(render)], cleanup="none")
+    assert (res["imported"], res["skipped"]) == (1, 0)
+    fin = config.finished_dir(target)
+    assert (fin / f"{target}_processed.png").read_bytes() == b"ORIGINAL"      # old kept
+    assert (fin / f"{target}_processed-2.png").read_bytes() == b"REPROCESSED"  # new kept
+
+
+def test_apply_import_skips_true_duplicate(tmp_path, monkeypatch):
+    """A byte-identical re-import is skipped and does NOT pile up a `-2` copy."""
+    target, render = _sandbox_render(tmp_path, monkeypatch, b"SAME", b"SAME")
+    assert siril.has_unimported_output(target) is False
+    res = siril.apply_import(target, [str(render)], cleanup="none")
+    assert (res["imported"], res["skipped"]) == (0, 1)
+    assert not (config.finished_dir(target) / f"{target}_processed-2.png").exists()
+
+
+def test_apply_import_hero_follows_renamed_file(tmp_path, monkeypatch):
+    """When the chosen hero render lands under a `-2` name, the hero frontmatter must
+    point at the name it actually landed under, not the source name."""
+    target, render = _sandbox_render(tmp_path, monkeypatch, b"NEW", b"OLD")
+    siril.apply_import(target, [str(render)], hero_src=str(render),
+                       hero_slug="m101", cleanup="none")
+    fm, _ = objects.read_journal("m101")
+    assert fm.get("hero") == f"{target}_processed-2.png"
+
+
 def test_keep_current_hero_on_reimport(tmp_path, monkeypatch):
     target = _make_target(tmp_path, monkeypatch, ircut=10)
     siril.apply_prep(siril.plan_prep(target))

@@ -11,6 +11,13 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Fixed
+- **A re-processed image with the same filename is no longer silently lost on import.**
+  When you *Import finished work* and a file has the **same name** as one already in
+  `finished/` (or `stacks/`), M110 used to skip it — and then the cleanup step swept your
+  new version into the sandbox's `archive/` folder, so an improved re-process could seem to
+  vanish. Now: if the incoming file is **identical** it's skipped (a true duplicate), but if
+  it's **different** it's imported alongside the old one under a numbered name (e.g.
+  `M42-2.png`), so nothing is lost. The import preview shows exactly what will happen.
 - **The Sessions "Mount" column now shows your real EQ / Alt-Az mode.** It used to be a
   guess based on a fixed calendar date, which was only ever right for the developer's own
   telescope — everyone else's sessions could be mislabeled. M110 now reads the actual mode
