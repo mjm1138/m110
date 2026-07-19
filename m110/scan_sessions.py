@@ -17,9 +17,11 @@ slug — e.g. "M81 M82" folder covers both M81 and M82 catalog entries).
 The folder name is preserved as `object_dir` and we also emit a list of
 catalog slugs the session contributes to under `slugs`.
 
-Mount mode is inferred from date — sessions on or after 2026-04-04 are EQ
-unless overridden by data/overrides/sessions.toml (not implemented yet, but
-the schema leaves a slot for it).
+Mount mode is read from the FITS ``EQMODE`` header card — **both** the Seestar
+and the DwarfLab Dwarf 3 write it (int ``1`` = Equatorial, ``0`` = Alt-Az), so it's
+device-agnostic and per-user-correct. Only when it's absent (pre-``EQMODE`` firmware
+or an unknown device) do we fall back to the legacy date heuristic below, which is
+specific to *this* store's Seestar switchover and would mislabel anyone else.
 """
 from __future__ import annotations
 
@@ -70,6 +72,42 @@ def _session_key(path: Path) -> tuple[str, float, str] | None:
         return iso, exp, filt
     except Exception:
         return None
+
+
+def _read_eqmode(path: Path) -> bool | None:
+    """Reported mount mode from the FITS ``EQMODE`` card: ``True`` (Equatorial) /
+    ``False`` (Alt-Az), or ``None`` when unreadable or absent. **Both** the Seestar
+    and the DwarfLab Dwarf 3 write ``EQMODE`` (int ``0``/``1``, comment "Equatorial
+    mode"), so this is device-agnostic; ``None`` covers a non-FITS stub or firmware
+    predating the card (verified absent on some Dec-2025 Dwarf subs)."""
+    try:
+        from astropy.io import fits
+        val = fits.getheader(str(path)).get("EQMODE")
+    except Exception:
+        return None
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    if isinstance(val, str):
+        s = val.strip().lower()
+        if s in ("1", "true", "t", "yes"):
+            return True
+        if s in ("0", "false", "f", "no"):
+            return False
+    return None
+
+
+def _mount_mode(rep_path: Path | None, session_date: date) -> str:
+    """Mount mode for a session — the reported ``EQMODE`` header card if present
+    (authoritative, device-agnostic), else the legacy date heuristic. The date rule
+    (:data:`EQ_FROM`) is specific to this store's Seestar switchover: a fine last-resort
+    guess for pre-``EQMODE`` data, wrong for anyone else — so header truth always wins."""
+    if rep_path is not None:
+        eq = _read_eqmode(rep_path)
+        if eq is not None:
+            return "EQ" if eq else "Alt-Az"
+    return "EQ" if session_date >= EQ_FROM else "Alt-Az"
 
 
 def slugify(name: str) -> str:
@@ -160,6 +198,7 @@ def scan() -> list[dict]:
         # Each light's key comes from the filename (Seestar fast path) or its FITS
         # header (device-agnostic fallback — see `_session_key`).
         bucket: dict[tuple[str, float, str], int] = defaultdict(int)
+        rep: dict[tuple[str, float, str], Path] = {}   # one sub per bucket → EQMODE read
         for f in lights.iterdir():
             if not f.is_file() or f.suffix.lower() not in config.FIT_EXTS:
                 continue
@@ -167,11 +206,14 @@ def scan() -> list[dict]:
             if key is None:
                 continue
             bucket[key] += 1
+            rep.setdefault(key, f)
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
         for (iso, exp, filt), n in sorted(bucket.items()):
             session_date = datetime.strptime(iso, "%Y-%m-%d").date()
-            mount_mode = "EQ" if session_date >= EQ_FROM else "Alt-Az"
+            # One header read per session-segment (mount mode is constant within a
+            # capture run) — negligible next to the filename fast-path for the subs.
+            mount_mode = _mount_mode(rep.get((iso, exp, filt)), session_date)
             row = {
                 "date": iso,
                 "object_dir": obj_dir.name,
