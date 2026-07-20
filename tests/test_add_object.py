@@ -180,3 +180,91 @@ def test_online_import_failure_is_logged(monkeypatch, caplog):
         log.removeHandler(caplog.handler)
     msg = " ".join(r.getMessage() for r in caplog.records)
     assert "astroquery" in msg and "could not be imported" in msg
+
+
+class _FakeTable:
+    """Minimal astropy-Table stand-in: len() + row indexing."""
+    def __init__(self, rows):
+        self._rows = rows
+
+    def __len__(self):
+        return len(self._rows)
+
+    def __getitem__(self, i):
+        return self._rows[i]
+
+
+def _install_fake_simbad(monkeypatch, simbad_cls):
+    import types
+    mod = types.ModuleType("astroquery.simbad")
+    mod.Simbad = simbad_cls
+    monkeypatch.setitem(sys.modules, "astroquery.simbad", mod)
+
+
+def test_resolve_online_queries_per_name_not_batch(monkeypatch):
+    """resolve_object_online must query one name at a time (query_object), NOT the batch
+    query_objects: the batch injects Simbad's int64 `object_number_id`, which overflows
+    astropy's VOTable parser on Windows (32-bit C long) — the C34/NGC 6960 report. The
+    result is keyed by the input name."""
+    seen = {"batch": 0, "names": []}
+
+    class FakeSimbad:
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_objects(self, names):
+            seen["batch"] += 1
+            raise AssertionError("must not use the batch query_objects (Windows overflow)")
+
+        def query_object(self, name):
+            seen["names"].append(name)
+            return _FakeTable([{"ra": 250.0, "dec": 36.5, "galdim_majaxis": 70.0,
+                                "galdim_minaxis": 6.0, "V": 7.0, "otype": "SNR"}])
+
+    _install_fake_simbad(monkeypatch, FakeSimbad)
+    out = catalog.resolve_object_online(["NGC 6960"])
+    assert seen["batch"] == 0                       # never the overflowing batch path
+    assert seen["names"] == ["NGC 6960"]
+    assert "NGC 6960" in out                        # keyed by the input name
+    assert out["NGC 6960"]["type"] == "emission_snr"
+
+
+def test_resolve_online_partial_and_all_fail(monkeypatch):
+    """A per-name error is tolerated when others resolve (partial result); if EVERY name
+    errors, that surfaces as OnlineLookupError (Simbad/network down)."""
+    class PartialSimbad:
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_object(self, name):
+            if name == "bad":
+                raise RuntimeError("Simbad hiccup")
+            return _FakeTable([{"ra": 10.0, "dec": 41.0, "otype": "G"}])
+
+    _install_fake_simbad(monkeypatch, PartialSimbad)
+    out = catalog.resolve_object_online(["M31", "bad"])
+    assert set(out) == {"M31"}                       # partial: the good one resolves
+
+    class DeadSimbad:
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_object(self, name):
+            raise RuntimeError("Simbad down")
+
+    _install_fake_simbad(monkeypatch, DeadSimbad)
+    with pytest.raises(catalog.OnlineLookupError):
+        catalog.resolve_object_online(["M31"])
+
+
+def test_resolve_online_no_match_is_quiet(monkeypatch):
+    """A name Simbad doesn't resolve (empty table) is skipped, not an error → {}."""
+    class EmptySimbad:
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_object(self, name):
+            return _FakeTable([])
+
+    _install_fake_simbad(monkeypatch, EmptySimbad)
+    assert catalog.resolve_object_online(["Nonexistent"]) == {}

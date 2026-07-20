@@ -23,6 +23,11 @@ changes a **user** would notice, per release.
   (astroquery reads it at launch). Both are now bundled, so online enrichment actually runs.
   (Thanks again to @devonjones — issue #74.) If online lookup ever fails again, M110 now writes
   the underlying reason to its log so it can be diagnosed instead of just showing "not available."
+- **Online lookups no longer crash with an "int too large" error on Windows.** Once enrichment
+  ran, a Windows-specific quirk in how Simbad results were fetched (a large ID value that
+  Windows couldn't handle) made every lookup fail with *"OverflowError: Python int too large to
+  convert to C long."* M110 now fetches results in a way that avoids that value entirely, so
+  Enrich online and Add-object lookups work on Windows too. (Thanks to @devonjones.)
 - **The About box shows the version you actually installed.** Installing a new beta *over* an
   older one on Windows could leave the old version's record behind, so Help → About reported an
   earlier beta (some users saw 0.1.0-beta.1). The Windows installer now fully replaces the app

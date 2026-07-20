@@ -515,6 +515,22 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Simbad enrichment `OverflowError` on Windows (int too large for C long)** *(2026-07-19,
+  `fix/simbad-windows-overflow`; @devonjones, on C34/NGC 6960)*. With astroquery finally importing
+  (#74/#75), the query itself failed: `Simbad lookup failed: OverflowError: … Python int too large
+  to convert to C long (… col 'object_number_id')`. astroquery's **batch** `query_objects` injects
+  Simbad's `object_number_id` (oid) as an **int64** column; astropy's VOTable parser overflows
+  converting it on **Windows**, where a C `long` is 32-bit (the value is tiny — `1` for NGC 6960 —
+  so it's the int64 column/null handling, not the magnitude). macOS/Linux have a 64-bit long, so it
+  only bit Windows. The **singular** `query_object` returns none of that (no int64 columns; verified
+  its colnames), so `catalog.resolve_object_online` now loops `query_object` per name, keyed by the
+  input name (the singular query resolves the name itself — no `user_specified_id` echo needed).
+  Per-name is fine: single lookups are the common case, and bulk enrich is backgrounded/cancellable.
+  Graceful: a per-name error is tolerated when others resolve (partial), all-error surfaces
+  `OnlineLookupError`, an unresolved name is skipped quietly. Guarded by
+  `test_resolve_online_queries_per_name_not_batch` (+ partial / all-fail / no-match). The third and
+  final layer of the Windows-enrich fix (after astropy metadata #74 + parser tables #75).
+
 - [x] **Frozen astropy incompletely bundled → planning/ranking dead + enrich dead; + About
   reported an older beta** *(2026-07-19, `fix/issue-74-astroquery-metadata-and-version`; #74 +
   #75, @devonjones on Windows 0.2.0-beta.5)*.
