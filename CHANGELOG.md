@@ -10,6 +10,13 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **"Enrich online" is no longer offered when only the filter is unset.** The capture
+  *filter* was counted as missing metadata, so objects that otherwise had everything would
+  still offer online enrichment and then report "nothing to add" — because no catalog knows
+  which filter you shot with. Filter is no longer treated as a fillable gap, so enrichment
+  is only offered when there's actually a field a lookup could provide.
+
 ### Fixed
 - **Planning and priority ranking work in the installed app.** In the packaged builds they
   failed with *"astronomy engine unavailable"* (the ranking) or no usable plan — because the
