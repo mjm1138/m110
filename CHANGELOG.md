@@ -10,6 +10,12 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **Overview's "Priority targets" no longer says the prioritizer is "coming."** The
+  automatic target ranking has shipped — it lives on the **Planning** page. The
+  caption on Overview now explains that this section shows the targets you've
+  *pinned*, and points to Planning for the automatic ranking.
+
 ## [0.2.0-beta.6] - 2026-07-19
 
 ### Changed

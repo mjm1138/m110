@@ -887,7 +887,7 @@ def test_summary_empty_priority_state(tmp_path, monkeypatch, qapp):
     page = OverviewPage()
     try:
         caps = [w.text() for w in page._content.findChildren(QLabel)]
-        assert any("In development" in t and "pin objects" in t.lower() for t in caps)
+        assert any("pinned" in t.lower() and "Planning page" in t for t in caps)
         assert page._priority_rows() == []      # pins-only source
     finally:
         page.deleteLater()
