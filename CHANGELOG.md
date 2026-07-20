@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.6] - 2026-07-19
+
 ### Changed
 - **"Enrich online" is no longer offered when only the filter is unset.** The capture
   *filter* was counted as missing metadata, so objects that otherwise had everything would
