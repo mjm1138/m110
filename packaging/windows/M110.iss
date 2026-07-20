@@ -42,6 +42,14 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[InstallDelete]
+; A onedir app must fully replace on upgrade — wipe the install dir first so a stale
+; older `m110-*.dist-info` (or any module dropped between versions) can't linger. Left
+; behind, `importlib.metadata` read the OLD dist-info and the About box reported an
+; older beta (#74). Runs at the start of the install step, before [Files]. {app} holds
+; only program files — the user's data lives in ~\Documents\M110 and ~\.m110.
+Type: filesandordirs; Name: "{app}\*"
+
 [Files]
 Source: "..\..\dist\M110\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 

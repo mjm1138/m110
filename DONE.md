@@ -515,6 +515,34 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Enrich online still dead on Windows + About reported an older beta** *(2026-07-19,
+  `fix/issue-74-astroquery-metadata-and-version`; #74, @devonjones on Windows 0.2.0-beta.5)*.
+  Two symptoms, two causes — disambiguated by the reporter's clean-install test (version fixed
+  by reinstall, enrich did not).
+  **Enrich:** the packaged app *had* the beta-5 code (the error was the new "not available in
+  this build" message) and CI *had* installed astroquery, yet `import astroquery.simbad` raised
+  at runtime. Reproduced with a minimal frozen build mirroring the spec: `astroquery.utils.
+  commons` calls `astropy.utils.introspection.minversion('astropy')` **at import**, which reads
+  astropy's **dist-info metadata** → `KeyError('astropy')` because the specs bundle astropy's
+  *modules* (hook-astropy: `collect_submodules`+`collect_data_files`) but never
+  `copy_metadata("astropy")`. Planning never checks astropy's version, so it worked while
+  astroquery's import died — exactly the reported split. Fix: `copy_metadata("astropy")` in all
+  three specs (confirmed: the frozen `Simbad()` then imports + configures). Also **log the
+  underlying import error** in `catalog.resolve_object_online` (it was swallowed into the
+  generic message — the same reason this took a frozen-repro to find). *(A red herring en route:
+  the repro also tripped astropy's PLY unit-parser table `generic_parsetab`; that's bundled in
+  the PYZ via `collect_submodules` and the shipped app has it — a minimal-repro artifact, not a
+  real gap.)*
+  **Version:** the Windows Inno installer `[Files]` adds/overwrites but never deletes, and
+  AppVersion is numeric `0.2.0` for every beta — so an in-place upgrade left the old
+  `m110-0.2.0bN.dist-info` beside the new one and `importlib.metadata.version("m110")` returned
+  the alphabetically-first (older) one. macOS (.app replace) / Linux (single-file AppImage)
+  don't accumulate, so it's Windows-only. Fix: `[InstallDelete] {app}\*` (clean replace on
+  upgrade) + `updates.current_version()` prefers the compiled-in `m110.__version__` when frozen
+  (immune to a stale dual dist-info). Guarded by `test_specs_copy_astropy_metadata`,
+  `test_current_version_prefers_dunder_when_frozen`, `test_online_import_failure_is_logged`.
+  **Rebuild required.**
+
 - [x] **Disabled menu items didn't look disabled** *(2026-07-19,
   `fix/menu-disabled-items-greyed`; #64 follow-up)*. A beta user found the Library
   right-click **Fill in missing metadata** / **Enrich online** items "non-functional" —

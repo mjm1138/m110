@@ -41,10 +41,23 @@ SETTING_SKIP = "update_skip_version"
 
 
 def current_version() -> str:
-    """Installed distribution version, or ``"dev"`` when running from source.
+    """Running version, or ``"dev"`` when running from source without metadata.
 
     The single source of the running version (``about_dialog.app_version``
-    delegates here)."""
+    delegates here). In a **frozen** app, prefer the compiled-in ``m110.__version__``
+    (bumped by ``release.py``, always matches the shipped code) over installed
+    distribution metadata: an in-place installer upgrade can leave a *stale* older
+    ``m110-*.dist-info`` beside the new one, and ``importlib.metadata`` then returns
+    the wrong (older) version — the beta-5-reports-beta-4 bug (#74). From source we
+    keep the metadata reading (an editable install's version)."""
+    import sys
+    if getattr(sys, "frozen", False):
+        try:
+            from m110 import __version__
+            if __version__:
+                return __version__
+        except Exception:
+            pass
     try:
         from importlib.metadata import version, PackageNotFoundError
         try:

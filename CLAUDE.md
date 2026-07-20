@@ -287,7 +287,11 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   builds bundle astroquery** — the `build` extra self-references `m110[online]` so
   `pip install -e '.[build]'` pulls it, and the three specs `collect_submodules`/
   `collect_data_files`/`copy_metadata` it (+ pyvo/keyring), since a frozen app user
-  can't add the extra themselves (issue #64). Dev = pytest (+ astroquery for
+  can't add the extra themselves (issue #64). The specs **also `copy_metadata("astropy")`**
+  — astroquery calls `minversion('astropy')` at import, which reads astropy's dist-info,
+  so without it the frozen Simbad import dies with `KeyError('astropy')` even though
+  astropy's *modules* are bundled; planning never version-checks astropy, so it works
+  while enrich breaks (issue #74). Dev = pytest (+ astroquery for
   `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
 
 ---

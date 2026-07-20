@@ -63,6 +63,10 @@ for _pkg in ("astroquery", "pyvo", "keyring"):
     datas += collect_data_files(_pkg, excludes=["**/tests/**", "**/test/**"])
 datas += copy_metadata("astroquery")            # version / entry points
 datas += copy_metadata("keyring")               # keyring finds its backends via entry points
+datas += copy_metadata("astropy")               # astroquery's minversion('astropy') reads astropy's
+                                                # dist-info AT IMPORT; without it Simbad import raises
+                                                # KeyError('astropy') in the frozen app (#74). We bundle
+                                                # astropy's modules (hook-astropy) but not its metadata.
 
 block_cipher = None
 

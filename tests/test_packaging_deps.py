@@ -17,3 +17,15 @@ def test_build_extra_pulls_in_online():
         "bundle astroquery (issue #64)")
     assert any("astroquery" in dep for dep in extras["online"]), (
         "the `online` extra defines astroquery")
+
+
+def test_specs_copy_astropy_metadata():
+    """astroquery calls `minversion('astropy')` at import, which reads astropy's
+    dist-info metadata — so every spec must `copy_metadata("astropy")`, or the frozen
+    Simbad import raises KeyError('astropy') and Enrich online is dead (#74). We bundle
+    astropy's modules (hook-astropy) but not, by default, its metadata."""
+    specs = Path(__file__).resolve().parents[1] / "packaging"
+    for platform in ("macos", "linux", "windows"):
+        text = (specs / platform / "M110.spec").read_text(encoding="utf-8")
+        assert 'copy_metadata("astropy")' in text, (
+            f"{platform}/M110.spec must copy_metadata('astropy') for astroquery (#74)")
