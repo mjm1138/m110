@@ -2,8 +2,8 @@
 
 **M110 is a photo library for your smart telescope** — a desktop app that turns a
 growing pile of Seestar or DwarfLab captures into an organized deep-sky library:
-catalog, capture tracking, ingest, Siril processing-prep, and backup. *Lightroom for
-smart telescopes.*
+catalog, capture tracking, ingest, Siril processing-prep, session planning,
+publishing, and backup. *Lightroom for smart telescopes.*
 
 This guide covers what you need to use M110 day to day. It's deliberately short;
 each page links to the next.
@@ -11,21 +11,24 @@ each page links to the next.
 ## Contents
 
 1. [Getting started](#getting-started) — install, first launch, your data folder
-2. [Getting around](#getting-around) — the navigation rail, page by page
+2. [Getting around](#getting-around) — the navigation rail, menus, and updates
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
-4. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), and *what hardlinks mean for your files* (important)
-5. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
-6. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
-7. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
-8. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
+4. **[The library & object metadata](library.md)** — the List/Grid/Feed views, adding objects, filling in details, and per-image curation
+5. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), and *what hardlinks mean for your files* (important)
+6. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
+7. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
+8. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
+9. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
 
 ---
 
 ## Getting started
 
 **Install.** Download the build for your platform (macOS · Linux · Windows) and run
-it. During the public beta the builds are unsigned, so your OS may warn on first
-launch — see the download page for the per-platform "open anyway" step.
+it. The macOS build is **signed & notarized** and opens with no warning. The Windows
+beta installer is **unsigned**, so SmartScreen will warn on first launch — click
+**More info → Run anyway**. The Linux AppImage just needs to be made executable. See
+the download page for the per-platform details.
 
 **First launch.** M110 asks where to keep your library — its **data folder**. The
 default is `~/Documents/M110`. You can accept it or pick another location (for
@@ -46,7 +49,9 @@ later (Library → Preferences) takes effect on restart.
 ## Getting around
 
 M110 has a **navigation rail** down the left side with five pages. The **Library** is
-home — it opens there.
+home — it opens there once you have a collection. (A brand-new, empty library opens on
+**Overview** instead, with a welcome card and an *Import images…* button to get you
+started.)
 
 | Page | What it's for |
 |---|---|
@@ -85,6 +90,24 @@ Everything that isn't your object collection lives here as **collapsible section
 - **Progress by category** and **Goal checklists** — per-catalog membership with a green
   check for captured / deep-stacked.
 - **Manage goals** — pick which catalogs you're working toward, or build a custom list.
+
+### Menus, preferences & updates
+
+- **Library menu** — Refresh (Ctrl+R), Prepare working folders, **Add object…**, **Fill
+  missing metadata** / **Enrich online…** (see **[the library page](library.md)**),
+  **Publish**, **Back up / Restore**, and **Preferences** (Cmd+, — on macOS it lives under
+  the app menu).
+- **Help menu** — **User guide** (opens this guide), **Check for updates…**, **Report a
+  problem…** (a pre-filled bug report), and **About M110**.
+- **Appearance / theme.** M110 follows your system light/dark appearance automatically;
+  Preferences → Appearance lets you force **Light** or **Dark** instead. The choice
+  applies live and is remembered.
+- **Updates.** Once a day at most, M110 checks GitHub for a newer release and shows a
+  quiet, dismissible banner if one is available (**Download · Skip this version · ✕**). No
+  data is sent; turn the check off in Preferences → Updates.
+- **Other preferences** worth knowing: your **data folder**, the processing **workflows**
+  to prepare (and your Siril path), the **finished-image hints** that decide what counts as
+  a finished render vs. an intermediate, and whether to import per-sub JPG previews.
 
 **Slow operations** (refresh, ingest, backup) run in the background with a progress
 dialog you can cancel — the window never freezes.

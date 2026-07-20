@@ -85,4 +85,4 @@ remarks. Saved guides are listed on the Planning page: view them in the app, pri
 them, or open the folder. Each guide records both when it was generated and which
 night it's for.
 
-Next: **[On the roadmap →](upcoming.md)**
+Next: **[Publishing your collection →](publishing.md)**
