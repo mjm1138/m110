@@ -63,12 +63,15 @@ What it contains (and what each fixture exercises):
 |---|---|
 | `M51` (lights ×2 nights + Seestar stack + real journal notes) | gallery / hero / sessions / journal feed + detail notes |
 | `M81` (lights + stack + notes), `M101` (lights only) | captured-with-stack vs captured-lights-only (no gallery) |
+| **`M42`** (**DwarfLab Dwarf 3**: Duo-Band **`.fits`** lights + an in-app `stacked-16_*.fits` stack + `stacked.jpg`) | the **`.fits`** extension end-to-end (sessions + rendering), a **narrowband** filter, a 2nd device in the store; `stacked.jpg` is force-curated **finished** → the detail **Finished / Working** split (#17) |
+| **`M13`** (globular cluster: lights + Seestar stack) | object-**type** variety (the corpus is otherwise galaxies + nebulae) — the prioritizer type-weights + a non-galaxy hero |
 | `M63` (+ `finished/` render + `stacks/` stack) | "up to date" processing status + an imported deliverable in the gallery |
 | `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) |
 | `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) |
 | `M81 M82` (multi-object folder) | many-to-many target→object rollups |
+| `Media/…_photo` stills + a **`Timelapse_video/*.mp4`** | Media page photo gallery **and** the **video-row** path (Open → OS player) |
 | `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced |
-| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c) |
+| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) |
 
 Regenerate any time (`python tools/make_test_corpus.py`); `--out`/`--tar` relocate
 it, `--no-tar` leaves just the directories. The tarball unpacks **two** siblings — the
@@ -85,7 +88,7 @@ the import-source fixture covers the same classification/grouping/pointing logic
 cd ~/Documents/Code/m110
 source .venv/bin/activate
 pip install -e ".[dev]"   # pulls pytest + pytest-qt (offscreen Qt driving)
-pytest -q                 # all (~223); must be green before a human pass
+pytest -q                 # all (~680); must be green before a human pass
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
@@ -151,6 +154,21 @@ re-run when its area changes and you want eyes on the visuals).
       and NGC after Messier; click headers to sort each column. *(eyes-on check.)*
 - [ ] Status colours: deep-stack green, initial amber, uncaptured muted.
 
+### B2. Library — Add object / metadata enrichment (5c/5d)
+- [ ] **Add object…** (Library menu): type a name/designation (e.g. `NGC 6888`) → an
+      editable offline preview resolves instantly; **Look up online** (Simbad) fills gaps
+      on a worker thread; confirm → the object joins the Library with a journal stub. A
+      duplicate is refused.
+- [ ] **Fill in missing metadata** (right-click the corpus `NGC 6992` stub — blank name,
+      `unknown` type): fields backfill from the bundled reference + derived season; real
+      user values are never overwritten.
+- [ ] **Enrich online…** (right-click / Library menu, on a worker): a Simbad tier fills
+      gaps the reference lacks (e.g. the off-catalog `IC 1396`); with astroquery/network
+      absent it degrades to a clear "not available" dialog (no crash). An object missing
+      **only** its filter is **not** offered enrichment (nothing to add — beta.6).
+- [ ] **Remove from Library** (right-click → confirm): the row disappears; the on-disk
+      captures/journal are **not** deleted (non-destructive).
+
 ### C. Object detail / gallery
 - [ ] Selecting a row shows metadata, capture stats, journal text.
 - [ ] **Captured object shows gallery thumbnails + a hero** — including an object
@@ -180,6 +198,16 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Cancel** discards edits, re-renders the prior content, releases the lock.
 - [ ] Editing a frontmatter `hero` / `hero_caption` then Save → after the next
       sync, the gallery hero / caption updates accordingly.
+
+### C3. Per-image curation — Finished / Working (#17)
+- [ ] The detail gallery splits into **Finished** and **Working files** groups. The corpus
+      `M42` has its device preview (`stacked.jpg`) force-curated **finished**, so it shows
+      in the **Finished** group though it's a device stack.
+- [ ] **Right-click a tile → Mark as finished / Mark as working** regroups it in place and
+      persists to journal frontmatter (`finished_extra`/`working_extra`).
+- [ ] **Right-click → Set as hero** updates the hero — even to an **older** image (the hero
+      re-renders, not left stale, #17); **Open in default app** / **Reveal in file
+      manager** work (#19).
 
 ### D. Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
@@ -240,6 +268,19 @@ re-run when its area changes and you want eyes on the visuals).
       **Kind**, click **Assign** → confirm → files **move** out of `Inbox/` into
       `Images/<obj>/<kind>` (or `Media/`); the panel row disappears; Library refreshes.
 - [ ] "Remember alias?" after an assign persists `ingest_aliases.toml`.
+
+### E4. Import — DwarfLab Dwarf 3  (6b)  ⚙ *(classification automated — `test_ingest_dwarf.py`, `test_dwarf_store.py`)*
+- [ ] Browse the corpus import source's **`DWARF_RAW_TELE_M 1_…`** session: the `.fits`
+      raw subs group as **lights → `Images/M1/lights/`**; the in-app `stacked-16_*.fits`
+      + `stacked.jpg` route to the **stack tier**; the `Thumbnail/` sidecar + aux rasters
+      (`stacked_thumbnail`, `img_*`) are **not** surfaced.
+- [ ] The **`STARTRAILS_…`** folder imports only its composite `stacked.jpg` +
+      `startrails_*.mp4` → **`Media/Startrails_{photo,video}`** (raw subs ignored).
+- [ ] The **`DWARF_RAW_WIDE_Unknown_…`** session (OBJECT = the device placeholder
+      `Unknown`) sweeps its subs to the **holding area** for identify-by-pointing — no
+      literal `Unknown` target is created.
+- [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
+      (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
 
 ### F. Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
@@ -377,11 +418,57 @@ re-run when its area changes and you want eyes on the visuals).
       ("… · sets HH:MM"), the footer carries **both** the generation date and the
       plan night; ⚠ appears only on short window-cut descending slots.
 
+### I. Updates — banner + Preferences  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
+- [ ] **Help → Check for updates…**: an up-to-date build shows "You're up to date"; a
+      newer release shows an **Update available** dialog with **Download** (opens the
+      release page).
+- [ ] **Launch banner:** when a newer release exists and the throttle allows, a quiet
+      dismissible strip appears above the page stack — **Download · Skip this version ·
+      ✕**. **Skip** hides it and never shows that version again; **✕** hides it until next
+      launch.
+- [ ] **Preferences → Updates → "Check for updates on launch"** toggles the launch check;
+      the choice persists (`update_check_enabled`).
+
 ### H. Cross-check with the source workflow (optional)
 - [ ] Refresh output (sessions/derived) for a shared object matches the reference
       Astronomy `rebuild.sh` (aside from `processing.json`'s `generated_at`).
 - [ ] An emitted preset matches the schema/shape of the reference
       `~/Astronomy/Images/FITS/<obj>/presets/naztronomy_smart_scope_presets.json`.
+
+---
+
+## 2b. Regression sweep (deliberate — run before a release)
+
+A single pass over the specific bugs we've fixed, so a regression doesn't slip
+through the general visual pass. Each item's mechanical half is a named automated
+test; these steps confirm the **user-visible** behavior against the corpus (or real
+data / a packaged build where noted).
+
+- [ ] **Dwarf `.fits` recognized everywhere** (the `.fit`-only footgun): the corpus `M42`
+      (Dwarf `.fits`) shows captured status, a session, a gallery, and a hero — not an
+      empty/uncaptured object. *(`test_ingest_dwarf.py`, `test_dwarf_store.py`.)*
+- [ ] **Mount mode from the `EQMODE` header** (not the legacy date heuristic): a session's
+      **Mount** column matches the frames' `EQMODE` card. *(`test_scan_sessions.py`.)*
+- [ ] **Import keep-both on a same-name re-process** (beta.5): re-import a *different* file
+      with a name already in `finished/` → it lands as `…-2.<ext>` and the old one is kept;
+      a byte-identical file is skipped. *(`test_siril.py`.)*
+- [ ] **Set an OLDER image as hero** re-renders the hero (no stale hero — #17).
+      *(`test_build_images.py`.)*
+- [ ] **Planning date-picker readable** (#43): the **Night:** calendar popup renders every
+      day/weekday, the selection is a clear accent block, and the field reads in **dark
+      mode**.
+- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks, no
+      **Alt** above ~75°, **Moon** reads "—" when the moon is down, and changing the date
+      **clears** the stale plan. *(`test_planning_night.py`.)*
+- [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends
+      only changed objects; narrowing the gallery level shrinks the output **and** the
+      deployed branch. *(`test_publish_ghpages.py`.)*
+- [ ] **macOS: Process in Siril launches** (its bundled Python isn't SIGKILLed) — **real
+      hardware**; the env-sanitizer half is `test_launch.py`.
+- [ ] **Frozen-app astronomy engine** (#75/#74): in a **packaged build**, Planning + the
+      priority ranking compute (no "astronomy engine unavailable") and **Enrich online**
+      runs. Rebuild required — the PyInstaller-hook tests (`test_packaging_deps.py`) can't
+      reproduce the frozen runtime.
 
 ---
 

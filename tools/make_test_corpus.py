@@ -5,6 +5,14 @@ Builds a realistic-but-tiny store (real FITS with proper headers + filenames,
 small rendered PNGs) that exercises the whole app:
 
   * captured objects with lights + Seestar stacks   → gallery / hero / sessions
+  * a captured object shot with a **DwarfLab Dwarf 3** (M42): header-rich `.fits`
+        subs (Duo-Band narrowband) + an in-app `stacked-16_*.fits` stack → exercises
+        the `.fits` extension, a narrowband filter, and 2nd-device rendering/sessions
+  * a captured **globular cluster** (M13) → object-type variety (the corpus is
+        otherwise galaxies + nebulae; feeds the prioritizer type-weights)
+  * **video media** (a Timelapse_video/*.mp4) → the Media page's video-row path
+  * a **per-image curation override** (#17) on M42 → the detail pane's
+        Finished / Working gallery split has a non-default example
   * an object with an imported finished render+stack → "finished" display
   * an object with UNIMPORTED Siril output           → Import-finished-work round-trip
   * a captured-but-uncatalogued folder (IC 1396)     → auto-cataloging on refresh +
@@ -22,7 +30,9 @@ small rendered PNGs) that exercises the whole app:
   * an external import-source folder (ships beside the store) → Import → Browse…:
         a Seestar-style export that classifies (grouping, case-canonicalisation
         m13→M13, a mis-pointed M65→M66 remap, an in-app stack, media) + a mixed dump
-        whose strays sweep into the holding area
+        whose strays sweep into the holding area + **Dwarf 3 on-device sessions**
+        (a `DWARF_RAW_*` raw-subs+stack session, a `STARTRAILS_*` folder → Media,
+        and an `Unknown`-object session → the holding area for identify-by-pointing)
 
 The generator is committed (it's small + reproducible); its OUTPUT is meant to
 live OUTSIDE the repo (default ~/m110-testdata) so the repo stays lean.
@@ -121,6 +131,59 @@ def _seestar_stack(folder: str, obj: str, ra: float, dec: float, n: int,
     _png(d / f"{base}.jpg", seed)   # the device preview render
 
 
+# ── DwarfLab Dwarf 3 helpers (.fits subs + in-app stacked-16 stack) ───────────
+
+def _dwarf_fits(path: Path, obj: str, ra: float, dec: float, exp: float,
+                filt: str, when: datetime, seed: int, gain: int = 60,
+                camera: str = "TELE", rgb: bool = False):
+    """A Dwarf 3 `.fits` frame — header-rich, **no IMAGETYP**, `.fits` extension.
+    `rgb=True` writes a 3-plane frame like the in-app `stacked-16_*` stack."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = (np.stack([_blob(seed=seed), _blob(seed=seed + 1), _blob(seed=seed + 2)])
+            if rgb else _blob(seed=seed))
+    hdu = fits.PrimaryHDU(data=data)
+    h = hdu.header
+    h["OBJECT"] = obj
+    h["FILTER"] = filt
+    h["EXPTIME"] = exp
+    h["GAIN"] = gain
+    h["DATE-OBS"] = when.strftime("%Y-%m-%dT%H:%M:%S")
+    h["RA"] = round(ra, 5)
+    h["DEC"] = round(dec, 5)
+    h["CAMERA"] = camera
+    h["TELESCOP"] = "DWARF 3"
+    h["INSTRUME"] = "DWARF 3"
+    hdu.writeto(path, overwrite=True)
+
+
+def _dwarf_lights(folder: str, obj: str, ra: float, dec: float, exp: int,
+                  filt: str, start: datetime, n: int, seed0: int, gain: int = 60):
+    """n Dwarf `.fits` subs → Images/<folder>/lights/ (Dwarf filename form; header
+    drives the session — the filename has no Seestar `Light_…` fast-path)."""
+    d = config.lights_dir(folder)
+    for i in range(n):
+        when = start + timedelta(seconds=(exp + 3) * i)
+        name = (f"{obj}_{exp}s{gain}_{filt}_"
+                f"{when.strftime('%Y%m%d-%H%M%S')}{i:03d}_0C.fits")
+        _dwarf_fits(d / name, obj, ra, dec, exp, filt, when, seed0 + i, gain)
+
+
+def _dwarf_stack(folder: str, obj: str, ra: float, dec: float, n: int, exp: int,
+                 filt: str, when: datetime, seed: int, gain: int = 60):
+    """The Dwarf in-app `stacked-16_*.fits` + `stacked.jpg` → the device-stack tier."""
+    d = config.seestar_stacks_dir(folder)
+    base = f"stacked-16_{obj}_{exp}s{gain}_{filt}_{when.strftime('%Y%m%d-%H%M%S')}"
+    _dwarf_fits(d / f"{base}.fits", obj, ra, dec, exp * n, filt, when, seed, gain,
+                rgb=True)
+    _png(d / "stacked.jpg", seed)   # the device preview render
+
+
+def _video(path: Path):
+    """A tiny placeholder video file (valid enough for extension-based listing)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+
+
 # ── corpus ───────────────────────────────────────────────────────────────────
 
 def coord(coords: dict, slug: str, default=(180.0, 30.0)):
@@ -176,6 +239,22 @@ def build(out: Path):
     # online" / Add-object target (Fill-missing can't help — nothing in the reference).
     _lights("IC 1396", "IC 1396", 324.74, 57.5, 20, "LP", base + timedelta(days=11), 16, 980)
 
+    # M42 (Orion) — captured with a **DwarfLab Dwarf 3**: header-rich `.fits` subs
+    # (Duo-Band narrowband) + the in-app `stacked-16_*.fits` stack. Exercises the
+    # `.fits` extension, a narrowband filter, and 2nd-device sessions/rendering.
+    ra, dec = C("m42")
+    _dwarf_lights("M42", "M42", ra, dec, 15, "Duo-Band", base + timedelta(days=10), 14, 5000)
+    _dwarf_stack("M42", "M42", ra, dec, 60, 15, "Duo-Band",
+                 base + timedelta(days=10, hours=1), 5100)
+
+    # M13 (Hercules Cluster) — a captured globular, for object-type variety (the
+    # corpus is otherwise galaxies + nebulae; the prioritizer type-weights + the
+    # Library/Planning views want a cluster).
+    ra, dec = C("m13")
+    _lights("M13", "M13", ra, dec, 30, "LP", base + timedelta(days=12), 16, 5200)
+    _seestar_stack("M13", "M13", ra, dec, 100, 30, "LP",
+                   base + timedelta(days=12, hours=1), 5300)
+
     # ---- M106 — a Siril sandbox with UNIMPORTED output (round-trip test) ----
     ra, dec = C("m106")
     _lights("M106", "M106", ra, dec, 20, "LP", base + timedelta(days=7), 13, 1000)
@@ -230,10 +309,11 @@ def build(out: Path):
         "# M81 — Bode's Galaxy\n\n"
         "IRCUT looked better than LP here. Pair with M82 next time for the mosaic.\n"))
 
-    # ---- Media: non-catalog stills already in the store (Media page) ----
+    # ---- Media: non-catalog stills + a video already in the store (Media page) ----
     for cat, seeds in (("Moon_photo", (1500, 1501)), ("Nightscape_photo", (1510,))):
         for s in seeds:
             _png(config.MEDIA_DIR / cat / f"IMG_{s}.jpg", s)
+    _video(config.MEDIA_DIR / "Timelapse_video" / "IMG_1600.mp4")   # a video-row case
 
     # ---- Inbox: the 6c holding area — unclassifiable files only ----
     _inbox_holding(config.STAGING_DIR, 2500)
@@ -246,6 +326,11 @@ def build(out: Path):
     # derived/renders are built — i.e. the post-launch state the app would produce.
     from m110 import refresh
     refresh.run_refresh()
+
+    # A per-image curation override (#17): promote M42's device-stack preview into
+    # the "Finished" gallery group so the detail pane's Finished / Working split has
+    # a non-default example. After refresh so M42 is in the Library with a journal.
+    objects.set_curation("m42", "stacked.jpg", "finished")
 
     return out
 
@@ -272,6 +357,14 @@ def _build_import_source(src: Path):
     _fits_unclassifiable(dump / "capture_001.fit", 2610)       # headerless → holding
     _png(dump / "edit_final.png", 2620)                        # stray render → holding
 
+    # DwarfLab Dwarf 3 on-device sessions (the `dwarf` layout, 6b): a raw-subs +
+    # in-app-stack session → lights/stack tiers; a startrails folder → Media; an
+    # `Unknown`-object session → the holding area (identify-by-pointing).
+    _dwarf_import_session(src, "DWARF_RAW_TELE_M 1_EXP_15_GAIN_60_2026-06-19-22-00-00",
+                          "M 1", *C("m1"))
+    _dwarf_startrails(src, "STARTRAILS_DWARF_RAW_WIDE_EXP_10_GAIN_0_2026-06-19-23-00-00")
+    _dwarf_unknown(src, "DWARF_RAW_WIDE_Unknown_EXP_10_GAIN_0_2026-06-19-23-30-00")
+
 
 def _src_sub(src, obj, ra, dec, exp, filt, n, seed0):
     d = src / f"{obj}_sub"
@@ -297,6 +390,57 @@ def _src_media(src, name, seed):
     d.mkdir(parents=True, exist_ok=True)
     _png(d / "IMG_0001.jpg", seed)
     _png(d / "IMG_0002.jpg", seed + 1)
+
+
+def _dwarf_import_session(src, folder, obj, ra, dec, exp=15, gain=60,
+                          filt="Duo-Band", n=3):
+    """A Dwarf 3 on-device session in the external source: raw `.fits` subs + the
+    in-app `stacked-16_*` stack + `stacked.jpg`, beside a `Thumbnail/` sidecar +
+    aux rasters (both ignored by the classifier — verifies the skip logic)."""
+    d = src / folder
+    d.mkdir(parents=True, exist_ok=True)
+    start = datetime(2026, 6, 19, 22, 0, 0)
+    for i in range(n):
+        when = start + timedelta(seconds=(exp + 3) * i)
+        _dwarf_fits(d / f"{obj}_{exp}s{gain}_{filt}_{when.strftime('%Y%m%d-%H%M%S')}{i:03d}_0C.fits",
+                    obj, ra, dec, exp, filt, when, 5400 + i, gain)
+    when = start + timedelta(minutes=5)
+    stem = f"stacked-16_{obj}_{exp}s{gain}_{filt}_{when.strftime('%Y%m%d-%H%M%S')}"
+    _dwarf_fits(d / f"{stem}.fits", obj, ra, dec, exp * n, filt, when, 5450, gain,
+                rgb=True)
+    (d / f"{stem}.png").write_bytes(b"png")            # in-app stack raster → stack tier
+    _png(d / "stacked.jpg", 5460)                      # composite preview → stack tier
+    (d / "stacked_thumbnail.jpg").write_bytes(b"t")    # aux raster → ignored
+    (d / "shotsInfo.json").write_text("{}")            # non-content → ignored
+    thumb = d / "Thumbnail"
+    thumb.mkdir()
+    for i in range(n):
+        (thumb / f"sub_{i}.jpg").write_bytes(b"t")     # per-sub previews → ignored
+
+
+def _dwarf_startrails(src, folder):
+    """A Dwarf STARTRAILS_* session → Media (composite jpg + mp4; raw subs ignored)."""
+    d = src / folder
+    d.mkdir(parents=True, exist_ok=True)
+    for i in range(3):
+        _dwarf_fits(d / f"startrails_10s0_2026061{i}-2300{i}0795_24C.fits",
+                    "", 0.0, 0.0, 10, "", datetime(2026, 6, 19, 23, i, 0),
+                    5500 + i, gain=0, camera="WIDE")
+    _video(d / "startrails_classic_20260619-230000955.mp4")
+    _png(d / "stacked.jpg", 5510)
+    (d / "stacked_thumbnail.jpg").write_bytes(b"t")
+
+
+def _dwarf_unknown(src, folder):
+    """A Dwarf session whose OBJECT is the device placeholder `Unknown` → the subs
+    fall to the holding area (identify-by-pointing), not a literal target."""
+    d = src / folder
+    d.mkdir(parents=True, exist_ok=True)
+    for i in range(3):
+        _dwarf_fits(d / f"Unknown_10s0_2026061{i}-2330{i}0089_30C.fits",
+                    "Unknown", 271.47, -14.05, 10, "",
+                    datetime(2026, 6, 19, 23, 30 + i, 0), 5600 + i, gain=0,
+                    camera="WIDE")
 
 
 def _inbox_holding(inbox, seed0):
@@ -326,14 +470,47 @@ def verify(out: Path):
     objs = {s["object_dir"] for s in sessions}
     print(f"  sessions parsed: {len(sessions)} across {len(objs)} folders {sorted(objs)}")
 
-    # The external import source (Browse→Import): classifiable Seestar export + a
-    # mixed dump whose strays sweep into the holding area.
+    # 2nd device: M42 captured with a Dwarf 3 → `.fits` lights + stacked-16 stack.
+    m42_lights = sorted(config.lights_dir("M42").glob("*.fits"))
+    assert m42_lights, "M42 Dwarf `.fits` lights missing"
+    assert "M42" in objs, "M42 (Dwarf) produced no session"
+    assert (config.seestar_stacks_dir("M42") / "stacked.jpg").exists(), \
+        "M42 Dwarf device-stack preview missing"
+    assert "M13" in objs, "M13 cluster produced no session"
+    print(f"  Dwarf M42: {len(m42_lights)} .fits lights + stacked-16 stack; "
+          f"M13 cluster captured")
+
+    # video media (the Media page's video-row path)
+    from m110 import media
+    media_kinds = {c["kind"] for c in media.scan()}
+    assert "video" in media_kinds, "no video media in the store"
+
+    # per-image curation override (#17): M42's device preview forced to "finished"
+    assert objects.get_curation("m42").get("stacked.jpg") == "finished", \
+        "M42 curation override not applied"
+
+    # The external import source (Browse→Import): classifiable Seestar + Dwarf
+    # exports + a mixed dump whose strays sweep into the holding area.
     src = out.parent / f"{out.name}-import-source"
     src_ops = ingest.scan_directory_plan(src)
     src_kinds = {o.kind for o in src_ops}
     print(f"  import source: {len(src_ops)} ops, kinds {sorted(src_kinds)}")
     assert "light" in src_kinds and "unassigned" in src_kinds, \
         "import source should both classify and sweep some files to holding"
+
+    # Dwarf `dwarf`-layout sessions in the import source classify end-to-end.
+    dwarf_ops = [o for o in src_ops if o.layout == "dwarf"]
+    dwarf_lights = [o for o in dwarf_ops if o.kind == "light"]
+    assert dwarf_lights and all(o.dest_rel.endswith(".fits") for o in dwarf_lights), \
+        "Dwarf `.fits` subs should classify as lights"
+    assert any(o.kind == "media" and "Startrails_video" in o.dest_rel for o in dwarf_ops), \
+        "Dwarf startrails video should route to Media"
+    unknown_held = [o for o in dwarf_ops
+                    if o.kind == "unassigned" and "Unknown" in Path(o.src).name]
+    assert unknown_held, "Dwarf Unknown-object subs should fall to the holding area"
+    print(f"  Dwarf import: {len(dwarf_lights)} lights, "
+          f"{sum(o.kind == 'media' for o in dwarf_ops)} media, "
+          f"{len(unknown_held)} → holding")
 
     # 6c: the Inbox holding area carries unclassifiable files for the manual-assign demo
     held_ops = ingest.scan_holding()
