@@ -119,3 +119,17 @@ def test_skip_version_roundtrip(mem_settings):
     assert updates.is_skipped("v0.2.0") is True
     assert updates.is_skipped("0.2.0") is True     # v-prefix insensitive
     assert updates.is_skipped("v0.3.0") is False   # a newer one still shows
+
+
+def test_current_version_prefers_dunder_when_frozen(monkeypatch):
+    """A frozen app upgraded in place can carry a stale older m110-*.dist-info, so
+    importlib.metadata may return an older version (#74). When frozen, current_version
+    must read the compiled-in m110.__version__ instead; from source it keeps reading
+    the installed distribution metadata."""
+    import sys
+    import m110
+    monkeypatch.setattr(m110, "__version__", "9.9.9-frozen-test", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert updates.current_version() == "9.9.9-frozen-test"
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    assert updates.current_version() != "9.9.9-frozen-test"   # source → metadata

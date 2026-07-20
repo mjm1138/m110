@@ -160,3 +160,23 @@ def test_online_error_message_follows_frozen_state(monkeypatch):
     with pytest.raises(catalog.OnlineLookupError) as ei:
         catalog.resolve_object_online(["NGC 6992"])
     assert "pip install" not in str(ei.value)
+
+
+def test_online_import_failure_is_logged(monkeypatch, caplog):
+    """The underlying astroquery import error is logged (with traceback) before the
+    generic OnlineLookupError — so a packaged-build failure (e.g. #74's KeyError from
+    a missing astropy metadata) is diagnosable from the log, not just the user-facing
+    'not available' message. The m110 logger may not propagate once logsetup has run,
+    so attach caplog's handler directly."""
+    import logging
+    monkeypatch.setitem(sys.modules, "astroquery.simbad", None)   # force import failure
+    log = logging.getLogger("m110")
+    log.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="m110")
+    try:
+        with pytest.raises(catalog.OnlineLookupError):
+            catalog.resolve_object_online(["NGC 6992"])
+    finally:
+        log.removeHandler(caplog.handler)
+    msg = " ".join(r.getMessage() for r in caplog.records)
+    assert "astroquery" in msg and "could not be imported" in msg

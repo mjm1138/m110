@@ -614,7 +614,16 @@ def resolve_object_online(names) -> dict[str, dict]:
         import socket
         socket.setdefaulttimeout(15)
         from astroquery.simbad import Simbad
-    except Exception as e:                                # astroquery not installed
+    except Exception as e:                                # astroquery absent OR failing to import
+        # Log the real error with its traceback. astroquery can import cleanly from
+        # source yet FAIL in a packaged build (e.g. #74: KeyError('astropy') because
+        # astroquery's minversion() needed astropy's dist-info, which wasn't bundled).
+        # The user only sees the generic "not available" message, so without this the
+        # actual cause is invisible — surface it to the log / crash report.
+        import logging
+        logging.getLogger("m110").warning(
+            "online lookup: astroquery.simbad could not be imported (%s: %s)",
+            type(e).__name__, e, exc_info=True)
         raise OnlineLookupError(_astroquery_missing_message()) from e
     try:
         sim = Simbad()
