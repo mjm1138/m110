@@ -52,6 +52,11 @@ work against real hardware/OS.**
 | 10 | Processing — **real Siril run** (hardware) | Process a prepped `siril/` sandbox in Siril, then Import finished work | Deliverable detected; import routes render→`finished/` + stack→`stacks/`; hero set; run archived; `lights/` intact | | |
 | 11 | OS integration | (when implemented) "Open In…" / native file picker | Opens the right app / picker on this OS | | |
 | 12 | Clean shutdown | Quit the app (incl. Cmd+Q from a viewer) | No crash, no "thread still running" abort, no orphaned modal | | |
+| 13 | Dwarf 3 ingest | Browse the corpus import source's `DWARF_RAW_*` / `STARTRAILS_*` sessions | `.fits` subs → lights; `stacked-16`→stack tier; startrails → Media; `Unknown` → holding; Thumbnail/aux ignored | | |
+| 14 | `.fits` object | Open the corpus `M42` (Dwarf) | Captured status, a Duo-Band session, gallery + hero all present (not shown as uncaptured) | | |
+| 15 | Add / enrich object | Add object… → look up online; Fill missing on the `NGC 6992` stub; Enrich `IC 1396` | Preview resolves; backfill doesn't overwrite; enrich degrades gracefully offline; duplicate refused | | |
+| 16 | Per-image curation | Right-click a gallery tile → Mark finished/working; Set as hero (an older image) | Regroups in place + persists; hero re-renders (not stale) | | |
+| 17 | Update banner | (with a newer release available) launch / Help → Check for updates | Quiet banner: Download · Skip this version · ✕; Skip never re-shows that version | | |
 
 *(Add rows for anything new in this build. Delete rows that don't apply.)*
 
