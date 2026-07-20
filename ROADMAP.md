@@ -193,6 +193,13 @@ More bundled catalogs from `next_catalog_lists.md` — **Herschel 400**, **Arp**
 **Lunar 100**, AL Double Star (data-generation in `tools/gen_catalogs.py`;
 build-time only, runtime stays offline).
 
+- ✅ **Popular device lists** (2026-07-20) — three hand-curated goal lists chosen for
+  community popularity and matched to gear by field-of-view fit + aperture reach:
+  `popular-deep-s50`, `popular-widefield` (S30 Pro / Dwarf 3), `popular-bright`
+  (S30 / Dwarf Mini), each ~48 targets spanning all four seasons and reaching well
+  beyond Messier. Added Pelican (IC 5070), Horsehead (IC 434), Elephant's Trunk
+  (IC 1396) + NGC 884 to the object reference to support them. Curated, not generated.
+
 ### 6d — Multi-device: device-under-target + Dwarf remainders
 
 Record device/source per session; introduce the optional

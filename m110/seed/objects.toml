@@ -1274,6 +1274,50 @@ notes = "Four-star asterism (NGC 6994) — Messier oddity, not a true cluster"
 ra_deg = 314.725
 dec_deg = -12.6333
 
+# ── Popular-target additions (hand-curated; iconic wide-field/showpiece objects not
+#    carried by a bundled reference catalog — referenced by the Popular goal lists) ──
+
+[object.ic-5070]
+id = "IC 5070"
+name = "Pelican Nebula"
+type = "emission"
+size = "60'×50'"
+season = "Aug–Oct"
+notes = "Emission nebula beside the North America Nebula (NGC 7000)"
+ra_deg = 312.7
+dec_deg = 44.35
+
+[object.ic-434]
+id = "IC 434"
+name = "Horsehead Nebula"
+type = "emission"
+size = "60'×10'"
+season = "Dec–Feb"
+notes = "Horsehead (Barnard 33) dark silhouette near the Flame Nebula"
+ra_deg = 85.25
+dec_deg = -2.45
+
+[object.ic-1396]
+id = "IC 1396"
+name = "Elephant's Trunk Nebula"
+type = "emission"
+size = "170'×140'"
+season = "Aug–Oct"
+notes = "Large emission complex around Trumpler 37; the Elephant's Trunk is IC 1396A"
+ra_deg = 324.78
+dec_deg = 57.5
+
+[object.ngc-884]
+id = "NGC 884"
+name = "Double Cluster (χ Persei)"
+type = "open_cluster"
+magnitude = 6.1
+size = "16'×16'"
+season = "Oct–Dec"
+notes = "Eastern half of the Double Cluster, paired with NGC 869"
+ra_deg = 35.57
+dec_deg = 57.14
+
 # ── Caldwell catalogue objects (generated; coords/size via Simbad, season derived from RA) ──
 
 [object.ngc-188]

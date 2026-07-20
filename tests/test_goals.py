@@ -68,6 +68,47 @@ def test_additional_bundled_catalogs():
     assert ids[0] == "C106" and "Ben 2" in ids and "Lac I.1" in ids
 
 
+def test_popular_goal_lists():
+    """The three hand-curated 'Popular' goal lists (device-tier × FOV-fit) load,
+    resolve entirely to the reference, use each object's own designation, and
+    each spans all four seasons."""
+    cats = {c["id"]: c for c in catalog.list_bundled_catalogs()}
+    expected = {
+        "popular-deep-s50": "Popular: Deep (S50)",
+        "popular-widefield": "Popular: Widefield (S30 Pro / Dwarf 3)",
+        "popular-bright": "Popular: Bright & Easy (S30 / Dwarf Mini)",
+    }
+    ref = catalog.load_reference()
+    quarter = {"Nov–Jan": 0, "Dec–Feb": 0, "Jan–Mar": 0, "Year-round": 0,
+               "Feb–Apr": 1, "Mar–May": 1, "Apr–Jun": 1,
+               "May–Jul": 2, "Jun–Aug": 2, "Jul–Sep": 2,
+               "Aug–Oct": 3, "Sep–Nov": 3, "Oct–Dec": 3}
+    for cid, name in expected.items():
+        assert cid in cats, f"{cid} not discovered as a bundled catalog"
+        cat = cats[cid]
+        assert cat["name"] == name
+        assert cat["hemisphere"] == "northern"
+        members = cat["members"]
+        assert 40 <= len(members) <= 55, f"{cid} has {len(members)} members"
+        seasons = set()
+        for slug, desig in members.items():
+            assert slug in ref, f"{cid}:{slug} missing from reference"
+            o = ref[slug]
+            assert o.get("type"), f"{cid}:{slug} no type"
+            assert o.get("ra_deg") is not None, f"{cid}:{slug} no coords"
+            assert desig == o["id"], f"{cid}:{slug} desig {desig!r} != {o['id']!r}"
+            seasons.add(quarter[o["season"]])
+        assert seasons == {0, 1, 2, 3}, f"{cid} misses a season: {seasons}"
+
+
+def test_popular_list_reference_additions():
+    """The four iconic objects added for the Popular lists resolve with coords."""
+    ref = catalog.load_reference()
+    for slug in ("ic-5070", "ic-434", "ic-1396", "ngc-884"):
+        assert slug in ref, f"{slug} missing from reference"
+        assert ref[slug].get("ra_deg") is not None and ref[slug].get("type")
+
+
 # ── add_goal_members_to_library (still used by the add/captured paths) ────────
 
 def test_add_goal_members_additive_idempotent(tmp_path, monkeypatch):
