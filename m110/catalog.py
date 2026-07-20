@@ -603,9 +603,9 @@ def _simbad_row_to_entry(row) -> dict:
 
 
 def resolve_object_online(names) -> dict[str, dict]:
-    """Batched Simbad lookup → `{queried-name: entry}` (entries hold any of
-    type/magnitude/size/ra_deg/dec_deg that resolved). Names that don't resolve are
-    simply absent. Raises `OnlineLookupError` if astroquery is missing or the query
+    """Simbad lookup (one query per name) → `{queried-name: entry}` (entries hold any
+    of type/magnitude/size/ra_deg/dec_deg that resolved). Names that don't resolve are
+    simply absent. Raises `OnlineLookupError` if astroquery is missing or every query
     fails (offline). Network only runs when a caller explicitly invokes this."""
     names = [n for n in names if n]
     if not names:
@@ -628,21 +628,34 @@ def resolve_object_online(names) -> dict[str, dict]:
     try:
         sim = Simbad()
         sim.add_votable_fields("V", "dim", "otype")
-        res = sim.query_objects(names)
-    except Exception as e:                                # network / Simbad down
+    except Exception as e:                                # bad astroquery setup
         raise OnlineLookupError(f"Simbad lookup failed: {e}") from e
-    if res is None:
-        return {}
+    # Query one name at a time with query_object (singular), NOT the batch
+    # query_objects: the batch path injects Simbad's int64 `object_number_id` (oid)
+    # column, and astropy's VOTable parser overflows converting it on **Windows**, where
+    # a C `long` is 32-bit — "OverflowError: Python int too large to convert to C long
+    # (… col 'object_number_id')". query_object returns no int64 columns, so it's
+    # cross-platform safe. We key by the *input* name (the singular query resolves the
+    # name itself and needs no echo column). Per-name is fine: single lookups are the
+    # common case, and bulk enrich is a backgrounded, cancellable action.
     out: dict[str, dict] = {}
-    for row in res:
+    first_error: Exception | None = None
+    for name in names:
         try:
-            key = (str(row["user_specified_id"]).strip()
-                   if "user_specified_id" in res.colnames else None)
-        except Exception:
-            key = None
-        entry = _simbad_row_to_entry(row)
-        if key and entry:
-            out[key] = entry
+            res = sim.query_object(name)
+        except Exception as e:                            # network / Simbad hiccup
+            if first_error is None:
+                first_error = e
+            continue
+        if res is None or len(res) == 0:                  # unresolved name → skip quietly
+            continue
+        entry = _simbad_row_to_entry(res[0])
+        if entry:
+            out[name] = entry
+    # Nothing resolved AND a query errored → Simbad/network is down; surface it. All-empty
+    # with no error just means none of the names matched — return {} quietly (not an error).
+    if not out and first_error is not None:
+        raise OnlineLookupError(f"Simbad lookup failed: {first_error}") from first_error
     return out
 
 
