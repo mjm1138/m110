@@ -251,6 +251,10 @@ QMenuBar::item:selected {{ background-color: {t.surface_alt}; }}
 QMenu {{ background-color: {t.raised}; border: 1px solid {t.border}; }}
 QMenu::item {{ padding: {SPACE['xs']}px {SPACE['lg']}px; }}
 QMenu::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
+/* Styling QMenu::item stops Qt auto-greying disabled entries, so a disabled item
+   would draw at full strength and just fail to highlight (reads as "broken", not
+   "unavailable"). Grey it explicitly, matching QPushButton:disabled above. */
+QMenu::item:disabled {{ color: {t.text_disabled}; }}
 QMenu::separator {{ height: 1px; background: {t.divider}; margin: {SPACE['xs']}px 0; }}
 
 /* ── splitter / scrollbars ── */

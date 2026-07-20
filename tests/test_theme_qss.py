@@ -61,6 +61,19 @@ def test_pushbutton_has_min_height():
     assert "min-height" in btn_block
 
 
+def test_disabled_menu_items_are_greyed():
+    """Styling QMenu::item stops Qt from auto-greying disabled entries, so a disabled
+    context-menu item would draw at full strength and merely fail to highlight — it
+    reads as broken, not unavailable. The sheet must grey it explicitly (like
+    QPushButton:disabled). Native menu painting can't be regression-tested offscreen —
+    assert on the generated QSS, per the theme gotcha."""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        assert "QMenu::item:disabled {" in qss
+        rule = qss.split("QMenu::item:disabled {", 1)[1].split("}", 1)[0]
+        assert t.text_disabled in rule
+
+
 def test_calendar_popup_escapes_the_table_item_padding():
     """BUGS #43: the QDateEdit calendar's day grid is a QTableView subclass, so the
     generic `QTableView::item` padding squeezed its fixed-size day cells until

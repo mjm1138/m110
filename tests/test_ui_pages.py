@@ -411,6 +411,38 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_context_menu_fill_enrich_reflect_gaps(tmp_path, monkeypatch, qapp):
+    """Right-click Fill / Enrich are enabled only when there's something to do: a
+    fully-populated object disables both (they then render greyed via the QSS
+    QMenu::item:disabled rule); a sparse object with gaps enables them. Uses the
+    exec-free `_object_menu` builder — a modal exec can't run headless and PySide6's
+    QMenu.exec can't be monkeypatched."""
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
+        "m13": {                              # every fillable field present → no gaps
+            "id": "M13", "name": "Hercules Globular", "type": "globular",
+            "magnitude": 5.8, "size": "20", "season": "Jun–Aug",
+            "filter": "IRCUT", "ra_deg": 250.42, "dec_deg": 36.46},
+        "m1": {"id": "M1", "name": "Crab", "type": "emission_snr"},   # reference can fill
+        "custom-neb": {"id": "Custom", "type": "unknown"},   # off-catalog stub → real gaps
+    })
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        _m1, complete = page._object_menu("m13")
+        assert complete["fill"].isEnabled() is False       # nothing the reference can add
+        assert complete["online"].isEnabled() is False     # no remaining gaps → greyed
+        _m2, refable = page._object_menu("m1")
+        assert refable["fill"].isEnabled() is True          # reference fills mag/size/coords
+        _m3, offcat = page._object_menu("custom-neb")
+        assert offcat["online"].isEnabled() is True         # gaps the reference can't fill
+        for m in (_m1, _m2, _m3):
+            m.deleteLater()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_library_detail_hidden_until_selection_then_closable(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     add_library(root, {"m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"}})
