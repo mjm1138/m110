@@ -1,5 +1,7 @@
 # Publishing your collection
 
+← [Back to the guide](README.md)
+
 **Library → Publish / share…** turns your collection into a static website — either
 into a **local folder** you host however you like, or deployed **straight to GitHub
 Pages** with one click.
