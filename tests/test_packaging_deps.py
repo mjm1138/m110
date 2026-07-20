@@ -29,3 +29,19 @@ def test_specs_copy_astropy_metadata():
         text = (specs / platform / "M110.spec").read_text(encoding="utf-8")
         assert 'copy_metadata("astropy")' in text, (
             f"{platform}/M110.spec must copy_metadata('astropy') for astroquery (#74)")
+
+
+def test_hook_astropy_bundles_unit_parser_tables():
+    """astropy's PLY unit-parser tables (generic_parsetab/lextab, under
+    astropy/units/format) must be bundled as on-disk .py DATA — collect_submodules only
+    puts them in the PYZ, and astropy's parser looks for the *file*, regenerating (and
+    failing to write) in a read-only frozen bundle. Missing, the FIRST unit parse — at
+    `import astropy.units` — dies, so every coordinate transform fails: planning + the
+    prioritizer show "astronomy engine unavailable" (#75), and astroquery can't import
+    either (#74)."""
+    hook = (Path(__file__).resolve().parents[1]
+            / "packaging/common/pyinstaller-hooks/hook-astropy.py")
+    text = hook.read_text(encoding="utf-8")
+    assert "astropy.units.format" in text and "include_py_files" in text, (
+        "hook-astropy must collect_data_files('astropy.units.format', "
+        "include_py_files=True) so the PLY unit-parser tables ship as files (#75)")

@@ -11,12 +11,18 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Fixed
+- **Planning and priority ranking work in the installed app.** In the packaged builds they
+  failed with *"astronomy engine unavailable"* (the ranking) or no usable plan — because the
+  astronomy library (astropy) wasn't fully bundled: its unit-parser tables were missing, so the
+  very first calculation at startup errored out. Those files are now included, and planning,
+  tonight's observability, and the priority ranking all compute again. (Thanks to @devonjones —
+  issue #75.)
 - **"Enrich online" / "Look up online" work in the installed app (for real this time).**
-  Beta 5 bundled the Simbad lookup library (astroquery) but it still failed to start in the
-  packaged app, because one more piece it needs at launch — astropy's version record — wasn't
-  included. That's now bundled, so online enrichment actually runs. (Thanks again to
-  @devonjones — issue #74.) If online lookup ever fails again, M110 now writes the underlying
-  reason to its log so it can be diagnosed instead of just showing "not available."
+  Beta 5 bundled the Simbad lookup library (astroquery), but it still failed to start because
+  the same astropy pieces above were missing **and** astropy's version record wasn't included
+  (astroquery reads it at launch). Both are now bundled, so online enrichment actually runs.
+  (Thanks again to @devonjones — issue #74.) If online lookup ever fails again, M110 now writes
+  the underlying reason to its log so it can be diagnosed instead of just showing "not available."
 - **The About box shows the version you actually installed.** Installing a new beta *over* an
   older one on Windows could leave the old version's record behind, so Help → About reported an
   earlier beta (some users saw 0.1.0-beta.1). The Windows installer now fully replaces the app

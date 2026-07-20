@@ -515,31 +515,41 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
-- [x] **Enrich online still dead on Windows + About reported an older beta** *(2026-07-19,
-  `fix/issue-74-astroquery-metadata-and-version`; #74, @devonjones on Windows 0.2.0-beta.5)*.
-  Two symptoms, two causes — disambiguated by the reporter's clean-install test (version fixed
-  by reinstall, enrich did not).
-  **Enrich:** the packaged app *had* the beta-5 code (the error was the new "not available in
-  this build" message) and CI *had* installed astroquery, yet `import astroquery.simbad` raised
-  at runtime. Reproduced with a minimal frozen build mirroring the spec: `astroquery.utils.
-  commons` calls `astropy.utils.introspection.minversion('astropy')` **at import**, which reads
-  astropy's **dist-info metadata** → `KeyError('astropy')` because the specs bundle astropy's
-  *modules* (hook-astropy: `collect_submodules`+`collect_data_files`) but never
-  `copy_metadata("astropy")`. Planning never checks astropy's version, so it worked while
-  astroquery's import died — exactly the reported split. Fix: `copy_metadata("astropy")` in all
-  three specs (confirmed: the frozen `Simbad()` then imports + configures). Also **log the
-  underlying import error** in `catalog.resolve_object_online` (it was swallowed into the
-  generic message — the same reason this took a frozen-repro to find). *(A red herring en route:
-  the repro also tripped astropy's PLY unit-parser table `generic_parsetab`; that's bundled in
-  the PYZ via `collect_submodules` and the shipped app has it — a minimal-repro artifact, not a
-  real gap.)*
-  **Version:** the Windows Inno installer `[Files]` adds/overwrites but never deletes, and
-  AppVersion is numeric `0.2.0` for every beta — so an in-place upgrade left the old
-  `m110-0.2.0bN.dist-info` beside the new one and `importlib.metadata.version("m110")` returned
+- [x] **Frozen astropy incompletely bundled → planning/ranking dead + enrich dead; + About
+  reported an older beta** *(2026-07-19, `fix/issue-74-astroquery-metadata-and-version`; #74 +
+  #75, @devonjones on Windows 0.2.0-beta.5)*.
+
+  **astropy unit-parser tables not bundled as files (#75, the root one).** In a *real* frozen
+  build, `import astropy.units` dies with `ValueError: 'm / (s)' did not parse … No such file:
+  …/astropy/units/format/generic_parsetab.py`. astropy's PLY unit parser needs its generated
+  tables (`generic_parsetab.py`/`generic_lextab.py`) as **files on disk**; `collect_submodules`
+  puts them only in the **PYZ**, so the parser can't find the file, tries to regenerate + write
+  next to the module, and fails in a read-only bundle. The first unit parse happens *at
+  `import astropy.units`*, so **every** coordinate transform dies → the prioritizer shows
+  "astronomy engine unavailable" and Plan-a-night can't run (#75), **and** astroquery — which
+  imports astropy.units — can't load either (so this also blocked #74's enrich, before the
+  metadata check below). **This was missed when the codata2018 planning fix shipped because that
+  fix was validated against a loose-file PYZ *reconstruction* (where the .py table existed on
+  disk), not a real PyInstaller build — the lesson: validate frozen fixes against a real build.**
+  Fix: `hook-astropy` `collect_data_files("astropy.units.format", include_py_files=True)`
+  (confirmed against a real minimal build: `import astropy.coordinates` + transforms then work).
+
+  **astropy metadata not bundled (#74's second layer).** With units working, astroquery next
+  hit `astroquery.utils.commons` → `astropy.utils.introspection.minversion('astropy')` **at
+  import**, which reads astropy's **dist-info** → `KeyError('astropy')` (specs bundle astropy's
+  modules but not its metadata). Fix: `copy_metadata("astropy")` in all three specs (the frozen
+  `Simbad()` then imports + configures). Also **log the swallowed import error** in
+  `catalog.resolve_object_online` — it was hidden behind the generic "not available" message.
+
+  **Version reported an older beta (#74).** The Windows Inno installer `[Files]` adds/overwrites
+  but never deletes, and AppVersion is numeric `0.2.0` for every beta — so an in-place upgrade
+  left the old `m110-0.2.0bN.dist-info` beside the new one and `importlib.metadata.version` read
   the alphabetically-first (older) one. macOS (.app replace) / Linux (single-file AppImage)
-  don't accumulate, so it's Windows-only. Fix: `[InstallDelete] {app}\*` (clean replace on
-  upgrade) + `updates.current_version()` prefers the compiled-in `m110.__version__` when frozen
-  (immune to a stale dual dist-info). Guarded by `test_specs_copy_astropy_metadata`,
+  don't accumulate → Windows-only. Fix: `[InstallDelete] {app}\*` (clean replace) +
+  `updates.current_version()` prefers compiled-in `m110.__version__` when frozen. Disambiguated
+  by the reporter's clean-install test (version fixed by reinstall, enrich/ranking did not).
+
+  Guarded by `test_hook_astropy_bundles_unit_parser_tables`, `test_specs_copy_astropy_metadata`,
   `test_current_version_prefers_dunder_when_frozen`, `test_online_import_failure_is_logged`.
   **Rebuild required.**
 
