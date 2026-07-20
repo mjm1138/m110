@@ -291,8 +291,14 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   — astroquery calls `minversion('astropy')` at import, which reads astropy's dist-info,
   so without it the frozen Simbad import dies with `KeyError('astropy')` even though
   astropy's *modules* are bundled; planning never version-checks astropy, so it works
-  while enrich breaks (issue #74). Dev = pytest (+ astroquery for
-  `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
+  while enrich breaks (issue #74). **`hook-astropy` also `collect_data_files("astropy.units.
+  format", include_py_files=True)`** — astropy's PLY unit parser needs its `generic_parsetab.py`/
+  `lextab.py` tables as **files on disk**, not just PYZ modules; missing, `import astropy.units`
+  dies on the first unit parse and *every* coordinate transform fails (planning + prioritizer
+  show "astronomy engine unavailable"; astroquery can't load either — issue #75). **Validate
+  frozen-app fixes against a real PyInstaller build, not a PYZ reconstruction** — a
+  loose-`.py` reconstruction hid this (the parsetab existed as a file there). Dev = pytest
+  (+ astroquery for `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
 
 ---
 

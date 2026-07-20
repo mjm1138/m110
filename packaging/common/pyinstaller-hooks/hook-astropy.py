@@ -40,4 +40,16 @@ def _keep(name: str) -> bool:
 
 
 datas = collect_data_files("astropy")
+
+# astropy's unit parser (PLY) needs its generated tables — generic_parsetab.py /
+# generic_lextab.py under astropy/units/format — as real files ON DISK. collect_submodules
+# puts them only in the PYZ, but astropy's parser looks for the *file*; when it's missing it
+# tries to regenerate + write next to the module, which fails in a read-only frozen bundle →
+# a ValueError on the FIRST unit parse, which happens at `import astropy.units`. That kills
+# every coordinate transform → planning + the prioritizer report "astronomy engine
+# unavailable" (#75), and it also blocks astroquery, which imports astropy.units (#74). The
+# real app only ever worked from a loose-file reconstruction — a real build hits this.
+# include_py_files=True bundles the .py tables as data, so no runtime regeneration is needed.
+datas += collect_data_files("astropy.units.format", include_py_files=True)
+
 hiddenimports = collect_submodules("astropy", filter=_keep)
