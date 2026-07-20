@@ -10,6 +10,17 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Three "Popular" goal lists, curated by popularity and matched to your gear.** New
+  bundled goals you can turn on from **Overview → Manage goals**: **Popular: Deep (S50)** —
+  small, faint, detailed targets that suit the S50's deeper aperture and narrow field;
+  **Popular: Widefield (S30 Pro / Dwarf 3)** — big showpiece nebulae that need a wide frame
+  (North America, Veil, Heart & Soul, Andromeda…); and **Popular: Bright & Easy (S30 / Dwarf
+  Mini)** — bright, forgiving crowd-pleasers that reward a short session. Each list spans all
+  four seasons and reaches well beyond Messier. To support them, four iconic targets were
+  added to the object reference: the **Pelican**, **Horsehead**, and **Elephant's Trunk**
+  nebulae, and the second half of the **Double Cluster** (NGC 884).
+
 ### Changed
 - **Overview's "Priority targets" no longer says the prioritizer is "coming."** The
   automatic target ranking has shipped — it lives on the **Planning** page. The
