@@ -372,8 +372,12 @@ def season_from_ra(ra_deg) -> str:
 
 # Structured fields a Library entry can carry, in canonical write order (notes is
 # user content — never auto-filled).
-_FILLABLE = ["name", "type", "magnitude", "size", "season", "filter",
-             "ra_deg", "dec_deg"]
+# Fields that a catalog/online lookup can actually backfill. `filter` is deliberately
+# NOT here: it's a per-capture setting (which filter you shot with), so no reference
+# catalog or Simbad ever provides it — counting it as a gap made objects offer "Enrich
+# online" and then find nothing (the NGC 6960 case). It's still a real Library field
+# (see `_LIB_ORDER`), just not one enrichment can fill.
+_FILLABLE = ["name", "type", "magnitude", "size", "season", "ra_deg", "dec_deg"]
 
 
 def _is_missing(field: str, value) -> bool:

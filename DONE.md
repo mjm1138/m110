@@ -515,6 +515,16 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **`filter` no longer counts as an enrichable metadata gap** *(2026-07-19,
+  `fix/filter-not-enrichable-gap`; NGC 6960 follow-up)*. `filter` is a per-capture setting,
+  so no reference catalog or Simbad ever provides it — yet it was in `_FILLABLE`, where it was
+  a no-op in `_compute_fill`/`resolve_new_object` (the reference has no `filter`) and only ever
+  produced a **false gap** in `_has_gaps`. That made objects otherwise complete offer "Enrich
+  online" → "Simbad had nothing to add" (the NGC 6960 report). Dropped `filter` from `_FILLABLE`
+  (still a real Library field via `_LIB_ORDER`). Guarded by `test_filter_is_not_an_enrichable_gap`.
+  Note: doesn't change objects with *real* missing fields Simbad also lacks (e.g. NGC 6960 has no
+  Simbad V-mag/size) — that's the deeper "surface objects that need enrichment" backlog item.
+
 - [x] **Simbad enrichment `OverflowError` on Windows (int too large for C long)** *(2026-07-19,
   `fix/simbad-windows-overflow`; @devonjones, on C34/NGC 6960)*. With astroquery finally importing
   (#74/#75), the query itself failed: `Simbad lookup failed: OverflowError: … Python int too large

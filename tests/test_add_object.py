@@ -268,3 +268,16 @@ def test_resolve_online_no_match_is_quiet(monkeypatch):
 
     _install_fake_simbad(monkeypatch, EmptySimbad)
     assert catalog.resolve_object_online(["Nonexistent"]) == {}
+
+
+def test_filter_is_not_an_enrichable_gap():
+    """`filter` is a per-capture setting no catalog/Simbad provides, so an object missing
+    only `filter` must NOT count as having gaps — otherwise it offers "Enrich online" and
+    then finds nothing (the NGC 6960 confusion). A real missing field still counts."""
+    complete = {"id": "M13", "name": "Hercules", "type": "globular", "magnitude": 5.8,
+                "size": "20", "season": "summer", "ra_deg": 250.0, "dec_deg": 36.0}
+    assert "filter" not in catalog._FILLABLE
+    assert catalog._has_gaps(complete) is False                    # no `filter` → still no gap
+    assert catalog._has_gaps({**complete, "filter": None}) is False
+    missing_mag = {k: v for k, v in complete.items() if k != "magnitude"}
+    assert catalog._has_gaps(missing_mag) is True                  # a real fillable gap still counts
