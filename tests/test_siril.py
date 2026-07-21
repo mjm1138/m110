@@ -215,6 +215,71 @@ def test_scan_finished_picks_up_output_loose_in_object_dir(tmp_path, monkeypatch
     assert siril.has_unimported_output(target) is False
 
 
+def test_scan_finished_classifies_output_by_tier_directory(tmp_path, monkeypatch):
+    """#85: Siril's working dir is the sandbox, and the user (or Siril) saved the
+    outputs into siril/stacks/ and siril/finished/ subdirs. None of the .fit files
+    carry a "finished" hint in their name, so filename-only classification dropped
+    them (only the .jpg was ever picked up) — the tier directory now classifies
+    them outright: stacks/ → stack, finished/ → deliverable."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    (sb / "stacks").mkdir()
+    (sb / "finished").mkdir()
+    (sb / "stacks" / "M_27_387x20sec_0813_og.fit").write_text("STACK")  # no hint
+    (sb / "finished" / "M_27_387_2026-07-21.fit").write_text("MASTER")  # no hint
+    (sb / "finished" / "M_27_387_2026-07-21.jpg").write_text("JPG")
+
+    assert siril.has_unimported_output(target) is True
+    got = {it.name: (it.kind, it.dest) for it in siril.scan_finished(target).items}
+    assert got == {
+        "M_27_387x20sec_0813_og.fit":
+            ("stack", str(config.stacks_dir(target) / "M_27_387x20sec_0813_og.fit")),
+        "M_27_387_2026-07-21.fit":
+            ("render", str(config.finished_dir(target) / "M_27_387_2026-07-21.fit")),
+        "M_27_387_2026-07-21.jpg":
+            ("render", str(config.finished_dir(target) / "M_27_387_2026-07-21.jpg")),
+    }
+
+    siril.apply_import(target, [it.src for it in siril.scan_finished(target).items],
+                       cleanup="none")
+    assert (config.stacks_dir(target) / "M_27_387x20sec_0813_og.fit").is_file()
+    assert (config.finished_dir(target) / "M_27_387_2026-07-21.fit").is_file()
+    assert (config.finished_dir(target) / "M_27_387_2026-07-21.jpg").is_file()
+
+
+def test_scan_finished_skips_files_already_in_their_tier(tmp_path, monkeypatch):
+    """Now that the managed tiers are scanned, files already correctly sitting in
+    stacks/ / finished/ (p == dest) must NOT flood the preview — the gallery and
+    derived data already read them in place. Only files that would move surface."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    config.stacks_dir(target).mkdir(parents=True, exist_ok=True)
+    config.finished_dir(target).mkdir(parents=True, exist_ok=True)
+    (config.stacks_dir(target) / "already.fit").write_text("S")
+    (config.finished_dir(target) / "already.jpg").write_text("J")
+    (config.finished_dir(target) / "already.fit").write_text("F")
+
+    assert siril.has_unimported_output(target) is False
+    assert siril.scan_finished(target).items == []
+
+
+def test_tier_directory_wins_over_intermediate_filename(tmp_path, monkeypatch):
+    """Directory wins over filename (#85): a star-layer name vetoes a *loose* file
+    (starless/starmask are always intermediates when unsorted), but the same name
+    filed under finished/ is imported as a deliverable — the user put it there."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    (sb / "finished").mkdir()
+    (sb / "finished" / "M101_starless.tif").write_text("KEEP")  # tier wins → render
+    (sb / "M101_starless.tif").write_text("SKIP")               # loose → vetoed
+
+    items = siril.scan_finished(target).items
+    assert [(it.name, it.kind) for it in items] == [("M101_starless.tif", "render")]
+    assert items[0].dest == str(config.finished_dir(target) / "M101_starless.tif")
+
+
 def test_apply_import_routes_sets_hero_and_archives(tmp_path, monkeypatch):
     target = _make_target(tmp_path, monkeypatch, ircut=120)
     siril.apply_prep(siril.plan_prep(target))

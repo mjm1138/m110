@@ -47,6 +47,8 @@ _FIT_EXTS = (".fit", ".fits")
 # into its name (e.g. "…_spcc_processed.png"). A bare step file is excluded
 # anyway because a .fit must carry a finished hint to count as a stack, and those
 # rasters are rare; over-vetoing them silently dropped real finished output (#).
+# This vocabulary only decides *loose* files — a file sorted into a stacks/ or
+# finished/ tier is classified by its directory instead (see `_classify`, #85).
 
 
 class PrepCancelled(Exception):
@@ -420,14 +422,53 @@ class ImportPlan:
     hero_candidates: list        # render src paths (rasters)
 
 
-def _classify(path: Path, target: str):
-    """(kind, dest) for a sandbox file, or None if it's not a finished output."""
+# Managed content tiers whose *directory* classifies a file outright — a file
+# the user (or Siril) filed under stacks/ is a stack, under finished/ is a
+# deliverable, whatever its filename (#85). `seestar-stacks/` is a device tier
+# (in-app stacks ingested from the scope), never user processing output, so it
+# is never a source.
+_OUTPUT_TIERS = ("stacks", "finished")
+
+
+def _tier_of(dir_parts) -> str | None:
+    """The managed output tier (`stacks`/`finished`) among a file's ancestor
+    directory names, nearest-to-the-file first, or None if it sits loose."""
+    for part in reversed(dir_parts):
+        if part in _OUTPUT_TIERS:
+            return part
+    return None
+
+
+def _classify(path: Path, target: str, tier: str | None = None):
+    """(kind, dest) for a candidate file, or None if it's not a finished output.
+
+    **Directory wins (#85).** When `tier` names the managed tier the file sits
+    under, that tier classifies it outright — no filename hint required, and the
+    star-layer/intermediate veto is *not* applied (the user filed it there on
+    purpose; if they disagree they move the file). Only files that sit *loose*
+    (no tier dir in their path) fall back to the filename vocabulary: a raster is
+    a render; a `.fit` is a stack only if it carries a finished hint, so a bare
+    intermediate stays out."""
     name = path.name
     if "_thn." in name or name == "lights.fit":
         return None
+    ext = path.suffix.lower()
+
+    if tier == "stacks":
+        # A stack is a FITS master; a stray raster in stacks/ isn't one (and the
+        # gallery already surfaces it), so leave it.
+        if ext in _FIT_EXTS:
+            return "stack", config.stacks_dir(target) / name
+        return None
+    if tier == "finished":
+        # A deliverable can be a raster or a FITS master — either belongs here.
+        if ext in _RASTER_EXTS or ext in _FIT_EXTS:
+            return "render", config.finished_dir(target) / name
+        return None
+
+    # Loose: classify by the filename vocabulary (hints.py).
     if hints.is_intermediate_name(name):
         return None
-    ext = path.suffix.lower()
     if ext in _RASTER_EXTS:
         return "render", config.finished_dir(target) / name
     if ext in _FIT_EXTS and hints.is_finished_name(name):
@@ -440,27 +481,34 @@ def _classify(path: Path, target: str):
 _SKIP_DIRS = {"lights", "process", "presets", "archive"}
 
 # Object-root subdirs skipped when scanning Images/<target>/ for output a run
-# left there directly (the mis-pointed-working-directory case, #): the managed
-# content tiers (already-imported or raw inputs), and `siril/` — which
-# `_sandbox_outputs` already walks — plus Siril's own `process/` scratch.
+# left there directly (the mis-pointed-working-directory case): raw inputs, the
+# device stacks (not user output), per-sub previews, `siril/` — which
+# `_sandbox_outputs` already walks — and Siril's own `process/` scratch. The
+# managed `stacks/`/`finished/` tiers are **not** skipped (#85): a file the user
+# sorted into one is classified by the tier and, if already exactly in place,
+# dropped by the `p == dest` guard in `_finished_outputs` so it can't flood the
+# preview.
 _ROOT_SKIP_DIRS = {
-    "lights", "stacks", "finished", "seestar-stacks", "previews",
+    "lights", "seestar-stacks", "previews",
     "darks", "flats", "biases", "siril", "process",
 }
 
 
 def _sandbox_outputs(target: str):
     """Yield (path, kind, dest) for finished outputs in the sandbox, skipping
-    inputs, Siril scratch, presets, and archived prior runs."""
+    inputs, Siril scratch, presets, and archived prior runs. A tier subdir the
+    user saved into (`siril/stacks/`, `siril/finished/`) classifies its files by
+    that tier (#85)."""
     base = config.siril_dir(target)
     if not base.is_dir():
         return
     for p in base.rglob("*"):
         if not p.is_file():
             continue
-        if _SKIP_DIRS & set(p.relative_to(base).parts[:-1]):
+        dir_parts = p.relative_to(base).parts[:-1]
+        if _SKIP_DIRS & set(dir_parts):
             continue
-        c = _classify(p, target)
+        c = _classify(p, target, _tier_of(dir_parts))
         if c:
             yield p, c[0], c[1]
 
@@ -468,27 +516,36 @@ def _sandbox_outputs(target: str):
 def _root_outputs(target: str):
     """Yield finished outputs a run left directly in the object dir instead of
     the sandbox — the easy-to-make "I set Siril's working directory to
-    Images/<target>/ rather than Images/<target>/siril/" mistake. Skips the
-    managed tiers, raw inputs, and the sandbox itself (already walked)."""
+    Images/<target>/ rather than Images/<target>/siril/" mistake — plus files
+    the user sorted straight into `stacks/`/`finished/` (classified by tier;
+    already-placed ones are dropped downstream). Skips raw inputs, previews, the
+    device stacks, and the sandbox itself (already walked)."""
     base = config.target_dir(target)
     if not base.is_dir():
         return
     for p in base.rglob("*"):
         if not p.is_file():
             continue
-        if _ROOT_SKIP_DIRS & set(p.relative_to(base).parts[:-1]):
+        dir_parts = p.relative_to(base).parts[:-1]
+        if _ROOT_SKIP_DIRS & set(dir_parts):
             continue
-        c = _classify(p, target)
+        c = _classify(p, target, _tier_of(dir_parts))
         if c:
             yield p, c[0], c[1]
 
 
 def _finished_outputs(target: str):
     """Every importable finished output for a target: the siril/ sandbox plus
-    any a run left loose in the object dir. No src is yielded twice — the root
-    walk skips siril/, which the sandbox walk owns."""
-    yield from _sandbox_outputs(target)
-    yield from _root_outputs(target)
+    any a run left in the object dir. A file already sitting *exactly* at its
+    destination (`p == dest`) is dropped — it's imported already and the
+    gallery/derived data read it in place, so it must not reappear in the import
+    preview now that the managed tiers are scanned (#85). No src is yielded twice
+    — the root walk skips siril/, which the sandbox walk owns."""
+    for source in (_sandbox_outputs, _root_outputs):
+        for p, kind, dest in source(target):
+            if p == dest:
+                continue
+            yield p, kind, dest
 
 
 def _same_bytes(a: Path, b: Path, chunk: int = 1 << 16) -> bool:

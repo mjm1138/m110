@@ -27,6 +27,15 @@ changes a **user** would notice, per release.
   caption on Overview now explains that this section shows the targets you've
   *pinned*, and points to Planning for the automatic ranking.
 
+### Fixed
+- **"Import finished work" now finds the stacks and renders you've sorted into folders
+  yourself.** If you saved your Siril stack into a `stacks/` folder and your finished image
+  into a `finished/` folder — instead of leaving them loose for M110 to sort — import used
+  to pick up only files whose *names* contained a word like "processed" or "final." A
+  plainly-named `.fit` stack was skipped, and often only the `.jpg` came through. M110 now
+  trusts the folder: anything in `stacks/` is treated as a stack and anything in `finished/`
+  as a finished image, whatever it's named. (Thanks to @devonjones — issue #85.)
+
 ## [0.2.0-beta.6] - 2026-07-19
 
 ### Changed

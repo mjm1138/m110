@@ -21,6 +21,19 @@ Legend: `[ ]` open · `[~]` partially done
   place) and a bolder callout in the sandbox `next-steps.md`. A lightweight down-payment on
   the object-side "Process in…" of **#19**; the full launcher is still open.
 
+- [x] **#85 — Import ignores stacks/renders the user sorted into folders themselves**
+  (done — `feature/import-tier-classify`). *Import finished work* only recognized a `.fit`
+  as a stack/deliverable when its **filename** carried a "finished" hint
+  (`processed`/`final`/…), so output the user (or Siril) saved into `siril/stacks/` and
+  `siril/finished/` subfolders with plain names (`M_27_…_og.fit`, `M_27_…_2026-07-21.fit`)
+  was dropped — only the `.jpg` came through. Fix: **directory wins** — `siril._classify`
+  now takes the managed tier a file sits under (at any depth, sandbox *or* object root) and
+  classifies by it (`stacks/` → stack, `finished/` → deliverable; no filename hint, and the
+  intermediate/star-layer veto is not applied — the user filed it there on purpose),
+  falling back to the filename vocabulary only for *loose* files. The `stacks/`/`finished/`
+  tiers are now scanned too, with a `p == dest` guard in `_finished_outputs` so files
+  already correctly in place don't flood the preview. (Thanks to @devonjones.)
+
 - [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
   M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
   that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
