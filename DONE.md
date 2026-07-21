@@ -534,6 +534,11 @@ preset/strategy/dir/custom-MB persist in settings. External-folder output → no
 render, `max_dim`, no-oxipng, un-fittable, cancel/callbacks) +
 `tests/test_export_dialog.py` (offscreen: preset reactivity + a stubbed end-to-end
 export). Verified on real 30 MB+ finished frames and a real cocoa dialog grab.
+**Teardown gotcha:** the worker emits `done` from `run()` *as it returns*, so
+`_finish_worker` must `wait()` for the thread before `deleteLater()` — otherwise
+the deferred `~QThread` can run on a not-yet-finished thread and SIGSEGV during
+event delivery (crashed on a real save; offscreen timing never reproduced it,
+so the fix is `wait()`-before-delete, not a test).
 
 ---
 

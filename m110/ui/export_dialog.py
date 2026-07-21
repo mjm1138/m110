@@ -264,6 +264,12 @@ class ExportShareDialog(QDialog):
 
     def _finish_worker(self):
         if self._worker is not None:
+            # done/failed/cancelled fires from run() *as it returns*, so the
+            # QThread may not have fully finished yet. Wait for it before
+            # deleting, or the deferred ~QThread can run on a still-running
+            # thread and crash (SIGSEGV in ~QThread during event delivery).
+            if self._worker.isRunning():
+                self._worker.wait()
             self._worker.deleteLater()
             self._worker = None
 
