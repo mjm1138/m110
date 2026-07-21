@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.7] - 2026-07-21
+
 ### Added
 - **Export finished images sized for web sharing.** Right-click any image in an object's
   gallery — or the hero image — or use the new **⤓ Export…** button in the full-screen
