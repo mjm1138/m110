@@ -21,6 +21,19 @@ def _make_target(tmp_path, monkeypatch, ircut=120, lp=0, name="M101"):
     return name
 
 
+def _add_calibration(target, darks=0, flats=0, biases=0):
+    """Drop calibration frames into the target's darks/flats/biases tiers."""
+    for n, dir_fn, tag in ((darks, config.darks_dir, "Dark"),
+                           (flats, config.flats_dir, "Flat"),
+                           (biases, config.biases_dir, "Bias")):
+        if not n:
+            continue
+        d = dir_fn(target)
+        d.mkdir(parents=True, exist_ok=True)
+        for i in range(n):
+            (d / f"{tag}_{i:03d}.fit").write_text("c")
+
+
 # ── preset / drizzle tree ────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("frames,drizzle,amount,pf", [
@@ -103,6 +116,72 @@ def test_apply_copy_fallback(tmp_path, monkeypatch):
     siril.apply_prep(plan)
     f = next((config.siril_dir(target) / "lights").glob("*.fit"))
     assert f.read_text() == "x" and f.stat().st_nlink == 1   # copied
+
+
+# ── prepare: calibration-aware sandbox (#57 part B) ──────────────────────────
+
+def test_prep_hardlinks_calibration_and_sets_toggles(tmp_path, monkeypatch):
+    """#57: darks/flats/biases present → hardlinked into the sandbox root beside
+    lights/, and the Naztronomy preset's calibration toggles turned on."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10, flats=8, biases=8)
+    plan = siril.plan_prep(target)
+    assert plan.calib_kinds == ["darks", "flats", "biases"]
+
+    siril.apply_prep(plan)
+    sb = config.siril_dir(target)
+    for kind, n in (("darks", 10), ("flats", 8), ("biases", 8)):
+        got = list((sb / kind).glob("*.fit"))
+        assert len(got) == n
+        assert got[0].stat().st_nlink > 1                 # hardlinked, no extra bytes
+    d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (d["darks"], d["flats"], d["biases"]) == (True, True, True)
+    assert siril.is_default_preset(d)                     # still pristine/re-tunable
+
+
+def test_prep_without_calibration_is_lights_only(tmp_path, monkeypatch):
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    plan = siril.plan_prep(target)
+    assert plan.calib_kinds == [] and plan.calib_links == []
+    siril.apply_prep(plan)
+    sb = config.siril_dir(target)
+    assert not (sb / "darks").exists() and not (sb / "flats").exists()
+    d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (d["darks"], d["flats"], d["biases"]) == (False, False, False)
+
+
+def test_prep_partial_calibration_toggles_only_present_tiers(tmp_path, monkeypatch):
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10)                    # darks only
+    plan = siril.plan_prep(target)
+    assert plan.calib_kinds == ["darks"]
+    siril.apply_prep(plan)
+    sb = config.siril_dir(target)
+    assert (sb / "darks").is_dir() and not (sb / "flats").exists()
+    d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (d["darks"], d["flats"], d["biases"]) == (True, False, False)
+
+
+def test_is_default_preset_reads_calibration_toggles():
+    """A calibration-on default still reads as pristine (re-tunable); a hand edit
+    on top of it does not — so autoprep never clobbers a user's changes."""
+    pristine = siril.default_preset(200, darks=True, flats=True)
+    assert siril.is_default_preset(pristine)
+    assert not siril.is_default_preset(dict(pristine, batch_size=999))
+
+
+def test_import_archive_keeps_calibration(tmp_path, monkeypatch):
+    """Importing finished work archives the run's output but KEEPS calibration
+    (like lights + preset) so the sandbox is ready to re-run (#57)."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10, flats=8, biases=8)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    _processed(sb, target)                                # a render + stack to import
+    plan = siril.scan_finished(target)
+    siril.apply_import(target, [it.src for it in plan.items], cleanup="archive")
+    for kind in ("lights", "darks", "flats", "biases"):
+        assert (sb / kind).is_dir() and any((sb / kind).glob("*.fit"))
 
 
 # ── autoprep (ingest hook) ───────────────────────────────────────────────────

@@ -31,6 +31,12 @@ changes a **user** would notice, per release.
   nebulae, and the second half of the **Double Cluster** (NGC 884).
 
 ### Changed
+- **Processing prep now sets up your calibration frames too.** When an object has darks,
+  flats, or biases, M110 links them into the Siril working folder right beside the lights (at
+  no extra disk space) and turns on the matching options in the generated Naztronomy preset, so
+  the script calibrates by default. Previously only lights were set up, so an imported project's
+  calibration frames were left behind. (Groundwork toward importing existing Siril projects —
+  issue #57.)
 - **Import recognizes existing Siril project folders.** If you already keep your captures in
   Siril-style project folders — `M51/lights`, `M51/darks`, `M51/flats`, `M51/biases` — you can
   point import at the folder that holds them and M110 pulls each project in as one object,

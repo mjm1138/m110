@@ -94,8 +94,8 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     previews/                       optional per-sub JPG previews (#25; opt-in) [archive]
     working_files/                  processing by-products (starless/crop/…) [output]
     siril/                          contained processing-prep sandbox:
-      lights/ (hardlinks) · process/ (scratch) · presets/ · next-steps.md
-      archive/<ts>/ (past runs)
+      lights/ (hardlinks) · darks/ flats/ biases/ (hardlinks, shared, if present) ·
+      process/ (scratch) · presets/ · next-steps.md · archive/<ts>/ (past runs)
     (darks/ flats/ biases/ — calibration; preserved if present, and **import targets**
                             for frames header-routed by IMAGETYP (ROADMAP item 6b);
                             written by ingest, layout unchanged → no .store_version bump)
@@ -157,7 +157,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Finished renders | `Images/<target>/finished/` | PNG/JPG/TIFF/FITS | Imported from the siril sandbox | **Output** — user's deliverables | Persistent | Never auto-deleted |
 | Working files | `Images/<target>/working_files/` | FITS (mostly) | Diverted here on import when a `.fit` in a lights source reads as a processing by-product, not a raw sub (`config.is_light_frame`/`is_processing_product`); `ingest.plan_lights_cleanup` relocates already-mis-filed ones | **Output** — kept, not raw | Persistent | Never auto-deleted | Keeps `lights/` sub-only (raw-integrity + correct filter detection) and `finished/` for final renders only |
 | Sub previews | `Images/<target>/previews/` | JPG | **Opt-in** (#25, `import_sub_previews` pref, default off): the Seestar's per-sub `.jpg` beside every raw sub, routed here by the `_sub` classifier (kind `preview`) instead of being ignored | **Archive** — user's copies, review-only | Persistent | Never auto-deleted | Lazily created (only when the pref is on + previews present); kept out of `lights/` and out of the gallery/hero tiers → **no `.store_version` bump** |
-| Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` are hardlinks (no extra space) | Persistent (ready for re-runs) | `archive/<ts>/` accumulates; **never auto-deleted** (see Retention) |
+| Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57) are hardlinks (no extra space); the preset's calibration toggles follow | Persistent (ready for re-runs) | `archive/<ts>/` accumulates; **never auto-deleted** (see Retention) |
 | Media | `Media/<Category>_photo\|_video/` | images/video | Ingested (`*_photo`/`*_video`) | **Content** | Persistent | Never auto-deleted |
 | Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh |
 | Rollups | `.m110_internal_data/derived/*.json` | JSON | `build_derived` (totals/summary/processing/priorities), `build_images` (images) | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh (`processing.json` stamps `generated_at` and is intentionally not byte-stable) |

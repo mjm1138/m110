@@ -93,19 +93,23 @@ def filter_quality_for(usable_frames: int) -> tuple[bool, float]:
 
 
 def default_preset(usable_frames: int,
-                   filter_label: str = "No Filter (Broadband)") -> dict:
+                   filter_label: str = "No Filter (Broadband)",
+                   darks: bool = False, flats: bool = False,
+                   biases: bool = False) -> dict:
     """A sensible *starting* Naztronomy Smart Scope preset (refined in the GUI).
     Constant keys are the empirical modal default across the reference presets;
     drizzle (`drizzle_for`) and the star-quality filters (`filter_quality_for`)
-    are set by `usable_frames`."""
+    are set by `usable_frames`. The `darks`/`flats`/`biases` toggles are turned on
+    when the sandbox has those calibration frames hardlinked in (#57), so the
+    script calibrates by default when the frames are present."""
     drizzle, amount, pixel_fraction = drizzle_for(usable_frames)
     filters_on, quality = filter_quality_for(usable_frames)
     return {
         "telescope": "ZWO Seestar S50",
         "filter": filter_label,
-        "darks": False,
-        "flats": False,
-        "biases": False,
+        "darks": darks,
+        "flats": flats,
+        "biases": biases,
         "cleanup": True,
         "batch_size": 25000,
         "bg_extract": True,
@@ -136,11 +140,17 @@ _DEFAULT_PRESET_REPS = (50, 200, 400, 800, 2000)
 
 def is_default_preset(preset: dict) -> bool:
     """True if `preset` is an untouched M110-generated default (for its own
-    filter label) at *some* frame count — i.e. the user hasn't hand-edited it.
-    Lets `apply_prep` re-tune a pristine preset as the frame count grows while
-    never clobbering values the user changed."""
+    filter label and calibration toggles) at *some* frame count — i.e. the user
+    hasn't hand-edited it. Lets `apply_prep` re-tune a pristine preset as the
+    frame count grows while never clobbering values the user changed. The
+    calibration toggles are read back off the preset so a default generated *with*
+    calibration (#57) still reads as pristine."""
     label = preset.get("filter", "No Filter (Broadband)")
-    return any(preset == default_preset(n, label) for n in _DEFAULT_PRESET_REPS)
+    darks = bool(preset.get("darks", False))
+    flats = bool(preset.get("flats", False))
+    biases = bool(preset.get("biases", False))
+    return any(preset == default_preset(n, label, darks, flats, biases)
+               for n in _DEFAULT_PRESET_REPS)
 
 
 # ── guidance (bundled playbooks) ─────────────────────────────────────────────
@@ -204,6 +214,10 @@ class PrepPlan:
     total_bytes: int = 0
     multi_filter: bool = False
     filters: list = field(default_factory=list)
+    # (src, dst) hardlinks for darks/flats/biases → the sandbox root (calibration
+    # is shared across filters). Empty when the target has no calibration frames.
+    calib_links: list = field(default_factory=list)
+    calib_kinds: list = field(default_factory=list)   # ["darks", …] present
 
 
 def _lights(target: str) -> list[Path]:
@@ -220,12 +234,42 @@ def _lights(target: str) -> list[Path]:
                   if f.is_file() and config.is_light_frame(f.name))
 
 
+# The calibration tiers, in the order the Naztronomy preset toggles them, and the
+# config helper for each source dir.
+_CALIB_TIERS = (("darks", config.darks_dir), ("flats", config.flats_dir),
+                ("biases", config.biases_dir))
+
+
+def _calib_frames(target: str) -> dict[str, list[Path]]:
+    """Calibration frames (`.fit`/`.fits`) present for `target`, keyed by tier
+    (`darks`/`flats`/`biases`); tiers with no frames are omitted."""
+    out: dict[str, list[Path]] = {}
+    for kind, dir_fn in _CALIB_TIERS:
+        d = dir_fn(target)
+        if not d.is_dir():
+            continue
+        frames = sorted(f for f in d.iterdir()
+                        if f.is_file() and config.is_fits_file(f.name))
+        if frames:
+            out[kind] = frames
+    return out
+
+
 def plan_prep(target: str, usable_frames: int | None = None,
               star_removal: bool = False, should_cancel=None) -> PrepPlan:
     """Read-only plan: lay each filter's lights into a literal `lights/` inside a
-    contained Siril sandbox. `usable_frames` (post-rejection, single-filter only)
-    overrides the raw count for the drizzle preset. Reads only."""
+    contained Siril sandbox, and hardlink any darks/flats/biases beside them so a
+    Siril project imported with calibration is reproduced ready to calibrate (#57).
+    `usable_frames` (post-rejection, single-filter only) overrides the raw count
+    for the drizzle preset. Reads only."""
     lights = _lights(target)
+    # Calibration is shared across filters → hardlinked once at the sandbox root
+    # (`siril/darks`, `siril/flats`, `siril/biases`). For a single-filter target the
+    # sandbox root *is* the job dir, so they sit right beside `lights/`.
+    calib = _calib_frames(target)
+    calib_kinds = list(calib)
+    calib_links = [(str(f), str(config.siril_dir(target) / kind / f.name))
+                   for kind, frames in calib.items() for f in frames]
     by_filter: dict[str, list[Path]] = {}
     total_bytes = 0
     for f in lights:
@@ -252,7 +296,10 @@ def plan_prep(target: str, usable_frames: int | None = None,
             job_dir=str(job_dir),
             preset_path=str(job_dir / "presets" / PRESET_NAME),
             links=links,
-            preset=default_preset(job_usable),
+            preset=default_preset(job_usable,
+                                  darks="darks" in calib,
+                                  flats="flats" in calib,
+                                  biases="biases" in calib),
             usable_frames=job_usable,
         ))
 
@@ -266,6 +313,8 @@ def plan_prep(target: str, usable_frames: int | None = None,
         total_bytes=total_bytes,
         multi_filter=multi,
         filters=filters,
+        calib_links=calib_links,
+        calib_kinds=calib_kinds,
     )
 
 
@@ -306,6 +355,12 @@ def _next_steps_md(plan: PrepPlan) -> str:
         label = job.filt or "all frames"
         lines.append(f"- **{label}** → open Siril in `{where}` "
                      f"({len(job.links)} subs, {drizz})")
+    if plan.calib_kinds:
+        lines += [
+            "",
+            f"Calibration frames were hardlinked in ({', '.join(plan.calib_kinds)}/ "
+            "at the sandbox root) and the preset's matching toggles are on.",
+        ]
     lines += [
         "",
         "## Steps",
@@ -336,14 +391,15 @@ def _read_preset(path: Path) -> dict:
 
 
 def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
-    """Create the sandbox, hardlink lights per job, write presets + next-steps.
-    THE WRITER — callers confirm (or it runs via `autoprep` after ingest).
-    Idempotent: existing links are skipped."""
-    ops = [(job, src, dst) for job in plan.jobs for (src, dst) in job.links]
+    """Create the sandbox, hardlink lights per job (+ shared darks/flats/biases at
+    the sandbox root), write presets + next-steps. THE WRITER — callers confirm (or
+    it runs via `autoprep` after ingest). Idempotent: existing links are skipped."""
+    ops = [(src, dst) for job in plan.jobs for (src, dst) in job.links]
+    ops += list(plan.calib_links)          # calibration → sandbox root (shared)
     linked = skipped = 0
     cancelled = False
     total = len(ops)
-    for i, (_job, src, dst) in enumerate(ops, 1):
+    for i, (src, dst) in enumerate(ops, 1):
         if should_cancel and should_cancel():
             cancelled = True
             break
@@ -630,7 +686,8 @@ def scan_finished(target: str, should_cancel=None) -> ImportPlan:
 # ── import: apply (writes finished/ + stacks/, gated cleanup) ─────────────────
 
 # Kept in each job dir on cleanup, so the sandbox is ready for another run.
-_ARCHIVE_KEEP = {"lights", "presets", "archive", "next-steps.md"}
+_ARCHIVE_KEEP = {"lights", "darks", "flats", "biases",
+                 "presets", "archive", "next-steps.md"}
 
 
 def apply_import(target: str, selected_srcs, hero_src: str | None = None,
