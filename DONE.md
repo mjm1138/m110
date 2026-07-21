@@ -571,6 +571,24 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Intermittent CI segfault (exit 139) — the flaky test suite** *(2026-07-21,
+  `fix/thumbnail-pool-teardown`)*. CI failed at random with `Fatal Python error:
+  Segmentation fault` / exit 139 — **not** a test assertion — and passed on any re-run,
+  the classic thread-timing flake. Root cause: `widgets.ThumbnailLoader` decodes
+  gallery/row thumbnails on the **global `QThreadPool`**, and the pool was **never
+  drained**, so a decode still running on a pool thread when Qt was torn down (test-session
+  end, or app quit) ran native `QImageReader`/`QImage` code against a half-destroyed Qt →
+  SIGSEGV on the worker thread (the crash log showed empty Python stacks on both threads +
+  `PIL._imaging` loaded — a decode in flight). Fix: `widgets.drain_thumbnail_pool()` =
+  `QThreadPool.globalInstance().waitForDone()`, called (a) after every test via an autouse
+  `conftest` fixture so no decode outlives the test/QApplication, and (b) on
+  `QApplication.aboutToQuit` in `main()`, which also fixes the same **rare crash on quit**
+  for users. Deliberately avoided the QRunnable-ownership route (holding task refs +
+  `setAutoDelete(False)`): a QRunnable isn't a QObject, so PySide can't track a pool-side
+  delete, and that route trades the race for a double-free footgun. Guarded by
+  `test_drain_thumbnail_pool_waits_for_inflight_decode`. (Same crash *class* as the export
+  dialog's `~QThread` wait-before-delete fix — an async worker outliving its Qt teardown.)
+
 - [x] **`filter` no longer counts as an enrichable metadata gap** *(2026-07-19,
   `fix/filter-not-enrichable-gap`; NGC 6960 follow-up)*. `filter` is a per-capture setting,
   so no reference catalog or Simbad ever provides it — yet it was in `_FILLABLE`, where it was

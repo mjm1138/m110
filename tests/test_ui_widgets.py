@@ -86,6 +86,27 @@ def test_thumbnail_loader_decodes_async_and_caches(tmp_path, qapp, qtbot):
     assert len(results2) == 1 and results2[0] is not None
 
 
+def test_drain_thumbnail_pool_waits_for_inflight_decode(tmp_path, qapp):
+    """drain_thumbnail_pool() must block until an in-flight decode finishes, so no
+    pool thread is still running native Qt image code when Qt tears down — the
+    intermittent CI SIGSEGV (exit 139) the drain exists to prevent."""
+    pytest.importorskip("PIL")
+    from PIL import Image
+    from PySide6.QtCore import QThreadPool, QCoreApplication
+    from m110.ui.widgets import ThumbnailLoader, drain_thumbnail_pool
+
+    img_path = tmp_path / "hero.jpg"
+    Image.new("RGB", (300, 200), (5, 6, 7)).save(img_path)
+
+    loader = ThumbnailLoader()
+    results = []
+    loader.request(img_path, 24, results.append)     # queues a background decode
+    drain_thumbnail_pool(10000)                       # must wait for it to finish
+    assert QThreadPool.globalInstance().activeThreadCount() == 0
+    QCoreApplication.processEvents()                  # deliver the queued result
+    assert results and results[0] is not None and not results[0].isNull()
+
+
 def test_thumbnail_loader_missing_file_calls_back_none(tmp_path, qapp):
     from m110.ui.widgets import ThumbnailLoader
 
