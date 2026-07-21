@@ -22,6 +22,7 @@ def build_qss(t: Tokens) -> str:
     r = RADIUS
     check_url = _icon_url("check.svg")
     dash_url = _icon_url("dash.svg")
+    radio_dot_url = _icon_url("radio-dot.svg")
     return f"""
 /* ── base ── */
 QWidget {{
@@ -231,7 +232,44 @@ QComboBox QAbstractItemView {{
 }}
 
 /* ── checkboxes / groupboxes ── */
-QCheckBox {{ spacing: {SPACE['sm']}px; }}
+/* min-height gives the 14px indicator vertical breathing room so stacked
+   checkboxes/radios don't crowd (their circles read as overlapping otherwise) —
+   same reason QPushButton carries a min-height. */
+QCheckBox, QRadioButton {{ spacing: {SPACE['sm']}px; min-height: 20px; }}
+/* Standalone check/radio indicators — like the table indicators above, route these
+   through QStyleSheetStyle so they're visible in dark mode. The native QMacStyle
+   unchecked box/circle renders near-invisibly on the dark surface (dark-on-dark,
+   no readable border). Keep the :checked glyph, or a stylesheet indicator draws no
+   mark of its own. Offscreen paint can't catch this (Fusion fallback), so it's
+   asserted on the generated QSS — per the theme gotcha. */
+QCheckBox::indicator, QRadioButton::indicator {{
+    width: 14px;
+    height: 14px;
+    border: 1px solid {t.border};
+    background-color: {t.surface};
+}}
+QCheckBox::indicator {{ border-radius: {r['sm']}px; }}
+QRadioButton::indicator {{ border-radius: 7px; }}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {t.accent}; }}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+    background-color: {t.surface_alt};
+    border-color: {t.divider};
+}}
+QCheckBox::indicator:checked {{
+    background-color: {t.accent};
+    border-color: {t.accent};
+    image: url({check_url});
+}}
+QCheckBox::indicator:indeterminate {{
+    background-color: {t.accent};
+    border-color: {t.accent};
+    image: url({dash_url});
+}}
+QRadioButton::indicator:checked {{
+    background-color: {t.accent};
+    border-color: {t.accent};
+    image: url({radio_dot_url});
+}}
 QGroupBox {{
     border: 1px solid {t.border};
     border-radius: {r['md']}px;

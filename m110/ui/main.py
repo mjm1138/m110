@@ -209,6 +209,11 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self._stop_worker)
+            # Also wait for background thumbnail decodes (ThumbnailLoader → the
+            # global QThreadPool): a decode still running on a pool thread when Qt
+            # tears down segfaults on native image code (same crash class).
+            from m110.ui.widgets import drain_thumbnail_pool
+            app.aboutToQuit.connect(lambda: drain_thumbnail_pool(3000))
 
         # Theme: repaint programmatic (non-QSS) colors when the palette changes.
         if theme.manager() is not None:

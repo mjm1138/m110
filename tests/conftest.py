@@ -38,3 +38,20 @@ def _reset_to_seal(_seal_live_store):
     config._apply(_seal_live_store)
     config.SETTINGS_FILE = _seal_live_store / "settings.json"
     yield
+
+
+@pytest.fixture(autouse=True)
+def _drain_qt_threadpool():
+    """After each test, wait for background QThreadPool work (async thumbnail
+    decodes — `ThumbnailLoader`) to finish before pytest-qt tears the widgets and,
+    at session end, the QApplication down. A decode still running on a pool thread
+    when Qt is torn down runs native image code against a half-destroyed Qt and
+    **segfaults the whole process** — the intermittent CI SIGSEGV (exit 139) that
+    "passes on re-run" because it's a thread-timing race, not a test failure.
+    No-op when Qt was never imported (pure-engine tests)."""
+    yield
+    import sys
+    qtcore = sys.modules.get("PySide6.QtCore")
+    if qtcore is None or qtcore.QCoreApplication.instance() is None:
+        return
+    qtcore.QThreadPool.globalInstance().waitForDone(10000)

@@ -497,6 +497,62 @@ destinations, multiple destinations (3-2-1).
 
 ---
 
+## Sharing / Export — image export for web sharing *(done 2026-07-21, `feature/image-export`)*
+
+First slice of the Sharing/Export arc (the destination model + a "Share" nav pane
+remain deferred — see ROADMAP item 8). New Qt-free **`m110/webexport.py`**: take any
+finished image (Siril `.png`, finished `.fit`/`.tif`, any raster) and write the
+highest-quality file that fits an **optional** size budget. `export_for_sharing(src,
+dest, *, strategy, max_bytes=None, …)` + a **quality ladder**: *lossless* strategy
+encodes an optimized PNG and, only if a max is set and it's over, **binary-searches
+the long edge** (Lanczos) for the largest lossless PNG that fits (fast
+`compress_level` during the search, `optimize` + optional `pyoxipng` on the winner;
+floor `MIN_LONG_EDGE`, else `ExportError`); *quality* strategy writes a
+full-resolution JPEG (`subsampling=0` 4:4:4, `optimize`, **baseline not progressive**
+— progressive tripped libjpeg's "Suspension not allowed" on incompressible frames
+and buys nothing since Reddit & co. re-encode). **`max_bytes=None` = no maximum** —
+lossless writes a full-res PNG, quality a full-res JPEG, no ladder. Reuses
+**`build_images._open_image`** as the front end so exported pixels match the app's
+render (FITS/float-TIF percentile-stretched to 8-bit RGB) — which also folds the
+16→8-bit reduction in for free (on Mike's real 30 MB 16-bit M11 PNG that alone lands
+~11 MB at *full resolution*, no downscale). Output format is deterministic from the
+strategy — lossless→PNG, quality→JPEG — so the save panel's suggested extension is
+known up front. `SAFETY_MARGIN` (~3 %) leaves rounding headroom; a byte-identical
+lossless original that already fits is copied verbatim (fast path). `pyoxipng` is a
+best-effort optional accelerator, **no new required dependency**. (Design note: an
+initial version had a `SharePreset` registry with per-site presets — Reddit/Discord
+budgets, per-platform `max_dim` caps; simplified to a bare **max-size + No-maximum**
+control per user feedback, dropping presets, `formats`, and `max_dim`.)
+
+UI: **`ui/export_dialog.py`** (`ExportShareDialog`) — a **Max size** spinbox + **No
+maximum** checkbox (disables the spinbox), lossless/quality strategy radios;
+**Export…** goes straight to the **native OS save panel** (`QFileDialog.getSaveFileName`,
+native dialog left on → the Cocoa save sheet, freely rename + relocate), pre-filled
+with `webexport.suggested_name` = **`[Object]-[maxsize]-[YYYYMMDD].[ext]`** (e.g.
+`M42-20mb-20260721.png`, or `…-nomax-…`; the object token is the catalog id via the
+detail pane's `_export_stem`). Then a `QThread` worker runs the ladder behind a busy
+`QProgressDialog` (status = the ladder's step trail) with working Cancel; success
+shows a summary + **Reveal**/**Open**. Entry points: the detail-pane gallery
+right-click **and the hero image** (a shared `_run_image_menu` — same actions as a
+gallery tile, acting on the hero's *source* file resolved via new
+**`build_images.hero_source_path`**, which reads the `hero/<slug>.src` sidecar), plus
+a **⤓ Export…** button in `image_viewer.py` (lazy-imported to avoid a cycle; the
+viewer stays app-data-agnostic — `webexport` imports only `build_images`; the pane
+threads the object id in as `export_stem`). Last strategy/max-MB/no-max/dir persist
+in settings. External-folder output → no `.store_version` impact. Tests:
+`tests/test_webexport.py` (ladder, fast path, FITS render, no-maximum, no-oxipng,
+un-fittable, cancel/callbacks, filename/label helpers) + `tests/test_export_dialog.py`
+(offscreen: No-maximum toggle + a stubbed end-to-end export). Verified on real
+30 MB+ finished frames, the hero right-click wiring on a live object, and real cocoa
+dialog grabs.
+**Teardown gotcha:** the worker emits `done` from `run()` *as it returns*, so
+`_finish_worker` must `wait()` for the thread before `deleteLater()` — otherwise
+the deferred `~QThread` can run on a not-yet-finished thread and SIGSEGV during
+event delivery (crashed on a real save; offscreen timing never reproduced it,
+so the fix is `wait()`-before-delete, not a test).
+
+---
+
 ## UI design system — Phase 0 + Phase 1 *(done 2026-06-29/30)*
 
 Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
@@ -514,6 +570,24 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 ---
 
 ## Fixed bugs & shipped improvements *(archive)*
+
+- [x] **Intermittent CI segfault (exit 139) — the flaky test suite** *(2026-07-21,
+  `fix/thumbnail-pool-teardown`)*. CI failed at random with `Fatal Python error:
+  Segmentation fault` / exit 139 — **not** a test assertion — and passed on any re-run,
+  the classic thread-timing flake. Root cause: `widgets.ThumbnailLoader` decodes
+  gallery/row thumbnails on the **global `QThreadPool`**, and the pool was **never
+  drained**, so a decode still running on a pool thread when Qt was torn down (test-session
+  end, or app quit) ran native `QImageReader`/`QImage` code against a half-destroyed Qt →
+  SIGSEGV on the worker thread (the crash log showed empty Python stacks on both threads +
+  `PIL._imaging` loaded — a decode in flight). Fix: `widgets.drain_thumbnail_pool()` =
+  `QThreadPool.globalInstance().waitForDone()`, called (a) after every test via an autouse
+  `conftest` fixture so no decode outlives the test/QApplication, and (b) on
+  `QApplication.aboutToQuit` in `main()`, which also fixes the same **rare crash on quit**
+  for users. Deliberately avoided the QRunnable-ownership route (holding task refs +
+  `setAutoDelete(False)`): a QRunnable isn't a QObject, so PySide can't track a pool-side
+  delete, and that route trades the race for a double-free footgun. Guarded by
+  `test_drain_thumbnail_pool_waits_for_inflight_decode`. (Same crash *class* as the export
+  dialog's `~QThread` wait-before-delete fix — an async worker outliving its Qt teardown.)
 
 - [x] **`filter` no longer counts as an enrichable metadata gap** *(2026-07-19,
   `fix/filter-not-enrichable-gap`; NGC 6960 follow-up)*. `filter` is a per-capture setting,

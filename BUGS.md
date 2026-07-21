@@ -21,6 +21,19 @@ Legend: `[ ]` open · `[~]` partially done
   place) and a bolder callout in the sandbox `next-steps.md`. A lightweight down-payment on
   the object-side "Process in…" of **#19**; the full launcher is still open.
 
+- [x] **#85 — Import ignores stacks/renders the user sorted into folders themselves**
+  (done — `feature/import-tier-classify`). *Import finished work* only recognized a `.fit`
+  as a stack/deliverable when its **filename** carried a "finished" hint
+  (`processed`/`final`/…), so output the user (or Siril) saved into `siril/stacks/` and
+  `siril/finished/` subfolders with plain names (`M_27_…_og.fit`, `M_27_…_2026-07-21.fit`)
+  was dropped — only the `.jpg` came through. Fix: **directory wins** — `siril._classify`
+  now takes the managed tier a file sits under (at any depth, sandbox *or* object root) and
+  classifies by it (`stacks/` → stack, `finished/` → deliverable; no filename hint, and the
+  intermediate/star-layer veto is not applied — the user filed it there on purpose),
+  falling back to the filename vocabulary only for *loose* files. The `stacks/`/`finished/`
+  tiers are now scanned too, with a `p == dest` guard in `_finished_outputs` so files
+  already correctly in place don't flood the preview. (Thanks to @devonjones.)
+
 - [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
   M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
   that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
@@ -109,6 +122,19 @@ Legend: `[ ]` open · `[~]` partially done
   `naztronomy_smart_scope_presets.json` in the imported project and carry it into
   `siril/presets/` (preserved instead of regenerated) — that half is ingest-coupled and belongs
   with #57 part A (`feature/import-siril-projects`, PR #88).
+- [~] **#57 — Import folders already set up for Siril.** Point import at existing Siril
+  project folders and have the frames pulled in without reorganizing the source. **(A)
+  recognition landed** (`feature/import-siril-projects`): the scanner recognizes a Siril/M110
+  **project root** (a folder that *contains* lights/darks/flats/biases) and routes the loose
+  files Siril left beside those folders — a stacked `.fit` → `stacks/`, another
+  processing-product `.fit` → `working_files/`, a finished render → `finished/` — instead of
+  stranding them in the holding area; a `<obj>_sub` folder imports under the object's real id
+  (`M63`, not `M63_sub`); and a folder of loose subs with no `lights/` subdir routes by the
+  folder name **when it names a known catalog object** (a generic/session-named folder still
+  goes to holding). **(B) follow-up (open):** reproduce the project in the
+  `Images/<target>/siril/` sandbox — hardlink darks/flats/biases alongside the lights (prep is
+  lights-only today) and preserve an imported `naztronomy_smart_scope_presets.json` rather than
+  regenerating it.
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,
