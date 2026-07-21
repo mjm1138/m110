@@ -42,6 +42,26 @@ def test_table_check_indicator_is_stylesheet_drawn():
         assert "image: url(" in checked
 
 
+def test_checkbox_and_radio_indicators_are_stylesheet_drawn():
+    """Standalone QCheckBox / QRadioButton indicators need explicit ::indicator
+    rules too. Left to QMacStyle, the *unchecked* box/circle renders near-invisibly
+    on the dark surface (dark-on-dark, no readable border) — the click target
+    vanishes in dark mode. Explicit rules give them a visible border + a :checked
+    glyph. Can't be paint-tested offscreen (Fusion fallback) — assert on the QSS."""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        assert "QCheckBox::indicator" in qss
+        assert "QRadioButton::indicator" in qss
+        # unchecked base must carry a visible border (the invisible-in-dark bug)
+        base = qss.split("QCheckBox::indicator, QRadioButton::indicator {", 1)[1] \
+                  .split("}", 1)[0]
+        assert t.border in base and "border:" in base
+        # checked states need a glyph, else they're ambiguous filled shapes
+        for sel in ("QCheckBox::indicator:checked {", "QRadioButton::indicator:checked {"):
+            checked = qss.split(sel, 1)[1].split("}", 1)[0]
+            assert "image: url(" in checked and t.accent in checked
+
+
 def test_check_indicator_icons_exist():
     """Every url(...) the sheet references must resolve, or the glyph silently
     vanishes (Qt fails quietly on a missing stylesheet image)."""

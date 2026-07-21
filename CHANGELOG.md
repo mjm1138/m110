@@ -36,6 +36,13 @@ changes a **user** would notice, per release.
   caption on Overview now explains that this section shows the targets you've
   *pinned*, and points to Planning for the automatic ranking.
 
+### Fixed
+- **Checkboxes and radio buttons are visible in dark mode.** Their empty (unchecked)
+  boxes and circles were drawn by the native macOS control style and came out almost
+  invisible against the dark background, so some options were hard to spot — for
+  example in Preferences, the Publish and Backup dialogs, and the new export dialog.
+  They now have a clear outline in both light and dark themes.
+
 ## [0.2.0-beta.6] - 2026-07-19
 
 ### Changed
