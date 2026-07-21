@@ -99,6 +99,16 @@ Legend: `[ ]` open · `[~]` partially done
   carries model/firmware but **no** unit id. So device attribution must key off FITS
   `TELESCOP`; a JPEG-only import can't tell two same-model scopes apart. See
   [`DATA_MODEL.md`](DATA_MODEL.md) → "Import & multi-source / multi-telescope".
+- [~] **#57 part B — calibration-aware Siril sandbox** (`feature/import-siril-sandbox`).
+  Prep was lights-only, so an imported Siril project's darks/flats/biases never reached the
+  `siril/` sandbox and couldn't be used. Now `siril.plan_prep`/`apply_prep` **hardlink**
+  `darks/`/`flats/`/`biases/` into the sandbox root (shared across filters; free, like lights)
+  and flip the Naztronomy preset's matching toggles when present; `is_default_preset` reads the
+  toggles back so a calibration-on default is still re-tunable; the calibration tiers join
+  `_ARCHIVE_KEEP` so an import doesn't sweep them away. **Still open (B3):** detect a
+  `naztronomy_smart_scope_presets.json` in the imported project and carry it into
+  `siril/presets/` (preserved instead of regenerated) — that half is ingest-coupled and belongs
+  with #57 part A (`feature/import-siril-projects`, PR #88).
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,

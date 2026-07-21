@@ -22,6 +22,12 @@ changes a **user** would notice, per release.
   nebulae, and the second half of the **Double Cluster** (NGC 884).
 
 ### Changed
+- **Processing prep now sets up your calibration frames too.** When an object has darks,
+  flats, or biases, M110 links them into the Siril working folder right beside the lights (at
+  no extra disk space) and turns on the matching options in the generated Naztronomy preset, so
+  the script calibrates by default. Previously only lights were set up, so an imported project's
+  calibration frames were left behind. (Groundwork toward importing existing Siril projects —
+  issue #57.)
 - **Overview's "Priority targets" no longer says the prioritizer is "coming."** The
   automatic target ranking has shipped — it lives on the **Planning** page. The
   caption on Overview now explains that this section shows the targets you've
