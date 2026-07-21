@@ -1,21 +1,23 @@
-"""Export-for-sharing dialog — size a finished image for Reddit/Discord/forums.
+"""Export-for-sharing dialog — size a finished image for web sharing.
 
-Pick a preset (size budget) + a strategy (lossless PNG, or full-resolution
-JPEG), then **Export…** opens the native OS save panel so you rename the file
-and choose any destination. The size-fitting work runs on a `QThread` worker
-behind a modal progress dialog with Cancel; the engine is `m110.webexport`.
+Pick a max file size (or "No maximum") and a strategy (lossless PNG, or
+full-resolution JPEG), then **Export…** opens the native OS save panel so you
+rename the file and choose any destination. The size-fitting work runs on a
+`QThread` worker behind a modal progress dialog with Cancel; the engine is
+`m110.webexport`.
 """
 from __future__ import annotations
 
 import threading
+from datetime import date
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
     QRadioButton, QButtonGroup, QDoubleSpinBox, QProgressDialog, QMessageBox,
-    QFileDialog, QWidget,
+    QFileDialog,
 )
 
 from m110 import config, webexport
@@ -44,17 +46,16 @@ class _ExportWorker(QThread):
     status = Signal(str)
     progressed = Signal(int, int)
 
-    def __init__(self, src, preset, dest, strategy, max_bytes, cancel_event,
-                 parent=None):
+    def __init__(self, src, dest, strategy, max_bytes, cancel_event, parent=None):
         super().__init__(parent)
-        self._src, self._preset, self._dest = src, preset, dest
+        self._src, self._dest = src, dest
         self._strategy, self._max_bytes = strategy, max_bytes
         self._cancel = cancel_event
 
     def run(self):
         try:
             res = webexport.export_for_sharing(
-                self._src, self._preset, self._dest, strategy=self._strategy,
+                self._src, self._dest, strategy=self._strategy,
                 max_bytes=self._max_bytes,
                 status=self.status.emit,
                 progress=lambda d, t: self.progressed.emit(d, t),
@@ -98,29 +99,21 @@ class ExportShareDialog(QDialog):
         info.setProperty("muted", True)
         lay.addWidget(info)
 
-        # --- preset ---
-        prow = QHBoxLayout()
-        prow.addWidget(QLabel("Share to:"))
-        self._preset = QComboBox()
-        for p in webexport.PRESETS:
-            self._preset.addItem(p.label, p.id)
-        prow.addWidget(self._preset, 1)
-        lay.addLayout(prow)
-
-        # Custom MB row (hidden unless the Custom preset is picked).
-        self._custom_row = QWidget()
-        crow = QHBoxLayout(self._custom_row)
-        crow.setContentsMargins(0, 0, 0, 0)
-        crow.addWidget(QLabel("Max size:"))
-        self._custom_mb = QDoubleSpinBox()
-        self._custom_mb.setRange(0.5, 500.0)
-        self._custom_mb.setDecimals(1)
-        self._custom_mb.setSingleStep(1.0)
-        self._custom_mb.setSuffix(" MB")
-        self._custom_mb.setValue(float(config.get_setting("webexport_custom_mb", 20.0)))
-        crow.addWidget(self._custom_mb)
-        crow.addStretch(1)
-        lay.addWidget(self._custom_row)
+        # --- max size ---
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Max size:"))
+        self._max_mb = QDoubleSpinBox()
+        self._max_mb.setRange(1.0, 2000.0)
+        self._max_mb.setDecimals(1)
+        self._max_mb.setSingleStep(1.0)
+        self._max_mb.setSuffix(" MB")
+        self._max_mb.setValue(float(config.get_setting("webexport_max_mb", 20.0)))
+        srow.addWidget(self._max_mb)
+        self._no_max = QCheckBox("No maximum")
+        self._no_max.toggled.connect(lambda on: self._max_mb.setDisabled(on))
+        srow.addWidget(self._no_max)
+        srow.addStretch(1)
+        lay.addLayout(srow)
 
         # --- strategy ---
         self._lossless = QRadioButton("Keep lossless (may reduce resolution)")
@@ -131,11 +124,6 @@ class ExportShareDialog(QDialog):
         self._lossless.setChecked(True)
         lay.addWidget(self._lossless)
         lay.addWidget(self._quality)
-
-        self._note = QLabel()
-        self._note.setWordWrap(True)
-        self._note.setProperty("muted", True)
-        lay.addWidget(self._note)
 
         # --- buttons ---
         brow = QHBoxLayout()
@@ -150,38 +138,24 @@ class ExportShareDialog(QDialog):
         lay.addLayout(brow)
 
         # Restore last-used choices.
-        i = self._preset.findData(config.get_setting("webexport_last_preset", "reddit"))
-        if i >= 0:
-            self._preset.setCurrentIndex(i)
+        if config.get_setting("webexport_no_max", False):
+            self._no_max.setChecked(True)
         if config.get_setting("webexport_strategy", "lossless") == "quality":
             self._quality.setChecked(True)
 
-        self._preset.currentIndexChanged.connect(self._sync_preset)
-        self._sync_preset()
-
-    # ---- reactive UI ----
-    def _current_preset(self):
-        return webexport.PRESETS_BY_ID[self._preset.currentData()]
-
-    def _sync_preset(self):
-        p = self._current_preset()
-        self._custom_row.setVisible(p.id == "custom")
-        self._note.setText(p.note)
-        self._note.setVisible(bool(p.note))
-        self.adjustSize()
-
+    # ---- current selection ----
     def _strategy(self) -> str:
         return "quality" if self._quality.isChecked() else "lossless"
 
-    def _max_bytes(self):
-        p = self._current_preset()
-        return int(self._custom_mb.value() * _MB) if p.id == "custom" else None
+    def _mb_value(self):
+        """The chosen max size in MB, or None for no maximum."""
+        return None if self._no_max.isChecked() else self._max_mb.value()
 
     # ---- export (native save panel, then threaded fit) ----
     def _do_export(self):
-        preset, strategy = self._current_preset(), self._strategy()
-        suggested = webexport.suggested_name(self._stem, preset, strategy)
-        fmt = webexport.format_for(strategy, preset)
+        strategy, mb = self._strategy(), self._mb_value()
+        suggested = webexport.suggested_name(self._stem, mb, strategy, date.today())
+        fmt = webexport.format_for(strategy)
         last_dir = config.get_setting("webexport_last_dir", "") or str(Path.home())
         start = str(Path(last_dir) / suggested)
         # Native OS save panel — the user renames + picks any destination here.
@@ -189,19 +163,19 @@ class ExportShareDialog(QDialog):
             self, "Export image", start, _FILTERS.get(fmt, ""))
         if not path:
             return                                  # user cancelled the panel
-        dest = webexport.normalize_dest(path, strategy, preset)
+        dest = webexport.normalize_dest(path, strategy)
 
-        config.save_setting("webexport_last_preset", preset.id)
         config.save_setting("webexport_strategy", strategy)
+        config.save_setting("webexport_no_max", mb is None)
+        if mb is not None:
+            config.save_setting("webexport_max_mb", mb)
         config.save_setting("webexport_last_dir", str(dest.parent))
-        if preset.id == "custom":
-            config.save_setting("webexport_custom_mb", self._custom_mb.value())
 
+        max_bytes = None if mb is None else int(mb * _MB)
         self._export_btn.setEnabled(False)
         self._make_progress("Preparing export…")
-        self._cancel_event = self._cancel_event or threading.Event()
-        self._worker = _ExportWorker(self._src, preset, dest, strategy,
-                                     self._max_bytes(), self._cancel_event, self)
+        self._worker = _ExportWorker(self._src, dest, strategy, max_bytes,
+                                     self._cancel_event, self)
         self._worker.status.connect(
             lambda m: self._progress.setLabelText(m) if self._progress else None)
         self._worker.done.connect(self._on_done)

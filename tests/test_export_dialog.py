@@ -1,7 +1,7 @@
 """Offscreen UI smoke for the export-for-sharing dialog.
 
 The size-fitting ladder is covered in test_webexport.py; here we drive the
-dialog: preset reactivity, and one end-to-end export (native save panel +
+dialog: the No-maximum toggle, and one end-to-end export (native save panel +
 result message box stubbed) that actually writes a file via the worker."""
 import numpy as np
 import pytest
@@ -10,7 +10,6 @@ pytest.importorskip("PySide6")
 from PIL import Image  # noqa: E402
 from PySide6.QtWidgets import QFileDialog, QMessageBox  # noqa: E402
 
-from m110 import webexport  # noqa: E402
 from m110.ui.export_dialog import ExportShareDialog  # noqa: E402
 from tests._helpers import seed_root  # noqa: E402
 
@@ -21,15 +20,15 @@ def _png(path, w=200, h=200):
     return path
 
 
-def test_dialog_constructs_and_custom_reveals_spinbox(tmp_path, monkeypatch, qtbot):
+def test_no_maximum_disables_the_size_spinbox(tmp_path, monkeypatch, qtbot):
     seed_root(tmp_path, monkeypatch)
     dlg = ExportShareDialog(str(_png(tmp_path / "src.png")))
     qtbot.addWidget(dlg)
-    ids = [dlg._preset.itemData(i) for i in range(dlg._preset.count())]
-    assert ids == [p.id for p in webexport.PRESETS]
-    assert not dlg._custom_row.isVisibleTo(dlg)          # hidden by default
-    dlg._preset.setCurrentIndex(dlg._preset.findData("custom"))
-    assert dlg._custom_row.isVisibleTo(dlg)              # revealed for Custom
+    assert dlg._max_mb.isEnabled()          # size editable by default
+    assert dlg._mb_value() is not None
+    dlg._no_max.setChecked(True)
+    assert not dlg._max_mb.isEnabled()      # disabled under "No maximum"
+    assert dlg._mb_value() is None
 
 
 def test_dialog_export_writes_a_file(tmp_path, monkeypatch, qtbot):

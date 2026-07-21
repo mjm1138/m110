@@ -502,38 +502,49 @@ destinations, multiple destinations (3-2-1).
 First slice of the Sharing/Export arc (the destination model + a "Share" nav pane
 remain deferred — see ROADMAP item 8). New Qt-free **`m110/webexport.py`**: take any
 finished image (Siril `.png`, finished `.fit`/`.tif`, any raster) and write the
-highest-quality file that fits a byte budget. `SharePreset` registry
-(Reddit 20 MB / Discord 10 MB / Custom) + a **quality ladder**: *lossless* strategy
-encodes an optimized PNG and, only if over budget, **binary-searches the long edge**
-(Lanczos) for the largest lossless PNG that fits (fast `compress_level` during the
-search, `optimize` + optional `pyoxipng` on the winner; floor `MIN_LONG_EDGE`, else
-`ExportError`); *quality* strategy writes a full-resolution JPEG (`subsampling=0`
-4:4:4, `optimize`, **baseline not progressive** — progressive tripped libjpeg's
-"Suspension not allowed" on incompressible frames and buys nothing since Reddit &
-co. re-encode). Reuses **`build_images._open_image`** as the front end so exported
-pixels match the app's render (FITS/float-TIF percentile-stretched to 8-bit RGB) —
-which also folds the 16→8-bit reduction in for free (on Mike's real 30 MB 16-bit
-M11 PNG that alone lands 10.9 MB at *full resolution*, no downscale). Output format
-is deterministic from `(strategy, preset)` — lossless→PNG, quality→JPEG — so the
-save panel's suggested extension is known up front. `SAFETY_MARGIN` (~3 %) leaves
-platform-rounding headroom; a byte-identical lossless original that already fits is
-copied verbatim (fast path). `pyoxipng` is a best-effort optional accelerator, **no
-new required dependency**.
+highest-quality file that fits an **optional** size budget. `export_for_sharing(src,
+dest, *, strategy, max_bytes=None, …)` + a **quality ladder**: *lossless* strategy
+encodes an optimized PNG and, only if a max is set and it's over, **binary-searches
+the long edge** (Lanczos) for the largest lossless PNG that fits (fast
+`compress_level` during the search, `optimize` + optional `pyoxipng` on the winner;
+floor `MIN_LONG_EDGE`, else `ExportError`); *quality* strategy writes a
+full-resolution JPEG (`subsampling=0` 4:4:4, `optimize`, **baseline not progressive**
+— progressive tripped libjpeg's "Suspension not allowed" on incompressible frames
+and buys nothing since Reddit & co. re-encode). **`max_bytes=None` = no maximum** —
+lossless writes a full-res PNG, quality a full-res JPEG, no ladder. Reuses
+**`build_images._open_image`** as the front end so exported pixels match the app's
+render (FITS/float-TIF percentile-stretched to 8-bit RGB) — which also folds the
+16→8-bit reduction in for free (on Mike's real 30 MB 16-bit M11 PNG that alone lands
+~11 MB at *full resolution*, no downscale). Output format is deterministic from the
+strategy — lossless→PNG, quality→JPEG — so the save panel's suggested extension is
+known up front. `SAFETY_MARGIN` (~3 %) leaves rounding headroom; a byte-identical
+lossless original that already fits is copied verbatim (fast path). `pyoxipng` is a
+best-effort optional accelerator, **no new required dependency**. (Design note: an
+initial version had a `SharePreset` registry with per-site presets — Reddit/Discord
+budgets, per-platform `max_dim` caps; simplified to a bare **max-size + No-maximum**
+control per user feedback, dropping presets, `formats`, and `max_dim`.)
 
-UI: **`ui/export_dialog.py`** (`ExportShareDialog`) — preset combo (+ MB spinbox for
-Custom), lossless/quality strategy radios, the preset's caveat note; **Export…** goes
-straight to the **native OS save panel** (`QFileDialog.getSaveFileName`, native
-dialog left on → the Cocoa save sheet, freely rename + relocate), then a `QThread`
-worker runs the ladder behind a busy `QProgressDialog` (status = the ladder's step
-trail) with working Cancel; success shows a summary + **Reveal**/**Open**. Two entry
-points: the detail-pane gallery right-click (**Export for sharing…**) and a
-**⤓ Export…** button in `image_viewer.py` (lazy-imported to avoid a cycle; the viewer
-stays app-data-agnostic — `webexport` imports only `build_images`). Last
-preset/strategy/dir/custom-MB persist in settings. External-folder output → no
-`.store_version` impact. Tests: `tests/test_webexport.py` (ladder, fast path, FITS
-render, `max_dim`, no-oxipng, un-fittable, cancel/callbacks) +
-`tests/test_export_dialog.py` (offscreen: preset reactivity + a stubbed end-to-end
-export). Verified on real 30 MB+ finished frames and a real cocoa dialog grab.
+UI: **`ui/export_dialog.py`** (`ExportShareDialog`) — a **Max size** spinbox + **No
+maximum** checkbox (disables the spinbox), lossless/quality strategy radios;
+**Export…** goes straight to the **native OS save panel** (`QFileDialog.getSaveFileName`,
+native dialog left on → the Cocoa save sheet, freely rename + relocate), pre-filled
+with `webexport.suggested_name` = **`[Object]-[maxsize]-[YYYYMMDD].[ext]`** (e.g.
+`M42-20mb-20260721.png`, or `…-nomax-…`; the object token is the catalog id via the
+detail pane's `_export_stem`). Then a `QThread` worker runs the ladder behind a busy
+`QProgressDialog` (status = the ladder's step trail) with working Cancel; success
+shows a summary + **Reveal**/**Open**. Entry points: the detail-pane gallery
+right-click **and the hero image** (a shared `_run_image_menu` — same actions as a
+gallery tile, acting on the hero's *source* file resolved via new
+**`build_images.hero_source_path`**, which reads the `hero/<slug>.src` sidecar), plus
+a **⤓ Export…** button in `image_viewer.py` (lazy-imported to avoid a cycle; the
+viewer stays app-data-agnostic — `webexport` imports only `build_images`; the pane
+threads the object id in as `export_stem`). Last strategy/max-MB/no-max/dir persist
+in settings. External-folder output → no `.store_version` impact. Tests:
+`tests/test_webexport.py` (ladder, fast path, FITS render, no-maximum, no-oxipng,
+un-fittable, cancel/callbacks, filename/label helpers) + `tests/test_export_dialog.py`
+(offscreen: No-maximum toggle + a stubbed end-to-end export). Verified on real
+30 MB+ finished frames, the hero right-click wiring on a live object, and real cocoa
+dialog grabs.
 **Teardown gotcha:** the worker emits `done` from `run()` *as it returns*, so
 `_finish_worker` must `wait()` for the thread before `deleteLater()` — otherwise
 the deferred `~QThread` can run on a not-yet-finished thread and SIGSEGV during

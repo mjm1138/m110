@@ -194,10 +194,11 @@ class ImageViewer(QDialog):
     gallery, `meta` a display-ready key→value mapping). An Info toggle only
     appears when at least one item actually carries metadata."""
 
-    def __init__(self, items, index: int = 0, parent=None):
+    def __init__(self, items, index: int = 0, parent=None, *, export_stem=None):
         super().__init__(parent)
         self._items = [self._normalize(it) for it in items]
         self._i = max(0, min(index, len(self._items) - 1))
+        self._export_stem = export_stem   # object name for export filenames, if known
         self.setWindowTitle("Image viewer")
         # Open at a sensible size that always fits the screen; freely resizable.
         avail = QGuiApplication.primaryScreen().availableGeometry()
@@ -304,8 +305,8 @@ class ImageViewer(QDialog):
         if not it.get("path"):
             return
         from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle
-        ExportShareDialog(it["path"], self,
-                          default_stem=Path(it["name"]).stem or None).exec()
+        stem = self._export_stem or Path(it["name"]).stem or None
+        ExportShareDialog(it["path"], self, default_stem=stem).exec()
 
     def _show_current(self):
         it = self._items[self._i]

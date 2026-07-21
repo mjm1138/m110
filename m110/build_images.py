@@ -186,6 +186,22 @@ def find_hero_source(folders: list[str]) -> Path | None:
     return None
 
 
+def hero_source_path(slug: str) -> Path | None:
+    """The source image the current hero was rendered from, per the hero `.src`
+    sidecar (its first line = the source path relative to the data root, recorded
+    at render time). None if there's no sidecar or the recorded source is gone.
+    Lets the UI act on the hero's *original* file, not the rendered hero JPG."""
+    sidecar = config.HERO_DIR / f"{slug}.src"
+    try:
+        first = sidecar.read_text(encoding="utf-8").splitlines()[0].strip()
+    except (OSError, IndexError):
+        return None
+    if not first:
+        return None
+    p = config.DATA_ROOT / first
+    return p if p.is_file() else None
+
+
 def _hero_source(slug: str, folders: list[str], imgs: list[dict]) -> Path | None:
     """Honour frontmatter overrides (hero: filename, or hero_image: path),
     else fall back to tier auto-discovery."""

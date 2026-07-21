@@ -189,10 +189,10 @@ refresh; possibly Astrobin/forum exports.
 
 **Sharing / Export arc.** Promoting share/export toward a top-level feature.
 - ✅ **Image export for web sharing** — a size-budgeted single-image exporter
-  (`webexport.py` + `ui/export_dialog.py`; right-click a gallery tile / the image
-  viewer's ⤓ Export…). Reddit/Discord/Custom budgets, quality-preserving ladder
-  (lossless PNG → downscale, or full-res JPEG), native OS save panel. See
-  [`DONE.md`](DONE.md).
+  (`webexport.py` + `ui/export_dialog.py`; right-click a gallery tile / the hero /
+  the image viewer's ⤓ Export…). A max-size (or No-maximum) control + a
+  quality-preserving ladder (lossless PNG → downscale, or full-res JPEG), native OS
+  save panel with a `[Object]-[maxsize]-[date]` name. See [`DONE.md`](DONE.md).
 - ⏭ **Destination model + a "Share" nav pane** *(next)* — replace the single
   publish config with a list of named **destinations** (each = publisher + its own
   scoped `PublishOptions`), so different data can go to different targets, and lift

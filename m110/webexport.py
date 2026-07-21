@@ -1,18 +1,19 @@
 """Export a finished image sized for web sharing (Reddit / Discord / forums).
 
 Takes any finished image — a Siril ``.png``, a finished ``.fit`` / ``.tif``, or
-any raster — and produces the highest-quality file that fits a chosen byte
-budget, trying the *least*-destructive lever first:
+any raster — and writes the highest-quality file that fits an optional size
+budget:
 
-* **lossless** strategy: an optimized lossless PNG, and only if that's over the
-  budget, downscale (Lanczos) to the largest size that still fits losslessly.
-* **quality** strategy: a full-resolution high-quality JPEG (4:4:4, no chroma
-  subsampling — critical for stars). The explicit lossy alternative for when
-  you'd rather keep every pixel than stay lossless.
+* **lossless** — an optimized lossless PNG; only if a max size is set and that's
+  over it does it downscale (Lanczos) to the largest size that still fits.
+* **full resolution** — a full-resolution high-quality JPEG (4:4:4, no chroma
+  subsampling — critical for stars).
 
-Reuses :func:`build_images._open_image` as the front end, so the exported pixels
-match what the app shows (FITS / float-TIF are percentile-stretched to 8-bit
-RGB). Qt-free — the UI (``ui/export_dialog.py``) drives it on a worker thread.
+With **no maximum** (``max_bytes=None``), lossless writes a full-res PNG and full
+resolution writes a full-res JPEG. Reuses :func:`build_images._open_image` as the
+front end, so exported pixels match what the app shows (FITS / float-TIF are
+percentile-stretched to 8-bit RGB). Qt-free — the UI (``ui/export_dialog.py``)
+drives it on a worker thread.
 
 Non-goals (v1): no 16-bit-preserving export — everything normalizes to 8-bit
 RGB, the correct baseline for a display/share deliverable. A finished-but-
@@ -29,37 +30,15 @@ from pathlib import Path
 
 from . import build_images
 
-# Leave headroom under the platform ceiling for its own re-container / rounding
-# (a 20 MB preset targets ~19.4 MB).
+# Leave headroom under a chosen max for platform re-container / rounding
+# (a 20 MB budget targets ~19.4 MB).
 SAFETY_MARGIN = 0.03
 # Don't binary-search below this long edge before giving up on a lossless fit.
 MIN_LONG_EDGE = 1280
-# Quality-strategy JPEG quality ladder (all at subsampling=0 / 4:4:4).
+# Full-resolution-strategy JPEG quality ladder (all at subsampling=0 / 4:4:4).
 _JPEG_QUALITY_STEPS = (95, 92, 90, 85, 80)
 
 _MB = 1024 * 1024
-
-
-@dataclass(frozen=True)
-class SharePreset:
-    """A named size budget for a sharing destination."""
-    id: str
-    label: str
-    max_bytes: int
-    formats: tuple[str, ...]          # allowed output formats, preference order
-    max_dim: int | None = None        # optional platform long-edge display cap
-    note: str = ""                    # caveat shown in the dialog
-
-
-PRESETS: list[SharePreset] = [
-    SharePreset(
-        "reddit", "Reddit (20 MB)", 20 * _MB, ("png", "jpeg"),
-        note="Reddit re-compresses uploads — lossless mainly helps destinations "
-             "that keep your original file."),
-    SharePreset("discord", "Discord (10 MB)", 10 * _MB, ("png", "jpeg")),
-    SharePreset("custom", "Custom…", 20 * _MB, ("png", "jpeg")),
-]
-PRESETS_BY_ID = {p.id: p for p in PRESETS}
 
 
 @dataclass
@@ -83,36 +62,39 @@ class ExportError(Exception):
 
 
 # --------------------------------------------------------------------------- #
-# Format helpers — the output format is deterministic from (strategy, preset),
-# so the UI knows the extension before it opens the native save panel.
+# Format + filename helpers — the output format is deterministic from the
+# strategy, so the UI knows the extension before it opens the native save panel.
 # --------------------------------------------------------------------------- #
-def format_for(strategy: str, preset: SharePreset) -> str:
-    """The single output format a (strategy, preset) pair produces. Lossless →
-    PNG; quality → JPEG (falling back to the preset's first allowed format)."""
-    if strategy == "quality":
-        return "jpeg" if "jpeg" in preset.formats else preset.formats[0]
-    return "png" if "png" in preset.formats else preset.formats[0]
+def format_for(strategy: str) -> str:
+    """Lossless → PNG; full resolution ("quality") → JPEG."""
+    return "jpeg" if strategy == "quality" else "png"
 
 
 def ext_for_format(fmt: str) -> str:
     return ".jpg" if fmt == "jpeg" else f".{fmt}"
 
 
-def normalize_dest(dest, strategy: str, preset: SharePreset) -> Path:
+def normalize_dest(dest, strategy: str) -> Path:
     """Force `dest`'s extension to match the format the export will write, so a
     user who cleared/changed it in the save panel still gets a valid file."""
     dest = Path(dest)
-    want = ext_for_format(format_for(strategy, preset))
+    want = ext_for_format(format_for(strategy))
     accepted = {".jpg", ".jpeg"} if want == ".jpg" else {want}
-    if dest.suffix.lower() in accepted:
-        return dest
-    return dest.with_suffix(want)
+    return dest if dest.suffix.lower() in accepted else dest.with_suffix(want)
 
 
-def suggested_name(stem: str, preset: SharePreset, strategy: str) -> str:
-    """A pre-fill filename for the save panel, e.g. ``M101-reddit.png``."""
+def size_label(mb: float | None) -> str:
+    """Filename token for the size budget: ``"20mb"`` / ``"15.5mb"`` / ``"nomax"``."""
+    return "nomax" if mb is None else f"{mb:g}mb"
+
+
+def suggested_name(stem: str, mb: float | None, strategy: str, day) -> str:
+    """Pre-fill name for the save panel: ``[Object]-[maxsize]-[YYYYMMDD].[ext]``,
+    e.g. ``M42-20mb-20260721.png``. `day` is a ``date``-like (kept explicit so the
+    caller owns "today" and tests stay deterministic)."""
     stem = (stem or "image").strip() or "image"
-    return f"{stem}-{preset.id}{ext_for_format(format_for(strategy, preset))}"
+    ext = ext_for_format(format_for(strategy))
+    return f"{stem}-{size_label(mb)}-{day:%Y%m%d}{ext}"
 
 
 def _fmt_mb(n: int) -> str:
@@ -179,18 +161,19 @@ def _atomic_write(dest: Path, data: bytes) -> None:
 # --------------------------------------------------------------------------- #
 # The ladder
 # --------------------------------------------------------------------------- #
-def export_for_sharing(src, preset: SharePreset, dest, *, strategy: str = "lossless",
+def export_for_sharing(src, dest, *, strategy: str = "lossless",
                        max_bytes: int | None = None, jpeg_quality: int = 95,
                        progress=None, status=None, should_cancel=None) -> ExportResult:
-    """Write `src` to `dest` sized within the budget, best quality first.
+    """Write `src` to `dest`, best quality first, within an optional size budget.
 
-    `strategy` is ``"lossless"`` (PNG, downscale to fit) or ``"quality"``
-    (full-resolution high-q JPEG). `progress(done, total)` / `status(label)` feed
-    the UI; `should_cancel()` is polled between encode attempts. Raises
-    :class:`ExportError` if no file within budget can be produced.
+    `strategy` is ``"lossless"`` (PNG, downscale to fit a max) or ``"quality"``
+    (full-resolution high-q JPEG). `max_bytes=None` means **no maximum** — write
+    the full-resolution PNG/JPEG as-is. `progress(done, total)` / `status(label)`
+    feed the UI; `should_cancel()` is polled between encode attempts. Raises
+    :class:`ExportError` if no file within the budget can be produced.
     """
     src, dest = Path(src), Path(dest)
-    budget = int((max_bytes or preset.max_bytes) * (1 - SAFETY_MARGIN))
+    budget = None if max_bytes is None else int(max_bytes * (1 - SAFETY_MARGIN))
     steps: list[str] = []
 
     def emit(msg: str) -> None:
@@ -204,17 +187,16 @@ def export_for_sharing(src, preset: SharePreset, dest, *, strategy: str = "lossl
     if cancelled():
         raise ExportError("Cancelled.")
 
-    # --- fast path: a lossless original that already fits, copied verbatim ---
-    src_ext = src.suffix.lower().lstrip(".")
-    if (strategy == "lossless" and src_ext == "png" and "png" in preset.formats
-            and src.stat().st_size <= budget):
+    # --- fast path: a lossless PNG original that already fits, copied verbatim ---
+    if (strategy == "lossless" and budget is not None
+            and src.suffix.lower() == ".png" and src.stat().st_size <= budget):
         from PIL import Image
         try:
             with Image.open(src) as probe:
                 w, h = probe.size
         except Exception:
             w = h = None
-        if w is not None and (preset.max_dim is None or max(w, h) <= preset.max_dim):
+        if w is not None:
             _atomic_write(dest, src.read_bytes())
             emit(f"Copied the original ({_fmt_mb(dest.stat().st_size)}) — "
                  f"already within budget.")
@@ -232,24 +214,25 @@ def export_for_sharing(src, preset: SharePreset, dest, *, strategy: str = "lossl
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
 
-    # Platform display cap — never upload more pixels than the platform shows.
-    if preset.max_dim is not None:
-        before = img.size
-        img = _resized(img, preset.max_dim)
-        if img.size != before:
-            emit(f"Capped to {img.width}×{img.height} (platform maximum).")
-
-    full_size = img.size
     if strategy == "quality":
-        return _export_quality(img, dest, budget, jpeg_quality, full_size,
-                               steps, emit, cancelled, progress)
-    return _export_lossless(img, dest, budget, full_size, steps, emit,
-                            cancelled, progress)
+        return _export_quality(img, dest, budget, jpeg_quality, steps, emit,
+                               cancelled, progress)
+    return _export_lossless(img, dest, budget, steps, emit, cancelled, progress)
+
+
+def _over(size: int, budget: int | None) -> bool:
+    return budget is not None and size > budget
+
+
+def _fit_tag(size: int, budget: int | None) -> str:
+    if budget is None:
+        return ""
+    return " ✓" if size <= budget else " (over)"
 
 
 def _fit_by_downscale(img, budget: int, encode, *, cancelled, emit, progress):
     """Binary-search the long edge for the largest image whose `encode(img)`
-    fits `budget`. Returns the winning (PIL image). Raises ExportError if even
+    fits `budget`. Returns the winning PIL image. Raises ExportError if even
     MIN_LONG_EDGE is over budget."""
     lo, hi = MIN_LONG_EDGE, max(img.size)
     best = None
@@ -276,14 +259,13 @@ def _fit_by_downscale(img, budget: int, encode, *, cancelled, emit, progress):
     return best
 
 
-def _export_lossless(img, dest, budget, full_size, steps, emit, cancelled, progress):
+def _export_lossless(img, dest, budget, steps, emit, cancelled, progress):
     if cancelled():
         raise ExportError("Cancelled.")
     data = _encode_png(img, final=True)
-    fits = len(data) <= budget
     emit(f"Lossless PNG {img.width}×{img.height}: {_fmt_mb(len(data))}"
-         + (" ✓" if fits else " (over)"))
-    if fits:
+         f"{_fit_tag(len(data), budget)}")
+    if not _over(len(data), budget):
         _atomic_write(dest, data)
         return ExportResult(dest, "png", img.width, img.height, len(data),
                             lossless=True, downscaled=False, steps=steps)
@@ -303,17 +285,15 @@ def _export_lossless(img, dest, budget, full_size, steps, emit, cancelled, progr
                         lossless=True, downscaled=True, steps=steps)
 
 
-def _export_quality(img, dest, budget, jpeg_quality, full_size, steps, emit,
-                    cancelled, progress):
+def _export_quality(img, dest, budget, jpeg_quality, steps, emit, cancelled, progress):
     # Full resolution first; drop quality, then (last resort) downscale.
     for q in (jpeg_quality, *[s for s in _JPEG_QUALITY_STEPS if s < jpeg_quality]):
         if cancelled():
             raise ExportError("Cancelled.")
         data = _encode_jpeg(img, q)
-        fits = len(data) <= budget
         emit(f"JPEG q{q} {img.width}×{img.height}: {_fmt_mb(len(data))}"
-             + (" ✓" if fits else " (over)"))
-        if fits:
+             f"{_fit_tag(len(data), budget)}")
+        if not _over(len(data), budget):
             _atomic_write(dest, data)
             return ExportResult(dest, "jpeg", img.width, img.height, len(data),
                                 lossless=False, downscaled=False, steps=steps)
