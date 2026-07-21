@@ -529,6 +529,68 @@ def test_m110_store_layout_routes_subdirs(tmp_path, monkeypatch):
     assert not any(s.endswith("process/lights.fit") for s in all_srcs)  # sandbox skipped
 
 
+def test_siril_project_root_imports_lights_calibration_and_root_stack(tmp_path, monkeypatch):
+    """#57: point import at a folder of Siril projects. A project *root* (M1/ that
+    contains lights/darks/flats/biases) is recognized, and the loose files Siril
+    left beside the folders — a stack, a processing product, a finished render —
+    route by tier instead of falling to the holding area."""
+    _make_staging(tmp_path, monkeypatch)
+    proj = tmp_path / "Siril" / "M1"
+    _fits_hdr(proj / "lights" / "Light_M1_a.fit", imagetyp="Light")
+    _fits_hdr(proj / "darks" / "Dark_a.fit", imagetyp="Dark")
+    _fits_hdr(proj / "flats" / "Flat_a.fit", imagetyp="Flat")
+    _fits_hdr(proj / "biases" / "Bias_a.fit", imagetyp="Bias")
+    (proj / "M1_stacked.fit").write_text("S")        # loose root stack → stacks/
+    (proj / "M1_processed.fit").write_text("W")      # loose product .fit → working_files/
+    (proj / "M1_final.png").write_text("F")          # loose finished render → finished/
+    (proj / "process").mkdir()
+    (proj / "process" / "pp_light.fit").write_text("scratch")   # Siril scratch → skipped
+
+    ops = ingest.scan_directory_plan(tmp_path / "Siril")
+    dest = {op.kind: op.dest_rel for op in ops}
+    assert dest["light"] == "Images/M1/lights/Light_M1_a.fit"
+    assert dest["dark"].startswith("Images/M1/darks/")
+    assert dest["flat"].startswith("Images/M1/flats/")
+    assert dest["bias"].startswith("Images/M1/biases/")
+    assert dest["siril-stack"] == "Images/M1/stacks/M1_stacked.fit"
+    assert dest["working"] == "Images/M1/working_files/M1_processed.fit"
+    assert dest["finished"] == "Images/M1/finished/M1_final.png"
+    assert all(op.object == "M1" for op in ops)
+    assert not any("pp_light.fit" in op.src for op in ops)     # process/ sandbox skipped
+    assert ingest.scan_summary(ops)["to_holding"] == 0         # nothing stranded
+
+
+def test_sub_folder_project_canonicalizes_object(tmp_path, monkeypatch):
+    """#57: a Seestar/Siril `<obj>_sub/lights` project imports under the object's
+    real id (M63), not the folder-name-with-suffix (`M63_sub`)."""
+    _make_staging(tmp_path, monkeypatch)
+    _fits_hdr(tmp_path / "src" / "M63_sub" / "lights" / "Light_M63_a.fit",
+              imagetyp="Light")
+    ops = ingest.scan_directory_plan(tmp_path / "src")
+    assert [op.object for op in ops] == ["M63"]
+    assert ops[0].dest_rel == "Images/M63/lights/Light_M63_a.fit"
+
+
+def test_loose_subs_in_named_folder_route_by_folder_name(tmp_path, monkeypatch):
+    """#57: a folder of loose subs with no `lights/` subdir and no usable header
+    routes by the folder name — but only when it resolves to a known catalog
+    object, so a generic/session-named folder stays in the holding area."""
+    _make_staging(tmp_path, monkeypatch)
+    # Known object folder, headerless subs (no IMAGETYP, no OBJECT).
+    _fits_hdr(tmp_path / "src" / "M64" / "Light_a.fit")
+    _fits_hdr(tmp_path / "src" / "M64" / "Light_b.fit")
+    # Generic folder, same headerless subs → not a known object → holding.
+    _fits_hdr(tmp_path / "src" / "session_07" / "Light_a.fit")
+
+    ops = ingest.scan_directory_plan(tmp_path / "src")
+    by = {}
+    for op in ops:
+        by.setdefault((op.object, op.kind), 0)
+        by[(op.object, op.kind)] += 1
+    assert by.get(("M64", "light")) == 2               # routed by folder name
+    assert by.get(("", "unassigned")) == 1             # generic folder → holding
+
+
 def test_group_ops_splits_per_object_in_recursive_store(tmp_path, monkeypatch):
     """Regression (#46): a precursor store has a `lights/` folder under *every*
     object, so grouping by the bare folder name collapsed them into one bogus row.

@@ -21,6 +21,19 @@ def _make_target(tmp_path, monkeypatch, ircut=120, lp=0, name="M101"):
     return name
 
 
+def _add_calibration(target, darks=0, flats=0, biases=0):
+    """Drop calibration frames into the target's darks/flats/biases tiers."""
+    for n, dir_fn, tag in ((darks, config.darks_dir, "Dark"),
+                           (flats, config.flats_dir, "Flat"),
+                           (biases, config.biases_dir, "Bias")):
+        if not n:
+            continue
+        d = dir_fn(target)
+        d.mkdir(parents=True, exist_ok=True)
+        for i in range(n):
+            (d / f"{tag}_{i:03d}.fit").write_text("c")
+
+
 # ── preset / drizzle tree ────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("frames,drizzle,amount,pf", [
@@ -103,6 +116,72 @@ def test_apply_copy_fallback(tmp_path, monkeypatch):
     siril.apply_prep(plan)
     f = next((config.siril_dir(target) / "lights").glob("*.fit"))
     assert f.read_text() == "x" and f.stat().st_nlink == 1   # copied
+
+
+# ── prepare: calibration-aware sandbox (#57 part B) ──────────────────────────
+
+def test_prep_hardlinks_calibration_and_sets_toggles(tmp_path, monkeypatch):
+    """#57: darks/flats/biases present → hardlinked into the sandbox root beside
+    lights/, and the Naztronomy preset's calibration toggles turned on."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10, flats=8, biases=8)
+    plan = siril.plan_prep(target)
+    assert plan.calib_kinds == ["darks", "flats", "biases"]
+
+    siril.apply_prep(plan)
+    sb = config.siril_dir(target)
+    for kind, n in (("darks", 10), ("flats", 8), ("biases", 8)):
+        got = list((sb / kind).glob("*.fit"))
+        assert len(got) == n
+        assert got[0].stat().st_nlink > 1                 # hardlinked, no extra bytes
+    d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (d["darks"], d["flats"], d["biases"]) == (True, True, True)
+    assert siril.is_default_preset(d)                     # still pristine/re-tunable
+
+
+def test_prep_without_calibration_is_lights_only(tmp_path, monkeypatch):
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    plan = siril.plan_prep(target)
+    assert plan.calib_kinds == [] and plan.calib_links == []
+    siril.apply_prep(plan)
+    sb = config.siril_dir(target)
+    assert not (sb / "darks").exists() and not (sb / "flats").exists()
+    d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (d["darks"], d["flats"], d["biases"]) == (False, False, False)
+
+
+def test_prep_partial_calibration_toggles_only_present_tiers(tmp_path, monkeypatch):
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10)                    # darks only
+    plan = siril.plan_prep(target)
+    assert plan.calib_kinds == ["darks"]
+    siril.apply_prep(plan)
+    sb = config.siril_dir(target)
+    assert (sb / "darks").is_dir() and not (sb / "flats").exists()
+    d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (d["darks"], d["flats"], d["biases"]) == (True, False, False)
+
+
+def test_is_default_preset_reads_calibration_toggles():
+    """A calibration-on default still reads as pristine (re-tunable); a hand edit
+    on top of it does not — so autoprep never clobbers a user's changes."""
+    pristine = siril.default_preset(200, darks=True, flats=True)
+    assert siril.is_default_preset(pristine)
+    assert not siril.is_default_preset(dict(pristine, batch_size=999))
+
+
+def test_import_archive_keeps_calibration(tmp_path, monkeypatch):
+    """Importing finished work archives the run's output but KEEPS calibration
+    (like lights + preset) so the sandbox is ready to re-run (#57)."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10, flats=8, biases=8)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    _processed(sb, target)                                # a render + stack to import
+    plan = siril.scan_finished(target)
+    siril.apply_import(target, [it.src for it in plan.items], cleanup="archive")
+    for kind in ("lights", "darks", "flats", "biases"):
+        assert (sb / kind).is_dir() and any((sb / kind).glob("*.fit"))
 
 
 # ── autoprep (ingest hook) ───────────────────────────────────────────────────
@@ -213,6 +292,71 @@ def test_scan_finished_picks_up_output_loose_in_object_dir(tmp_path, monkeypatch
     # Now imported (dest exists) → no longer nags, even though the loose
     # originals remain in the object dir (we never delete outside the sandbox).
     assert siril.has_unimported_output(target) is False
+
+
+def test_scan_finished_classifies_output_by_tier_directory(tmp_path, monkeypatch):
+    """#85: Siril's working dir is the sandbox, and the user (or Siril) saved the
+    outputs into siril/stacks/ and siril/finished/ subdirs. None of the .fit files
+    carry a "finished" hint in their name, so filename-only classification dropped
+    them (only the .jpg was ever picked up) — the tier directory now classifies
+    them outright: stacks/ → stack, finished/ → deliverable."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    (sb / "stacks").mkdir()
+    (sb / "finished").mkdir()
+    (sb / "stacks" / "M_27_387x20sec_0813_og.fit").write_text("STACK")  # no hint
+    (sb / "finished" / "M_27_387_2026-07-21.fit").write_text("MASTER")  # no hint
+    (sb / "finished" / "M_27_387_2026-07-21.jpg").write_text("JPG")
+
+    assert siril.has_unimported_output(target) is True
+    got = {it.name: (it.kind, it.dest) for it in siril.scan_finished(target).items}
+    assert got == {
+        "M_27_387x20sec_0813_og.fit":
+            ("stack", str(config.stacks_dir(target) / "M_27_387x20sec_0813_og.fit")),
+        "M_27_387_2026-07-21.fit":
+            ("render", str(config.finished_dir(target) / "M_27_387_2026-07-21.fit")),
+        "M_27_387_2026-07-21.jpg":
+            ("render", str(config.finished_dir(target) / "M_27_387_2026-07-21.jpg")),
+    }
+
+    siril.apply_import(target, [it.src for it in siril.scan_finished(target).items],
+                       cleanup="none")
+    assert (config.stacks_dir(target) / "M_27_387x20sec_0813_og.fit").is_file()
+    assert (config.finished_dir(target) / "M_27_387_2026-07-21.fit").is_file()
+    assert (config.finished_dir(target) / "M_27_387_2026-07-21.jpg").is_file()
+
+
+def test_scan_finished_skips_files_already_in_their_tier(tmp_path, monkeypatch):
+    """Now that the managed tiers are scanned, files already correctly sitting in
+    stacks/ / finished/ (p == dest) must NOT flood the preview — the gallery and
+    derived data already read them in place. Only files that would move surface."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    config.stacks_dir(target).mkdir(parents=True, exist_ok=True)
+    config.finished_dir(target).mkdir(parents=True, exist_ok=True)
+    (config.stacks_dir(target) / "already.fit").write_text("S")
+    (config.finished_dir(target) / "already.jpg").write_text("J")
+    (config.finished_dir(target) / "already.fit").write_text("F")
+
+    assert siril.has_unimported_output(target) is False
+    assert siril.scan_finished(target).items == []
+
+
+def test_tier_directory_wins_over_intermediate_filename(tmp_path, monkeypatch):
+    """Directory wins over filename (#85): a star-layer name vetoes a *loose* file
+    (starless/starmask are always intermediates when unsorted), but the same name
+    filed under finished/ is imported as a deliverable — the user put it there."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    (sb / "finished").mkdir()
+    (sb / "finished" / "M101_starless.tif").write_text("KEEP")  # tier wins → render
+    (sb / "M101_starless.tif").write_text("SKIP")               # loose → vetoed
+
+    items = siril.scan_finished(target).items
+    assert [(it.name, it.kind) for it in items] == [("M101_starless.tif", "render")]
+    assert items[0].dest == str(config.finished_dir(target) / "M101_starless.tif")
 
 
 def test_apply_import_routes_sets_hero_and_archives(tmp_path, monkeypatch):

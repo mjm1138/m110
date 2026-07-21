@@ -11,6 +11,15 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Export finished images sized for web sharing.** Right-click any image in an object's
+  gallery — or the hero image — or use the new **⤓ Export…** button in the full-screen
+  image viewer, then **Export for sharing…** to save a copy under a size limit you set (for
+  Reddit's 20 MB cap, say), or with **No maximum**. It preserves as much quality as it can:
+  by default it stays **lossless** (a finished 16-bit PNG typically drops well under 20 MB
+  just by converting to 8-bit, at full resolution) and only reduces resolution if it has to;
+  or pick **Keep full resolution** for a high-quality JPEG. A standard Save dialog opens with
+  a suggested name like `M42-20mb-20260721.png` that you can rename, and lets you choose
+  where the file goes.
 - **Three "Popular" goal lists, curated by popularity and matched to your gear.** New
   bundled goals you can turn on from **Overview → Manage goals**: **Popular: Deep (S50)** —
   small, faint, detailed targets that suit the S50's deeper aperture and narrow field;
@@ -26,10 +35,42 @@ changes a **user** would notice, per release.
   already contains a `naztronomy_smart_scope_presets.json`, M110 carries it into that object's
   processing sandbox instead of generating a fresh default — so your saved stacking settings
   come across with your data. (Part of importing existing Siril projects — issue #57.)
+- **Processing prep now sets up your calibration frames too.** When an object has darks,
+  flats, or biases, M110 links them into the Siril working folder right beside the lights (at
+  no extra disk space) and turns on the matching options in the generated Naztronomy preset, so
+  the script calibrates by default. Previously only lights were set up, so an imported project's
+  calibration frames were left behind. (Groundwork toward importing existing Siril projects —
+  issue #57.)
+- **Import recognizes existing Siril project folders.** If you already keep your captures in
+  Siril-style project folders — `M51/lights`, `M51/darks`, `M51/flats`, `M51/biases` — you can
+  point import at the folder that holds them and M110 pulls each project in as one object,
+  without you reorganizing anything. A stack or finished image Siril left loose beside those
+  folders now lands in the right place (`stacks/` / `finished/`) instead of the holding area; a
+  `M63_sub` folder imports as **M63**; and a folder of loose subs named after a catalog object
+  (with no `lights/` subfolder) is recognized by its name. (Thanks to @devonjones — issue #57.)
 - **Overview's "Priority targets" no longer says the prioritizer is "coming."** The
   automatic target ranking has shipped — it lives on the **Planning** page. The
   caption on Overview now explains that this section shows the targets you've
   *pinned*, and points to Planning for the automatic ranking.
+
+### Fixed
+- **"Import finished work" now finds the stacks and renders you've sorted into folders
+  yourself.** If you saved your Siril stack into a `stacks/` folder and your finished image
+  into a `finished/` folder — instead of leaving them loose for M110 to sort — import used
+  to pick up only files whose *names* contained a word like "processed" or "final." A
+  plainly-named `.fit` stack was skipped, and often only the `.jpg` came through. M110 now
+  trusts the folder: anything in `stacks/` is treated as a stack and anything in `finished/`
+  as a finished image, whatever it's named. (Thanks to @devonjones — issue #85.)
+- **Checkboxes and radio buttons are visible in dark mode.** Their empty (unchecked)
+  boxes and circles were drawn by the native macOS control style and came out almost
+  invisible against the dark background, so some options were hard to spot — for
+  example in Preferences, the Publish and Backup dialogs, and the new export dialog.
+  They now have a clear outline in both light and dark themes.
+- **No more rare crash when quitting while thumbnails are still loading.** M110 decodes
+  gallery/row thumbnails on background threads; if you quit the app while one was still
+  in progress, the decode could run as the window tore down and crash. The app now waits
+  for in-flight thumbnail work to finish first. (This also fixes intermittent
+  test-suite failures in CI, which were the same race.)
 
 ## [0.2.0-beta.6] - 2026-07-19
 

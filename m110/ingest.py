@@ -493,6 +493,31 @@ _STORE_PARENT_KIND = {
 _SKIP_DIRS = {"process", "siril", "thumbnail"}   # thumbnail/ = per-sub preview sidecars (Dwarf)
 
 
+def _has_store_subdir(src_dir: Path) -> bool:
+    """True if `src_dir` is a Siril/M110 **project root** — it *contains* a content
+    subdir (M51/lights, M51/darks, …) rather than being one. The recursive walk
+    visits those subdirs on their own (each an m110-store leaf); the project root
+    itself owns only its LOOSE files (a stack/render Siril left beside the folders)."""
+    try:
+        return any(c.is_dir() and c.name.lower() in _STORE_SUBDIR_KIND
+                   for c in src_dir.iterdir())
+    except OSError:
+        return False
+
+
+def _project_object(folder_name: str) -> str:
+    """Canonical object for a project/content folder — strips the Seestar `_sub`
+    subs-folder suffix (`M63_sub` → `M63`) before `canonical_target`, so a Siril
+    project imports under the object's real id, not the folder-name-with-suffix (#57)."""
+    return canonical_target(re.sub(r"_sub$", "", folder_name))
+
+
+# A loose root `.fit` that is a processing product (not a raw sub) is treated as a
+# stack when its name carries a stack signature; otherwise it's parked in
+# working_files/ (where build_derived/build_images already look for it).
+_ROOT_STACK_RE = re.compile(r"stacked|result|\d+x\d+sec", re.IGNORECASE)
+
+
 def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
                 action: str, layout: str) -> list[IngestOp]:
     """Ops routing `files` (names in `src_dir`) into the target subdir for `kind`
@@ -543,6 +568,10 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
         if _all_files(src_dir):
             return "m110-store"
+    # A Siril/M110 project root: a folder that contains lights/darks/… subdirs. Its
+    # own loose files (a stack/render Siril left beside them) route by tier (#57).
+    if _has_store_subdir(src_dir):
+        return "m110-store"
     # DwarfLab Dwarf on-device session folder (name-prefixed). Loose Dwarf FITS a
     # user re-grouped into named folders have no prefix and fall to raw-fits, which
     # routes them by OBJECT header just fine.
@@ -568,18 +597,50 @@ def _classify_store_dir(src_dir: Path, name: str, action: str,
     were skipped as already-present)."""
     sub_kind = _STORE_SUBDIR_KIND.get(name.lower())
     if sub_kind:
-        obj = canonical_target(src_dir.parent.name)
+        obj = _project_object(src_dir.parent.name)
         files = (_fit_files(src_dir) if sub_kind in ("light", "dark", "flat", "bias")
                  else _all_files(src_dir))
         handled.update(files)
         return _emit_files(src_dir, files, sub_kind, obj, name, action, "m110-store")
     kind = _STORE_PARENT_KIND.get(src_dir.parent.name.lower())
     if kind:
-        obj = canonical_target(name)
+        obj = _project_object(name)
         files = _all_files(src_dir)
         handled.update(files)
         return _emit_files(src_dir, files, kind, obj, name, action, "m110-store")
-    return []
+    # Project root (contains lights/darks/… subdirs): route only its LOOSE files —
+    # the subdirs are imported on their own by the recursive walk (#57).
+    return _classify_project_root(src_dir, name, action, handled)
+
+
+def _classify_project_root(src_dir: Path, name: str, action: str,
+                           handled: set) -> list[IngestOp]:
+    """Route the LOOSE files of a Siril/M110 project root (a folder that *contains*
+    lights/darks/… subdirs) — the stack/render Siril dropped beside the folders,
+    which would otherwise fall to the holding area (#57). Object = the folder name
+    (`_sub` stripped). Raw subs → lights/, finished rasters → finished/, a stacked
+    `.fit` → stacks/, any other processing-product `.fit` → working_files/. The
+    content subdirs themselves are imported independently by the recursive walk."""
+    obj = _project_object(name)
+    lights: list[str] = []
+    finished: list[str] = []
+    stacks: list[str] = []
+    working: list[str] = []
+    for f in _content_files(src_dir):
+        if _is_finished_raster(f):
+            finished.append(f)
+        elif config.is_light_frame(f):                # a raw sub
+            lights.append(f)
+        elif config.is_fits_file(f):                  # a product .fit (stack/master)
+            (stacks if _ROOT_STACK_RE.search(f) else working).append(f)
+        # else: a non-finished raster / video → left for the sweep → holding
+    ops: list[IngestOp] = []
+    for files, kind in ((lights, "light"), (finished, "finished"),
+                        (stacks, "siril-stack"), (working, "working")):
+        if files:
+            handled.update(files)
+            ops += _emit_files(src_dir, files, kind, obj, name, action, "m110-store")
+    return ops
 
 
 def _classify_seestar_dir(src_dir: Path, name: str, action: str,
@@ -755,6 +816,16 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
     routed by its IMAGETYP; the object comes from the OBJECT header, else the
     containing folder name. Frames with neither a usable type nor an object are left
     unclassified (the 6c holding area). Records recognized files in `handled`."""
+    # Folder-name fallback for a Siril project named after its target (M51/…): when
+    # a loose sub has no usable header (no IMAGETYP and no OBJECT), route it by the
+    # folder name — but only if that resolves to a known catalog object, so a date/
+    # session-named folder of headerless files isn't turned into a junk target (#57).
+    try:
+        _lib = catalog.load_library()
+    except Exception:
+        _lib = {}
+    folder_obj = _project_object(name)
+    folder_is_object = _slug_for_object(folder_obj, _lib) is not None
     buckets: dict[tuple, list[str]] = {}          # (kind, obj) → files
     for f in _fit_files(src_dir):
         if should_cancel and should_cancel():     # per-frame: header reads over a
@@ -767,6 +838,8 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
             obj = obj_hdr or canonical_target(name)
         elif kind == "light" or obj_hdr:
             kind, obj = "light", (obj_hdr or canonical_target(name))
+        elif config.is_light_frame(f) and folder_is_object:   # filename-only sub (#57)
+            kind, obj = "light", folder_obj
         else:
             continue                              # unclassifiable → 6c holding area
         handled.add(f)                            # recognized (even if skipped as dup)
