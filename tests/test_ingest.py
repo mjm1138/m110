@@ -3,13 +3,14 @@
 dest_rel is relative to the data root, so destinations read as
 ``Images/<target>/lights``, ``Images/<target>/seestar-stacks``, ``Media/<cat>``.
 """
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 from astropy.io import fits
 
-from m110 import catalog, config, ingest
+from m110 import catalog, config, ingest, siril
 
 
 def _fits_at(path, ra, dec):
@@ -625,6 +626,44 @@ def test_loose_finished_raster_routes_to_finished(tmp_path, monkeypatch):
     assert op.object == "M5"
     assert op.layout == "finished-render"
     assert op.dest_rel == f"Images/M5/finished/{fn}"
+
+
+def test_imported_naztronomy_preset_routes_to_sandbox(tmp_path, monkeypatch):
+    """#57: an imported Siril project's Naztronomy preset is carried into the
+    object's siril/presets/ — from the project root or a presets/ subdir — so
+    autoprep preserves it. A stray preset in a non-object folder is ignored."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "src"
+    _fits_hdr(src / "M51" / "lights" / "Light_M51_a.fit", imagetyp="Light")
+    (src / "M51" / "naztronomy_smart_scope_presets.json").write_text("{}")   # root
+    _fits_hdr(src / "M63" / "lights" / "Light_M63_a.fit", imagetyp="Light")
+    (src / "M63" / "presets").mkdir(parents=True)
+    (src / "M63" / "presets" / "naztronomy_smart_scope_presets.json").write_text("{}")
+    (src / "scratch").mkdir()                                                # non-object
+    (src / "scratch" / "naztronomy_smart_scope_presets.json").write_text("{}")
+
+    presets = {op.object: op.dest_rel for op in ingest.scan_directory_plan(src)
+               if op.kind == "siril-preset"}
+    assert presets == {
+        "M51": "Images/M51/siril/presets/naztronomy_smart_scope_presets.json",
+        "M63": "Images/M63/siril/presets/naztronomy_smart_scope_presets.json",
+    }
+
+
+def test_imported_preset_survives_autoprep(tmp_path, monkeypatch):
+    """The carried-in preset is preserved by autoprep (a non-default preset is
+    never regenerated), so the user's Siril settings come across intact."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "src"
+    _fits_hdr(src / "M51" / "lights" / "Light_M51_a.fit", imagetyp="Light")
+    (src / "M51" / "naztronomy_smart_scope_presets.json").write_text(
+        json.dumps({"telescope": "Custom", "batch_size": 999}))
+
+    ingest.apply_ops(ingest.scan_directory_plan(src))
+    siril.autoprep(["M51"])
+    got = json.loads((config.siril_dir("M51") / "presets"
+                      / "naztronomy_smart_scope_presets.json").read_text())
+    assert got["batch_size"] == 999          # preserved, not regenerated
 
 
 def test_loose_non_finished_raster_still_held(tmp_path, monkeypatch):
