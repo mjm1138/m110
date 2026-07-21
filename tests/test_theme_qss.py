@@ -62,6 +62,15 @@ def test_checkbox_and_radio_indicators_are_stylesheet_drawn():
             assert "image: url(" in checked and t.accent in checked
 
 
+def test_checkbox_radio_have_min_height():
+    """A min-height keeps the styled 14px indicator from crowding stacked
+    checkboxes/radios (their circles read as overlapping without it) — same
+    reason QPushButton carries a min-height."""
+    block = build_qss(tokens.LIGHT).split("QCheckBox, QRadioButton {", 1)[1] \
+                                   .split("}", 1)[0]
+    assert "min-height" in block
+
+
 def test_check_indicator_icons_exist():
     """Every url(...) the sheet references must resolve, or the glyph silently
     vanishes (Qt fails quietly on a missing stylesheet image)."""

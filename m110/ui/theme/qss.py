@@ -232,8 +232,10 @@ QComboBox QAbstractItemView {{
 }}
 
 /* ── checkboxes / groupboxes ── */
-QCheckBox {{ spacing: {SPACE['sm']}px; }}
-QRadioButton {{ spacing: {SPACE['sm']}px; }}
+/* min-height gives the 14px indicator vertical breathing room so stacked
+   checkboxes/radios don't crowd (their circles read as overlapping otherwise) —
+   same reason QPushButton carries a min-height. */
+QCheckBox, QRadioButton {{ spacing: {SPACE['sm']}px; min-height: 20px; }}
 /* Standalone check/radio indicators — like the table indicators above, route these
    through QStyleSheetStyle so they're visible in dark mode. The native QMacStyle
    unchecked box/circle renders near-invisibly on the dark surface (dark-on-dark,
