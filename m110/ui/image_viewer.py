@@ -13,6 +13,8 @@ keyboard shortcuts. The metadata *content* is assembled by callers (e.g.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import (
     QColor, QGuiApplication, QKeySequence, QPixmap, QShortcut,
@@ -243,6 +245,11 @@ class ImageViewer(QDialog):
             self._info_btn.setCheckable(True)
             self._info_btn.toggled.connect(lambda _checked: self._refresh_info_panel())
             zoom_row.addWidget(self._info_btn)
+
+        self._export_btn = QPushButton("⤓ Export…")
+        self._export_btn.setToolTip("Export this image sized for web sharing")
+        self._export_btn.clicked.connect(self._export_current)
+        zoom_row.addWidget(self._export_btn)
         lay.addLayout(zoom_row)
 
         nav_row = QHBoxLayout()
@@ -291,6 +298,14 @@ class ImageViewer(QDialog):
         app = QGuiApplication.instance()
         if app is not None:
             app.quit()
+
+    def _export_current(self):
+        it = self._items[self._i]
+        if not it.get("path"):
+            return
+        from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle
+        ExportShareDialog(it["path"], self,
+                          default_stem=Path(it["name"]).stem or None).exec()
 
     def _show_current(self):
         it = self._items[self._i]

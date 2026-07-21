@@ -497,6 +497,46 @@ destinations, multiple destinations (3-2-1).
 
 ---
 
+## Sharing / Export — image export for web sharing *(done 2026-07-21, `feature/image-export`)*
+
+First slice of the Sharing/Export arc (the destination model + a "Share" nav pane
+remain deferred — see ROADMAP item 8). New Qt-free **`m110/webexport.py`**: take any
+finished image (Siril `.png`, finished `.fit`/`.tif`, any raster) and write the
+highest-quality file that fits a byte budget. `SharePreset` registry
+(Reddit 20 MB / Discord 10 MB / Custom) + a **quality ladder**: *lossless* strategy
+encodes an optimized PNG and, only if over budget, **binary-searches the long edge**
+(Lanczos) for the largest lossless PNG that fits (fast `compress_level` during the
+search, `optimize` + optional `pyoxipng` on the winner; floor `MIN_LONG_EDGE`, else
+`ExportError`); *quality* strategy writes a full-resolution JPEG (`subsampling=0`
+4:4:4, `optimize`, **baseline not progressive** — progressive tripped libjpeg's
+"Suspension not allowed" on incompressible frames and buys nothing since Reddit &
+co. re-encode). Reuses **`build_images._open_image`** as the front end so exported
+pixels match the app's render (FITS/float-TIF percentile-stretched to 8-bit RGB) —
+which also folds the 16→8-bit reduction in for free (on Mike's real 30 MB 16-bit
+M11 PNG that alone lands 10.9 MB at *full resolution*, no downscale). Output format
+is deterministic from `(strategy, preset)` — lossless→PNG, quality→JPEG — so the
+save panel's suggested extension is known up front. `SAFETY_MARGIN` (~3 %) leaves
+platform-rounding headroom; a byte-identical lossless original that already fits is
+copied verbatim (fast path). `pyoxipng` is a best-effort optional accelerator, **no
+new required dependency**.
+
+UI: **`ui/export_dialog.py`** (`ExportShareDialog`) — preset combo (+ MB spinbox for
+Custom), lossless/quality strategy radios, the preset's caveat note; **Export…** goes
+straight to the **native OS save panel** (`QFileDialog.getSaveFileName`, native
+dialog left on → the Cocoa save sheet, freely rename + relocate), then a `QThread`
+worker runs the ladder behind a busy `QProgressDialog` (status = the ladder's step
+trail) with working Cancel; success shows a summary + **Reveal**/**Open**. Two entry
+points: the detail-pane gallery right-click (**Export for sharing…**) and a
+**⤓ Export…** button in `image_viewer.py` (lazy-imported to avoid a cycle; the viewer
+stays app-data-agnostic — `webexport` imports only `build_images`). Last
+preset/strategy/dir/custom-MB persist in settings. External-folder output → no
+`.store_version` impact. Tests: `tests/test_webexport.py` (ladder, fast path, FITS
+render, `max_dim`, no-oxipng, un-fittable, cancel/callbacks) +
+`tests/test_export_dialog.py` (offscreen: preset reactivity + a stubbed end-to-end
+export). Verified on real 30 MB+ finished frames and a real cocoa dialog grab.
+
+---
+
 ## UI design system — Phase 0 + Phase 1 *(done 2026-06-29/30)*
 
 Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).

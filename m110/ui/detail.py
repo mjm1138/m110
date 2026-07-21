@@ -508,6 +508,8 @@ class DetailPane(QScrollArea):
             mark_act = menu.addAction("Mark as finished")
             target = "finished"
         menu.addSeparator()
+        export_act = menu.addAction("Export for sharing…")
+        menu.addSeparator()
         open_act = menu.addAction("Open in default app")
         reveal_act = menu.addAction("Reveal in file manager")
         chosen = menu.exec(gallery.viewport().mapToGlobal(pos))
@@ -515,10 +517,17 @@ class DetailPane(QScrollArea):
             self._set_hero(name)
         elif chosen is mark_act:
             self._set_curation(name, target)
+        elif chosen is export_act:
+            self._export_for_sharing(gi["path"])
         elif chosen is open_act:
             open_in_default(gi["path"])
         elif chosen is reveal_act:
             reveal_in_manager(gi["path"])
+
+    def _export_for_sharing(self, path):
+        from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle
+        slug = self._current[0] if self._current else None
+        ExportShareDialog(path, self, default_stem=slug).exec()
 
     def _set_hero(self, name: str):
         slug, e, t = self._current

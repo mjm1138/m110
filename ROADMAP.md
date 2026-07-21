@@ -187,6 +187,18 @@ follow-up list is BUGS **#27**: Netlify / S3·CloudFront / WordPress·Ghost,
 per-list publish flags, cross-publish image-cache reuse, auto-publish on
 refresh; possibly Astrobin/forum exports.
 
+**Sharing / Export arc.** Promoting share/export toward a top-level feature.
+- ✅ **Image export for web sharing** — a size-budgeted single-image exporter
+  (`webexport.py` + `ui/export_dialog.py`; right-click a gallery tile / the image
+  viewer's ⤓ Export…). Reddit/Discord/Custom budgets, quality-preserving ladder
+  (lossless PNG → downscale, or full-res JPEG), native OS save panel. See
+  [`DONE.md`](DONE.md).
+- ⏭ **Destination model + a "Share" nav pane** *(next)* — replace the single
+  publish config with a list of named **destinations** (each = publisher + its own
+  scoped `PublishOptions`), so different data can go to different targets, and lift
+  the publish dialog into a managed pane (destinations list + batch image export +
+  publish history). Deferred as a separate, larger change.
+
 ### 5 — Catalog growth
 
 More bundled catalogs from `next_catalog_lists.md` — **Herschel 400**, **Arp**,
