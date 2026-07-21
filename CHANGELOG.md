@@ -22,6 +22,10 @@ changes a **user** would notice, per release.
   nebulae, and the second half of the **Double Cluster** (NGC 884).
 
 ### Changed
+- **Importing a Siril project keeps your Naztronomy preset.** If the folder you import
+  already contains a `naztronomy_smart_scope_presets.json`, M110 carries it into that object's
+  processing sandbox instead of generating a fresh default — so your saved stacking settings
+  come across with your data. (Part of importing existing Siril projects — issue #57.)
 - **Overview's "Priority targets" no longer says the prioritizer is "coming."** The
   automatic target ranking has shipped — it lives on the **Planning** page. The
   caption on Overview now explains that this section shows the targets you've

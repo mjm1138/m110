@@ -462,7 +462,14 @@ _KIND_DIR = {
     "finished": config.finished_dir,
     "working": config.working_files_dir,
     "preview": config.previews_dir,
+    "siril-preset": lambda name: config.siril_dir(name) / "presets",
 }
+
+# The Naztronomy Smart Telescope script's preset file (mirror of siril.PRESET_NAME —
+# duplicated to avoid an ingest→siril import). An imported Siril project that carries
+# one is preserved: routed into the object's siril/presets/ so autoprep keeps it
+# instead of generating a fresh default (#57).
+_NAZTRONOMY_PRESET = "naztronomy_smart_scope_presets.json"
 
 # Setting key for the optional per-sub JPG preview import (#25; default off).
 IMPORT_SUB_PREVIEWS_KEY = "import_sub_previews"
@@ -817,6 +824,9 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     # leaf dirs (m110-store/seestar already route their finished outputs); object from
     # the folder name. Without this, such a file falls through to the holding area.
     ops += _claim_loose_finished(src_dir, name, action, handled, layout)
+    # Carry an imported Naztronomy preset into the object's siril/ sandbox so autoprep
+    # preserves it instead of generating a fresh default (#57).
+    ops += _claim_siril_preset(src_dir, name, action, handled)
     # Sweep: any content file the recognizer didn't claim → holding area. `handled`
     # (not the emitted ops) is the authority, so files skipped as already-present
     # don't get mistaken for unclassifiable and re-held.
@@ -839,6 +849,30 @@ def _claim_loose_finished(src_dir: Path, name: str, action: str, handled: set,
     obj = canonical_target(name)
     handled.update(files)
     return _emit_files(src_dir, files, "finished", obj, name, action, "finished-render")
+
+
+def _claim_siril_preset(src_dir: Path, name: str, action: str,
+                        handled: set) -> list[IngestOp]:
+    """Route an imported Naztronomy preset (`naztronomy_smart_scope_presets.json`) into
+    the object's `siril/presets/` so autoprep preserves it rather than regenerating one
+    (#57). Object = the containing project folder (a `presets/` or content subdir defers
+    to its parent, `_sub` stripped), gated on it naming a **known catalog object** so a
+    stray preset in a random folder isn't turned into an orphan sandbox."""
+    if _NAZTRONOMY_PRESET not in _all_files(src_dir):
+        return []
+    holder = (src_dir.parent.name
+              if (name.lower() == "presets" or name.lower() in _STORE_SUBDIR_KIND)
+              else name)
+    obj = canonical_target(re.sub(r"_sub$", "", holder))
+    try:
+        lib = catalog.load_library()
+    except Exception:
+        lib = {}
+    if _slug_for_object(obj, lib) is None:
+        return []
+    handled.add(_NAZTRONOMY_PRESET)
+    return _emit_one_kind(src_dir, [_NAZTRONOMY_PRESET], "siril-preset", obj, name,
+                          action, "m110-store")
 
 
 def _in_own_store(src_dir: Path) -> bool:
