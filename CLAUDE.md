@@ -484,6 +484,18 @@ control.
 - **Cross-thread Qt:** workers communicate via signals; never touch widgets
   from a worker thread. Cancellation uses a `threading.Event` set by the
   progress dialog's `canceled` signal.
+- **Drain background workers before Qt tears down — or the process segfaults.**
+  An async task still running when Qt is destroyed runs native code against a
+  half-gone Qt and crashes on a worker thread. Two forms bit us: a `QThread`
+  `deleteLater`'d before it finished (export dialog — `_finish_worker` now
+  `wait()`s), and `ThumbnailLoader`'s decodes on the **global `QThreadPool`**,
+  which was never drained (`widgets.drain_thumbnail_pool()` = `waitForDone()` now
+  runs on `aboutToQuit` and after every test via an autouse conftest fixture).
+  This was the intermittent **CI SIGSEGV (exit 139) that "passed on re-run"** — a
+  thread-timing race, not a test failure; a green re-run never cleared it. Don't
+  "fix" a QRunnable lifetime by holding a Python ref + `setAutoDelete(False)`: a
+  QRunnable isn't a QObject, so PySide can't track a pool-side delete → double-free.
+  Drain instead.
 - **Library vs reference vs catalogs (item 5a).** The per-store `library.toml` is
   the user's mutable corpus (objects they track). The bundled **reference**
   (`seed/objects.toml`, J2000 coords + type/mag/size, produced at build time via

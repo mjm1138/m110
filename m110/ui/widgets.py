@@ -355,6 +355,18 @@ class ThumbnailLoader(QObject):
             cb(pm)
 
 
+def drain_thumbnail_pool(msecs: int = 5000) -> None:
+    """Block until background thumbnail decodes finish.
+
+    `ThumbnailLoader` decodes images on the **global** `QThreadPool`. A task still
+    running on a pool thread when Qt is torn down — app quit, or a test's
+    QApplication teardown — runs native Qt image code against a half-destroyed Qt
+    and **segfaults**: the intermittent CI SIGSEGV (exit 139) that passes on
+    re-run, and a rare crash on quit mid-load. Call this before teardown so no
+    decode outlives Qt. Best-effort — returns after `msecs` even if one is stuck."""
+    QThreadPool.globalInstance().waitForDone(msecs)
+
+
 class RowThumbnails:
     """Wires a table's rows to async hero thumbnails (`objects.hero_path`).
     Call `reset()` at the start of each table (re)build, `add(slug, item)` per

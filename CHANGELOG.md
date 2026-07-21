@@ -56,6 +56,11 @@ changes a **user** would notice, per release.
   invisible against the dark background, so some options were hard to spot — for
   example in Preferences, the Publish and Backup dialogs, and the new export dialog.
   They now have a clear outline in both light and dark themes.
+- **No more rare crash when quitting while thumbnails are still loading.** M110 decodes
+  gallery/row thumbnails on background threads; if you quit the app while one was still
+  in progress, the decode could run as the window tore down and crash. The app now waits
+  for in-flight thumbnail work to finish first. (This also fixes intermittent
+  test-suite failures in CI, which were the same race.)
 
 ## [0.2.0-beta.6] - 2026-07-19
 
