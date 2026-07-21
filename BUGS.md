@@ -99,6 +99,19 @@ Legend: `[ ]` open · `[~]` partially done
   carries model/firmware but **no** unit id. So device attribution must key off FITS
   `TELESCOP`; a JPEG-only import can't tell two same-model scopes apart. See
   [`DATA_MODEL.md`](DATA_MODEL.md) → "Import & multi-source / multi-telescope".
+- [~] **#57 — Import folders already set up for Siril.** Point import at existing Siril
+  project folders and have the frames pulled in without reorganizing the source. **(A)
+  recognition landed** (`feature/import-siril-projects`): the scanner recognizes a Siril/M110
+  **project root** (a folder that *contains* lights/darks/flats/biases) and routes the loose
+  files Siril left beside those folders — a stacked `.fit` → `stacks/`, another
+  processing-product `.fit` → `working_files/`, a finished render → `finished/` — instead of
+  stranding them in the holding area; a `<obj>_sub` folder imports under the object's real id
+  (`M63`, not `M63_sub`); and a folder of loose subs with no `lights/` subdir routes by the
+  folder name **when it names a known catalog object** (a generic/session-named folder still
+  goes to holding). **(B) follow-up (open):** reproduce the project in the
+  `Images/<target>/siril/` sandbox — hardlink darks/flats/biases alongside the lights (prep is
+  lights-only today) and preserve an imported `naztronomy_smart_scope_presets.json` rather than
+  regenerating it.
 - [ ] **Full import triage toolkit**  *(→ ROADMAP item 9).* Deeper tools for files the
   classifier can't place — FITS header inspector, in-app viewer/annotator, **plate-solving**
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,

@@ -22,6 +22,13 @@ changes a **user** would notice, per release.
   nebulae, and the second half of the **Double Cluster** (NGC 884).
 
 ### Changed
+- **Import recognizes existing Siril project folders.** If you already keep your captures in
+  Siril-style project folders — `M51/lights`, `M51/darks`, `M51/flats`, `M51/biases` — you can
+  point import at the folder that holds them and M110 pulls each project in as one object,
+  without you reorganizing anything. A stack or finished image Siril left loose beside those
+  folders now lands in the right place (`stacks/` / `finished/`) instead of the holding area; a
+  `M63_sub` folder imports as **M63**; and a folder of loose subs named after a catalog object
+  (with no `lights/` subfolder) is recognized by its name. (Thanks to @devonjones — issue #57.)
 - **Overview's "Priority targets" no longer says the prioritizer is "coming."** The
   automatic target ranking has shipped — it lives on the **Planning** page. The
   caption on Overview now explains that this section shows the targets you've
