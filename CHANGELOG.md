@@ -11,6 +11,15 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Export finished images sized for web sharing.** Right-click any image in an object's
+  gallery — or the hero image — or use the new **⤓ Export…** button in the full-screen
+  image viewer, then **Export for sharing…** to save a copy under a size limit you set (for
+  Reddit's 20 MB cap, say), or with **No maximum**. It preserves as much quality as it can:
+  by default it stays **lossless** (a finished 16-bit PNG typically drops well under 20 MB
+  just by converting to 8-bit, at full resolution) and only reduces resolution if it has to;
+  or pick **Keep full resolution** for a high-quality JPEG. A standard Save dialog opens with
+  a suggested name like `M42-20mb-20260721.png` that you can rename, and lets you choose
+  where the file goes.
 - **Three "Popular" goal lists, curated by popularity and matched to your gear.** New
   bundled goals you can turn on from **Overview → Manage goals**: **Popular: Deep (S50)** —
   small, faint, detailed targets that suit the S50's deeper aperture and narrow field;
@@ -26,6 +35,13 @@ changes a **user** would notice, per release.
   automatic target ranking has shipped — it lives on the **Planning** page. The
   caption on Overview now explains that this section shows the targets you've
   *pinned*, and points to Planning for the automatic ranking.
+
+### Fixed
+- **Checkboxes and radio buttons are visible in dark mode.** Their empty (unchecked)
+  boxes and circles were drawn by the native macOS control style and came out almost
+  invisible against the dark background, so some options were hard to spot — for
+  example in Preferences, the Publish and Backup dialogs, and the new export dialog.
+  They now have a clear outline in both light and dark themes.
 
 ## [0.2.0-beta.6] - 2026-07-19
 

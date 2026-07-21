@@ -144,6 +144,7 @@ class DetailPane(QScrollArea):
         self._gallery = None
         self._galleries = []        # one QListWidget per finished/working group
         self._gallery_items = []    # [{name, path, meta}, ...] for the viewer
+        self._hero_widget = None    # ScalableImage for the current hero (right-click)
         self.placeholder()
 
     def is_editing(self) -> bool:
@@ -279,7 +280,11 @@ class DetailPane(QScrollArea):
         if hp:
             pm = QPixmap(str(hp))
             if not pm.isNull():
-                self._lay.addWidget(ScalableImage(pm, max_height=460))
+                self._hero_widget = ScalableImage(pm, max_height=460)
+                self._hero_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+                self._hero_widget.customContextMenuRequested.connect(
+                    self._hero_context_menu)
+                self._lay.addWidget(self._hero_widget)
 
         fm, body = objects.read_journal(slug)
         if fm.get("hero_caption"):
@@ -484,10 +489,20 @@ class DetailPane(QScrollArea):
         self._galleries.append(gallery)
         self._lay.addWidget(gallery)
 
+    def _export_stem(self):
+        """Object designation for export filenames — the catalog id (e.g. "M42",
+        "NGC7000"), filename-safe; falls back to the slug."""
+        if not self._current:
+            return None
+        slug, e, _ = self._current
+        obj_id = (e or {}).get("id") or slug
+        return str(obj_id).replace(" ", "")
+
     def _open_gallery_item(self, item):
         idx = item.data(Qt.UserRole)
         if isinstance(idx, int) and 0 <= idx < len(self._gallery_items):
-            ImageViewer(list(self._gallery_items), idx, parent=self).exec()
+            ImageViewer(list(self._gallery_items), idx, parent=self,
+                        export_stem=self._export_stem()).exec()
 
     def _gallery_context_menu(self, gallery, pos):
         item = gallery.itemAt(pos)
@@ -496,7 +511,37 @@ class DetailPane(QScrollArea):
         idx = item.data(Qt.UserRole)
         if not isinstance(idx, int) or idx >= len(self._gallery_items):
             return
-        gi = self._gallery_items[idx]
+        self._run_image_menu(self._gallery_items[idx],
+                             gallery.viewport().mapToGlobal(pos))
+
+    def _hero_context_menu(self, pos):
+        """Same menu as a gallery tile, on the big hero image — acting on the
+        hero's *source* file (not the rendered hero JPG)."""
+        if not self._current or self._hero_widget is None:
+            return
+        gi = self._hero_gallery_item(self._current[0])
+        if gi is not None:
+            self._run_image_menu(gi, self._hero_widget.mapToGlobal(pos))
+
+    def _hero_gallery_item(self, slug):
+        """The gallery-item dict for the current hero's source image, so the hero
+        menu reuses the same actions (set-hero / curation / export / open)."""
+        fm, _ = objects.read_journal(slug)
+        name = fm.get("hero")
+        if name:
+            for gi in self._gallery_items:
+                if gi["name"] == name:
+                    return gi
+        src = build_images.hero_source_path(slug)
+        if src is not None:
+            sp = str(src)
+            for gi in self._gallery_items:
+                if gi["path"] == sp:
+                    return gi
+        return None
+
+    def _run_image_menu(self, gi, global_pos):
+        """Shared right-click menu for a single image (gallery tile or hero)."""
         name, state = gi["name"], gi.get("_state")
         menu = QMenu(self)
         hero_act = menu.addAction("Set as hero")
@@ -508,17 +553,25 @@ class DetailPane(QScrollArea):
             mark_act = menu.addAction("Mark as finished")
             target = "finished"
         menu.addSeparator()
+        export_act = menu.addAction("Export for sharing…")
+        menu.addSeparator()
         open_act = menu.addAction("Open in default app")
         reveal_act = menu.addAction("Reveal in file manager")
-        chosen = menu.exec(gallery.viewport().mapToGlobal(pos))
+        chosen = menu.exec(global_pos)
         if chosen is hero_act:
             self._set_hero(name)
         elif chosen is mark_act:
             self._set_curation(name, target)
+        elif chosen is export_act:
+            self._export_for_sharing(gi["path"])
         elif chosen is open_act:
             open_in_default(gi["path"])
         elif chosen is reveal_act:
             reveal_in_manager(gi["path"])
+
+    def _export_for_sharing(self, path):
+        from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle
+        ExportShareDialog(path, self, default_stem=self._export_stem()).exec()
 
     def _set_hero(self, name: str):
         slug, e, t = self._current
