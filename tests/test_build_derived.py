@@ -267,6 +267,105 @@ def test_undated_stack_falls_back_to_mtime_and_loses_to_a_dated_one(tmp_path, mo
     assert proc["folders"]["M92"]["stack_meta"]["stack_frames"] == 450
 
 
+# ── combined targets: a stack covering only part of them is demoted (OBJECT) ──
+
+def _write_object_stack(folder, name, stackcnt, date, obj, *, exp_s=20):
+    """A stack carrying an OBJECT header — the signal that says which object(s) it
+    actually covers."""
+    from astropy.io import fits
+    import numpy as np
+    (folder / "stacks").mkdir(parents=True, exist_ok=True)
+    hdu = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    hdu.header["STACKCNT"] = stackcnt
+    hdu.header["LIVETIME"] = stackcnt * exp_s
+    hdu.header["EXPTIME"] = exp_s
+    hdu.header["DATE"] = date
+    if obj is not None:
+        hdu.header["OBJECT"] = obj
+    hdu.writeto(folder / "stacks" / name, overwrite=True)
+
+
+def _combined_sessions(target="M81 M82"):
+    return [{"object_dir": target, "slugs": ["m81", "m82"], "frames": 3000,
+             "integration_min": 1000.0, "date": "2026-05-01",
+             "filter": "LP", "exposure_s": 20},
+            {"object_dir": target, "slugs": ["m81", "m82"], "frames": 1799,
+             "integration_min": 600.0, "date": "2026-06-04",
+             "filter": "LP", "exposure_s": 20}]
+
+
+def test_single_object_stack_demoted_on_a_combined_target(tmp_path, monkeypatch):
+    """The live `M81 M82` case: an `OBJECT = "M 81"` 271-frame stack sat in the
+    combined folder and carried the newest header DATE, so it was selected and
+    measured against the *pair's* 4799 captured frames — 94% "rejected", nonsense.
+    OBJECT is header truth: a strict subset of the target's objects is not a stack
+    of that target, so it loses to one that covers both."""
+    images = tmp_path / "Images"
+    tgt = images / "M81 M82"
+    (tgt / "lights").mkdir(parents=True)
+    _write_object_stack(tgt, "M81_M82_1983x20sec.fit", 1983,
+                        "2026-06-04T15:23:47", "M81 M82")
+    _write_object_stack(tgt, "M_81_271x20sec_og.fit", 271,
+                        "2026-06-04T15:34:49", "M 81")     # newest DATE, but partial
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = _combined_sessions()
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    sm = proc["folders"]["M81 M82"]["stack_meta"]
+    assert sm["stack_file"] == "M81_M82_1983x20sec.fit"
+    assert sm["stack_frames"] == 1983
+    assert sm["stack_rejection_pct"] == 59          # 1 - 1983/4799, not 1 - 271/4799
+
+
+def test_partial_stack_still_used_when_it_is_the_only_one(tmp_path, monkeypatch):
+    """Demote, don't drop — a partial stack beats no stack metadata at all."""
+    images = tmp_path / "Images"
+    tgt = images / "M81 M82"
+    (tgt / "lights").mkdir(parents=True)
+    _write_object_stack(tgt, "M_81_271x20sec_og.fit", 271,
+                        "2026-06-04T15:34:49", "M 81")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = _combined_sessions()
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    assert proc["folders"]["M81 M82"]["stack_meta"]["stack_frames"] == 271
+
+
+@pytest.mark.parametrize("obj", [None, "", "Unknown", "M 51"])
+def test_no_signal_or_unrelated_object_never_demotes(tmp_path, monkeypatch, obj):
+    """Absence of evidence isn't evidence: a missing/unrecognized OBJECT keeps its
+    place. An *unrelated* object is left alone too — that's a misfiled stack, a
+    different problem from a partial one, and not this rule's job to guess at."""
+    images = tmp_path / "Images"
+    tgt = images / "M81 M82"
+    (tgt / "lights").mkdir(parents=True)
+    _write_object_stack(tgt, "older_full.fit", 1983, "2026-05-01T00:00:00", "M81 M82")
+    _write_object_stack(tgt, "newer_unknown.fit", 500, "2026-06-04T00:00:00", obj)
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = _combined_sessions()
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    assert proc["folders"]["M81 M82"]["stack_meta"]["stack_file"] == "newer_unknown.fit"
+
+
+def test_single_object_target_is_unaffected_by_the_partial_rule(tmp_path, monkeypatch):
+    """No non-empty strict subset of a one-object target exists, so the rule can
+    never fire there — an `OBJECT = "M 71"` stack in the M71 folder is the norm."""
+    images = tmp_path / "Images"
+    tgt = images / "M71"
+    (tgt / "lights").mkdir(parents=True)
+    _write_object_stack(tgt, "M_71_393x20sec.fit", 393, "2026-07-10T20:55:57", "M 71")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M71", "2026-07-01", 417)]
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    assert proc["folders"]["M71"]["stack_meta"]["stack_frames"] == 393
+
+
 def test_status_up_to_date_when_all_frames_precede_stack(tmp_path, monkeypatch):
     images = tmp_path / "Images"
     tgt = images / "M100"

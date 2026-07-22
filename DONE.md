@@ -571,6 +571,33 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **A single-object stack in a combined capture folder was read as the pair's stack**
+  *(2026-07-22, `feature/stack-object-match`)*. Follow-up to the mtime→`DATE` fix below,
+  and the one target that fix made *worse*. `Images/M81 M82/stacks/` holds
+  `M_81_271x20sec_…_og.fit` — `OBJECT = "M 81"`, 271 frames, LP, 1883×3037 against the
+  mosaic stacks' 1413×2187, with a sidecar reading `Object: M 81`. It was shot on
+  2026-06-03/04 with the scope on M81 alone, but the frames (and the resulting stack) landed
+  in the combined folder. It carries the folder's **newest header `DATE`**, so once
+  selection started trusting DATE it won outright: In-stack **271** measured against the
+  pair's **4799** captured frames = **94% rejected**, obvious nonsense (mtime had been
+  landing on a 3250-frame starmask — plausible, and also wrong). Fix: on a target whose
+  `slugs` name 2+ objects, a stack whose `OBJECT` header resolves to a **strict subset** of
+  them is sorted *below* the stacks covering all of them. M81 M82 now reads its 1983-frame
+  2026-06-04 mosaic stack. Deliberate properties: **header truth, not filename** — `OBJECT`
+  is mapped by the same `scan_sessions.folder_to_slugs` already used for folder names
+  (`"M 81"` → `[m81]`, `"M81 M82"` → `[m81, m82]`), so no naming convention is involved;
+  **demote, don't drop** — implemented as a sort key, so if every candidate is partial one
+  is still returned rather than regressing to no stack metadata; **absence of evidence never
+  demotes** — a missing/unrecognized `OBJECT` keeps its place; and it **cannot fire on a
+  single-object target**, since no non-empty strict subset of a one-object set exists.
+  A *disjoint* `OBJECT` (a wholly unrelated stack) is left alone on purpose — that's a
+  misfiled stack, a different problem, logged in BUGS.md. `load_catalog_slugs()` is resolved
+  once per `build_processing`, and only when some target is combined. Guarded by
+  `test_single_object_stack_demoted_on_a_combined_target`,
+  `test_partial_stack_still_used_when_it_is_the_only_one`,
+  `test_no_signal_or_unrelated_object_never_demotes` (parametrized over absent/empty/
+  unrecognized/unrelated), and `test_single_object_target_is_unaffected_by_the_partial_rule`.
+
 - [x] **"Latest stack" was picked by file mtime, so In-stack / "+ new" / rejection were
   wrong on a quarter of the library** *(2026-07-22, `feature/stack-date-selection`)*.
   `build_derived.read_latest_stack_metadata` sorted its candidates by

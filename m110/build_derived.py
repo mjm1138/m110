@@ -235,7 +235,27 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
 # data-quality diagnostic.
 
 
-def read_latest_stack_metadata(folder: Path) -> dict | None:
+def _covers_partial_target(obj_header, target: set[str],
+                           catalog_slugs: set[str] | None) -> bool:
+    """True when a stack's ``OBJECT`` header names a *strict subset* of a combined
+    target's objects — an M81-only stack sitting in the `M81 M82` folder.
+
+    False for every no-signal case (no header, an unrecognized name, a
+    single-object target, no catalog to resolve against): the absence of evidence
+    must never demote a stack. Note an unrelated object is *not* partial either —
+    a disjoint OBJECT is a different problem (a misfiled stack rather than a
+    partial one) and is left alone deliberately.
+    """
+    if len(target) < 2 or not obj_header or not catalog_slugs:
+        return False
+    from .scan_sessions import folder_to_slugs
+    covers = set(folder_to_slugs(str(obj_header), catalog_slugs))
+    return bool(covers) and covers < target
+
+
+def read_latest_stack_metadata(folder: Path,
+                               target_slugs: list[str] | None = None,
+                               catalog_slugs: set[str] | None = None) -> dict | None:
     """Read STACKCNT / LIVETIME / EXPTIME from the latest .fit/.fits stack file
     in `folder` (root), `folder/stacks/` (post-migration), or
     `folder/working_files/`.
@@ -257,6 +277,20 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
     stack whose header has no DATE, and a dated candidate always beats an undated
     one.
 
+    On a **combined** capture target (``target_slugs`` naming 2+ objects, e.g.
+    "M81 M82"), a stack whose ``OBJECT`` header covers only *part* of the target
+    is demoted below the stacks that cover all of it. A single-object stack made
+    from a combined folder's frames is not a stack *of that target*: it would
+    report its own frame count against the pair's whole capture history, which
+    reads as an absurd rejection% (the live `M81 M82` case — an `OBJECT = "M 81"`
+    271-frame stack against 4799 captured frames, i.e. 94% "rejected"). ``OBJECT``
+    is header truth, mapped by the same `scan_sessions.folder_to_slugs` used for
+    folder names, so this needs no filename convention. Demote-don't-drop: if
+    *every* candidate is partial we still return one rather than regressing to no
+    stack metadata at all. Only ever fires on multi-object targets — for a
+    single-object target no non-empty proper subset exists — and an absent or
+    unrecognized ``OBJECT`` is treated as no signal, never as a partial match.
+
     Returns a dict with stack_frames, stack_integration_min,
     stack_integration_hms, stack_exposure_s, stack_file, and stacked_at,
     or None if no eligible file found (no .fit/.fits with STACKCNT header).
@@ -265,6 +299,11 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
         from astropy.io import fits
     except ImportError:
         return None
+
+    target = set(target_slugs or ())
+    if len(target) > 1 and catalog_slugs is None:
+        from .scan_sessions import load_catalog_slugs
+        catalog_slugs = load_catalog_slugs()
 
     # Read every candidate's header up front: "latest" is a header value, so it
     # can't be decided by a cheap stat() the way the old mtime sort could.
@@ -292,6 +331,8 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
                     if not (cnt and live):
                         continue
                     stacks.append({
+                        "partial": _covers_partial_target(
+                            hdr.get("OBJECT"), target, catalog_slugs),
                         "dir_priority": pr,
                         "date": hdr.get("DATE") or "",
                         "mtime": f.stat().st_mtime,
@@ -310,9 +351,11 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
 
     # Two stable passes: newest DATE first (an undated stack sorts last, since
     # "" is lexicographically smallest, and falls back to mtime among its
-    # peers), then a canonical root/stacks/ location wins over working_files/.
+    # peers), then a stack covering the whole target ahead of a partial one, and
+    # a canonical root/stacks/ location ahead of working_files/. Sorting rather
+    # than filtering is what makes the partial rule demote-don't-drop.
     stacks.sort(key=lambda s: (s["date"], s["mtime"]), reverse=True)
-    stacks.sort(key=lambda s: s["dir_priority"])
+    stacks.sort(key=lambda s: (s["partial"], s["dir_priority"]))
 
     best = stacks[0]
     return {k: best[k] for k in (
@@ -443,6 +486,13 @@ def build_processing(totals: dict, overrides: dict | None,
     for s in (sessions or []):
         sess_by_folder[s["object_dir"]].append((s["date"], s["frames"]))
 
+    # Resolved once, not per folder: only combined targets need it, and it reads
+    # the Library + bundled reference.
+    cat_slugs: set[str] | None = None
+    if any(len(t.get("slugs") or ()) > 1 for t in by_folder.values()):
+        from .scan_sessions import load_catalog_slugs
+        cat_slugs = load_catalog_slugs()
+
     if not config.IMAGES_DIR.is_dir():
         return {"folders": {}, "queue": [], "generated_at": now_iso}
 
@@ -489,7 +539,8 @@ def build_processing(totals: dict, overrides: dict | None,
         # Read STACKCNT / LIVETIME / DATE from the most recent stack file's
         # FITS header (post-Siril). DATE = when the stack was made; the frames
         # captured after it are the unintegrated ones.
-        stack_meta = read_latest_stack_metadata(folder) if processed else None
+        stack_meta = (read_latest_stack_metadata(folder, t.get("slugs"), cat_slugs)
+                      if processed else None)
         stack_date = (stack_meta.get("stacked_at") or "")[:10] if stack_meta else ""
 
         # Split captured frames by the stack's DATE. `frames_before` = frames
