@@ -11,6 +11,12 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Fixed
+- **A stack of just one object no longer stands in for a combined target.** If you shoot a
+  pair together — an `M81 M82` folder, say — and one of your stacks covers only *one* of
+  them, M110 no longer treats it as the pair's latest stack. It was measuring that stack's
+  frame count against everything you'd ever captured of the pair, which produced a wildly
+  inflated "rejected" percentage. M110 now reads the object name recorded inside the file by
+  the telescope, and prefers a stack that covers the whole target.
 - **The Processing page was reading the wrong stack, so "In stack", "+ new" and rejection %
   could be badly off.** When an object had more than one stack on disk, M110 picked the one
   with the newest *file date* — but copying a file updates its file date, so a stack you

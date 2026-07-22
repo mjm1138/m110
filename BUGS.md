@@ -34,6 +34,20 @@ Legend: `[ ]` open · `[~]` partially done
   tiers are now scanned too, with a `p == dest` guard in `_finished_outputs` so files
   already correctly in place don't flood the preview. (Thanks to @devonjones.)
 
+- [ ] **A misfiled stack (disjoint `OBJECT`) is still read as the target's.** Sibling of the
+  partial-stack rule shipped in `feature/stack-object-match` (see DONE.md). That rule demotes
+  a stack whose `OBJECT` names a *strict subset* of a combined target's objects; a stack
+  whose `OBJECT` is **unrelated** to the target (an M51 stack sitting in the M71 folder) is
+  deliberately left alone, because a disjoint name is more likely to mean "we can't resolve
+  this name" than "this file is misfiled" — demoting on it risks discarding a perfectly good
+  stack whose OBJECT is spelled in a form `folder_to_slugs` doesn't recognize. Worth
+  revisiting alongside a **general "this file doesn't belong here" surface**: the same signal
+  would catch the misfiled *lights* case too (the `M81 M82` folder's 2026-06-03/04 sessions
+  are M81-only captures by header, which is how the stray stack arose in the first place).
+  Related: `Images/M81/` has 327 lights and no `stacks/` tier at all, so it reads
+  `not_processed` while its stack lives in the combined folder. Needs a user-facing
+  reconcile/"move to the right target" flow, not a silent rule.
+
 - [ ] **Directory precedence outranks the stack `DATE` — should it?** Follow-up to the
   mtime→`DATE` selection fix (`feature/stack-date-selection`, see DONE.md).
   `read_latest_stack_metadata` still sorts root/`stacks/` ahead of `working_files/`
