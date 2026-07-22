@@ -10,6 +10,20 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **The Processing page was reading the wrong stack, so "In stack", "+ new" and rejection %
+  could be badly off.** When an object had more than one stack on disk, M110 picked the one
+  with the newest *file date* — but copying a file updates its file date, so a stack you
+  re-copied recently could look newer than the one you actually made last. On one target in
+  testing this showed **In stack 118 frames (0:39)** when the real latest stack had **393
+  (2:23)**, and claimed **417 new frames waiting** when only 123 were. M110 now picks the
+  stack by the date **written inside the file by the stacker**, which is what it was already
+  using to decide which frames count as new. If you've been seeing a reprocess backlog that
+  didn't look right — or targets stuck on "out of date" that you know you'd already
+  reprocessed — this was why. **Your numbers will change after the next refresh, and some
+  targets may correctly drop to "up to date".** Nothing on disk is touched; only the
+  reported figures change.
+
 ## [0.2.0-beta.7] - 2026-07-21
 
 ### Added

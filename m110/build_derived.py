@@ -236,8 +236,8 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
 
 
 def read_latest_stack_metadata(folder: Path) -> dict | None:
-    """Read STACKCNT / LIVETIME / EXPTIME from the most recent .fit/.fits
-    stack file in `folder` (root), `folder/stacks/` (post-migration), or
+    """Read STACKCNT / LIVETIME / EXPTIME from the latest .fit/.fits stack file
+    in `folder` (root), `folder/stacks/` (post-migration), or
     `folder/working_files/`.
 
     The last case matters because the ingest lights-guard diverts any non-sub
@@ -246,6 +246,16 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
     STACKCNT/LIVETIME/DATE header, often ends up there. Reading it fixes the
     Processing view's In-stack / "+ new" / rejection for such objects (root/stacks
     take precedence when a canonical stack is present).
+
+    "Latest" is the stack's own FITS ``DATE`` — when the stacker *made* it — not
+    the file mtime. Ingest and Siril-import copy bytes (mtime = copy time), so a
+    superseded stack re-copied into `stacks/` later carries the newest mtime while
+    being months old by content; picking it understated In-stack and inflated
+    "+ new"/rejection across the library. This is the same rule `build_processing`
+    already applies downstream when it splits captured frames against the stack
+    DATE — the selection here was the odd one out. mtime is only a fallback for a
+    stack whose header has no DATE, and a dated candidate always beats an undated
+    one.
 
     Returns a dict with stack_frames, stack_integration_min,
     stack_integration_hms, stack_exposure_s, stack_file, and stacked_at,
@@ -256,9 +266,15 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
     except ImportError:
         return None
 
-    # (dir priority, path): a canonical stack in the root/stacks/ wins over one
-    # that happens to sit in working_files/; newest-first within each priority.
-    candidates = []
+    # Read every candidate's header up front: "latest" is a header value, so it
+    # can't be decided by a cheap stat() the way the old mtime sort could.
+    # Deliberately *not* filtered by filename (no starless_/_crop/_stretch
+    # exclusion): a processing derivative inherits its parent's STACKCNT and
+    # LIVETIME, so it yields identical arithmetic, and the DATE sort already
+    # lands on the final product because the last processing step is written
+    # last. Filename hints are for display decisions (see hints.py), not for
+    # numbers.
+    stacks: list[dict] = []
     for d in [folder, folder / "stacks", folder / "working_files"]:
         pr = 1 if d == folder / "working_files" else 0
         if not d.is_dir():
@@ -268,27 +284,41 @@ def read_latest_stack_metadata(folder: Path) -> dict | None:
                 continue
             if f.suffix.lower() not in (".fit", ".fits"):
                 continue
-            candidates.append((pr, f))
-    candidates.sort(key=lambda c: (c[0], -c[1].stat().st_mtime))
-
-    for _pr, f in candidates:
-        try:
-            with fits.open(f) as hdul:
-                hdr = hdul[0].header
-                cnt = hdr.get("STACKCNT")
-                live = hdr.get("LIVETIME")
-                if cnt and live:
-                    return {
+            try:
+                with fits.open(f) as hdul:
+                    hdr = hdul[0].header
+                    cnt = hdr.get("STACKCNT")
+                    live = hdr.get("LIVETIME")
+                    if not (cnt and live):
+                        continue
+                    stacks.append({
+                        "dir_priority": pr,
+                        "date": hdr.get("DATE") or "",
+                        "mtime": f.stat().st_mtime,
                         "stack_file": f.name,
                         "stack_frames": int(cnt),
                         "stack_integration_min": round(float(live) / 60, 1),
                         "stack_integration_hms": fmt_hm(float(live) / 60),
                         "stack_exposure_s": float(hdr.get("EXPTIME", 0)),
                         "stacked_at": hdr.get("DATE"),
-                    }
-        except Exception:
-            continue
-    return None
+                    })
+            except Exception:
+                continue
+
+    if not stacks:
+        return None
+
+    # Two stable passes: newest DATE first (an undated stack sorts last, since
+    # "" is lexicographically smallest, and falls back to mtime among its
+    # peers), then a canonical root/stacks/ location wins over working_files/.
+    stacks.sort(key=lambda s: (s["date"], s["mtime"]), reverse=True)
+    stacks.sort(key=lambda s: s["dir_priority"])
+
+    best = stacks[0]
+    return {k: best[k] for k in (
+        "stack_file", "stack_frames", "stack_integration_min",
+        "stack_integration_hms", "stack_exposure_s", "stacked_at",
+    )}
 
 
 # ── star-removal recommendation ──────────────────────────────────────────

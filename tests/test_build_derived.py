@@ -168,6 +168,105 @@ def test_stack_read_from_working_files(tmp_path, monkeypatch):
     assert sm["stack_rejection_pct"] == round((1 - 301 / 336) * 100)   # 10%
 
 
+# ── "latest stack" = header DATE, not file mtime ──────────────────────────
+
+def _write_named_stack(folder, name, stackcnt, date, *, mtime=None,
+                       subdir="stacks", exp_s=20):
+    """Write a stack under `subdir` with an explicit filename and, optionally, a
+    file mtime detached from its header DATE (what a byte-copy produces)."""
+    from astropy.io import fits
+    import numpy as np
+    import os
+    d = folder / subdir if subdir else folder
+    d.mkdir(parents=True, exist_ok=True)
+    hdu = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    hdu.header["STACKCNT"] = stackcnt
+    hdu.header["LIVETIME"] = stackcnt * exp_s
+    hdu.header["EXPTIME"] = exp_s
+    if date:
+        hdu.header["DATE"] = date
+    path = d / name
+    hdu.writeto(path, overwrite=True)
+    if mtime is not None:
+        os.utime(path, (mtime, mtime))
+    return path
+
+
+def test_latest_stack_picked_by_header_date_not_mtime(tmp_path, monkeypatch):
+    """Two real stacks, mtime order inverted against header DATE — the superseded
+    one was re-copied into stacks/ later, so it carries the newest mtime.
+
+    The live-library M71 case: the 118-frame stack (DATE 06-10, copied 07-16) was
+    beating the 393-frame one (DATE 07-10), which reported In-stack 118 instead of
+    393 and "+ new" 417 instead of 123. mtime is copy time, not provenance."""
+    images = tmp_path / "Images"
+    tgt = images / "M71"
+    (tgt / "lights").mkdir(parents=True)
+    # Superseded by content, newest on disk.
+    _write_named_stack(tgt, "M_71_118x20sec_processed.fit", 118,
+                       "2026-06-10T19:51:29", mtime=1_784_260_770)   # 2026-07-16
+    # Current by content, older on disk.
+    _write_named_stack(tgt, "M_71_393x20sec_finished.fit", 393,
+                       "2026-07-10T20:55:57", mtime=1_783_716_999)   # 2026-07-10
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M71", "2026-06-10", 123), _sess("M71", "2026-06-11", 93),
+                _sess("M71", "2026-06-12", 116), _sess("M71", "2026-07-07", 85),
+                _sess("M71", "2026-07-12", 123)]          # the only unintegrated one
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    f = proc["folders"]["M71"]
+    sm = f["stack_meta"]
+    assert sm["stack_file"] == "M_71_393x20sec_finished.fit"
+    assert sm["stack_frames"] == 393
+    assert sm["frames_at_stack"] == 417                    # 123+93+116+85, on/before 07-10
+    assert sm["stack_rejection_pct"] == 6                  # 1 - 393/417, not 1 - 118/123
+    assert f["new_lights_since_stack"] == 123              # not 417
+    assert f["status"] == "out_of_date"
+
+
+def test_processing_derivative_yields_identical_numbers(tmp_path, monkeypatch):
+    """A starless/crop derivative inherits its parent's STACKCNT and LIVETIME, so
+    it is arithmetically interchangeable with the parent. Selection is therefore
+    deliberately *not* filename-filtered — and the DATE sort lands on the final
+    product anyway, since the last processing step is written last."""
+    images = tmp_path / "Images"
+    tgt = images / "M51"
+    (tgt / "lights").mkdir(parents=True)
+    _write_named_stack(tgt, "M_51_1560x20sec_crop.fit", 1560, "2026-05-28T04:48:45")
+    _write_named_stack(tgt, "starmask_M_51_1560x20sec_crop.fit", 1560, "2026-05-28T04:51:18")
+    _write_named_stack(tgt, "M_51_1560x20sec_processed.fit", 1560, "2026-05-28T05:08:08")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M51", "2026-05-01", 1700)]
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    sm = proc["folders"]["M51"]["stack_meta"]
+    assert sm["stack_file"] == "M_51_1560x20sec_processed.fit"   # latest DATE wins
+    assert sm["stack_frames"] == 1560                            # same either way
+
+
+def test_undated_stack_falls_back_to_mtime_and_loses_to_a_dated_one(tmp_path, monkeypatch):
+    """No header DATE (pre-Siril / hand-made stack) → mtime is the only signal left,
+    but any dated stack still outranks it: a real DATE beats a guess."""
+    images = tmp_path / "Images"
+    tgt = images / "M92"
+    (tgt / "lights").mkdir(parents=True)
+    _write_named_stack(tgt, "undated_newest.fit", 500, None, mtime=1_790_000_000)
+    _write_named_stack(tgt, "undated_older.fit", 400, None, mtime=1_700_000_000)
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+    sessions = [_sess("M92", "2026-05-01", 600)]
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    assert proc["folders"]["M92"]["stack_meta"]["stack_frames"] == 500   # mtime fallback
+
+    # A dated stack wins even with the oldest mtime on disk.
+    _write_named_stack(tgt, "dated.fit", 450, "2026-06-01T00:00:00", mtime=1_600_000_000)
+    totals = build_derived.build_totals({}, sessions)
+    proc = build_derived.build_processing(totals, None, {}, sessions)
+    assert proc["folders"]["M92"]["stack_meta"]["stack_frames"] == 450
+
+
 def test_status_up_to_date_when_all_frames_precede_stack(tmp_path, monkeypatch):
     images = tmp_path / "Images"
     tgt = images / "M100"
