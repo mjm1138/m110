@@ -307,6 +307,89 @@ Legend: `[ ]` open · `[~]` partially done
   `feature/publish-ghpages` before merge; see DONE.md.)*
 **Other Publishing Targets**: Astrobin, Cloudynights, Other fora?
 
+## Backup & restore  *(→ ROADMAP item 10)*
+
+- [ ] **Surface the destination's hardlink capability in the backup UI.** `create_snapshot`
+  probes the **destination** filesystem (`backup._supports_hardlinks`, `backup.py:238`) and
+  silently falls back to byte-copying *every* file when links aren't supported — so on an
+  exFAT/appliance/rclone-mounted destination each nightly snapshot is a **full copy** of the
+  library and the user has no way to know. Show the probe result in `backup_dialog` (and per
+  snapshot in the restore picker, the manifest already records `hardlinks`): "unchanged files
+  are shared between snapshots" vs "every snapshot stores a full copy". Cheap, independent of
+  the storage rework below, and it's the first thing to check on a #92-style report — SMB2/3
+  *does* support hardlinks and most Samba-based NASes (Synology, TrueNAS) honor `os.link`, so
+  a given NAS user may already be fine.
+
+- [ ] **#92 / #93 — network + offsite backup destinations (content-addressed storage).**
+  Two linked requests from @devonjones: incremental backup to a NAS where the hardlink
+  approach may not apply (#92), and direct-to-S3 offsite backup with a configurable endpoint
+  so B2/R2/Wasabi work too (#93). #93 is correctly gated on #92 — both are the same seam.
+
+  **Don't build full/incremental chains.** The tape-era model (a full every N days,
+  incrementals between) is what makes this feel non-trivial, and it buys the bad properties:
+  restores that need an intact chain, retention that can't drop a full until its dependents
+  expire, and a corruption blast radius spanning days. That's the state engine to avoid.
+
+  **Content-addressed snapshots are incremental by construction, with no chain state** — and
+  the existing engine is most of the way there, since each snapshot already writes a
+  `{rel: {size, mtime, sha256}}` manifest. Promote that sha256 from metadata to address:
+
+  ```
+  <dest>/M110-Backups/<store>/
+    objects/ab/cd/abcdef…             immutable, named by sha256 of contents, mode 0444
+    snapshots/<ts>.json               today's manifest, essentially unchanged
+    state.json
+  ```
+
+  Dedup moves from the filesystem (hardlink to the prior snapshot → needs POSIX links) to the
+  application (object already exists → needs only exists/put), which is what makes it work over
+  SMB, S3, and anything else. Every snapshot stays independently restorable (no chain replay),
+  retention becomes "delete a manifest, then sweep objects no manifest references" — a refcount
+  over data we already have, not a dependency graph — and `verify` gets *stronger*: an object's
+  name is its checksum, so the store is self-validating.
+
+  Details that matter:
+  - **Source hash cache** keyed on `(path, size, mtime, inode)`, kept locally in `~/.m110`
+    (must survive destination switches), or a 500 GB library gets rehashed nightly. A cache
+    miss costs a rehash, never corruption — strictly safer than today's reuse test, where a
+    matching size+mtime silently hardlinks possibly-stale bytes.
+  - **Keep hardlinks where they work.** A `latest/` tree beside `objects/`, relinked each run
+    with entries hardlinked *into* the object store, preserves the browsable
+    "my backup is just my files in Finder" property for free (no duplicated bytes). Where the
+    FS can't link (S3, exFAT) it's simply absent and the backup is still correct — browsability
+    becomes a *capability of the destination*, not a *mode of the product*. One format, one
+    restore path, one test surface.
+  - **Backend seam** = put/get/exists/list/delete, mirroring `publish.PUBLISHERS`:
+    `LocalBackend` (dir — DAS or NAS mount) and `S3Backend` (boto3 with `endpoint_url`, so
+    B2/R2/Wasabi fall out free) write the *same layout*. Follow the `online`-extra pattern —
+    optional `s3` extra, graceful "not installed" error from source, bundled in packaged
+    builds. Credentials go in **keyring**, not `settings.json` (the PyInstaller specs already
+    collect keyring for astroquery).
+  - **Destinations become a list.** `backup_destination` is a single setting; offsite implies
+    plurality (local NAS nightly + S3 weekly, different retention each). This — not the storage
+    format — is the real UI change: destination rows with per-row scope, schedule, retention.
+    Format is *derived from the probed destination*, never a user-facing mode; same instinct as
+    `launch.find_app` and the hardlink probe: detect, don't ask.
+  - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the bytes,
+    and plenty of users will want offsite to mean journals + `finished/` + `stacks/` for a couple
+    of dollars a month with the raws staying on the NAS. Without it the first sync runs for a week.
+
+  **Alternative considered — shell out to `restic`.** Precedent exists (`publish/ghpages.py` drives
+  the system git), and restic already is CAS + dedup + prune + S3-with-custom-endpoint + SFTP +
+  rclone, delivering both issues nearly free. Costs: bundling/notarizing a ~25 MB Go binary per
+  platform, a hard external dependency on the *data-safety* feature, and an opaque repo the user
+  can't browse without restic. Preference is to build it natively — the delta is small (manifest,
+  retention, verify, restore UI, cancel/progress, atomic-write discipline all exist) and it keeps
+  the no-external-binary property exactly where it matters most. Hold restic in reserve if S3
+  retry/multipart correctness turns ugly.
+
+  **Sequencing** (each step stands alone and ships something): (1) surface the hardlink probe
+  (above); (2) storage v2 — content-addressed objects + snapshot manifests + GC retention,
+  `LocalBackend` only (closes #92; the hardlinked `latest/` keeps the browsable tree); (3)
+  destinations list + per-destination scope/schedule/retention; (4) `S3Backend` + keyring
+  credentials (closes #93). Note **#40d** (restore has no store-version gate) is orthogonal and
+  still open either way.
+
 ## Packaging & release
 
 - [ ] **`hdiutil create` is deprecated (macOS 27).** `packaging/macos/make_dmg.sh:26`
