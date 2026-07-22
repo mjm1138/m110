@@ -571,6 +571,36 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **"Latest stack" was picked by file mtime, so In-stack / "+ new" / rejection were
+  wrong on a quarter of the library** *(2026-07-22, `feature/stack-date-selection`)*.
+  `build_derived.read_latest_stack_metadata` sorted its candidates by
+  `-f.stat().st_mtime` and read the first one carrying STACKCNT/LIVETIME. But ingest and
+  Siril-import copy **bytes** (`shutil.copyfile`), so mtime is *copy* time: a superseded
+  stack re-copied into `stacks/` later carries the newest mtime while being months old by
+  content. Found on the live library's **M71** — a 118-frame stack (header `DATE`
+  2026-06-10, copied in 2026-07-16) was beating the real 393-frame one (`DATE` 2026-07-10),
+  so the Processing view read **In stack 118 (0:39)** instead of 393 (2:23) and **"+ new"
+  417** instead of 123. **11 of 47 targets** were affected; four (M106, M13, M5, NGC 2903)
+  showed a reprocess backlog that didn't exist and should have read `up_to_date`.
+  The tell that this was the bug and not the design: `build_processing` *already* judged
+  freshness by the stack's header `DATE` — the selection feeding it that DATE was the one
+  place still trusting mtime. Fix: read every candidate's header up front and sort by
+  header `DATE` (descending), mtime only as a fallback for a stack whose header has no
+  DATE, and a dated candidate always outranks an undated one. The existing root/`stacks/`
+  → `working_files/` directory precedence is preserved (see the open BUGS.md item).
+  **Deliberately not** filtered by filename: a `starless_`/`_crop`/`_stretch` derivative
+  *inherits* its parent's STACKCNT and LIVETIME, so it is arithmetically interchangeable
+  with the parent — measured across the live library, name-filtering changed the math on
+  exactly **one** target, and there for an unrelated reason (a stray single-object stack in
+  the `M81 M82` folder, excluded only because it happened to end `_og`). The DATE sort also
+  lands on the final product on its own, since the last processing step is written last —
+  it fixed M51's cosmetic `starmask_…` display name for free. The rule this settles:
+  **filename hints are for display decisions, where being wrong costs a label; never for
+  arithmetic, where being wrong costs a number.** Guarded by
+  `test_latest_stack_picked_by_header_date_not_mtime` (mtime-inverted two-stack fixture),
+  `test_processing_derivative_yields_identical_numbers`, and
+  `test_undated_stack_falls_back_to_mtime_and_loses_to_a_dated_one`.
+
 - [x] **Intermittent CI segfault (exit 139) — the flaky test suite** *(2026-07-21,
   `fix/thumbnail-pool-teardown`)*. CI failed at random with `Fatal Python error:
   Segmentation fault` / exit 139 — **not** a test assertion — and passed on any re-run,

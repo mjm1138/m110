@@ -34,6 +34,23 @@ Legend: `[ ]` open · `[~]` partially done
   tiers are now scanned too, with a `p == dest` guard in `_finished_outputs` so files
   already correctly in place don't flood the preview. (Thanks to @devonjones.)
 
+- [ ] **Directory precedence outranks the stack `DATE` — should it?** Follow-up to the
+  mtime→`DATE` selection fix (`feature/stack-date-selection`, see DONE.md).
+  `read_latest_stack_metadata` still sorts root/`stacks/` ahead of `working_files/`
+  *unconditionally*, so a genuinely newer stack that only exists in `working_files/` loses
+  to an older canonical one. Live case **M106**: `stacks/` holds a 748-frame stack
+  (`DATE` 2026-06-01) while `working_files/` holds a 945-frame one (`DATE` 2026-06-19) —
+  the page reads **In stack 748, "+ new" 225, out_of_date**, where letting DATE win would
+  read **945, "+ new" 0, up_to_date**. Both are defensible: the precedence encodes "a
+  canonical stack is more trustworthy than a processing product the lights-guard diverted",
+  and there's already a separate **Ready to import** flag for un-imported work — so "In
+  stack" arguably means *integrated*, not *newest that exists anywhere*. But M106's
+  `ready_for_import` is `False`, so today nothing tells the user the 945-frame stack exists.
+  Decide: (a) keep precedence, and surface un-imported stacks some other way; (b) let DATE
+  win outright and demote directory to a tiebreak; (c) keep precedence only when the
+  canonical stack is *not older* than the working_files one. Needs a call on what "In stack"
+  means before changing behavior.
+
 - [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
   M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
   that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
