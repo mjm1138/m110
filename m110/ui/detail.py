@@ -477,9 +477,15 @@ class DetailPane(QScrollArea):
             item.setData(Qt.UserRole, idx)
             gallery.addItem(item)
             full = im.get("full")
+            # "path" = what to *display* (the render for a FITS); "src" = the
+            # actual file on disk, which Reveal/Open/Export must act on. Older
+            # derived data has no "src" → fall back to the viewable path.
             view = str(config.DATA_ROOT / full) if full else str(tp)
+            rel_src = im.get("src")
+            src = str(config.DATA_ROOT / rel_src) if rel_src else view
             self._gallery_items.append({
-                "name": name, "path": view, "meta": _gallery_meta(slug, im),
+                "name": name, "path": view, "src": src,
+                "meta": _gallery_meta(slug, im),
                 "_state": self._img_state(im, objects.get_curation(slug)),
             })
         gallery.itemDoubleClicked.connect(self._open_gallery_item)
@@ -536,7 +542,9 @@ class DetailPane(QScrollArea):
         if src is not None:
             sp = str(src)
             for gi in self._gallery_items:
-                if gi["path"] == sp:
+                # Match on the *source* file — for a FITS hero "path" is the
+                # render, which would never equal the hero's source.
+                if gi.get("src", gi["path"]) == sp:
                     return gi
         return None
 
@@ -558,16 +566,20 @@ class DetailPane(QScrollArea):
         open_act = menu.addAction("Open in default app")
         reveal_act = menu.addAction("Reveal in file manager")
         chosen = menu.exec(global_pos)
+        # These three act on the real file (`src`), never the render: revealing a
+        # .fit must land on the .fit, and exporting must re-render it at full
+        # resolution rather than upscaling its ~480px thumbnail.
+        src = gi.get("src", gi["path"])
         if chosen is hero_act:
             self._set_hero(name)
         elif chosen is mark_act:
             self._set_curation(name, target)
         elif chosen is export_act:
-            self._export_for_sharing(gi["path"])
+            self._export_for_sharing(src)
         elif chosen is open_act:
-            open_in_default(gi["path"])
+            open_in_default(src)
         elif chosen is reveal_act:
-            reveal_in_manager(gi["path"])
+            reveal_in_manager(src)
 
     def _export_for_sharing(self, path):
         from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle

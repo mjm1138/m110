@@ -150,6 +150,36 @@ def _seed_object_with_images(tmp_path, monkeypatch):
     return slug, e, t
 
 
+def test_gallery_item_src_is_the_real_file_for_fits(tmp_path, monkeypatch, qapp):
+    """A FITS tile displays a *render*, but Reveal / Open / Export must act on the
+    .fit itself — so the item carries the render as "path" and the source as "src".
+    (Reveal on a .fit used to open the renders folder; Export shipped the ~480px
+    thumbnail instead of re-rendering the FITS at full resolution.)"""
+    import numpy as np
+    from astropy.io import fits
+    from m110 import refresh, catalog, derived
+    from tests._helpers import seed_root, seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    st = config.stacks_dir(tid); st.mkdir(parents=True, exist_ok=True)
+    fit = st / "M_stack_processed.fit"
+    fits.PrimaryHDU((np.random.rand(40, 40) * 1000).astype("float32")).writeto(fit)
+    refresh.run_refresh()
+
+    from m110.ui.detail import DetailPane
+    d = DetailPane()
+    try:
+        d.show_object(slug, catalog.load_library()[slug],
+                      derived.totals_by_slug().get(slug, {}))
+        gi = next(g for g in d._gallery_items if g["name"].endswith(".fit"))
+        assert gi["src"] == str(fit)                     # the real .fit on disk
+        assert gi["path"] != gi["src"]                   # displayed image differs…
+        assert str(config.RENDERS_DIR) in gi["path"]     # …and it's the render
+    finally:
+        d.deleteLater()
+        qapp.processEvents()
+
+
 def test_gallery_splits_finished_and_working(tmp_path, monkeypatch, qapp):
     slug, e, t = _seed_object_with_images(tmp_path, monkeypatch)
     from m110.ui.detail import DetailPane

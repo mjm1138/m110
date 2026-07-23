@@ -289,10 +289,13 @@ class ImageViewer(QDialog):
     @staticmethod
     def _normalize(it) -> dict:
         if isinstance(it, dict):
+            # "path" is what we display; optional "src" is the real file behind it
+            # (they differ when the displayable image is a render of a FITS).
             return {"name": it.get("name", ""), "path": it["path"],
+                    "src": it.get("src") or it["path"],
                     "meta": it.get("meta") or {}}
         name, path = it
-        return {"name": name, "path": path, "meta": {}}
+        return {"name": name, "path": path, "src": path, "meta": {}}
 
     def _quit_app(self):
         self.close()
@@ -306,7 +309,9 @@ class ImageViewer(QDialog):
             return
         from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle
         stem = self._export_stem or Path(it["name"]).stem or None
-        ExportShareDialog(it["path"], self, default_stem=stem).exec()
+        # Export the real file, not the render — the engine re-renders a FITS at
+        # full resolution; the displayed thumbnail would export ~480px.
+        ExportShareDialog(it.get("src") or it["path"], self, default_stem=stem).exec()
 
     def _show_current(self):
         it = self._items[self._i]

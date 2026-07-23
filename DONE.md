@@ -571,6 +571,28 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Gallery file actions acted on the render, not the source file** *(2026-07-22,
+  `fix/gallery-source-path`)*. Reported as "Reveal in file manager on a `.fit` opens the
+  renders directory". Root cause: `images.json` only recorded `full` (the *displayable*
+  full-size raster) **for viewable images** — for a FITS it was `None`, so the detail pane's
+  gallery item fell back to `"path" = the thumbnail render`, and Reveal/Open/**Export** all
+  used that one path. Two further instances of the same conflation: **Export for sharing on
+  a `.fit` exported the ~480px thumbnail** instead of re-rendering the FITS at full
+  resolution (a real defect in the just-shipped exporter), and `_hero_gallery_item` matched
+  `hero_source_path()` against `"path"`, so a **FITS hero never matched** its gallery item.
+  Fix: `build_images` now writes **`src`** (the actual source file, data-root-relative) on
+  *every* record — `full` keeps its "displayable raster" meaning (still `None` for FITS) —
+  and the UI carries both: `"path"` to display, `"src"` for Reveal/Open/Export and the hero
+  match. `ImageViewer._normalize` gained the same optional `src` (defaulting to `path`, so
+  the Media page and tuple-form callers are unaffected). Backward compatible: a store whose
+  `images.json` predates this falls back to the old path and self-heals on the next refresh
+  (which runs on launch/focus). Derived-only shape change → regenerated, no `.store_version`
+  bump; recorded in [`DATA_MODEL.md`](DATA_MODEL.md). Guarded by
+  `test_gallery_item_src_is_the_real_file_for_fits` + a `src` assertion in the FITS
+  `images.json` test. *(Design note: the `renders/` cache stays — FITS/TIF aren't
+  displayable by Qt at all, so a render is required, not merely an optimization, and it also
+  backs row/grid icons, the Feed, heroes, and the publish pipeline.)*
+
 - [x] **A single-object stack in a combined capture folder was read as the pair's stack**
   *(2026-07-22, `feature/stack-object-match`)*. Follow-up to the mtime→`DATE` fix below,
   and the one target that fix made *worse*. `Images/M81 M82/stacks/` holds

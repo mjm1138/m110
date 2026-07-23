@@ -308,19 +308,22 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
             # Thumbnail every discovered image, including FITS stacks (rendered
             # via a percentile stretch) — so even .fit-only objects show a preview.
             tp = make_thumb(im["path"], renders)
-            # `full` = the original raster, data-root-relative, for the in-app
-            # viewer; FITS isn't directly displayable, so leave it None (the
-            # viewer falls back to the thumbnail).
-            full = None
-            if im["viewable"]:
-                try:
-                    full = str(im["path"].relative_to(config.DATA_ROOT))
-                except ValueError:
-                    full = None
+            # `src` = the actual source file (data-root-relative) for **every**
+            # image, viewable or not — what Reveal/Open/Export must act on.
+            # `full` is the *displayable* full-size raster for the in-app viewer;
+            # FITS isn't directly displayable, so it stays None there (the viewer
+            # falls back to the thumbnail render). Conflating the two is what sent
+            # "Reveal in file manager" on a .fit to the renders folder.
+            try:
+                src_rel = str(im["path"].relative_to(config.DATA_ROOT))
+            except ValueError:
+                src_rel = None
+            full = src_rel if im["viewable"] else None
             entries.append({"name": im["name"],
                             "label": im["label"], "size_mb": im["size_mb"],
                             "mtime": im["mtime"], "viewable": im["viewable"],
-                            "thumb": tp.name if tp else None, "full": full})
+                            "thumb": tp.name if tp else None, "full": full,
+                            "src": src_rel})
         manifest[slug] = entries
         src = _hero_source(slug, folders, imgs)
         if src:
