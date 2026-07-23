@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.2.0-beta.8] - 2026-07-22
+
 ### Fixed
 - **"Reveal in file manager" on a `.fit` now shows the `.fit`.** Because M110 can't display
   a FITS directly, gallery tiles show a generated preview of it — and Reveal, Open, and
