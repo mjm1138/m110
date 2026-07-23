@@ -146,6 +146,10 @@ def test_fit_stack_gets_thumbnail_and_hero(tmp_path, monkeypatch):
     assert entry["full"] is None                      # FITS isn't directly viewable
     assert entry["thumb"] and (internal / "renders" / entry["thumb"]).is_file()
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()    # hero from the .fit
+    # …but `src` still points at the real .fit, so Reveal/Open/Export act on the
+    # file rather than the render (which sent Reveal to the renders folder).
+    assert entry["src"] == "Images/M99/seestar-stacks/Stacked_10_M99.fit"
+    assert (root / entry["src"]).is_file() and (root / entry["src"]).suffix == ".fit"
 
 
 def test_is_intermediate_fit_honors_final_hint():

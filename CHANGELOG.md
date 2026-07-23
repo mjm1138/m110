@@ -11,6 +11,12 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Fixed
+- **"Reveal in file manager" on a `.fit` now shows the `.fit`.** Because M110 can't display
+  a FITS directly, gallery tiles show a generated preview of it — and Reveal, Open, and
+  Export were all acting on that preview instead of the real file. Reveal opened M110's
+  internal renders folder, and **Export for sharing quietly exported the small preview
+  rather than re-rendering the FITS at full resolution**. All three now act on the actual
+  file. (Takes effect after the next automatic refresh, i.e. your next launch.)
 - **A stack of just one object no longer stands in for a combined target.** If you shoot a
   pair together — an `M81 M82` folder, say — and one of your stacks covers only *one* of
   them, M110 no longer treats it as the pair's latest stack. It was measuring that stack's
