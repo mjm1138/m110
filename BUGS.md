@@ -101,12 +101,94 @@ Legend: `[ ]` open · `[~]` partially done
     synchronously for the interactive action.
   - *Open question (deferred):* a "favorites" designation alongside "hero" (multiple
     favorites display) — not needed for beta.
-- [ ] **#18 — Advanced processing prep.** Create Siril (and other workflow) working
-  directories populated with lights from **disparate sources** (see #16) and
-  **disparate objects** (e.g. combine m81 + m82 + "m81 m82" as a mosaic), via hardlinks
+- [ ] **#18 — Advanced processing prep (custom workspaces).** Create Siril (and other
+  workflow) working directories populated with lights from **disparate sources** (see #16)
+  and **disparate objects** (e.g. combine m81 + m82 + "m81 m82" as a mosaic), via hardlinks
   (only processing/intermediate files cost disk). Custom workspaces must be easily
   discoverable by name on the filesystem. Also support custom **split** workflow
   directories, like the LP / no-filter splits created automatically today.
+
+  **The blocker is that everything is target-scoped.** `siril.plan_prep(target)` derives
+  its whole world from `Images/<target>/`, and the sandbox lives at
+  `Images/<target>/siril/`. A workspace spanning M81 + M82 + "M81 M82" has no honest home
+  there — parking it under one member lies about provenance and breaks the archive/import
+  logic. But the shape underneath already generalises: `PrepPlan` is "N `PrepJob`s, each a
+  dir with `lights/` + a preset", and `apply_prep` just executes hardlink ops. So the hinge
+  is small — **`plan_prep(frames, dest)` with a thin target-scoped wrapper** preserving
+  today's behaviour. A user-defined split (by device, exposure, or hand-picked) is then just
+  a different grouping key producing the same `PrepJob` list as the automatic per-filter split.
+
+  **On disk — a new *visible* axis** (satisfies "discoverable by name"), parallel to
+  `Images/` and `Plans/`:
+
+  ```
+  Workspaces/<name>/
+    workspace.toml        manifest: member objects, per-frame provenance, grouping rule,
+                          compat verdict — makes the sandbox reproducible and routable
+    lights/               hardlinks (per-job subdirs when split)
+    darks/ flats/ biases/ hardlinked calibration
+    presets/ next-steps.md
+    finished/ stacks/     results
+    archive/<ts>/         past runs (same never-delete posture as the target sandbox)
+  ```
+
+  Additive like `Plans/` was, so `ensure_data_root` creates it idempotently with **no
+  `.store_version` bump** — but `workspace.toml` is a new file format and needs a
+  [`DATA_MODEL.md`](DATA_MODEL.md) entry. *Open:* where results land for a multi-object
+  workspace. The store already models objects↔targets many-to-many across two axes, and a
+  workspace is a third (*processing*) axis with the same property — long term, outputs live
+  in the workspace and each member's gallery joins them via the manifest. First cut: import
+  into a designated primary target's `finished/` and record the association, with the
+  manifest shaped so the join is a later addition, not a migration.
+
+  **"Can these lights actually be combined?" — grade, don't gate.** Define a `FrameProfile`
+  fingerprint (geometry, bayer pattern, pixel scale, filter, exposure, gain, temp, device,
+  mount mode, pointing) and classify the set:
+  - *Hard blockers* (one sequence is impossible): differing `NAXIS1/2`, differing
+    `BAYERPAT`, incompatible bit depth. Siril needs identical frame geometry, and
+    demosaicing with the wrong pattern silently wrecks colour.
+  - *Split, don't block:* different filter (today's per-filter jobs), different device or
+    pixel scale — separate jobs, combine at the stack level.
+  - *Warn but allow:* mixed exposure/gain, wide temperature spread, EQ vs Alt-Az. All
+    stackable; all change the noise model.
+  - *Pointing decides the **mode**, not pass/fail.* Derive FOV from
+    `FOCALLEN`/`XPIXSZ`/`NAXIS` and compare frame centres: within ~½ FOV → **single stack**;
+    separated but adjacent → **mosaic** (exactly the M81 + M82 + "M81 M82" case this item
+    names); unrelated → incompatible. The engine should return "these are a mosaic", not
+    "these failed".
+
+  Verified against real headers (live store + the Dwarf test dump): S50 = 1080×1920, GRBG,
+  2.9 µm @ 250 mm → **2.39 ″/px, 0.72°×1.28°** (matches the S50's published FOV, so the
+  derivation is sound); Dwarf 3 wide = 1920×1080, RGGB, 2.9 µm @ 6.7 mm → **89 ″/px**. Those
+  two can never share a sequence, and the fingerprint says so from headers alone.
+
+  **Don't re-read thousands of headers.** `scan_sessions` already does **one header read per
+  session segment** for `EQMODE` — extend that same read to capture the profile and persist
+  it in `sessions.jsonl`, so compatibility computes instantly from derived data. Composes
+  with **6d**: `TELESCOP` carries the per-unit id (`S50_15e7e390`) device attribution needs.
+
+  **Two traps to design against.**
+  - *Calibration matching is a correctness bug, not a warning.* The sandbox hardlinks one
+    shared `darks/` at the root (#57 part B); that's quietly wrong once frames span
+    different gain/exposure/temp. A mixed workspace must match calibration per job or refuse it.
+  - *Dwarf frames report `RA`/`DEC` as `0.0`* when pointing is unset (and omit `CCD-TEMP`).
+    Treat as **unknown**, never as "pointing at the origin", or the overlap math will
+    confidently place them in Cetus.
+
+  **Fix first: `siril.filter_of` is a filename regex** (`_(LP|IRCUT|UV|DARK)_<timestamp>.fit`;
+  everything else → `OTHER`). It works for a Seestar-only target and breaks the moment a
+  workspace mixes sources — the Dwarf's `FILTER` is an empty string and its filenames don't
+  match at all. Per the house rule (header truth > filenames) it should read `FILTER` like
+  `scan_sessions._session_key` does, with the filename as fast path only. This decides job
+  splits, so it lands before workspaces.
+
+  **Phasing.** (1) `FrameProfile` + classifier in the engine off an extended
+  `sessions.jsonl` — Qt-free, testable, and useful alone (it can flag mixed-source targets
+  that already exist). (2) Generalise `plan_prep` to a frame list. (3) `Workspaces/<name>/`
+  + manifest + create/edit flow, with a **preflight report** in the dialog (contributing
+  sources, a verdict chip per group, the resulting job split, blockers that can't be checked
+  past) — same preview-then-confirm posture as ingest. (4) Import-back to member objects,
+  then the many-to-many gallery join. Unblocks **#19(c)**.
 - [~] **#19 — Open In… / Process in…** (cross-platform launch is the main risk.)
   **Core shipped** (`feature/reimport-object-root`). Right-click an **object** (Library,
   Processing page, or the detail-pane button) → **"Process in Siril"** launches Siril with
