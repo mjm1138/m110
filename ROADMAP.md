@@ -194,11 +194,25 @@ spatially — Overview's goal percentages become a picture of the sky filling in
 - **Deps:** `click` + `pyyaml` only for the chart half. (The `annotate` extra —
   astropy/astroquery/matplotlib + an external ASTAP install — is out of scope
   here; see *Not in scope* below.)
-- **Blocker for declaring a dependency:** not on PyPI yet. A `git+https://` URL
-  can't go in `pyproject.toml` for a published package and needs git on the
-  user's machine. Until it's published we integrate as an **optional import**
-  (`try: import uranometria / except ImportError`), the same degrade-gracefully
-  pattern as `publish/` and `PublishDepsMissing`.
+- **Distribution — end users get it bundled either way.** Frozen builds have no
+  pip, so the `build` extra pulls the dependency into the build venv and
+  PyInstaller freezes it in. Exact precedent: astroquery, bundled for the same
+  reason (issue **#64** — "a frozen app user can't add the extra themselves").
+  uranometria additionally ships package **data** (`data/*.csv`, `.json`,
+  `.tsv`, base64 font assets), so the three specs need
+  `collect_data_files("uranometria")` — PyInstaller won't pick those up on its own.
+- **Not on PyPI yet — a source-install wrinkle, not a blocker.** M110 doesn't
+  publish to PyPI today (the release pipeline builds installers and attaches them
+  to a GitHub Release), so a `git+https://` direct reference in `pyproject.toml`
+  would work right now. It would, however, become a landmine on any future PyPI
+  upload — direct-URL references are rejected anywhere in the metadata, including
+  in extras. Cleanest path: keep the git URL **out** of `pyproject.toml`, install
+  it explicitly in the build step, and switch to a normal
+  `skymap = ["uranometria>=…"]` extra once it's published.
+- **Optional import regardless.** `try: import uranometria / except ImportError`
+  is the house pattern (`publish/` → `PublishDepsMissing`, `online` →
+  `OnlineLookupError`), so a lean source install still runs — the Map view just
+  hides itself. That stays true even after the extra exists.
 
 #### The rendering constraint — verified, and the one change we need
 
@@ -321,7 +335,9 @@ like `M42_mosaic`, `NGC 7000_mosaic`, `Unknown`, `Markarian's Chain`, and
 **Open questions for Devon.**
 1. Does `render_svg` (attributes + `palette` + `placed`) fit how you'd want the
    library to grow, or would you rather we post-process the SVG on our side?
-2. Any appetite for publishing to PyPI? That's what unblocks a declared dep.
+2. Any appetite for publishing to PyPI? Not urgent — we can bundle from git for
+   packaged builds — but it's what lets us declare a normal `skymap` extra, and
+   it makes life easier for anyone running M110 from source.
 3. Should we contribute the SVG mode as a PR, or do you want to own it?
 
 ### 7 — Processing & curation UX (remainder)
