@@ -18,18 +18,19 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | — | **MVP v0.1 — "the Library"** (catalog, ingest, rendering, processing-prep, two-axis store) | ✅ shipped | [`DONE.md`](DONE.md) |
 | 0 | **Navigation IA** — 5-pane rail (Library · Overview · Planning · Import · Processing) | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | — | **UI design system** — tokens, light/dark theming, restyled surfaces, branding | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
-| 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open ↓)* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
-| 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open ↓)* | [`DONE.md`](DONE.md) |
-| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open ↓)* | [`DONE.md`](DONE.md) |
-| 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open ↓)* | [`DONE.md`](DONE.md) |
+| 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open [↓](#1--session-planning-follow-ups-non-blocking-refinements))* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
+| 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open [↓](#5--catalog-growth))* | [`DONE.md`](DONE.md) |
+| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
+| 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open [↓](#8--publishing-remaining-targets))* | [`DONE.md`](DONE.md) |
 | 10 | **Library backup** — hardlinked snapshots, verify, selective restore, auto-backup | ✅ shipped | [`DONE.md`](DONE.md) |
-| 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open ↓ | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
-| 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | ↓ |
-| 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | ↓ |
-| 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | ↓ |
-| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — scoping for review ([#98](https://github.com/mjm1138/m110/issues/98)) | ↓ |
-| 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | ↓ |
-| 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | ↓ |
+| 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
+| 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | [↓](#4--in-app-assistant-bring-your-own-llm--next-major-milestone) |
+| 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
+| 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
+| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — scoping for review ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#12--sky-map-uranometria-integration) |
+| 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoping for review ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
+| 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
+| 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
 
 ---
 
@@ -172,7 +173,7 @@ Plot the collection on a star-atlas chart: **where** in the sky everything you'v
 shot actually is, and how much of a goal list is still empty. Proposed in issue
 **#98** by **Devon Jones**, who wrote and offered
 [**uranometria**](https://github.com/devonjones/uranometria) — a chart library
-built with M110 integration in mind. This section is the scoping write-up **for
+built with this sort of integration in mind. This section is the scoping write-up **for
 Devon to review** before we open a PR against his repo.
 
 **Why it earns a slot.** M110 already knows every fact a chart needs (coords,
@@ -318,11 +319,10 @@ dropping the JS:
   heroes are already emitted as web derivatives, and `select.publishable_slugs` /
   `journal_visible` already decide what's shareable.
 
-**Not in scope (yet).** The `annotate` half — plate-solve a stack, overlay every
-identified galaxy/nebula/field star — is arguably the bigger prize and would slot
-into the gallery lightbox, but it needs an external **ASTAP** install plus
-astropy/astroquery/matplotlib. That's a Siril-shaped "guide the user to install
-the tool" arc; track it separately, not here.
+**Not in scope here.** The `annotate` half is tracked separately as
+[item 13](#13--image-annotation-plate-solved-object-overlays) — it shares the
+library but nothing else: different trigger, different surface, different
+external dependency.
 
 **Data mapping.** Pass **fully-specified entries** (label + `ra_deg`/`dec_deg`
 from `library.toml` + hero path + color), never bare designations — Devon
@@ -339,6 +339,100 @@ like `M42_mosaic`, `NGC 7000_mosaic`, `Unknown`, `Markarian's Chain`, and
    packaged builds — but it's what lets us declare a normal `skymap` extra, and
    it makes life easier for anyone running M110 from source.
 3. Should we contribute the SVG mode as a PR, or do you want to own it?
+
+### 13 — Image annotation (plate-solved object overlays)
+
+Plate-solve a stack and label **everything actually in the frame** — the target,
+its companions, the IC/NGC neighbours nobody mentions, named bright stars with
+magnitude and distance, keyed field stars. The second half of
+[uranometria](https://github.com/devonjones/uranometria) (issue **#98**),
+promoted out of [item 12](#12--sky-map-uranometria-integration) because it shares
+only the library: different trigger, different surface, different external
+dependency.
+
+**Why it's worth its own slot.** Most tools show you the headline object and stop
+— a typical M110 frame contains several catalogued objects that never get named
+anywhere in the app. Annotation is the feature that turns "here's my picture of
+M51" into "…and here are NGC 5195, the IC companions, and the mag-9 star at
+lower left, at 480 pc." It also feeds the journal and anything published.
+
+**Library API** (host-integration path, already documented upstream):
+
+```python
+model = build_model(stack, allow_online=True, solve_kwargs={"ra_hours":…, "dec":…})
+write_model(model, sidecar)                 # cache: solve once, re-render forever
+```
+
+Plus `render_png` / `render_html` for export. `AstapError` on solver failure;
+per-object lookup misses degrade to warning strings.
+
+#### What this actually costs us
+
+- **In-app dependency delta: zero.** `build_model` needs astropy + astroquery,
+  and packaged builds **already bundle both** (issue #64). Pillow ships too.
+  Only `render_png` wants **matplotlib**, which the specs deliberately
+  `exclude` — so we don't use his PNG renderer in-app.
+- **The model JSON is the integration seam** — the same lesson as item 12's SVG.
+  It carries per-object **pixel** coordinates, so M110 paints the overlay itself
+  with `QPainter` in `image_viewer.py`, themed and zoom-aware, reusing the pan/zoom
+  we already have. No Chromium, no matplotlib, no second rendering stack.
+- **The real dependency is external: [ASTAP](https://www.hnsky.org/astap.htm)**
+  plus a local star database (D20 for ~1° fields). That's a Siril-shaped
+  prepare-and-guide problem, and `launch.py` already solves its shape: extend the
+  `_TOOLS` registry + `find_app` (user override → OS-standard locations → `None`),
+  add ASTAP binary + star-DB path fields to Preferences → *Processing tools*
+  beside Siril's, and hide the action with an install hint when it's missing —
+  the same degradation as Siril's `LaunchError` → reveal-the-folder fallback.
+- **Solving is slow** → `QThread` worker behind a modal progress dialog with a
+  working Cancel, per the house rule.
+
+#### Gotchas to design around
+
+- **Pixel frame.** The model's `solved.pixel_frame` is `"fits0"` (FITS row order)
+  for FITS sources and `"raster0"` (top-down) for JPEG/PNG. Our overlay must flip
+  y only when the model and the displayed raster disagree — `build_images._open_image`
+  normalises both kinds into one QPixmap, so the flip decision belongs at the
+  overlay layer, not the decode layer. Getting this wrong mirrors the annotations
+  vertically, which looks *almost* right — the worst kind of bug.
+- **Solve the star-rich stack, not a starless render.** Upstream says so
+  explicitly, and we can enforce it for free: `hints.is_intermediate_name`
+  already recognises `starless` / `starmask`, so those tiles simply don't offer
+  the action.
+- **Online vs offline.** Field-star identity comes from CDS (VizieR Gaia DR3
+  for magnitudes/distances, Tycho-2 designations, SIMBAD named stars).
+  `allow_online=False` degrades to bundled-catalog DSOs only — wire it to the
+  same expectation as `catalog.enrich_online`: offline is a first-class mode,
+  not an error.
+- **Sidecar placement.** `<image>.annotations.json` beside the source (e.g.
+  `Images/<target>/stacks/<stack>.fit.annotations.json`) is upstream's convention
+  *and* what the sky-map lightbox auto-discovers. Additive, so no
+  `.store_version` bump — but it's a new file in the content tree and needs a
+  **[`DATA_MODEL.md`](DATA_MODEL.md)** entry.
+
+#### Phasing
+
+- **13a — Solve + cache** *(engine, Qt-free)*. `m110/annotate.py`: ASTAP
+  discovery, `build_model` with a pointing hint from the object's known RA/Dec
+  (upstream notes it speeds the solve), sidecar write, staleness check. Feed the
+  hint from `catalog.load_coords` — we always have it, so we never solve blind.
+- **13b — Native overlay** *(the payoff)*. An **Annotations** toggle in
+  `ImageViewer`: markers + leader labels painted with `QPainter`, a searchable
+  side panel of identified objects with SIMBAD / Wikipedia links, colour-coded by
+  class. Right-click a gallery tile → **Annotate…**.
+- **13c — Export.** Annotated PNG / standalone HTML via upstream's renderers, for
+  sharing. Runs out-of-process or gated on an optional extra, so matplotlib stays
+  out of the bundle.
+- **13d — Publish.** Ship the sidecar with the site so the published gallery —
+  and [item 12e](#12--sky-map-uranometria-integration)'s sky-map lightbox — shows
+  the overlay. This is where 12 and 13 compound: a chart of your collection where
+  every photo is fully labelled.
+
+**Strategic bonus: it unlocks [item 9](#9--full-import-triage-toolkit-deferred).**
+That item's deferred triage toolkit lists plate-solving as the way to recover
+headerless frames, and the holding area's `ingest.identify_holding` currently
+guesses identity from the `OBJECT` header or nearest-catalog-by-RA/Dec. A real
+solver behind one shared seam turns that guess into an answer. Build the ASTAP
+integration once; both items draw on it.
 
 ### 7 — Processing & curation UX (remainder)
 
