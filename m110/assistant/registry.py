@@ -123,6 +123,14 @@ def _validate(tool: Tool, args: dict) -> dict:
 
 
 def call(name: str, args: dict | None = None) -> Any:
-    """Look up, validate, invoke. Serialization is layered on here next."""
+    """Look up, validate, invoke, serialize.
+
+    Serialization happens here and only here, so no tool hand-formats a
+    datetime or leaks an absolute path. A tool needing control (an offset for
+    naive datetimes, chart arrays to drop) returns a `serialize.ToolResult`.
+    """
+    from m110.assistant import serialize
+
     tool = get(name)
-    return tool.fn(**_validate(tool, args or {}))
+    result = tool.fn(**_validate(tool, args or {}))
+    return serialize.serialize_result(result)
