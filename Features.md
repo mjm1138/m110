@@ -18,8 +18,8 @@ at the bottom so this list stays honest about what ships now.)
   **image grid** of every object, each showing capture status (initial vs. deep stack)
   and total integration time. Filter by catalog, by "captured only," or search.
 - **Automatic Siril processing-prep** — on import, each target is arranged into a
-  Siril-ready working folder (hardlinked subs, a preset tuned to the frame count, and
-  workflow guidance). When you're done, M110 **imports the finished result back** into the
+  Siril-ready working folder (hardlinked subs, a preset tuned to the frame count, and a
+  next-steps note). When you're done, M110 **imports the finished result back** into the
   library and archives the run — all **without ever altering your original frames**.
 - **Knows what needs attention** — tracks which targets are deep vs. just started, and
   flags stacks that are **out of date** because you've captured new subs since the last
@@ -62,8 +62,8 @@ at the bottom so this list stays honest about what ships now.)
 - **Astronomer's-notebook branding** — a hand-inked logo and a parchment app icon.
 - **Stays out of your way** — auto-syncs on launch, on window focus, and after each
   import; long operations run in the background with progress and a working Cancel.
-- **Runs fully offline** — a bundled reference catalog (448 objects) and bundled Siril /
-  Seestar workflow playbooks; the internet is only ever optional (online metadata lookups).
+- **Runs fully offline** — a bundled reference catalog (448 objects) and a local
+  astronomy engine; the internet is only ever optional (online metadata lookups).
 
 ## Session planning (new in 0.2.0-beta.1)
 

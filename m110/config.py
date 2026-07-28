@@ -19,7 +19,6 @@ APP_CONFIG_DIR = Path.home() / ".m110"
 SETTINGS_FILE = APP_CONFIG_DIR / "settings.json"
 DEFAULT_DATA_ROOT = Path.home() / "Documents" / "M110"
 SEED_DIR = Path(__file__).resolve().parent / "seed"
-GUIDANCE_DIR = Path(__file__).resolve().parent / "guidance"   # bundled playbooks
 
 INTERNAL_DIRNAME = ".m110_internal_data"
 

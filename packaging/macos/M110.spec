@@ -40,7 +40,7 @@ def _versions():
 SHORT_VERSION, FULL_VERSION = _versions()
 
 # --- data files + hidden imports ------------------------------------------
-# Bundle the engine's package data (seed catalogs, guidance, fonts, brand,
+# Bundle the engine's package data (seed catalogs, fonts, brand,
 # publish templates). collect_data_files reads pyproject's package-data globs.
 datas = collect_data_files("m110")
 datas += collect_data_files("tzdata")       # IANA tz db — self-contained zoneinfo (#56)

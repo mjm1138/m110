@@ -21,7 +21,7 @@ ROOT = Path(SPECPATH).resolve().parents[1]                       # repo root
 ENTRY = ROOT / "packaging" / "common" / "m110_launch.py"         # shared entry shim
 HOOKS = ROOT / "packaging" / "common" / "pyinstaller-hooks"      # shared hook overrides
 
-datas = collect_data_files("m110")          # engine package data (seed, guidance, fonts, brand)
+datas = collect_data_files("m110")          # engine package data (seed, fonts, brand)
 datas += collect_data_files("tzdata")       # IANA tz db — bundle so zoneinfo is self-contained (#56)
 hiddenimports = ["tifffile", "PIL"]         # astropy handled by the shared hook override
 hiddenimports += collect_submodules("tzdata")   # zoneinfo loads these region subpackages
