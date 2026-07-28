@@ -44,18 +44,31 @@ online = ["astroquery>=0.4"]
 # Optional static-site publishing (Library → Publish / share). Runtime degrades
 # gracefully (PublishDepsMissing) when absent.
 publish = ["jinja2>=3", "markdown>=3"]
-dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3"]  # astroquery also build-time (tools/gen_caldwell.py)
+# Optional in-app assistant: the stdio MCP server exposing the engine's tool
+# registry to an external client (Claude Desktop / Claude Code). The registry
+# itself has no MCP dependency — only `assistant.mcp_server` imports it, and it
+# degrades with a friendly message when absent.
+assistant = ["mcp>=1.9,<2"]
+dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3",
+       "mcp>=1.9,<2", "jsonschema>=4"]  # astroquery also build-time (tools/gen_caldwell.py);
+                                        # jsonschema validates the tool schemas in tests
 # Packaging the desktop app into native bundles/installers (see packaging/).
 # Pulls in `online` (astroquery) so the packaged app bundles Simbad enrichment — a
 # frozen build has no pip, so an app user can't add the extra themselves (issue #64).
 # Source installs stay lean: `online` remains opt-in for `pip install m110`.
-build = ["pyinstaller>=6.6", "m110[online]"]
+build = ["pyinstaller>=6.6", "m110[online]", "m110[assistant]"]
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"
 
+# NOT a gui-script: on Windows that produces a pythonw launcher with no console
+# and no usable stdio, which is fatal for a stdio JSON-RPC server.
+[project.scripts]
+m110-mcp = "m110.assistant.mcp_server:main"
+
 [tool.setuptools]
-packages = ["m110", "m110.ui", "m110.ui.theme", "m110.publish"]
+packages = ["m110", "m110.ui", "m110.ui.theme", "m110.publish",
+            "m110.assistant", "m110.assistant.tools"]
 
 [tool.setuptools.package-data]
 m110 = ["seed/*.toml", "seed/catalogs/*.toml", "seed/geonames/*.tsv.gz"]
