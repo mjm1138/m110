@@ -12,5 +12,6 @@ from . import (  # noqa: F401  (imported for side effect: tool registration)
     overview,
     planning,
     processing,
+    proposing,
     ranking,
 )

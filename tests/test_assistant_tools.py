@@ -506,3 +506,144 @@ def test_get_image_serves_a_large_source_within_budget(captured):
     assert max(meta["render"]["width"], meta["render"]["height"]) <= 1568
     assert meta["render"]["downscaled"] is True
     assert meta["render"]["encoded_bytes"] <= 3_500_000
+
+
+# ── proposals ────────────────────────────────────────────────────────────────
+
+def _envelope_is_wellformed(env, action):
+    from m110.assistant import proposals as pr
+    assert env["schema"] == pr.SCHEMA
+    assert env["action"] == action
+    assert env["id"] and env["created"]
+    assert env["rationale"] and env["summary"]
+    assert env["apply"]["requires_confirmation"] is True
+    assert env["apply"]["safe_write"] is True          # all three are allowlisted
+    assert env["apply"]["handler"] == pr.SAFE_WRITE_ACTIONS[action]
+    # The fingerprint a later apply path checks for drift.
+    assert set(env["basis"]["store_state"]) >= {
+        "contexts_generated", "contexts_stale", "totals_mtime", "journal_sha256"}
+    assert env["basis"]["functions"]
+
+
+def test_propose_weights_returns_an_engine_computed_preview(planned):
+    env = call("propose_weights", rationale="galaxy season is closing",
+               type_groups={"galaxy": 2.0})
+    _envelope_is_wellformed(env, "set_weights")
+    assert env["payload"]["weights"]["type_weights"]["galaxy"] == 2.0
+
+    # The preview must come from the scorer, not from prose: re-run the pure
+    # ranking with the proposed weights and demand the same answer.
+    proposed = prioritize.Weights(**{k: v for k, v in
+                                     env["payload"]["weights"].items()
+                                     if k != "type_weights"},
+                                  type_weights=env["payload"]["weights"]["type_weights"])
+    expected = prioritize.rank(prioritize.load_contexts(), proposed,
+                               env["payload"]["strategy"], pins.load())
+    assert [r["slug"] for r in env["preview"]["after"]] == \
+           [r["slug"] for r in expected[:len(env["preview"]["after"])]]
+
+
+def test_propose_weights_boosting_galaxies_moves_a_galaxy_up(planned):
+    """m31 (galaxy) sits below m13 by default; a big galaxy boost should flip it."""
+    baseline = call("rank_targets")["rows"]
+    assert baseline[0]["slug"] == "m13"
+
+    env = call("propose_weights", rationale="favour galaxies",
+               type_groups={"galaxy": 5.0})
+    assert env["preview"]["after"][0]["slug"] == "m31"
+    assert not env["preview"]["unchanged"]
+    assert any(m["slug"] == "m31" and m["change"] > 0 for m in env["preview"]["moved"])
+
+
+def test_propose_weights_reports_no_change_honestly(planned):
+    env = call("propose_weights", rationale="tiny nudge",
+               factors={"goal": 1.0000001})
+    assert env["preview"]["unchanged"] is True
+    assert "would not change" in env["summary"]
+
+
+def test_propose_weights_requires_something_to_change(planned):
+    with pytest.raises(registry.ToolError):
+        call("propose_weights", rationale="nothing")
+
+
+def test_propose_weights_writes_nothing(planned):
+    """The saved tuning must be untouched — this is a proposal, not a change."""
+    before_w, before_s = prioritize.load_weights(), prioritize.load_strategy()
+    call("propose_weights", rationale="x", strategy="deep",
+         factors={"urgency": 4.0}, type_groups={"galaxy": 3.0})
+    assert prioritize.load_weights() == before_w
+    assert prioritize.load_strategy() == before_s
+
+
+def test_propose_pins_previews_and_writes_nothing(planned):
+    env = call("propose_pins", rationale="user asked for m31 first", pin=["m31"])
+    _envelope_is_wellformed(env, "set_pins")
+    assert env["preview"]["after"][0]["slug"] == "m31"
+    assert env["payload"]["pin"] == ["m31"]
+    assert pins.load() == {}, "propose_pins must not actually pin anything"
+
+
+def test_propose_pins_rejects_contradictory_input(planned):
+    with pytest.raises(registry.ToolError) as e:
+        call("propose_pins", rationale="x", pin=["m13"], deprioritize=["m13"])
+    assert "m13" in str(e.value)
+
+
+def test_propose_pins_deprioritize_removes_from_the_ranking(planned):
+    env = call("propose_pins", rationale="skip it", deprioritize=["m13"])
+    assert all(r["slug"] != "m13" for r in env["preview"]["after"])
+
+
+def test_propose_journal_entry_returns_paste_ready_markdown(captured):
+    _, slug, _ = captured
+    env = call("propose_journal_entry", slug=slug, rationale="record the critique",
+               markdown="## 2026-07-13 critique\n\nStars are slightly bloated.",
+               section="Processing notes")
+    _envelope_is_wellformed(env, "append_journal")
+    assert env["target"] == {"slug": slug}
+    assert "Processing notes" in env["payload"]["markdown"]
+    assert "bloated" in env["summary"]
+    # Fingerprinted so a later apply can't clobber edits made in the meantime.
+    assert env["basis"]["store_state"]["journal_sha256"]
+
+
+def test_propose_journal_entry_does_not_touch_the_journal(captured):
+    from m110 import objects as journals
+    _, slug, _ = captured
+    before = journals.read_journal_text(slug)
+    call("propose_journal_entry", slug=slug, markdown="new note", rationale="x")
+    assert journals.read_journal_text(slug) == before
+
+
+def test_propose_journal_entry_validates_its_input(captured):
+    _, slug, _ = captured
+    with pytest.raises(registry.ToolError):
+        call("propose_journal_entry", slug="not-a-real-object",
+             markdown="x", rationale="y")
+    with pytest.raises(registry.ToolError):
+        call("propose_journal_entry", slug=slug, markdown="   ", rationale="y")
+
+
+def test_proposals_refuse_without_contexts(captured):
+    """A proposal whose preview can't be computed would be guesswork."""
+    with pytest.raises(registry.ToolError) as e:
+        call("propose_weights", rationale="x", strategy="deep")
+    assert "Recompute" in str(e.value)
+
+
+def test_proposal_preview_surfaces_top_of_list_moves_first(planned):
+    """A 176 -> 80 shuffle is a bigger number than 4 -> 1, but nobody cares
+    about it. Ordering by proximity to the top is what makes the preview useful."""
+    from m110.assistant.proposals import rank_delta
+    before = [{"rank": i, "slug": f"o{i}", "score": 0.0} for i in range(1, 200)]
+    after = [dict(r) for r in before]
+    # o100 jumps 100 -> 60 (big); o4 moves 4 -> 2 (small, but at the top).
+    for r in after:
+        if r["slug"] == "o100":
+            r["rank"] = 60
+        if r["slug"] == "o4":
+            r["rank"] = 2
+    out = rank_delta(before, after)
+    assert out["moved"][0]["slug"] == "o4"
+    assert out["total_moved"] == 2

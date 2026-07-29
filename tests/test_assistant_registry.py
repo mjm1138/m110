@@ -47,6 +47,9 @@ ARGS = {
     "object_observability": {"slugs": ["m101"]},
     "plan_night": {"count": 2},
     "get_image": {"slug": "m101"},
+    "propose_weights": {"rationale": "test", "strategy": "deep"},
+    "propose_pins": {"rationale": "test", "pin": ["m101"]},
+    "propose_journal_entry": {"slug": "m101", "markdown": "note", "rationale": "test"},
 }
 
 
