@@ -206,9 +206,21 @@ def test_real_plan_night_without_tz_leaves_no_bogus_utc():
 # ── registry integration ─────────────────────────────────────────────────────
 
 def test_registry_call_serializes_results(tmp_path, monkeypatch):
+    """registry.call must serialize — not just return whatever the tool built.
+
+    `saved_plans` is the probe: fieldguide.list_guides puts a real `Path` in
+    every row, so if the wiring were missing this would come back unserializable
+    and leaking an absolute path. (Per-tool JSON safety is covered exhaustively
+    by the parametrized test in test_assistant_registry.py.)
+    """
     from tests._helpers import seed_root
     from m110.assistant import registry, tools  # noqa: F401
+
     seed_root(tmp_path, monkeypatch)
-    for tool in registry.all_tools():
-        args = {"query": "m", "limit": 5} if tool.name == "list_objects" else {}
-        json.dumps(registry.call(tool.name, args), allow_nan=False)
+    config.PLANS_DIR.mkdir(parents=True, exist_ok=True)
+    (config.PLANS_DIR / "2026-07-13_summer.md").write_text("# Summer\n", encoding="utf-8")
+
+    out = registry.call("saved_plans", {})
+    text = json.dumps(out, allow_nan=False)          # would raise on a raw Path
+    assert out["guides"][0]["name"] == "2026-07-13_summer.md"
+    assert str(tmp_path) not in text

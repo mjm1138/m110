@@ -16,15 +16,24 @@ import pytest
 from m110 import config
 from m110.assistant import registry, tools  # noqa: F401  (import populates registry)
 
+from tests._helpers import add_library
 from tests._helpers import seed_root as _seed_root
 
 
 @pytest.fixture
 def seed_root(tmp_path, monkeypatch):
-    """A bootstrapped throwaway store. `_helpers.seed_root` is a plain function,
-    so wrap it as a fixture once here rather than at every call site — these
-    tests are parametrized over the registry and would otherwise repeat it."""
-    return _seed_root(tmp_path, monkeypatch)
+    """A bootstrapped throwaway store holding one object.
+
+    `_helpers.seed_root` is a plain function, so wrap it as a fixture once here —
+    these tests are parametrized over the registry and would otherwise repeat it.
+    An object is added (cheaply, without a refresh) so `get_object` has a real
+    slug to resolve; the point of these tests is the registry contract, not
+    capture data.
+    """
+    root = _seed_root(tmp_path, monkeypatch)
+    add_library(root, {"m101": {"id": "M101", "name": "Pinwheel Galaxy",
+                                "type": "galaxy", "season": "spring"}})
+    return root
 
 
 ALL = registry.all_tools()
@@ -33,6 +42,7 @@ ASSISTANT_DIR = Path(registry.__file__).parent
 # Representative arguments per tool. A tool with no entry is called with {}.
 ARGS = {
     "list_objects": {"query": "m", "limit": 5},
+    "get_object": {"slug": "m101"},
 }
 
 
