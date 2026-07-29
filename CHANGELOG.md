@@ -10,6 +10,24 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Connect Claude to M110.** Preferences → *AI assistant* → **Connect Claude Desktop**
+  wires your existing Claude Desktop (or Claude Code) to your library. You can then ask
+  it things like "what should I shoot tonight?", "why is M101 ranked above M13?", or
+  "critique my M51" — and it answers from *your* data: your site, your horizon and light
+  dome, your capture history, your priority ranking. It can also show you the night's
+  schedule and hand you a field guide.
+
+  Two things worth knowing. **It is read-only**: it can look at your library and *suggest*
+  changes — new tuning weights, a pinned target, a journal entry — but it cannot alter
+  your files, your library, or your settings. Suggestions come with the ranking M110
+  itself computes for them, so you can see the effect before deciding, and you apply them
+  in the app. And **your data goes to whoever you connect**: object notes, capture
+  history and image data are sent to whatever AI model that client uses. M110 tells you
+  this before it writes anything, and Disconnect removes it again.
+
+  You bring your own client and your own account — M110 never handles an API key.
+
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements
   written against citable sources. They were never actually shown anywhere in the app —

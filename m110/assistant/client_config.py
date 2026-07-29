@@ -42,8 +42,16 @@ class ClientConfigError(Exception):
 def server_command() -> list[str]:
     """The argv an MCP client should spawn to reach *this* install."""
     if getattr(sys, "frozen", False):
-        # A frozen build ships m110-mcp beside the GUI binary, from the same
-        # PyInstaller COLLECT (see packaging/*/M110.spec).
+        # An AppImage is a self-mounting archive: the path inside it
+        # ($APPDIR/usr/bin/m110-mcp) exists only while it's running, so a client
+        # config must point at the .AppImage file itself and let AppRun dispatch
+        # (see packaging/linux/build_appimage.sh).
+        appimage = os.environ.get("APPIMAGE")
+        if appimage:
+            return [appimage, "--mcp"]
+
+        # Elsewhere a frozen build ships m110-mcp beside the GUI binary, from
+        # the same PyInstaller COLLECT (see packaging/*/M110.spec).
         exe = Path(sys.executable).with_name("m110-mcp")
         if sys.platform == "win32":
             exe = exe.with_suffix(".exe")

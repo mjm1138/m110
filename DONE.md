@@ -117,7 +117,8 @@ Checkpoints B (session planner + plan-file emit) and C (assistant) remain open.
 
 Turns the Checkpoint-A prioritizer into a plan for a **specific night** + a saved,
 browsable **field guide** (`feature/session-planner`). Device plan-files (SSC/NINA,
-the deferred half of item 2) and the Checkpoint C assistant (item 4) remain open.
+the deferred half of item 2) remain open; the Checkpoint C assistant (item 4)
+shipped its M0 — a read-only MCP server over the engine.
 
 - **Per-target night math** (`m110/planning.py`, Qt-free, reusing `twilight` /
   `moon_summary` / `to_utc` / `_location`). `night_track(target, day, site, filter=)`
@@ -1301,3 +1302,71 @@ finding shaped the port and all are now resolved:
   prefs group to rank `M81 M82` as one entry. In M110 the two-axis store makes
   the capture *target* the natural unit, and the tuning arc's #39/#40c landed the
   member rollup in the engine — no prefs-file shape was copied.
+
+
+## 4 — In-app assistant, M0: a read-only MCP server over the engine
+
+*(`feature/assistant-mcp`. ROADMAP item 4, Checkpoint C of the session-planning
+arc. The phasing was inverted first — see ROADMAP item 4 for why MCP came before
+the chat pane.)*
+
+Qt-free `m110/assistant/`, **read-only and propose-only** — no tool writes to
+the data store, the content tree, or settings:
+
+- `registry` — 13 tools as provider-neutral JSON-Schema descriptors. Imports
+  neither MCP nor any LLM SDK, so the M1 transport and any future adapter
+  consume the same objects.
+- `serialize` — the one place engine values become JSON (naive-local datetimes
+  get a real offset; Paths become store-relative; no absolute path leaks).
+- `proposals` — the `m110.proposal/v1` envelope, whose `preview` is computed by
+  running the **pure** scorer twice so a before/after ranking can't be
+  fabricated, and whose `basis.store_state` fingerprint lets M1's apply path
+  detect a store that moved on underneath it.
+- `skills` — three procedures (`plan-a-night`, `explain-the-numbers`,
+  `critique-an-image`) in the Claude Skill on-disk layout, served as MCP
+  prompts, MCP resources, **and** a `get_skill` tool, from one loader.
+- `vision` — in-memory render → JPEG for image critique, delivered as a native
+  image block so the client's own model does the looking. No provider SDK.
+- `mcp_server` — the only module importing `mcp`; `client_config` writes the
+  Claude Desktop entry from Preferences.
+
+**Read-only is proven, not asserted:** a byte-identical store manifest (mtimes
+included), write-syscall interception, and a static AST denylist of engine
+writers — all parametrized over the registry, so a new tool is covered by
+construction.
+
+**Packaging.** `m110-mcp` is a second executable from the same PyInstaller
+`Analysis`, sharing the runtime and data files (~5 MB marginal). It must be
+`console=True`: on Windows `console=False` links against the GUI subsystem,
+where a process has no standard handles at all and a stdio server cannot exist.
+The AppImage dispatches via `AppRun --mcp`, having no persistent internal path.
+
+**Disclosure.** M110 no longer holds an API key, but the obligation survives and
+sharpens: connecting a client sends journals, capture data, and image bytes to
+whatever model that client runs. Preferences states this before writing the
+config.
+
+**What the spike settled before any of it was built.** The open question was
+whether to depend on the MCP Python SDK or hand-roll JSON-RPC, given the SDK
+pulls pydantic v2 (a compiled Rust extension) plus `httpx`, `starlette` and
+`uvicorn`. Answer: depend on it. It froze with **zero** hidden-import or
+data-file fixes — no custom hook, unlike astropy — and the warm handshake is
+0.32 s frozen, *faster* than unfrozen, because the PYZ skips filesystem module
+search. A first-run 4.8 s reading turned out to be macOS Gatekeeper verifying a
+freshly built unsigned binary, not import cost. Attempting to slim the bundle by
+excluding the HTTP tail **fails**: `mcp/shared/session.py` imports `httpx`
+unconditionally, even for a stdio-only server — don't retry it.
+
+**Numbers that justified the cached-vs-slow rule.** `prioritize.refresh_prioritized()`
+takes ~60 s for 220 contexts; `plan_night` over the cached ones takes ~0.8 s for
+28 candidates. Had the tools called `build_contexts`, every question would cost a
+minute. Hence: `rank_targets` and `plan_night` read `load_contexts` only, and say
+so plainly when the cache is stale or missing rather than appearing broken.
+
+**Two things worth remembering.** Dropping the chart-shaped arrays
+(`night_track.samples`, the moon `track`) removes **83%** of a plan payload at
+three targets — the planner runs thirty. And `get_image` deliberately resolves
+the hero via `build_images.hero_source_path`'s `.src` sidecar rather than
+`objects.hero_path`: the latter returns the already-downscaled hero JPG, and
+judging star shape on a re-compressed thumbnail is worse than useless.
+

@@ -189,3 +189,31 @@ def test_server_available_reports_a_missing_dependency(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake)
     ok, why = cc.server_available()
     assert ok is False and "m110[assistant]" in why
+
+
+def test_appimage_config_points_at_the_appimage_not_inside_it(tmp_path, monkeypatch):
+    """An AppImage is a self-mounting archive — the internal path exists only
+    while it runs, so a client config must target the .AppImage and let AppRun
+    dispatch on --mcp."""
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    appimage = tmp_path / "M110-0.2.0-x86_64.AppImage"
+    monkeypatch.setenv("APPIMAGE", str(appimage))
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "mnt/usr/bin/M110"))
+    assert cc.server_command() == [str(appimage), "--mcp"]
+
+
+def test_plain_linux_frozen_build_uses_the_sibling_binary(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "M110"))
+    assert cc.server_command() == [str(tmp_path / "m110-mcp")]
+
+
+def test_windows_frozen_build_gets_an_exe_suffix(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "M110.exe"))
+    assert cc.server_command() == [str(tmp_path / "m110-mcp.exe")]
