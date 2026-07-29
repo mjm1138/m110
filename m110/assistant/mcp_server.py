@@ -52,9 +52,51 @@ def build_server():
     from mcp.server.lowlevel import Server
 
     # Populate the registry (import for side effect).
-    from m110.assistant import tools  # noqa: F401
+    from m110.assistant import skills as skills_mod, tools  # noqa: F401
 
     server = Server(SERVER_NAME)
+
+    # ── skills, served three ways from one loader so they can't drift ────────
+
+    @server.list_prompts()
+    async def list_prompts() -> list[types.Prompt]:
+        return [
+            types.Prompt(
+                name=s.id, description=s.description,
+                arguments=[types.PromptArgument(name=a, required=False)
+                           for a in s.arguments],
+            )
+            for s in skills_mod.all_skills()
+        ]
+
+    @server.get_prompt()
+    async def get_prompt(name: str, arguments: dict | None = None) -> types.GetPromptResult:
+        skill = skills_mod.get(name)
+        if skill is None:
+            raise ValueError(f"unknown prompt: {name}")
+        return types.GetPromptResult(
+            description=skill.description,
+            messages=[types.PromptMessage(
+                role="user",
+                content=types.TextContent(type="text", text=skill.render(arguments)),
+            )],
+        )
+
+    @server.list_resources()
+    async def list_resources() -> list[types.Resource]:
+        return [
+            types.Resource(uri=s.uri, name=s.name, description=s.description,
+                           mimeType="text/markdown")
+            for s in skills_mod.all_skills()
+        ]
+
+    @server.read_resource()
+    async def read_resource(uri) -> str:
+        skill_id = skills_mod.id_from_uri(uri)
+        skill = skills_mod.get(skill_id) if skill_id else None
+        if skill is None:
+            raise ValueError(f"unknown resource: {uri}")
+        return skill.body
 
     @server.list_tools()
     async def list_tools() -> list[types.Tool]:

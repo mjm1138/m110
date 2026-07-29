@@ -6,6 +6,7 @@ scope (mirroring `prioritize.build_contexts`).
 """
 from . import (  # noqa: F401  (imported for side effect: tool registration)
     docs,
+    guides,
     images,
     library,
     objects,
