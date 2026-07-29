@@ -68,8 +68,8 @@ def build_server():
         try:
             # The engine is synchronous and blocking; off-thread it so a slow
             # call can't starve protocol keepalives.
-            result = await anyio.to_thread.run_sync(
-                lambda: registry.call(name, arguments)
+            result, images = await anyio.to_thread.run_sync(
+                lambda: registry.call_with_media(name, arguments)
             )
         except ToolInputError as exc:
             raise ValueError(str(exc)) from None
@@ -83,7 +83,14 @@ def build_server():
                 type="text",
                 text=f"Error: {name} failed unexpectedly. See the M110 server log.",
             )]
-        return [types.TextContent(type="text", text=json.dumps(result, default=str))]
+        # Text first, then any images: the grounding metadata should be read
+        # before the picture is looked at.
+        blocks: list[types.ContentBlock] = [
+            types.TextContent(type="text", text=json.dumps(result, default=str))
+        ]
+        blocks += [types.ImageContent(type="image", data=img.base64,
+                                      mimeType=img.mime_type) for img in images]
+        return blocks
 
     return server
 

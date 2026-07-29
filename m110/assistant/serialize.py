@@ -43,6 +43,19 @@ _MAX_DEPTH = 24     # engine data is shallow; this only stops pathological nesti
 
 
 @dataclasses.dataclass(frozen=True)
+class ImageBlob:
+    """An image a tool wants delivered as a native image block.
+
+    Kept out of the JSON payload entirely: base64 belongs in a transport-level
+    image block, not stuffed into a text field where a model has to parse it
+    back out. Transports read `ToolResult.images`; the JSON body carries only
+    the describing metadata.
+    """
+    base64: str
+    mime_type: str = "image/jpeg"
+
+
+@dataclasses.dataclass(frozen=True)
 class ToolResult:
     """Optional wrapper letting a tool supply serialization hints.
 
@@ -59,6 +72,7 @@ class ToolResult:
     data: Any
     tz: Any = None                          # tzinfo, e.g. Site.tz
     drop_keys: frozenset[str] = frozenset()
+    images: tuple[ImageBlob, ...] = ()      # delivered as native image blocks
 
 
 def _num(x: float) -> float | None:
@@ -149,9 +163,15 @@ def to_json_safe(obj: Any, *, tz=None, root: Path | None = None,
     return str(obj)
 
 
-def serialize_result(result: Any, *, root: Path | None = None) -> Any:
-    """Normalize whatever a tool returned — plain value or `ToolResult`."""
+def split_result(result: Any, *, root: Path | None = None) -> tuple[Any, tuple]:
+    """Normalize whatever a tool returned into (json_payload, image_blobs)."""
     if isinstance(result, ToolResult):
-        return to_json_safe(result.data, tz=result.tz, root=root,
-                            drop_keys=frozenset(result.drop_keys))
-    return to_json_safe(result, root=root)
+        return (to_json_safe(result.data, tz=result.tz, root=root,
+                             drop_keys=frozenset(result.drop_keys)),
+                tuple(result.images))
+    return to_json_safe(result, root=root), ()
+
+
+def serialize_result(result: Any, *, root: Path | None = None) -> Any:
+    """The JSON half only — the common case."""
+    return split_result(result, root=root)[0]

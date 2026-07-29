@@ -46,6 +46,7 @@ ARGS = {
     "get_object": {"slug": "m101"},
     "object_observability": {"slugs": ["m101"]},
     "plan_night": {"count": 2},
+    "get_image": {"slug": "m101"},
 }
 
 

@@ -347,3 +347,162 @@ def test_plan_night_writes_nothing(planned):
     before = manifest()
     call("plan_night", date=_PLAN_DAY, count=2)
     assert manifest() == before
+
+
+# ── get_image (vision) ───────────────────────────────────────────────────────
+
+def _decode(b64):
+    import base64
+    import io
+    from PIL import Image
+    return Image.open(io.BytesIO(base64.b64decode(b64)))
+
+
+@pytest.fixture
+def with_image(captured):
+    """The captured object, plus a real rendered image on disk."""
+    from m110 import build_images, catalog, config, derived
+    root, slug, target = captured
+    stacks = config.seestar_stacks_dir(target)
+    stacks.mkdir(parents=True, exist_ok=True)
+    from PIL import Image
+    Image.new("RGB", (2400, 1600), (30, 40, 70)).save(
+        stacks / f"Stacked_10_{target}_30s_LP_20260529-010101.jpg")
+    build_images.render_images(catalog.load_library(), derived.load_totals())
+    return root, slug, target
+
+
+def test_get_image_returns_metadata_and_an_image_block(with_image):
+    from m110.assistant import registry as reg
+    _, slug, _ = with_image
+    meta, images = reg.call_with_media("get_image", {"slug": slug})
+
+    assert len(images) == 1 and images[0].mime_type == "image/jpeg"
+    img = _decode(images[0].base64)
+    assert max(img.size) <= 1568                 # default long edge
+
+    # The grounding a critique needs, alongside the pixels.
+    assert meta["capture"]["deep_threshold_min"] > 0
+    assert meta["render"]["source_width"] >= img.width
+    assert meta["identifiers"]
+
+
+def test_get_image_keeps_base64_out_of_the_json_payload(with_image):
+    """base64 belongs in an image block, not stuffed into a text field."""
+    import json
+    from m110.assistant import registry as reg
+    _, slug, _ = with_image
+    meta, images = reg.call_with_media("get_image", {"slug": slug})
+    body = json.dumps(meta)
+    assert images[0].base64 not in body
+    assert len(body) < 4000, "metadata payload should stay small"
+
+
+def test_get_image_honours_max_long_edge(with_image):
+    from m110.assistant import registry as reg
+    _, slug, _ = with_image
+    _, images = reg.call_with_media("get_image", {"slug": slug, "max_long_edge": 512})
+    assert max(_decode(images[0].base64).size) <= 512
+
+
+def test_get_image_reports_downscaling_as_a_caveat(with_image):
+    _, slug, _ = with_image
+    meta = call("get_image", slug=slug, max_long_edge=512)
+    assert meta["render"]["downscaled"] is True
+    assert any("Downscaled" in c for c in meta["caveats"])
+
+
+def test_get_image_refuses_an_oversized_request(with_image):
+    _, slug, _ = with_image
+    with pytest.raises(registry.ToolInputError):     # schema maximum
+        call("get_image", slug=slug, max_long_edge=99_999)
+
+
+def test_get_image_unknown_object_and_missing_images(captured, tmp_path, monkeypatch):
+    _, slug, _ = captured
+    with pytest.raises(registry.ToolError) as e:
+        call("get_image", slug="not-a-real-object")
+    assert "list_objects" in str(e.value)
+    # The captured object has a light frame but no rendered gallery image.
+    with pytest.raises(registry.ToolError):
+        call("get_image", slug=slug, which="finished")
+
+
+def test_get_image_named_requires_and_validates_a_name(with_image):
+    _, slug, _ = with_image
+    with pytest.raises(registry.ToolError) as e:
+        call("get_image", slug=slug, which="named")
+    assert "requires a name" in str(e.value)
+
+    with pytest.raises(registry.ToolError) as e:
+        call("get_image", slug=slug, which="named", name="nope.jpg")
+    assert "Available" in str(e.value)          # lists what it could have used
+
+
+def test_get_image_flags_a_linear_fits_as_preview_stretched(captured):
+    """The caveat that stops a model critiquing M110's own preview rendering."""
+    from m110 import build_images, catalog, config, derived
+    import numpy as np
+    from astropy.io import fits
+    _, slug, target = captured
+    stack = config.stacks_dir(target)
+    stack.mkdir(parents=True, exist_ok=True)
+    data = np.random.default_rng(0).normal(1000, 50, (400, 600)).astype("float32")
+    fits.PrimaryHDU(data).writeto(stack / "result.fit", overwrite=True)
+    # get_image resolves named files through the gallery, so it has to be rendered.
+    build_images.render_images(catalog.load_library(), derived.load_totals())
+
+    meta = call("get_image", slug=slug, which="named", name="result.fit")
+    assert meta["source"]["was_linear_fits"] is True
+    assert any("LINEAR FITS" in c for c in meta["caveats"])
+    assert any("not of the user's processing" in c for c in meta["caveats"])
+
+
+def test_get_image_writes_nothing(with_image):
+    """Vision is where an accidental disk write would most plausibly creep in."""
+    import hashlib
+    _, slug, _ = with_image
+
+    def manifest():
+        return {str(p): (p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest())
+                for p in sorted(config.DATA_ROOT.rglob("*")) if p.is_file()}
+
+    before = manifest()
+    call("get_image", slug=slug)
+    assert manifest() == before
+
+
+def test_get_image_size_ladder_drops_quality_then_scale(with_image, monkeypatch):
+    """The byte budget exists because the client re-emits our bytes as an API
+    image block, which is hard-capped. Force a tiny budget and check we actually
+    step down instead of returning something oversized."""
+    from m110.assistant import registry as reg, vision
+    _, slug, _ = with_image
+
+    monkeypatch.setattr(vision, "MAX_ENCODED_BYTES", 3000)
+    meta, images = reg.call_with_media("get_image", {"slug": slug})
+
+    assert meta["render"]["encoded_bytes"] <= 3000, "budget not enforced"
+    # It got there by lowering quality and/or scale, not by giving up.
+    assert meta["render"]["jpeg_quality"] in vision.QUALITY_LADDER
+    assert _decode(images[0].base64).size[0] > 0
+
+
+def test_get_image_serves_a_large_source_within_budget(captured):
+    """A realistic full-size frame, not the tiny synthetic corpus images."""
+    from m110 import build_images, catalog, config, derived, webexport
+    from PIL import Image
+    import numpy as np
+    _, slug, target = captured
+    finished = config.finished_dir(target)
+    finished.mkdir(parents=True, exist_ok=True)
+    # Noise, so it doesn't compress to nothing and actually stresses the encoder.
+    arr = np.random.default_rng(1).integers(0, 255, (2000, 3000, 3), dtype="uint8")
+    Image.fromarray(arr, "RGB").save(finished / "processed.png")
+    build_images.render_images(catalog.load_library(), derived.load_totals())
+
+    meta = call("get_image", slug=slug, which="named", name="processed.png")
+    assert meta["render"]["source_width"] == 3000
+    assert max(meta["render"]["width"], meta["render"]["height"]) <= 1568
+    assert meta["render"]["downscaled"] is True
+    assert meta["render"]["encoded_bytes"] <= 3_500_000

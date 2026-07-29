@@ -122,15 +122,24 @@ def _validate(tool: Tool, args: dict) -> dict:
     return clean
 
 
-def call(name: str, args: dict | None = None) -> Any:
-    """Look up, validate, invoke, serialize.
+def call_with_media(name: str, args: dict | None = None) -> tuple[Any, tuple]:
+    """Look up, validate, invoke, serialize → (json_payload, image_blobs).
 
     Serialization happens here and only here, so no tool hand-formats a
     datetime or leaks an absolute path. A tool needing control (an offset for
-    naive datetimes, chart arrays to drop) returns a `serialize.ToolResult`.
+    naive datetimes, chart arrays to drop, images to attach) returns a
+    `serialize.ToolResult`.
+
+    Transports use this; `call` is the JSON-only convenience over it, so the two
+    can't drift.
     """
     from m110.assistant import serialize
 
     tool = get(name)
     result = tool.fn(**_validate(tool, args or {}))
-    return serialize.serialize_result(result)
+    return serialize.split_result(result)
+
+
+def call(name: str, args: dict | None = None) -> Any:
+    """The JSON payload only — the common case."""
+    return call_with_media(name, args)[0]
