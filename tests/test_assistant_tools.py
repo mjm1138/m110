@@ -229,3 +229,121 @@ def test_saved_plans_refuses_a_path_traversal(captured):
     secret.write_text("should not be readable", encoding="utf-8")
     with pytest.raises(registry.ToolError):
         call("saved_plans", name="../secret.md")
+
+
+# ── planning tools (real astropy) ────────────────────────────────────────────
+
+_PLAN_DAY = "2026-07-13"        # the real July night the planning tests use
+
+
+@pytest.fixture
+def planned(captured):
+    """A store that also has cached ranking contexts, so plan_night can run."""
+    root, slug, target = captured
+    prioritize.write_contexts([
+        prioritize.TargetContext("m13", "globular cluster", 0.0, True,
+                                 {"observable": True, "transit_alt": 80.0,
+                                  "hours_clear": 5.0, "nights_to_close": 90}, 5.8, None),
+        prioritize.TargetContext("m31", "galaxy", 30.0, True,
+                                 {"observable": True, "transit_alt": 65.0,
+                                  "hours_clear": 3.0, "nights_to_close": 120}, 3.4, None),
+    ])
+    return root, slug, target
+
+
+def test_object_observability_returns_a_real_track(captured):
+    out = call("object_observability", slugs=["m13"], date=_PLAN_DAY)
+    row = out["objects"][0]
+    assert row["resolved"] is True and row["up_tonight"] is True
+    assert row["transit_alt"] > 80            # M13 is near-overhead from lat 40
+    # Datetimes came back as offset-carrying ISO strings, not raw objects.
+    assert row["transit_time"].endswith(("-06:00", "-07:00"))
+    # The chart array is dropped.
+    assert "samples" not in row
+
+
+def test_object_observability_distinguishes_unresolvable_from_not_up(captured):
+    out = call("object_observability", slugs=["not-a-real-object"], date=_PLAN_DAY)
+    row = out["objects"][0]
+    assert row["resolved"] is False
+    assert "no coordinates" in row["note"]
+    # Crucially it does NOT claim the object isn't up — a different fact.
+    assert "up_tonight" not in row
+
+
+def test_object_observability_caps_the_slug_count(captured):
+    with pytest.raises(registry.ToolError) as e:
+        call("object_observability", slugs=["m13"] * 6)
+    assert "plan_night" in str(e.value)       # points at the right tool instead
+
+
+def test_object_observability_rejects_a_bad_date(captured):
+    with pytest.raises(registry.ToolError) as e:
+        call("object_observability", slugs=["m13"], date="July 13")
+    assert "YYYY-MM-DD" in str(e.value)
+
+
+def test_plan_night_refuses_without_contexts(captured):
+    with pytest.raises(registry.ToolError) as e:
+        call("plan_night", date=_PLAN_DAY)
+    assert "read-only" in str(e.value).lower()
+
+
+def test_plan_night_produces_a_schedule_and_field_guide(planned):
+    out = call("plan_night", date=_PLAN_DAY, count=2)
+    assert out["entries"], "expected targets up on this night"
+    assert out["schedule"], "expected a non-overlapping schedule"
+
+    # The dark window is named, not a bare two-element array.
+    assert set(out["window"]) == {"dusk", "dawn"}
+    assert out["window"]["dusk"].endswith(("-06:00", "-07:00"))
+
+    slot = out["schedule"][0]
+    assert {"slug", "start", "end", "duration_min"} <= set(slot)
+    assert slot["start"] < slot["end"]        # ISO strings sort chronologically here
+
+    assert "# " in out["field_guide_markdown"]
+    assert out["legend"] and out["elapsed_s"] >= 0
+
+
+def test_plan_night_schedule_slots_do_not_overlap(planned):
+    slots = call("plan_night", date=_PLAN_DAY, count=3)["schedule"]
+    for a, b in zip(slots, slots[1:]):
+        assert a["end"] <= b["start"], f"{a['slug']} overlaps {b['slug']}"
+
+
+def test_plan_night_can_omit_the_field_guide(planned):
+    out = call("plan_night", date=_PLAN_DAY, include_field_guide=False)
+    assert "field_guide_markdown" not in out
+
+
+def test_plan_night_reports_targets_it_could_not_use(planned):
+    out = call("plan_night", date=_PLAN_DAY, targets=["m13", "not-a-real-object"])
+    assert out["unavailable_targets"] == ["not-a-real-object"]
+    assert out["candidates_considered"] == 1
+
+
+def test_plan_night_all_targets_unknown_is_an_error(planned):
+    with pytest.raises(registry.ToolError) as e:
+        call("plan_night", date=_PLAN_DAY, targets=["nope", "also-nope"])
+    assert "rank_targets" in str(e.value)
+
+
+def test_plan_night_rejects_an_unknown_site_profile(planned):
+    with pytest.raises(registry.ToolError) as e:
+        call("plan_night", date=_PLAN_DAY, site_profile="no-such-site")
+    assert "default" in str(e.value)          # lists what does exist
+
+
+def test_plan_night_writes_nothing(planned):
+    """The read-only proof for the expensive path specifically — the parametrized
+    version in test_assistant_registry only reaches plan_night's early refusal."""
+    import hashlib
+
+    def manifest():
+        return {str(p): (p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest())
+                for p in sorted(config.DATA_ROOT.rglob("*")) if p.is_file()}
+
+    before = manifest()
+    call("plan_night", date=_PLAN_DAY, count=2)
+    assert manifest() == before

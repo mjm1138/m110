@@ -9,6 +9,7 @@ from . import (  # noqa: F401  (imported for side effect: tool registration)
     library,
     objects,
     overview,
+    planning,
     processing,
     ranking,
 )
