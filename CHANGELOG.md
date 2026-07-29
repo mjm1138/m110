@@ -10,6 +10,16 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Removed
+- **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements
+  written against citable sources. They were never actually shown anywhere in the app —
+  M110 selected which ones applied to a target but never displayed them — so nothing you
+  used has gone away. They were withdrawn rather than edited because they had drifted into
+  being personal notes rather than a guide: they carried the author's name and location,
+  referenced a developer-only document, assumed one specific observing site's conditions
+  without saying so, and one of them was a dated weather forecast. Your Siril working
+  folders are unaffected and still get their `next-steps.md`.
+
 ## [0.2.0-beta.8] - 2026-07-22
 
 ### Fixed

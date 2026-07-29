@@ -325,6 +325,22 @@ Legend: `[ ]` open · `[~]` partially done
   skill over the deterministic engine — consult the `astro-session-planner` skill +
   `scripts/`/`workflows/` in ~/Astronomy and work from there. This is the point where
   an LLM plugs in (explains/tunes/narrates; the engine stays the source of truth).
+  **Note:** if that skill seeds the M110 one, review it for the same defects that got
+  `m110/guidance/` removed (see #45) — personal identifiers, references to documents
+  the model can't see, and undated/unsourced numbers.
+
+- [ ] **#45 — Author replacement processing guidance.** The bundled
+  `m110/guidance/*.md` playbooks were **removed** (`chore/remove-stale-guidance`)
+  rather than patched: two opened with `**Observer:** Mike | **Boulder, CO**`, three
+  cross-referenced `CLAUDE.md` (a document users don't ship and a model can't read),
+  `seestar_s50_imaging_guide.md` was a *dated March 2026 Boulder weather forecast*
+  rather than a guide, and Boulder-specific seeing (2–3″) was baked unlabelled into
+  the drizzle and PSF recommendations. They were also **already invisible** —
+  `PrepPlan.guidance` was computed but never rendered anywhere, so nothing user-facing
+  changed. Replacements should be written against citable Siril 1.4.x sources, carry no
+  personal identifiers, label any site-specific number as an example, and contain no
+  dated forecasts. **Prerequisite for** the assistant's deferred *processing-coach*
+  skill (ROADMAP item 4) and for any future in-app guidance surface.
 
 *Findings from the 2026-07-13 prioritizer/planner review below — reasoning in
 [`prioritizer-review.md`](docs-archive/prioritizer-review.md).*

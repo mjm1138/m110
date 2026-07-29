@@ -76,7 +76,11 @@ genuinely useful here, the app already holds in structured form:
   the site / equipment / obstruction profile.
 - **Tools** — the engine's real computations (twilight / moon / transit-altitude
   / obstruction; derived rollups; image access).
-- **Knowledge** — the workflow playbooks (drizzle / PSF / colour / planning).
+- **Knowledge** — workflow playbooks (drizzle / PSF / colour / planning). ⚠ The
+  original bundled `m110/guidance/*.md` set was **removed** (personal identifiers,
+  dangling `CLAUDE.md` references, a dated forecast standing in for a guide);
+  replacements must be authored against citable sources before the *coaching*
+  feature below can ship. Tracked in [`BUGS.md`](BUGS.md).
 
 So "skilling" the model is mostly wiring: **data → context, engine functions →
 tools, docs → reference.** The app is the ideal host because it owns all three;

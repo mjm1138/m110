@@ -98,8 +98,6 @@ def test_prepare_multi_filter_per_job(tmp_path, monkeypatch):
     sb = config.siril_dir(target)
     assert (sb / "IRCUT" / "lights").is_dir() and (sb / "LP" / "lights").is_dir()
     assert (sb / "IRCUT" / "presets" / siril.PRESET_NAME).is_file()
-    # LP present → LP-blend guidance offered
-    assert "siril_lp_narrowband_galaxy_blend" in plan.guidance
 
 
 def test_prepare_usable_frames_override(tmp_path, monkeypatch):
@@ -487,8 +485,3 @@ def test_set_frontmatter_key_upsert(tmp_path, monkeypatch):
     objects.set_frontmatter_key("m1", "hero_caption", "nice")
     fm2, _ = objects.read_journal("m1")
     assert fm2["hero_caption"] == "nice" and fm2["hero"] == "new.png"
-
-
-def test_guidance_bundled():
-    assert "siril_drizzle_guide" in siril.guidance_ids()
-    assert siril.guidance_path("siril_drizzle_guide").is_file()
