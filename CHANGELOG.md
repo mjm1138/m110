@@ -28,6 +28,18 @@ changes a **user** would notice, per release.
 
   You bring your own client and your own account — M110 never handles an API key.
 
+### Changed
+- **The security policy now describes what actually leaves your machine.**
+  [`SECURITY.md`](SECURITY.md) lists every network call M110 makes and when it runs,
+  covers the AI assistant (what a connected client can see, and the narrow limits on
+  what it can write), and is straight about publishing to GitHub Pages uploading your
+  images. It previously described a version of M110 that only ever exported to a local
+  folder.
+- **Enrich online explains what it sends.** The confirmation now says it sends each
+  object's name to Simbad, instead of referring to an "optional `online` extra" —
+  packaged builds already include it, so that was jargon that told you nothing about
+  the privacy question you were being asked.
+
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements
   written against citable sources. They were never actually shown anywhere in the app —
