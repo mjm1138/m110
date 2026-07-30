@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.1] - 2026-07-30
+
 ### Added
 - **A sky map in the Library.** A fourth view — List · Grid · Feed · **Map** — plots your
   collection on a star chart, so you can see where everything you've shot actually sits and
