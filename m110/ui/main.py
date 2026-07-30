@@ -543,7 +543,8 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(
                 self, "Enrich online",
                 "Look up missing metadata on Simbad for Library objects with gaps?\n"
-                "This needs a network connection and the optional 'online' extra."
+                "This sends each object's name to Simbad and needs a network "
+                "connection."
                 ) != QMessageBox.Yes:
             return
         self.enrich_online_action.setEnabled(False)

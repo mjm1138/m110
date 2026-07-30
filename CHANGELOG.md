@@ -52,11 +52,12 @@ changes a **user** would notice, per release.
   dome, your capture history, your priority ranking. It can also show you the night's
   schedule and hand you a field guide.
 
-  Two things worth knowing. **It is read-only**: it can look at your library and *suggest*
-  changes — new tuning weights, a pinned target, a journal entry — but it cannot alter
-  your files, your library, or your settings. Suggestions come with the ranking M110
-  itself computes for them, so you can see the effect before deciding, and you apply them
-  in the app. And **your data goes to whoever you connect**: object notes, capture
+  Two things worth knowing. **It cannot change your library**: it can look, and *suggest*
+  changes — new tuning weights, a pinned target, a journal entry — but it cannot alter or
+  delete your files, your library, or your settings. The most it can do is add a file to
+  one staging folder, and nothing takes effect until you accept it. Suggestions come with
+  the ranking M110 itself computes for them, so you can see the effect before deciding,
+  and you apply them in the app. And **your data goes to whoever you connect**: object notes, capture
   history and image data are sent to whatever AI model that client uses. M110 tells you
   this before it writes anything, and Disconnect removes it again.
 
@@ -67,6 +68,16 @@ changes a **user** would notice, per release.
   catalog M110 ships. Picking one you weren't working and getting an empty view was a dead
   end — and since most Messier objects also belong to one of the Popular lists, the full list
   was mostly noise. Turn a catalog on under **Overview → Manage goals** to filter by it.
+- **The security policy now describes what actually leaves your machine.**
+  [`SECURITY.md`](SECURITY.md) lists every network call M110 makes and when it runs,
+  covers the AI assistant (what a connected client can see, and the narrow limits on
+  what it can write), and is straight about publishing to GitHub Pages uploading your
+  images. It previously described a version of M110 that only ever exported to a local
+  folder.
+- **Enrich online explains what it sends.** The confirmation now says it sends each
+  object's name to Simbad, instead of referring to an "optional `online` extra" —
+  packaged builds already include it, so that was jargon that told you nothing about
+  the privacy question you were being asked.
 
 ### Fixed
 - **Mosaic folders and catalog-number folders now count toward the right object.** A capture
@@ -101,6 +112,7 @@ changes a **user** would notice, per release.
   single object it has no catalogued position, so it had none — which kept it off the sky
   map and out of session planning. It now carries a hand-set centre (the midpoint of the
   chain, between M84 and NGC 4477), approximate by nature but enough to point at.
+
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements
   written against citable sources. They were never actually shown anywhere in the app —
