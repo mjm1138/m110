@@ -27,7 +27,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
-| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — **upstream dependency landed** ([uranometria 0.11.0](https://github.com/devonjones/uranometria/pull/22)); M110 side next | [↓](#12--sky-map-uranometria-integration) |
+| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
 | 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
 | 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
 | 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
