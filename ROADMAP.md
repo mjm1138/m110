@@ -18,17 +18,19 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | — | **MVP v0.1 — "the Library"** (catalog, ingest, rendering, processing-prep, two-axis store) | ✅ shipped | [`DONE.md`](DONE.md) |
 | 0 | **Navigation IA** — 5-pane rail (Library · Overview · Planning · Import · Processing) | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | — | **UI design system** — tokens, light/dark theming, restyled surfaces, branding | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
-| 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open ↓)* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
-| 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open ↓)* | [`DONE.md`](DONE.md) |
-| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open ↓)* | [`DONE.md`](DONE.md) |
-| 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open ↓)* | [`DONE.md`](DONE.md) |
+| 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open [↓](#1--session-planning-follow-ups-non-blocking-refinements))* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
+| 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open [↓](#5--catalog-growth))* | [`DONE.md`](DONE.md) |
+| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
+| 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open [↓](#8--publishing-remaining-targets))* | [`DONE.md`](DONE.md) |
 | 10 | **Library backup** — hardlinked snapshots, verify, selective restore, auto-backup | ✅ shipped | [`DONE.md`](DONE.md) |
-| 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open ↓ | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
-| 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | ↓ |
-| 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | ↓ |
-| 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | ↓ |
-| 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | ↓ |
-| 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | ↓ |
+| 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
+| 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | [↓](#4--in-app-assistant-bring-your-own-llm--next-major-milestone) |
+| 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
+| 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
+| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — **upstream dependency landed** ([uranometria 0.11.0](https://github.com/devonjones/uranometria/pull/22)); M110 side next | [↓](#12--sky-map-uranometria-integration) |
+| 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
+| 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
+| 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
 
 ---
 
@@ -169,6 +171,295 @@ support batched background extraction, plate solving, SPCC, or maybe image
 analysis (find frames with satellite trails, find frames with low star count,
 etc).
 
+### 12 — Sky map (uranometria integration)
+
+Plot the collection on a star-atlas chart: **where** in the sky everything you've
+shot actually is, and how much of a goal list is still empty. Proposed in issue
+**#98** by **Devon Jones**, who wrote and offered
+[**uranometria**](https://github.com/devonjones/uranometria) — a chart library
+built with this sort of integration in mind. This section is the scoping write-up **for
+Devon to review** before we open a PR against his repo.
+
+**Why it earns a slot.** M110 already knows every fact a chart needs (coords,
+capture status, integration, goal membership, hero images) and today renders them
+only as tables and tiles. A chart is the one view that answers "what's *left*"
+spatially — Overview's goal percentages become a picture of the sky filling in.
+
+#### Licensing & dependency assessment ✅
+
+- **Code: Apache-2.0**, identical to ours. No friction.
+- **Bundled data** is permissive-with-attribution: OpenNGC (CC-BY-SA-4.0), the
+  Sharpless catalog via VizieR, d3-celestial stars + constellation lines (BSD-3),
+  Marcellus / IBM Plex Mono (OFL). Share-alike attaches to the *database*, not to
+  M110's code — no viral effect. Devon already stamps attribution into the
+  generated page footer, which matters because publishing a chart to a user's
+  GitHub Pages site *is* redistribution.
+- **Our obligation:** `NOTICE` entries once we bundle it into frozen builds —
+  the same precedent as the GeoNames CC-BY-4.0 data in `glow.py`.
+- **Deps:** `click` + `pyyaml` only for the chart half. (The `annotate` extra —
+  astropy/astroquery/matplotlib + an external ASTAP install — is out of scope
+  here; see *Not in scope* below.)
+- **Distribution — end users get it bundled either way.** Frozen builds have no
+  pip, so the `build` extra pulls the dependency into the build venv and
+  PyInstaller freezes it in. Exact precedent: astroquery, bundled for the same
+  reason (issue **#64** — "a frozen app user can't add the extra themselves").
+  uranometria additionally ships package **data** (`data/*.csv`, `.json`,
+  `.tsv`, base64 font assets), so the three specs need
+  `collect_data_files("uranometria")` — PyInstaller won't pick those up on its own.
+- **Not on PyPI yet — a source-install wrinkle, not a blocker.** M110 doesn't
+  publish to PyPI today (the release pipeline builds installers and attaches them
+  to a GitHub Release), so a `git+https://` direct reference in `pyproject.toml`
+  would work right now. It would, however, become a landmine on any future PyPI
+  upload — direct-URL references are rejected anywhere in the metadata, including
+  in extras. Cleanest path: keep the git URL **out** of `pyproject.toml`, install
+  it explicitly in the build step, and switch to a normal
+  `skymap = ["uranometria>=…"]` extra once it's published.
+- **Optional import regardless.** `try: import uranometria / except ImportError`
+  is the house pattern (`publish/` → `PublishDepsMissing`, `online` →
+  `OnlineLookupError`), so a lean source install still runs — the Map view just
+  hides itself. That stays true even after the extra exists.
+
+#### Upstream dependency: ✅ **landed** (2026-07-30)
+
+The SVG mode below was written by us and **merged upstream** as
+[uranometria#22](https://github.com/devonjones/uranometria/pull/22), released in
+**0.11.0**. The shipped API differs from the proposal in one way: it returns
+**one entry per hemisphere** rather than taking a `hemisphere=` kwarg, which
+reuses uranometria's own `need_north`/`need_south` derivation untouched — and
+matches this item's Map view, where the N|S toggle only appears when southern
+objects exist.
+
+```python
+charts, warnings = uranometria.render_svg(config, palette=…, font_family=…)
+# [{"hemisphere": "north", "svg": "<svg xmlns=…>…</svg>",
+#   "objects": [{"uid": 0, "id": "mk-0", "disp": "M31", "image": "heroes/m31.jpg",
+#                "x": 612.4, "y": 388.1,
+#                "label": {"dx": 16, "dy": 4, "anchor": "start"}}]}]
+```
+
+Verified end to end before merge: QtSvg renders the document correctly (dominant
+disc color `#0A0F24`, **zero** black samples, every marker within 14 px of its
+reported position), the interactive HTML page is **pixel-identical** (0 of
+1,260,000 pixels differ), and a round-trip of M110's own 41-object library
+produces one northern disc with no warnings and every marker inside the disc.
+`uranometria.chart.MARKER_R` is the hit-test radius; `id="mk-N"` survives into
+the markup so `QSvgRenderer.boundsOnElement` is an exact alternative.
+
+Still not on PyPI (Devon's account recovery is weeks out), so the
+build-step install described above stands until it is.
+
+#### The rendering constraint — verified, and the change we made
+
+`packaging/*/M110.spec` **deliberately excludes** `QtWebEngineCore` /
+`QtWebEngineWidgets`. Embedding uranometria's interactive HTML would mean adding
+a Chromium (~150–300 MB per bundle) plus a separately-signed
+`QtWebEngineProcess` helper for notarization. Not worth one view.
+
+Rendering the chart's SVG natively with `QtSvg` is the answer, but the SVG as
+emitted today won't survive it. Probed against M110's own PySide6:
+
+- **QtSvg ignores the entire `<style>` cascade** — not just CSS custom
+  properties. A `.dot { fill:#00FF00 }` rule with a *literal* color still
+  rendered black.
+- Markers are positioned purely in CSS (`page.py`: `.marker { transform:
+  translate(var(--tx),var(--ty)) }`, with `--tx/--ty` in each marker's `style`
+  attribute), so under QtSvg **every marker collapses onto the origin**.
+- **Presentation attributes render correctly**: `fill=`, `transform=`,
+  `text-anchor`, `font-size` all work.
+
+So the ask is narrow — an SVG mode that emits presentation attributes instead of
+the CSS cascade. Everything else in `chart.py` is already shaped for it:
+`project()` is module-level pure math, the viewBox is a fixed `0 0 1000 1000`,
+`Chart.markers` already carries computed `x/y`, and label collision-avoidance
+(`place_label`) runs in Python, not JS — so static SVG loses nothing on layout.
+
+What shipped, in the terms above:
+
+- `palette` — a 15-key dict (`sky/deep/star/grid/equator/aster/conname/accent/…`
+  plus `ecliptic` and the star tints). We inject M110 theme tokens, so the chart
+  follows light/dark instead of being fixed dark. A **gain** over the HTML version.
+- each chart's `objects` — every marker's final `(x, y)` in the viewBox plus
+  label offset / id / image. The important one: without it we'd re-derive
+  positions and duplicate the marker layout. With it, native hit-testing is exact.
+- `font_family` — the page embeds Marcellus / IBM Plex Mono as woff2 data URIs,
+  which QtSvg can't load, so we pass a family we register ourselves (we already
+  bundle JetBrains Mono via `ui/theme/fonts.py`).
+
+Non-breaking: `page.py` keeps the CSS mode. The attributes are emitted
+*unconditionally* — a CSS rule always outranks a presentation attribute, so the
+interactive page renders identically and there is one code path, not two.
+
+#### In-app scope — Library → **Map** view
+
+The Library page already stacks List / Grid / Feed over one shared
+`_current_items()` filter pipeline, so **Map is a 4th segment button**, not a new
+nav pane (item 0's minimal-chrome rule). It inherits search, the catalog filter,
+and captured-only for free; clicking a marker is just `select_object`, which
+drives the existing `DetailPane` in the same splitter — exactly how Grid behaves.
+The grid's zoom slider row (`_zoom_row_widget`) is the precedent for the map's
+own zoom control.
+
+```
+┌───────────┬──────────────────────────────┬───────────────────────────┐
+│ Library   │ [Deep sky|Media]  [List|Grid|Feed|▮Map]                  │
+│ Overview  │ (search)          [Messier ▾]│  M51                      │
+│ Planning  │ 46 captured · 12 deep · 128h │  Whirlpool Galaxy         │
+│ Import    │      ╭────────────────╮      │  ┌─────────────────────┐  │
+│ Processing│    ·  ·   ◉M101  ·  ✦ │      │  │      hero image     │  │
+│           │   ✦  ◉M81   ·   ○  ·  │      │  └─────────────────────┘  │
+│           │    ·   ·  ◉M51  ·   ✦ │      │  [Deep] 6.2 h · 4 sessions│
+│           │      ╰────────────────╯      │  Type        Galaxy       │
+│           │ [N|S]        Zoom ──── ⟲     │  Season      Mar–May      │
+│           │ ◉ deep  ◎ captured  ○ goal   │  RA/Dec  13h29m · +47°11′ │
+└───────────┴──────────────────────────────┴───────────────────────────┘
+```
+
+Interaction is native, and maps onto UI we already own — nothing is lost by
+dropping the JS:
+
+| uranometria HTML/JS | M110 native |
+|---|---|
+| scroll-zoom, drag-pan, dbl-click reset | `QGraphicsView` + `QGraphicsSvgItem` (precedent: `image_viewer.ZoomableImage`) |
+| click marker → photo lightbox | hit-test `placed` → the existing `ImageViewer` (full-res, with the export / curation menu) |
+| searchable object sidebar | the Library *is* that |
+| markers counter-scale on zoom | `ItemIgnoresTransformations` on marker items |
+
+**Use cases, phased:**
+
+- **12a — "Where is my collection?"** *(core)* Every filtered Library object
+  plotted; click → select → detail pane. Hemisphere toggle only when the set
+  actually reaches past dec −35° (uranometria's own threshold).
+- **12b — Goal progress as a picture.** Marker style by capture depth —
+  uncaptured goal member (dashed outline) / captured (ring) / deep (filled).
+  Sources already exist: `goals.goal_members`, `derived` totals,
+  `build_derived.deep_threshold` (type-aware: galaxies 240 min, nebulae 360).
+  The header's catalog filter scopes the map to one goal list.
+- **12c — Season context** *(cheap, phase 2)*. A polar chart's RA axis **is** the
+  season axis (`catalog.season_from_ra`) — shade the current season's RA wedge.
+- **12d — Tonight's plan on the sky** *(phase 2, honest scoping)*. Highlight the
+  sequenced targets on the Planning page, numbered by slot. **Complements, does
+  not replace, `NightTimeline`**: these charts are whole-sky and epoch-agnostic —
+  no horizon, no altitude, no time axis, so they answer "where am I pointing",
+  not "how high, and for how long". The timeline stays the planner's main view.
+- **12e — Publish a sky map page** *(independent of everything above)*. Use
+  `generate()`'s **full interactive HTML** as a page on the static site — a
+  browser is the right viewer there, so we keep search, the lightbox, and
+  annotations for free. Slots into `publish/` as one more section checkbox;
+  heroes are already emitted as web derivatives, and `select.publishable_slugs` /
+  `journal_visible` already decide what's shareable.
+
+**Not in scope here.** The `annotate` half is tracked separately as
+[item 13](#13--image-annotation-plate-solved-object-overlays) — it shares the
+library but nothing else: different trigger, different surface, different
+external dependency.
+
+**Data mapping.** Pass **fully-specified entries** (label + `ra_deg`/`dec_deg`
+from `library.toml` + hero path + color), never bare designations — Devon
+documents this as the host-app pattern and it keeps generation offline and
+deterministic. It also sidesteps the real edge cases in a live library: entries
+like `M42_mosaic`, `NGC 7000_mosaic`, `Unknown`, `Markarian's Chain`, and
+`Kochab` would otherwise fail catalog lookup or hit the online Sesame resolver.
+`constellation` is the one field we don't store; it's optional.
+
+**Settled with Devon** (issue #98, 2026-07-30). The API shape was approved, we
+wrote the PR, and it merged upstream in 0.11.0. PyPI is a goal on his side but
+gated on account recovery, so M110 installs from git until then. Verified on real
+data: this item's 12a/12b are now purely M110-side work with no upstream blocker.
+
+### 13 — Image annotation (plate-solved object overlays)
+
+Plate-solve a stack and label **everything actually in the frame** — the target,
+its companions, the IC/NGC neighbours nobody mentions, named bright stars with
+magnitude and distance, keyed field stars. The second half of
+[uranometria](https://github.com/devonjones/uranometria) (issue **#98**),
+promoted out of [item 12](#12--sky-map-uranometria-integration) because it shares
+only the library: different trigger, different surface, different external
+dependency.
+
+**Why it's worth its own slot.** Most tools show you the headline object and stop
+— a typical M110 frame contains several catalogued objects that never get named
+anywhere in the app. Annotation is the feature that turns "here's my picture of
+M51" into "…and here are NGC 5195, the IC companions, and the mag-9 star at
+lower left, at 480 pc." It also feeds the journal and anything published.
+
+**Library API** (host-integration path, already documented upstream):
+
+```python
+model = build_model(stack, allow_online=True, solve_kwargs={"ra_hours":…, "dec":…})
+write_model(model, sidecar)                 # cache: solve once, re-render forever
+```
+
+Plus `render_png` / `render_html` for export. `AstapError` on solver failure;
+per-object lookup misses degrade to warning strings.
+
+#### What this actually costs us
+
+- **In-app dependency delta: zero.** `build_model` needs astropy + astroquery,
+  and packaged builds **already bundle both** (issue #64). Pillow ships too.
+  Only `render_png` wants **matplotlib**, which the specs deliberately
+  `exclude` — so we don't use his PNG renderer in-app.
+- **The model JSON is the integration seam** — the same lesson as item 12's SVG.
+  It carries per-object **pixel** coordinates, so M110 paints the overlay itself
+  with `QPainter` in `image_viewer.py`, themed and zoom-aware, reusing the pan/zoom
+  we already have. No Chromium, no matplotlib, no second rendering stack.
+- **The real dependency is external: [ASTAP](https://www.hnsky.org/astap.htm)**
+  plus a local star database (D20 for ~1° fields). That's a Siril-shaped
+  prepare-and-guide problem, and `launch.py` already solves its shape: extend the
+  `_TOOLS` registry + `find_app` (user override → OS-standard locations → `None`),
+  add ASTAP binary + star-DB path fields to Preferences → *Processing tools*
+  beside Siril's, and hide the action with an install hint when it's missing —
+  the same degradation as Siril's `LaunchError` → reveal-the-folder fallback.
+- **Solving is slow** → `QThread` worker behind a modal progress dialog with a
+  working Cancel, per the house rule.
+
+#### Gotchas to design around
+
+- **Pixel frame.** The model's `solved.pixel_frame` is `"fits0"` (FITS row order)
+  for FITS sources and `"raster0"` (top-down) for JPEG/PNG. Our overlay must flip
+  y only when the model and the displayed raster disagree — `build_images._open_image`
+  normalises both kinds into one QPixmap, so the flip decision belongs at the
+  overlay layer, not the decode layer. Getting this wrong mirrors the annotations
+  vertically, which looks *almost* right — the worst kind of bug.
+- **Solve the star-rich stack, not a starless render.** Upstream says so
+  explicitly, and we can enforce it for free: `hints.is_intermediate_name`
+  already recognises `starless` / `starmask`, so those tiles simply don't offer
+  the action.
+- **Online vs offline.** Field-star identity comes from CDS (VizieR Gaia DR3
+  for magnitudes/distances, Tycho-2 designations, SIMBAD named stars).
+  `allow_online=False` degrades to bundled-catalog DSOs only — wire it to the
+  same expectation as `catalog.enrich_online`: offline is a first-class mode,
+  not an error.
+- **Sidecar placement.** `<image>.annotations.json` beside the source (e.g.
+  `Images/<target>/stacks/<stack>.fit.annotations.json`) is upstream's convention
+  *and* what the sky-map lightbox auto-discovers. Additive, so no
+  `.store_version` bump — but it's a new file in the content tree and needs a
+  **[`DATA_MODEL.md`](DATA_MODEL.md)** entry.
+
+#### Phasing
+
+- **13a — Solve + cache** *(engine, Qt-free)*. `m110/annotate.py`: ASTAP
+  discovery, `build_model` with a pointing hint from the object's known RA/Dec
+  (upstream notes it speeds the solve), sidecar write, staleness check. Feed the
+  hint from `catalog.load_coords` — we always have it, so we never solve blind.
+- **13b — Native overlay** *(the payoff)*. An **Annotations** toggle in
+  `ImageViewer`: markers + leader labels painted with `QPainter`, a searchable
+  side panel of identified objects with SIMBAD / Wikipedia links, colour-coded by
+  class. Right-click a gallery tile → **Annotate…**.
+- **13c — Export.** Annotated PNG / standalone HTML via upstream's renderers, for
+  sharing. Runs out-of-process or gated on an optional extra, so matplotlib stays
+  out of the bundle.
+- **13d — Publish.** Ship the sidecar with the site so the published gallery —
+  and [item 12e](#12--sky-map-uranometria-integration)'s sky-map lightbox — shows
+  the overlay. This is where 12 and 13 compound: a chart of your collection where
+  every photo is fully labelled.
+
+**Strategic bonus: it unlocks [item 9](#9--full-import-triage-toolkit-deferred).**
+That item's deferred triage toolkit lists plate-solving as the way to recover
+headerless frames, and the holding area's `ingest.identify_holding` currently
+guesses identity from the `OBJECT` header or nearest-catalog-by-RA/Dec. A real
+solver behind one shared seam turns that guess into an answer. Build the ASTAP
+integration once; both items draw on it.
+
 ### 7 — Processing & curation UX (remainder)
 
 (BUGS **#18/#19**; the #17 configurable finished/intermediate hinting + the
@@ -300,6 +591,7 @@ when extending an existing subsystem).
 | Native SwiftUI Mac wrapper on the same engine | deferred option |
 | Port `build_site`'s Jinja static-site rendering | **not** ported as the app's UI (the app *is* the UI; only the image pipeline was ported). Its capability **returns, generalized, as the Publishing phase** (item 8) — optional, selective, multi-target export |
 | Cross-platform packaging (notarize / Homebrew cask / Windows / Linux) | future |
+| Rendering HTML in-app (QtWebEngine) | ❌ **no** — the packaging specs exclude `QtWebEngineCore`/`QtWebEngineWidgets` on purpose; a Chromium adds ~150–300 MB per bundle plus a separately-signed helper for notarization. In-app visuals render natively (`QtSvg` / `QPainter`); HTML output belongs in the browser or on a published site (item 12) |
 
 ---
 
