@@ -129,20 +129,62 @@ def build(root: Path, out_dir: Path):
     else:
         print("  (no hero-bearing object found — skipping shot-detail.jpg)")
 
-    # 3) Overview — the dashboard
+    # 3) Sky map — the Library's Map view (ROADMAP 12a/12b).
+    # Filtered to a goal on purpose: that's the mode where the goal's uncaptured
+    # members join the chart in grey, so the shot shows progress *and* the gaps,
+    # which is the whole point of the view. Falls back to the unfiltered sky if
+    # no goal catalog is on offer (a fresh store).
+    win.nav.setCurrentRow(win._catalog_index)
+    cat = win.catalog
+    try:
+        goal_idx = next((i for i in range(1, cat._catalog_combo.count())
+                         if cat._catalog_combo.itemData(i)), None)
+        if goal_idx is not None:
+            cat._catalog_combo.setCurrentIndex(goal_idx)
+            print(f"  map filtered to {cat._catalog_combo.currentText()!r}")
+        else:
+            print("  (no goal catalog on offer — rendering the unfiltered sky)")
+        cat._set_view_mode("map")
+        # Only now collapse the detail pane: _set_view_mode re-selects the
+        # previous object on the way out, which shows it again. The chart is
+        # aspect-locked, so width is what makes it legible in the shot.
+        cat.detail.hide()
+        cat.splitter.setSizes([W, 0])
+        _pump_until(app, lambda: not cat._map_dirty, 15)
+        _shot(win, app, out_dir / "shot-skymap.jpg", settle=2.0)
+    except Exception as e:
+        print(f"  (sky map not rendered: {e})")
+    finally:                                    # leave the page as we found it
+        try:
+            cat._catalog_combo.setCurrentIndex(0)
+            cat._set_view_mode("grid")
+            cat.detail.show()
+        except Exception:
+            pass
+
+    # 4) Overview — the dashboard
     win.nav.setCurrentRow(win._overview_index)
     _shot(win, app, out_dir / "shot-summary.jpg", settle=2.5)
 
-    # 4) Planning — the priority ranking, plus a night plan + timeline if it computes
+    # 5) Planning — the priority ranking, plus a night plan + timeline if it computes
     win.nav.setCurrentRow(win._planning_index)
     _pump(app, 1.0)
     try:
         win.planning._render_ranking()          # from the cached prioritized.json (no write)
     except Exception as e:
         print(f"  (planning ranking not rendered: {e})")
-    try:                                         # optional: tonight's plan drives the timeline
+    # The night plan + altitude timeline are what the site actually promises, and
+    # they live in a section that starts collapsed — so open it, and fold the
+    # ranking table (which otherwise fills the viewport) down to its header.
+    try:
         win.planning._on_generate()
-        _pump_until(app, lambda: win.planning._plan_table.rowCount() > 0, 30)
+        got = _pump_until(app, lambda: win.planning._plan_table.rowCount() > 0, 60)
+        if got:
+            win.planning._priority_sec._btn.setChecked(False)
+            win.planning._plan_sec._btn.setChecked(True)
+            _pump(app, 0.5)
+        else:
+            print("  (night plan didn't compute in time — showing the ranking instead)")
     except Exception as e:
         print(f"  (planning night-plan skipped: {e})")
     _shot(win, app, out_dir / "shot-planning.jpg", settle=2.0)
