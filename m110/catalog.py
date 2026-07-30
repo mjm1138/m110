@@ -854,13 +854,18 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
                 new[m] = entry
             continue
         # Off-catalog target: no catalog object to credit, so the target doubles
-        # as its own object.
-        slug = scan_sessions.slugify(folder)
+        # as its own object — under the *undecorated* name. "Foo_mosaic" is a
+        # framing of Foo, so the object is Foo; naming it after the framing would
+        # split it from a later plain capture into two objects, which is exactly
+        # the duplication `prune_superseded_stubs` exists to clean up. It also
+        # gives Simbad a name it might actually resolve.
+        base = scan_sessions.undecorated_name(folder)
+        slug = scan_sessions.slugify(base)
         if not slug or slug in cat or slug in new:
             continue
-        entry = {"id": folder, "name": "", "type": "unknown"}
+        entry = {"id": base, "name": "", "type": "unknown"}
         if resolve_coords:
-            rd = _simbad_coords(folder)
+            rd = _simbad_coords(base)
             if rd:
                 entry["ra_deg"], entry["dec_deg"] = rd
         new[slug] = entry

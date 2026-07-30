@@ -123,6 +123,25 @@ def slugify(name: str) -> str:
 _DECORATIONS = {"mosaic", "panel", "panels", "pane"}
 
 
+def undecorated_name(folder_name: str) -> str:
+    """A capture folder's name with any trailing framing decoration removed
+    ("NGC 6888_mosaic" → "NGC 6888").
+
+    The *object* is what was shot; the decoration says how. Used when promoting
+    an off-catalog target so a later plain capture of the same thing lands on
+    the same object instead of creating a second one.
+    """
+    name = folder_name.strip()
+    while True:
+        for sep in ("_", "-", " "):
+            head, found, tail = name.rpartition(sep)
+            if found and tail.lower() in _DECORATIONS and head.strip():
+                name = head.strip()
+                break
+        else:
+            return name
+
+
 def is_decorated_target(folder_name: str) -> bool:
     """Whether a capture folder names a *framing* of an object rather than the
     object plainly — "M42_mosaic" vs "M42".

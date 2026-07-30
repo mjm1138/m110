@@ -60,6 +60,10 @@ changes a **user** would notice, per release.
   objects. **Some integration times will drop after the next refresh**; nothing on disk
   changes, and the hours are still shown, just not added together.
 
+- **A mosaic of something off-catalog is filed under the object, not the framing.** Importing
+  `Foo_mosaic` for a target M110 doesn't recognise created an object called "Foo_mosaic" — so a
+  later plain capture of Foo became a *second* object, splitting one target's frames in two.
+  The object is now "Foo", however you framed it.
 - **Markarian's Chain can be charted and planned.** As a chain of galaxies rather than a
   single object it has no catalogued position, so it had none — which kept it off the sky
   map and out of session planning. It now carries a hand-set centre (the midpoint of the

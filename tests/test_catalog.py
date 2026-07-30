@@ -345,3 +345,31 @@ def test_markarians_chain_has_a_plottable_centre():
     sep = math.hypot(e["ra_deg"] - m84["ra_deg"], e["dec_deg"] - m84["dec_deg"])
     assert 0.5 < sep < 1.0, "a 1.5°-long chain's centre should be ~0.75° from its end"
     assert "markarians-chain" in catalog.load_coords()
+
+
+def test_undecorated_name_strips_the_framing():
+    from m110 import scan_sessions as s
+    assert s.undecorated_name("NGC 6888_mosaic") == "NGC 6888"
+    assert s.undecorated_name("M31 panel") == "M31"
+    assert s.undecorated_name("Foo-mosaic-panel") == "Foo"
+    assert s.undecorated_name("M42") == "M42"          # nothing to strip
+    assert s.undecorated_name("mosaic") == "mosaic"    # never strips to nothing
+
+
+def test_an_off_catalog_mosaic_is_promoted_under_the_plain_name(tmp_path, monkeypatch):
+    """A mosaic of something the bundled reference doesn't know still names the
+    *object*, not the framing — otherwise a later plain capture of the same
+    thing would land on a second object and recreate the duplication."""
+    from tests._helpers import seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    (config.IMAGES_DIR / "Barnard 150_mosaic" / "lights").mkdir(parents=True)
+    added = catalog.add_captured_objects(resolve_coords=False)
+    assert added == ["barnard-150"]
+    lib = catalog.load_library()
+    assert lib["barnard-150"]["id"] == "Barnard 150"
+    assert "barnard-150-mosaic" not in lib
+
+    # …and a later plain capture of it lands on the same object, not a new one.
+    (config.IMAGES_DIR / "Barnard 150" / "lights").mkdir(parents=True)
+    assert catalog.add_captured_objects(resolve_coords=False) == []
+    assert len(catalog.load_library()) == len(lib)
