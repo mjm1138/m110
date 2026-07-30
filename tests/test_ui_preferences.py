@@ -111,8 +111,8 @@ def test_assistant_section_reports_not_connected(tmp_path, monkeypatch, qapp):
                         lambda: tmp_path / "claude_desktop_config.json")
     d = _prefs()
     try:
-        assert "Not connected" in d._assistant_status.text()
-        assert d._connect_btn.text().startswith("Connect")
+        assert "isn't set up yet" in d._assistant_status.text()
+        assert d._connect_btn.text().startswith("Set up")
         assert not d._disconnect_btn.isEnabled()
     finally:
         d.deleteLater()
@@ -126,7 +126,7 @@ def test_assistant_section_reports_connected(tmp_path, monkeypatch, qapp):
     cc.write_desktop_config(cfg)
     d = _prefs()
     try:
-        assert "Connected" in d._assistant_status.text()
+        assert "is set up" in d._assistant_status.text()
         assert d._connect_btn.text().startswith("Update")
         assert d._disconnect_btn.isEnabled()
     finally:
@@ -165,7 +165,7 @@ def test_connect_writes_after_confirmation(tmp_path, monkeypatch, qapp):
         d._connect_desktop()
         entry = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]["m110"]
         assert entry["env"]["M110_DATA_ROOT"] == str(config.DATA_ROOT)
-        assert "Connected" in d._assistant_status.text()   # status refreshed
+        assert "is set up" in d._assistant_status.text()   # status refreshed
     finally:
         d.deleteLater()
 
@@ -191,16 +191,22 @@ def test_connect_surfaces_a_broken_config_instead_of_clobbering_it(
         d.deleteLater()
 
 
-def test_copy_cli_command_puts_it_on_the_clipboard(tmp_path, monkeypatch, qapp):
-    from PySide6.QtWidgets import QApplication, QMessageBox
+def test_connection_details_copy_puts_the_config_on_the_clipboard(
+        tmp_path, monkeypatch, qapp):
+    """Copying moved out of a Claude-Code-only button into the client-neutral
+    details dialog, where each shape has its own Copy."""
+    from PySide6.QtWidgets import QApplication, QTabWidget
+    from m110.ui.mcp_details_dialog import ConnectionDetailsDialog
     seed_root(tmp_path, monkeypatch)
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
-    d = _prefs()
+    dlg = ConnectionDetailsDialog()
     try:
-        d._copy_cli_command()
+        tabs = dlg.findChildren(QTabWidget)[0]
+        tabs.widget(0)._on_copy()                      # JSON config
+        assert '"mcpServers"' in QApplication.clipboard().text()
+        tabs.widget(2)._on_copy()                      # Claude Code
         assert "claude mcp add m110" in QApplication.clipboard().text()
     finally:
-        d.deleteLater()
+        dlg.deleteLater()
 
 
 def test_direct_save_toggle_persists(tmp_path, monkeypatch, qapp):
@@ -214,3 +220,88 @@ def test_direct_save_toggle_persists(tmp_path, monkeypatch, qapp):
         assert direct_save_enabled() is True
     finally:
         d.deleteLater()
+
+
+# ── the assistant section is client-neutral ──────────────────────────────────
+
+def test_no_explanatory_text_is_cut_off(tmp_path, monkeypatch, qapp):
+    """Preferences grew a group at a time until it outgrew a laptop screen.
+    Two failure modes, both of which showed up as sliced-off text rather than
+    an obviously-too-small window:
+
+    * vertical — Qt squeezes word-wrapped labels below their heightForWidth;
+    * horizontal — an *unwrapped* label's single-line width becomes the
+      dialog's minimum width, so everything else is clipped at the right edge.
+
+    The scroll area fixes the first; wrapping every explanatory label fixes the
+    second. Both are asserted, because the second is invisible to a
+    heightForWidth check.
+    """
+    from PySide6.QtWidgets import QLabel, QScrollArea
+    seed_root(tmp_path, monkeypatch)
+    d = _prefs()
+    try:
+        d.show()
+        for _ in range(4):
+            qapp.processEvents()
+
+        clipped = [lbl.text() for lbl in d.findChildren(QLabel)
+                   if lbl.text() and lbl.wordWrap() and lbl.width() > 0
+                   and lbl.heightForWidth(lbl.width()) > lbl.height()]
+        assert not clipped, f"text cut off vertically: {clipped}"
+
+        scroll = d.findChildren(QScrollArea)[0]
+        need = scroll.widget().minimumSizeHint().width()
+        assert need <= scroll.viewport().width(), (
+            f"content needs {need}px in a {scroll.viewport().width()}px viewport — "
+            "something isn't wrapping")
+
+        wide = [lbl.text()[:60] for lbl in d.findChildren(QLabel)
+                if lbl.text() and not lbl.wordWrap()
+                and lbl.sizeHint().width() > scroll.viewport().width()]
+        assert not wide, f"unwrapped labels force the dialog wide: {wide}"
+    finally:
+        d.deleteLater()
+
+
+def test_assistant_section_does_not_present_itself_as_claude_only(
+        tmp_path, monkeypatch, qapp):
+    """The server is plain MCP over stdio; the UI shouldn't imply one vendor."""
+    from PySide6.QtWidgets import QLabel
+    seed_root(tmp_path, monkeypatch)
+    d = _prefs()
+    try:
+        text = " ".join(lbl.text() for lbl in d.findChildren(QLabel) if lbl.text())
+        assert "MCP" in text
+        assert "any MCP-compatible client" in text.lower() or \
+               "Works with any MCP" in text
+        # Claude may be named as a convenience, never as the only route.
+        assert d._details_btn.isEnabled()
+    finally:
+        d.deleteLater()
+
+
+def test_connection_details_cover_the_shapes_clients_ask_for(
+        tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QTabWidget
+    from m110.ui.mcp_details_dialog import ConnectionDetailsDialog
+    seed_root(tmp_path, monkeypatch)
+    dlg = ConnectionDetailsDialog()
+    try:
+        tabs = dlg.findChildren(QTabWidget)[0]
+        labels = [tabs.tabText(i) for i in range(tabs.count())]
+        assert labels == ["JSON config", "Command", "Claude Code"]
+    finally:
+        dlg.deleteLater()
+
+
+def test_connection_details_are_client_neutral_and_pin_the_root(tmp_path, monkeypatch):
+    from m110.assistant import client_config as cc
+    seed_root(tmp_path, monkeypatch)
+    d = cc.connection_details()
+    assert d["transport"] == "stdio"
+    assert d["env"]["M110_DATA_ROOT"] == str(config.DATA_ROOT)
+    # The JSON block is the generic mcpServers format, not a vendor's own schema.
+    import json as _json
+    assert list(_json.loads(d["json"])["mcpServers"]) == ["m110"]
+    assert d["command"] and isinstance(d["args"], list)
