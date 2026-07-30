@@ -24,10 +24,12 @@ changes a **user** would notice, per release.
   rather than an empty panel. Objects with no known coordinates — combined capture targets like `M42_mosaic`, or
   anything unidentified — are listed under the chart rather than quietly left off it.
 
-  The charts are drawn by [uranometria](https://github.com/devonjones/uranometria), an
-  open-source star-atlas library written by **Devon Jones**, who proposed the integration
-  and built it to fit. It's an optional component: without it the Map view explains what to
-  install instead of failing.
+  **With thanks to [Devon Jones](https://github.com/devonjones)**, who wrote
+  [Uranometria](https://github.com/devonjones/uranometria) — the open-source star-atlas
+  library that draws these charts — proposed the integration, and shaped the library to fit
+  M110. The charts you see are his work; M110 supplies the objects and paints the markers.
+  Uranometria is credited in **Help → About M110**, and is an optional component: without it
+  the Map view explains what to install rather than failing.
 
 ### Changed
 - **The Library's catalog filter lists the catalogs you've set as goals**, rather than every
