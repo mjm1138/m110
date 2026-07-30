@@ -208,3 +208,28 @@ def test_missing_dependency_raises_deps_missing(tmp_path, monkeypatch):
 
 def _raise_deps():
     raise skymap.SkymapDepsMissing("not installed")
+
+
+def test_a_broken_install_degrades_instead_of_crashing(tmp_path, monkeypatch):
+    """`import uranometria` does real work at module scope (it loads its bundled
+    constellation JSON), so an *installed* copy can still fail to import. The
+    0.3.0b1 frozen build carried the modules but not the data, and the
+    FileNotFoundError propagated out of the Library's map render while the main
+    window was being built — the app died at launch. Anything the import raises
+    must come back as SkymapDepsMissing, which every caller already handles."""
+    root = seed_root(tmp_path, monkeypatch)
+    _library(root)
+    import builtins
+    real_import = builtins.__import__
+
+    def broken(name, *args, **kwargs):
+        if name == "uranometria":
+            raise FileNotFoundError(2, "No such file or directory",
+                                    "uranometria/data/constellations.json")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", broken)
+    assert skymap.available() is False
+    with pytest.raises(skymap.SkymapDepsMissing) as err:
+        skymap.render()
+    assert "constellations.json" in str(err.value)   # the cause survives into the UI

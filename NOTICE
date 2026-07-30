@@ -14,3 +14,20 @@ name, coordinates, and population) is bundled at
 m110/seed/geonames/cities1000.tsv.gz and used to estimate the local light-pollution
 "glow" floor for session planning. GeoNames data is provided "as is" without
 warranty; see the GeoNames license for details.
+
+---
+
+Packaged builds of this product bundle uranometria
+(https://github.com/devonjones/uranometria), Copyright Devon Jones, licensed
+under the Apache License, Version 2.0. It draws the app's sky-map charts, and
+ships the reference data those charts are made of:
+
+  - OpenNGC (https://github.com/mattiaverga/OpenNGC), licensed CC-BY-SA-4.0
+    (https://creativecommons.org/licenses/by-sa/4.0/): NGC, IC, Messier and
+    Caldwell records.
+  - Sharpless (1959) Sh2 positions, via VizieR catalogue VII/20
+    (https://cdsarc.cds.unistra.fr/viz-bin/cat/VII/20).
+  - d3-celestial (https://github.com/ofrohn/d3-celestial), licensed BSD-3-Clause:
+    stars to magnitude 6, constellation lines and names.
+  - The Marcellus and IBM Plex Mono fonts, licensed under the SIL Open Font
+    License, embedded as data URIs.

@@ -562,6 +562,26 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## Packaging & release
 
+- [x] **0.3.0-beta.1 crashed on launch — uranometria's package data wasn't bundled**
+  (done — `fix/uranometria-bundle`). The frozen app died with
+  `FileNotFoundError: …/Frameworks/uranometria/data/constellations.json` before the window
+  appeared: PyInstaller followed `m110.skymap`'s lazy `import uranometria` and froze the
+  *modules*, but package **data** is collected for nobody by default — and
+  `uranometria.catalog` loads its constellation JSON **at import**. Fatal rather than
+  cosmetic because the Library builds its Map view during `CatalogPage.__init__`, so any
+  user whose saved `library_view_mode` was `map` (i.e. anyone who'd tried it) hit it at
+  launch. ROADMAP item 12 had flagged the `collect_data_files("uranometria")` requirement;
+  it never made it into the three specs. Fixed there (data only — `uranometria.annotate`
+  imports the excluded matplotlib), plus two follow-ons: `skymap._uranometria` now converts
+  **any** import-time failure into `SkymapDepsMissing` (the degrade path every caller
+  already handles) so a broken chart library can never again take the app down, and
+  `release.yml` installs uranometria for the Linux + Windows jobs — 0.3.0-beta.1 had it in
+  the macOS build env only, so those two installers shipped with no Map view at all.
+  Verified against a real PyInstaller build, not a source run: data present under
+  `Contents/Resources/uranometria/data`, and the rebuilt `.app` launches with
+  `library_view_mode = "map"`. Guarded by `tests/test_packaging_deps.py`
+  (spec + workflow) and `tests/test_skymap.py` (the degrade path).
+
 - [ ] **`hdiutil create` is deprecated (macOS 27).** `packaging/macos/make_dmg.sh:26`
   builds the DMG with `hdiutil create -volname … -srcfolder …`; macOS 27 warns
   *"'hdiutil create -volname -format …' is deprecated. Please use 'diskutil image

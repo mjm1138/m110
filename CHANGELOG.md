@@ -10,6 +10,18 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **0.3.0-beta.1 wouldn't start.** The packaged app crashed on launch with a
+  `FileNotFoundError` about `constellations.json`: the installer carried the sky-map
+  chart library's code but not the star and constellation data it loads, and because
+  the Library draws the map while the window is being built, that failure took the
+  whole app down before it appeared. The data is now bundled. Two follow-ons so this
+  can't be fatal again: the sky map now reports *any* problem loading its chart
+  library as "the map is unavailable" — the same graceful path as not having it
+  installed — instead of letting the error escape, and the Linux and Windows
+  installers now ship the chart library too (0.3.0-beta.1 had it on macOS only, so
+  the Map view was simply absent there).
+
 ## [0.3.0-beta.1] - 2026-07-30
 
 ### Added

@@ -3,6 +3,7 @@
 #
 # Prereqs: a Python env with the app + build deps installed:
 #     pip install -e ".[build]"      # pulls pyinstaller
+#     pip install "uranometria @ git+https://github.com/devonjones/uranometria"   # sky map
 # and the icon built:
 #     ./packaging/macos/make_icns.sh
 set -euo pipefail

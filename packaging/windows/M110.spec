@@ -43,6 +43,19 @@ datas += copy_metadata("astropy")               # astroquery's minversion('astro
                                                 # KeyError('astropy') in the frozen app (#74). We bundle
                                                 # astropy's modules (hook-astropy) but not its metadata.
 
+# Sky map (ROADMAP item 12) — uranometria's package DATA. PyInstaller finds the
+# module itself (m110.skymap imports it lazily) but not `data/*.json|csv|tsv` or the
+# base64 font assets, which `uranometria.catalog` reads AT IMPORT — so a bundle
+# without them dies with FileNotFoundError on constellations.json the first time the
+# Library renders the Map view, i.e. at launch (0.3.0b1). Data only, no
+# collect_submodules: `uranometria.annotate` imports matplotlib, which we exclude.
+# Not a declared dependency (it isn't on PyPI — see pyproject), so a build env
+# without it is legal: warn and skip, and the app degrades to "map unavailable".
+try:
+    datas += collect_data_files("uranometria")
+except Exception as _exc:                       # pragma: no cover - build-time
+    print(f"WARNING: uranometria not collected ({_exc}) — this build has no sky map")
+
 block_cipher = None
 
 a = Analysis(

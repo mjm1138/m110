@@ -24,6 +24,12 @@ def _seal_live_store(tmp_path_factory):
     os.environ["M110_DATA_ROOT"] = str(base)        # any _resolve_data_root → throwaway
     config._apply(base)                             # all DATA_ROOT/* path globals → base
     config.SETTINGS_FILE = base / "settings.json"   # never touch ~/.m110/settings.json
+    # …and not the live ~/.m110 either: `logsetup` derives the log path from
+    # APP_CONFIG_DIR, so without this a test reads (or a leaked logger appends to)
+    # the real user's log. It bit as a spurious failure — the crash report embeds
+    # the log tail, so `test_build_report...`'s "no traceback in a plain report"
+    # broke the moment the developer's own app happened to crash.
+    config.APP_CONFIG_DIR = base / "app_config"
     config.ensure_data_root(base)
     yield base
     os.environ.pop("M110_DATA_ROOT", None)
@@ -37,6 +43,7 @@ def _reset_to_seal(_seal_live_store):
     from m110 import config
     config._apply(_seal_live_store)
     config.SETTINGS_FILE = _seal_live_store / "settings.json"
+    config.APP_CONFIG_DIR = _seal_live_store / "app_config"
     yield
 
 

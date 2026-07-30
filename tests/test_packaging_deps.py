@@ -47,6 +47,32 @@ def test_hook_astropy_bundles_unit_parser_tables():
         "include_py_files=True) so the PLY unit-parser tables ship as files (#75)")
 
 
+def test_specs_collect_the_sky_map_data():
+    """uranometria reads its bundled catalogs (`data/constellations.json` and
+    friends) AT IMPORT, and PyInstaller collects package *data* for nobody by
+    default. 0.3.0b1 shipped the modules without the data, so `import uranometria`
+    raised FileNotFoundError — during the Library's map render, i.e. while the main
+    window was being built, which killed the app at launch."""
+    specs = Path(__file__).resolve().parents[1] / "packaging"
+    for platform in ("macos", "linux", "windows"):
+        text = (specs / platform / "M110.spec").read_text(encoding="utf-8")
+        assert 'collect_data_files("uranometria")' in text, (
+            f"{platform}/M110.spec must collect uranometria's package data")
+        # Data only: `uranometria.annotate` imports matplotlib, which every spec
+        # excludes — collecting its submodules would drag that back in.
+        assert 'collect_submodules("uranometria")' not in text
+
+
+def test_release_workflow_installs_the_sky_map_dependency():
+    """uranometria isn't on PyPI, so it can't ride in the `build` extra — and a
+    frozen app has no pip, so if the build env lacks it packaged users get no Map
+    view at all. Both packaged jobs must install it explicitly."""
+    workflow = (Path(__file__).resolve().parents[1]
+                / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert workflow.count("uranometria @ git+") >= 2, (
+        "both the Linux and Windows release jobs must install uranometria")
+
+
 # ── the bundled stdio MCP server (ROADMAP item 4) ────────────────────────────
 
 SPEC_DIR = Path(__file__).resolve().parents[1] / "packaging"
