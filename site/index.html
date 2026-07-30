@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>M110 — Complete the catalog</title>
-<meta name="description" content="M110 is a desktop app for managing a smart-telescope deep-sky imaging collection — a photo library for your telescope, with capture tracking, Seestar & DwarfLab ingest, Siril processing-prep, and session planning.">
+<meta name="description" content="M110 is a desktop app for managing a smart-telescope deep-sky imaging collection — a photo library for your telescope, with capture tracking, Seestar & DwarfLab ingest, Siril processing-prep, session planning, and a sky map of everything you've shot.">
 <link rel="icon" type="image/png" href="assets/app-icon.png">
 
 <!-- Open Graph / social preview (Discord, Reddit link unfurls) -->
@@ -128,7 +128,7 @@
   <p class="pitch"><strong>A photo library for your smart telescope.</strong> A desktop
   app that turns a growing pile of Seestar or DwarfLab captures into an organized deep-sky
   library — catalog, capture tracking, ingest, Siril processing-prep, session planning,
-  and safe backups, with a north-star goal to chase.</p>
+  a sky map of everything you've shot, and safe backups, with a north-star goal to chase.</p>
   <p>
     <a class="btn" href="#download">Download for macOS · Linux · Windows</a>
     <a class="btn secondary" href="https://github.com/mjm1138/m110/blob/main/docs/README.md">Read the user guide</a>
@@ -151,6 +151,12 @@
       <h3>A real library</h3>
       <p>Every object you've shot, organized by catalog (Messier, Caldwell, and more)
       with status, integration time, and a per-object journal.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">🗺️</div>
+      <h3>Your sky, mapped</h3>
+      <p>Plot your whole collection on a star chart. Filter to a goal and the rest of
+      that list joins the chart in grey — so you can see your progress, and the gaps.</p>
     </div>
     <div class="feature">
       <div class="ico">📥</div>
@@ -184,6 +190,13 @@
       schedule, an altitude timeline, and a printable field guide for the session.</p>
     </div>
     <div class="feature">
+      <div class="ico">💬</div>
+      <h3>Ask your library</h3>
+      <p>Connect your own AI assistant and ask it things like "what should I shoot
+      tonight?" or "critique my M51" — answered from <em>your</em> site, horizon, and
+      capture history. It can suggest; it can't change your library.</p>
+    </div>
+    <div class="feature">
       <div class="ico">💾</div>
       <h3>Safe by design</h3>
       <p>Local-first, open source, and careful with your data — with built-in,
@@ -204,6 +217,11 @@
       <img src="assets/shot-detail.jpg" width="1240" height="780" loading="lazy"
            alt="M110 object detail — the M81 and M82 galaxies as a hero image with capture stats and notes">
       <figcaption>Every object, with its story</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="assets/shot-skymap.jpg" width="1240" height="780" loading="lazy"
+           alt="M110's sky map — the Messier catalog plotted on a star chart, with captured objects in green and amber and the rest of the goal in grey">
+      <figcaption>See your progress written on the sky</figcaption>
     </figure>
     <figure class="shot">
       <img src="assets/shot-summary.jpg" width="1240" height="780" loading="lazy"
@@ -265,6 +283,8 @@
     <a href="https://github.com/mjm1138/m110">Open source on GitHub</a> ·
     Apache-2.0 · Made for smart-telescope astrophotographers.
   </p>
+  <p class="disclaimer">Star charts drawn with
+    <a href="https://github.com/devonjones/uranometria">Uranometria</a> by Devon Jones.</p>
   <p class="disclaimer">
     "Seestar" is a trademark of ZWO; "Dwarf" is a trademark of DwarfLab. M110 is an
     independent, unaffiliated project and is not endorsed by ZWO or DwarfLab. It works
