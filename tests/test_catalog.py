@@ -328,3 +328,17 @@ def test_prune_keeps_an_object_you_simply_have_not_shot(tmp_path, monkeypatch):
                                "ra_deg": "250.42", "dec_deg": "36.46"}})
     assert catalog.prune_superseded_stubs() == []
     assert "m13" in catalog.load_library()
+
+
+def test_markarians_chain_has_a_plottable_centre():
+    """An asterism has no catalogued position, so its centre is hand-set — but it
+    must exist, or the object can't be charted or planned. Sanity-check it sits
+    in the middle of the chain rather than on one end."""
+    import math
+    ref = catalog.load_reference()
+    e = ref["markarians-chain"]
+    assert e["ra_deg"] is not None and e["dec_deg"] is not None
+    m84 = ref["m84"]
+    sep = math.hypot(e["ra_deg"] - m84["ra_deg"], e["dec_deg"] - m84["dec_deg"])
+    assert 0.5 < sep < 1.0, "a 1.5°-long chain's centre should be ~0.75° from its end"
+    assert "markarians-chain" in catalog.load_coords()
