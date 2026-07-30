@@ -339,8 +339,20 @@ dropping the JS:
     (`M42_mosaic`, `Unknown`) are skipped and reported, never fatal. Marker color
     reuses `build_derived`'s own `deep_stack`/`initial` verdict so the map, the
     status chips and the prioritizer cannot disagree. Optional import throughout
-    (`SkymapDepsMissing`). **Remaining: the Map view itself** — the fourth
-    segment button, `QGraphicsView`/`QGraphicsSvgItem`, marker hit-testing.
+    (`SkymapDepsMissing`).
+  - ✅ **Map view shipped** — a fourth button in the Library's existing
+    List·Grid·Feed segment (`ui/sky_map.py`), so it inherits search, the catalog
+    filter and captured-only for free and a marker click is just `select_object`
+    driving the same `DetailPane`. Painted with `QSvgRenderer` on a plain
+    `QWidget` rather than a `QGraphicsView`: the markers are baked into the
+    document, so a scene graph bought nothing, and one scale + centre pair maps
+    document↔widget coordinates for both painting and hit-testing. Wheel-zoom
+    anchors on the cursor, drag pans past a 3 px threshold (so a wobbly click
+    still selects), double-click refits. Selection and hover rings are painted
+    over the chart rather than baked in, since they change far more often than
+    the document. Rendering is deferred while the map is hidden (`_map_dirty`)
+    — a render is ~0.1 s, cheap enough to do synchronously but not on every
+    keystroke of a search you can't see.
 - **12b — Goal progress as a picture.** Marker style by capture depth —
   uncaptured goal member (dashed outline) / captured (ring) / deep (filled).
   Sources already exist: `goals.goal_members`, `derived` totals,

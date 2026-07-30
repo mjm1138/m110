@@ -10,6 +10,22 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **A sky map in the Library.** A fourth view — List · Grid · Feed · **Map** — plots your
+  collection on a star chart, so you can see where everything you've shot actually sits and
+  which parts of the sky are still empty. Markers use the same colors as the status chips
+  elsewhere (green for a deep stack, amber for an initial capture), so a season's work reads
+  at a glance. Click an object to open it; scroll to zoom, drag to pan, double-click to
+  reset. Search and the catalog filter narrow the map exactly as they narrow the list, and a
+  northern/southern toggle appears only if you've shot something far enough south to need
+  one. Objects with no known coordinates — combined capture targets like `M42_mosaic`, or
+  anything unidentified — are listed under the chart rather than quietly left off it.
+
+  The charts are drawn by [uranometria](https://github.com/devonjones/uranometria), an
+  open-source star-atlas library written by **Devon Jones**, who proposed the integration
+  and built it to fit. It's an optional component: without it the Map view explains what to
+  install instead of failing.
+
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements
   written against citable sources. They were never actually shown anywhere in the app —

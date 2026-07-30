@@ -26,7 +26,7 @@ def _library(root, **extra):
 def test_build_config_carries_coords_labels_and_colors(tmp_path, monkeypatch):
     root = seed_root(tmp_path, monkeypatch)
     _library(root)
-    config, skipped = skymap.build_config()
+    config, charted, skipped = skymap.build_config()
     assert skipped == []
     by_label = {o["label"]: o for o in config["objects"]}
     assert set(by_label) == {"M31", "M42"}
@@ -43,7 +43,7 @@ def test_build_config_skips_objects_without_coordinates(tmp_path, monkeypatch):
     # A real Library holds folder-derived entries with no position to plot.
     root = seed_root(tmp_path, monkeypatch)
     _library(root, unknown={"id": "Unknown", "type": "unknown"})
-    config, skipped = skymap.build_config()
+    config, charted, skipped = skymap.build_config()
     assert skipped == ["unknown"]
     assert len(config["objects"]) == 2  # the chartable two, not a failure
 
@@ -51,10 +51,10 @@ def test_build_config_skips_objects_without_coordinates(tmp_path, monkeypatch):
 def test_build_config_honors_the_requested_slugs(tmp_path, monkeypatch):
     root = seed_root(tmp_path, monkeypatch)
     _library(root)
-    config, _ = skymap.build_config(["m31"])
+    config, _charted, _skipped = skymap.build_config(["m31"])
     assert [o["label"] for o in config["objects"]] == ["M31"]
     # An unknown slug is simply not charted; it is not an error.
-    config, skipped = skymap.build_config(["m31", "nope"])
+    config, charted, skipped = skymap.build_config(["m31", "nope"])
     assert [o["label"] for o in config["objects"]] == ["M31"]
     assert skipped == []
 
@@ -71,7 +71,7 @@ def test_status_and_color_follow_the_derived_verdict(tmp_path, monkeypatch):
     assert skymap.object_status(shot) == skymap.STATUS_INITIAL
     assert skymap.object_status(unshot) == skymap.STATUS_UNCAPTURED
 
-    config, _ = skymap.build_config([shot, unshot])
+    config, _charted, _skipped = skymap.build_config([shot, unshot])
     colors = [o["color"] for o in config["objects"]]
     assert colors == [
         skymap.DEFAULT_COLORS[skymap.STATUS_INITIAL],
@@ -83,7 +83,7 @@ def test_status_colors_are_overridable(tmp_path, monkeypatch):
     # The UI passes live theme tokens so the chart follows light/dark.
     root = seed_root(tmp_path, monkeypatch)
     _library(root)
-    config, _ = skymap.build_config(colors={skymap.STATUS_UNCAPTURED: "#123456"})
+    config, _charted, _skipped = skymap.build_config(colors={skymap.STATUS_UNCAPTURED: "#123456"})
     assert {o["color"] for o in config["objects"]} == {"#123456"}
 
 
@@ -91,7 +91,7 @@ def test_label_drops_the_capture_target_decoration(tmp_path, monkeypatch):
     root = seed_root(tmp_path, monkeypatch)
     add_library(root, {"m42_mosaic": {"id": "M42_mosaic", "type": "emission",
                                       "ra_deg": "83.8", "dec_deg": "-5.4"}})
-    config, _ = skymap.build_config()
+    config, _charted, _skipped = skymap.build_config()
     assert [o["label"] for o in config["objects"]] == ["M42"]
 
 
@@ -102,11 +102,11 @@ def test_hero_is_offered_for_the_host_to_draw(tmp_path, monkeypatch):
     _library(root)
     cfg.HERO_DIR.mkdir(parents=True, exist_ok=True)
     (cfg.HERO_DIR / "m31.jpg").write_bytes(b"\xff\xd8fake")
-    config, _ = skymap.build_config()
+    config, _charted, _skipped = skymap.build_config()
     by_label = {o["label"]: o for o in config["objects"]}
     assert by_label["M31"]["image"].endswith("m31.jpg")
     assert "image" not in by_label["M42"]  # no hero rendered yet
-    config, _ = skymap.build_config(heroes=False)
+    config, _charted, _skipped = skymap.build_config(heroes=False)
     assert all("image" not in o for o in config["objects"])
 
 
@@ -138,12 +138,31 @@ def test_render_adds_a_southern_disc_only_when_needed(tmp_path, monkeypatch):
 
 
 @needs_uranometria
+def test_every_marker_carries_its_slug_across_a_skip(tmp_path, monkeypatch):
+    # The click→object path. A marker's uid indexes the *charted* list, so an
+    # object skipped for missing coordinates shifts every uid after it — a
+    # caller mapping uids onto its own slug list would silently mis-key here.
+    root = seed_root(tmp_path, monkeypatch)
+    _library(root, unknown={"id": "Unknown", "type": "unknown"},
+             ngc104={"id": "NGC 104", "type": "globular",
+                     "ra_deg": "6.02", "dec_deg": "-72.08"})
+    charts, _ = skymap.render(["m31", "unknown", "m42", "ngc104"])
+    placed = {o["slug"]: o for c in charts for o in c["objects"]}
+    assert set(placed) == {"m31", "m42", "ngc104"}
+    assert placed["m31"]["disp"] == "M31"
+    assert placed["m42"]["disp"] == "M42"
+    assert placed["ngc104"]["disp"] == "NGC 104"
+    # 'unknown' was requested second and dropped, so m42 is uid 1, not 2.
+    assert placed["m42"]["uid"] == 1
+
+
+@needs_uranometria
 def test_render_warns_about_uncharted_objects(tmp_path, monkeypatch):
     root = seed_root(tmp_path, monkeypatch)
     _library(root, unknown={"id": "Unknown", "type": "unknown"})
     charts, warnings = skymap.render()
     assert len(charts) == 1
-    assert any("no coordinates" in w and "unknown" in w for w in warnings)
+    assert any("no coordinates" in w and "Unknown" in w for w in warnings)
 
 
 @needs_uranometria

@@ -108,12 +108,14 @@ def build_config(
     title: str | None = None,
     mirror: bool = False,
     heroes: bool = True,
-) -> tuple[dict, list[str]]:
-    """Build a uranometria chart config as ``(config, skipped)``.
+) -> tuple[dict, list[str], list[str]]:
+    """Build a uranometria chart config as ``(config, charted, skipped)``.
 
-    `slugs` selects what to chart (default: the whole Library). `skipped` lists
-    the slugs left out for want of coordinates, so a caller can report them
-    rather than silently drawing a shorter chart.
+    `slugs` selects what to chart (default: the whole Library). `charted` is the
+    slugs actually on the chart, **in config order** — a marker's ``uid`` indexes
+    it, which is the only way back from a click to an object. `skipped` lists the
+    slugs left out for want of coordinates, so a caller can report them rather
+    than silently drawing a shorter chart.
 
     Entries are **fully specified** — label plus J2000 ``ra``/``dec`` from
     `catalog.load_coords` — so uranometria never does a lookup and the render is
@@ -130,11 +132,12 @@ def build_config(
     palette = {**DEFAULT_COLORS, **(colors or {})}
 
     wanted = list(library) if slugs is None else [s for s in slugs if s in library]
-    entries, skipped = [], []
+    entries, charted, skipped = [], [], []
     for slug in wanted:
         if slug not in coords:
             skipped.append(slug)
             continue
+        charted.append(slug)
         e = library[slug]
         ra, dec = coords[slug]
         entry = {
@@ -154,7 +157,7 @@ def build_config(
     config: dict = {"objects": entries, "mirror": mirror}
     if title:
         config["title"] = title
-    return config, skipped
+    return config, charted, skipped
 
 
 def render(
@@ -172,6 +175,12 @@ def render(
     appears only when something is far enough south to need one, which is exactly
     when the UI should offer an N|S toggle.
 
+    Every marker gains a **`slug`** alongside uranometria's own fields, so a
+    click maps straight back to an object. Doing it here rather than in the
+    caller keeps the uid→slug correspondence next to the code that establishes
+    it — a caller re-deriving it from its own list would be wrong the moment one
+    object lacks coordinates.
+
     `colors` overrides the per-status marker colors; `palette` themes the chart
     itself (sky, grid, constellation lines — any subset of
     ``uranometria.chart.PALETTE``); `font_family` names a font the host has
@@ -184,19 +193,27 @@ def render(
     exception for an empty or unresolvable list.
     """
     uranometria = _uranometria()
-    config, skipped = build_config(
+    config, charted, skipped = build_config(
         slugs, colors=colors, title=title, mirror=mirror
     )
     warnings = []
     if skipped:
+        # Name them the way the user sees them in the Library — a slug is an
+        # internal key, and "markarians-chain" in a message is a leak, not a label.
+        library = catalog.load_library()
+        names = sorted(str(library.get(s, {}).get("id") or s) for s in skipped)
+        shown = ", ".join(names[:8]) + (" …" if len(names) > 8 else "")
         warnings.append(
-            f"{len(skipped)} object(s) have no coordinates and are not on the chart: "
-            + ", ".join(sorted(skipped)[:8])
-            + (" …" if len(skipped) > 8 else "")
+            f"{len(skipped)} object{'s' if len(skipped) != 1 else ''} "
+            f"{'have' if len(skipped) != 1 else 'has'} no coordinates, so "
+            f"{'they aren' if len(skipped) != 1 else 'it isn'}'t on the chart: {shown}"
         )
     if not config["objects"]:
         return [], warnings
     charts, chart_warnings = uranometria.render_svg(
         config, palette=palette, font_family=font_family, allow_online=False
     )
+    for chart in charts:
+        for marker in chart["objects"]:
+            marker["slug"] = charted[marker["uid"]]
     return charts, warnings + list(chart_warnings)
