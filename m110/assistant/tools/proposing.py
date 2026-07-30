@@ -5,8 +5,10 @@ union with three mutually exclusive payload shapes is exactly what models get
 wrong, and the failure is silent: a well-formed envelope carrying the wrong
 fields. Three narrow schemas make the mistake unrepresentable.
 
-None of these write. Each returns an envelope whose `preview` was computed by
-the pure scorer, plus the literal steps for the user to apply it in the app.
+None of these change anything. Each returns an envelope whose `preview` was
+computed by the pure scorer, and stages it in the assistant outbox so the app
+can offer to apply it — the envelope still carries the manual steps, so a full
+outbox degrades to copy-paste rather than to nothing.
 """
 from __future__ import annotations
 
@@ -126,7 +128,7 @@ def propose_weights(rationale: str, strategy: str | None = None,
            "Resulting top of the ranking:\n\n" + proposals.markdown_table(preview["after"]))
     )
 
-    return proposals.build(
+    return proposals.emit(
         action="set_weights",
         title="Adjust prioritizer tuning",
         rationale=rationale,
@@ -204,7 +206,7 @@ def propose_pins(rationale: str, pin: list | None = None,
         + ("" if preview["unchanged"] else
            "\n\nResulting top of the ranking:\n\n" + proposals.markdown_table(preview["after"])))
 
-    return proposals.build(
+    return proposals.emit(
         action="set_pins",
         title="Adjust priority pins",
         rationale=rationale,
@@ -261,7 +263,7 @@ def propose_journal_entry(slug: str, markdown: str, rationale: str,
         "paste the text below.\n\n---\n\n" + body
     )
 
-    return proposals.build(
+    return proposals.emit(
         action="append_journal",
         title=f"Add a journal entry for {slug}",
         rationale=rationale,

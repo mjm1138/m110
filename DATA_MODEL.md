@@ -127,6 +127,12 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     priorities.toml                 priority targets ([[priority]]; optional track=false)
     pins.toml                       manual Pin/Deprioritize overrides ([pins] slug="pin"|"deprioritize"; lazily created,
                                     additive → no .store_version bump; absence = no overrides)
+    assistant/                      the AI assistant's outbox (lazily created, additive → no .store_version
+      README.md                     bump). outbox/ is THE ONLY PLACE an assistant tool may create a file, and
+      outbox/                       it may only create — never modify or delete. Holds drafted field guides
+                                    (*.md) and staged m110.proposal/v1 envelopes (*.json) until the user
+                                    accepts them in the app. Nothing here is authoritative: the store reads
+                                    none of it, so it is excluded from backups and safe to delete
     processing_overrides.toml       per-folder status overrides ([folder.<name>])
     ingest_aliases.toml             source-name → canonical-target aliases
     sessions.jsonl                  one capture session per line (generated)

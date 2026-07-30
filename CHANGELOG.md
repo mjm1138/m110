@@ -31,6 +31,20 @@ changes a **user** would notice, per release.
   Uranometria is credited in **Help → About M110**, and is an optional component: without it
   the Map view explains what to install rather than failing.
 
+- **The assistant can hand you a saved plan.** Ask it to plan a night and then save
+  the field guide, and M110 shows a "from the assistant" bar with a Review button —
+  accept, and the plan lands in your Plans folder like any other. Changes it suggests
+  (a pinned target, a tuning tweak) queue up the same way, so you no longer have to
+  copy-paste anything out of a chat.
+
+  Applying a suggestion re-checks it against your library *as it is now*. If you've
+  shot, imported and refreshed since it was suggested, M110 tells you what changed and
+  shows the updated ranking before you commit.
+
+  **The assistant still can't change your library.** It can only ever *add* a file to
+  one staging folder — it cannot modify or delete anything you made, and nothing takes
+  effect until you accept it. If you'd rather skip the review step for plans,
+  Preferences → AI assistant has a toggle to let them save directly.
 - **Connect Claude to M110.** Preferences → *AI assistant* → **Connect Claude Desktop**
   wires your existing Claude Desktop (or Claude Code) to your library. You can then ask
   it things like "what should I shoot tonight?", "why is M101 ranked above M13?", or

@@ -144,7 +144,7 @@ def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
     global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
-    global PROFILES_DIR, PINS_TOML, PLANS_DIR
+    global PROFILES_DIR, PINS_TOML, PLANS_DIR, ASSISTANT_DIR, ASSISTANT_OUTBOX
     DATA_ROOT = root
     # Visible content axes
     OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
@@ -164,6 +164,11 @@ def _apply(root: Path) -> None:
     RENDERS_DIR = INTERNAL_DIR / "renders"  # thumbnails (+ hero/<slug>.jpg)
     HERO_DIR = RENDERS_DIR / "hero"
     PROFILES_DIR = INTERNAL_DIR / "profiles"  # observing-site / device planning profiles
+    # The assistant's outbox: the ONLY place an MCP tool may create a file.
+    # Staging, not authoritative — nothing here is load-bearing, and deleting
+    # it loses nothing the user authored. Lazily created (see assistant/outbox).
+    ASSISTANT_DIR = INTERNAL_DIR / "assistant"
+    ASSISTANT_OUTBOX = ASSISTANT_DIR / "outbox"
 
 
 # ── per-target content paths (Images/<target>/<sub>) ────────────────────────

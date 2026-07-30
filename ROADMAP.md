@@ -94,10 +94,22 @@ possible. Building the MCP server **first** inverts it — MCP *is* the provider
 abstraction, so agent-agnosticism costs nothing, and the user gets value from
 the client they already have. Revised phasing:
 
-- **M0 — tool registry + skills + stdio MCP server. ✅ shipped.**
-- **M1 — in-app HTTP transport over the same registry, plus a confirm-gated
-  safe-write allowlist** (journal append, pins, save field guide, save
-  strategy/weights). The proposal envelope is already designed as this seam.
+- **M0 — tool registry + skills + stdio MCP server. ✅ shipped** (strictly
+  read-only).
+- **M0.5 — the outbox. ✅ shipped.** Read-only made saving a plan impossible,
+  and copy-pasting markdown out of a chat is not a workflow. The invariant was
+  relaxed *precisely*: **no tool modifies or deletes anything; a tool may create
+  a new file, only in `.m110_internal_data/assistant/outbox/`, under quota.**
+  The value was never zero-write — it was "can't damage or silently alter what
+  you made", and a new file in a staging folder does neither. Artifacts (field
+  guides; **device plan files when item 2 lands**) and proposal envelopes share
+  the queue; a banner surfaces it and a modal applies, re-running each
+  proposal's preview against the store *as it is now* via `basis.store_state`.
+  A preference allows direct saves to `Plans/` once trusted.
+- **M1 — in-app HTTP transport over the same registry.** The safe-write
+  allowlist arrived early with M0.5 (via the outbox rather than direct writes),
+  so what remains is the live transport: an assistant that can see the running
+  app's state and drive its UI.
 - **M2 — *(optional)* in-app chat**: provider adapters, key handling in the OS
   keychain, cost controls, local models. Only if BYO-client proves insufficient;
   the MCP topology may make it permanently unnecessary.
