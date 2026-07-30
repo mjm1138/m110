@@ -193,12 +193,20 @@ spatially — Overview's goal percentages become a picture of the sky filling in
   astropy/astroquery/matplotlib + an external ASTAP install — is out of scope
   here; see *Not in scope* below.)
 - **Distribution — end users get it bundled either way.** Frozen builds have no
-  pip, so the `build` extra pulls the dependency into the build venv and
-  PyInstaller freezes it in. Exact precedent: astroquery, bundled for the same
-  reason (issue **#64** — "a frozen app user can't add the extra themselves").
-  uranometria additionally ships package **data** (`data/*.csv`, `.json`,
-  `.tsv`, base64 font assets), so the three specs need
+  pip, so the dependency goes into the build venv and PyInstaller freezes it in —
+  installed **explicitly** in each build step (see the next bullet: it can't ride
+  in the `build` extra), which means every packaged job needs that line or its
+  installer silently ships with no Map view. Exact precedent: astroquery, bundled
+  for the same reason (issue **#64** — "a frozen app user can't add the extra
+  themselves"). uranometria additionally ships package **data** (`data/*.csv`,
+  `.json`, `.tsv`, base64 font assets), so the three specs need
   `collect_data_files("uranometria")` — PyInstaller won't pick those up on its own.
+  ⚠️ **Both halves shipped wrong in 0.3.0-beta.1** (fixed in `fix/uranometria-bundle`):
+  the specs froze the modules without the data, and since `uranometria.catalog` reads
+  its constellation JSON *at import*, the app died at launch with a
+  `FileNotFoundError`; meanwhile the Linux/Windows jobs never installed it at all.
+  Data only, no `collect_submodules` — `uranometria.annotate` imports matplotlib,
+  which the specs exclude.
 - **Not on PyPI yet — a source-install wrinkle, not a blocker.** M110 doesn't
   publish to PyPI today (the release pipeline builds installers and attaches them
   to a GitHub Release), so a `git+https://` direct reference in `pyproject.toml`

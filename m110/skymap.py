@@ -22,8 +22,9 @@ them so the caller can say so): a live Library carries capture-target entries
 like ``M42_mosaic`` and off-catalog ones like ``Unknown`` that have no single
 position to plot.
 
-uranometria is optional. `available()` reports whether it is installed, and every
-render path raises `SkymapDepsMissing` rather than `ImportError` — the same
+uranometria is optional. `available()` reports whether it is installed *and
+importable*, and every render path raises `SkymapDepsMissing` rather than letting
+an `ImportError` — or any other import-time failure — escape: the same
 degrade-gracefully contract as `publish.PublishDepsMissing` and
 `catalog.OnlineLookupError`.
 """
@@ -52,7 +53,7 @@ DEFAULT_COLORS = {
 
 
 class SkymapDepsMissing(Exception):
-    """The optional `skymap` extra (uranometria) isn't installed.
+    """The optional `skymap` extra (uranometria) isn't installed — or won't import.
 
     Raised instead of a bare `ImportError` so the UI can show an actionable
     install hint — or hide the Map view entirely — the same way
@@ -60,16 +61,14 @@ class SkymapDepsMissing(Exception):
     """
 
 
-def available() -> bool:
-    """Whether the chart library is importable."""
-    try:
-        import uranometria  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
+# `import uranometria` runs real work at module scope: `uranometria.catalog` loads
+# its bundled constellation JSON on import. So an *installed* uranometria can still
+# fail to import — a frozen build that carried the modules but not the package data
+# raised FileNotFoundError there, and because the Library renders the map while the
+# window is being built, that took the whole app down at launch (0.3.0b1). Anything
+# the import raises is therefore "no sky map", never a crash.
 def _uranometria():
+    """Import uranometria, or raise `SkymapDepsMissing` describing why not."""
     try:
         import uranometria
     except ImportError as err:
@@ -77,7 +76,20 @@ def _uranometria():
             "The sky map needs the uranometria package "
             '(pip install "uranometria @ git+https://github.com/devonjones/uranometria")'
         ) from err
+    except Exception as err:                    # installed, but broken/incomplete
+        raise SkymapDepsMissing(
+            f"The sky map couldn't load its chart library: {type(err).__name__}: {err}"
+        ) from err
     return uranometria
+
+
+def available() -> bool:
+    """Whether the chart library is importable."""
+    try:
+        _uranometria()
+    except SkymapDepsMissing:
+        return False
+    return True
 
 
 def object_status(slug: str, by_slug: dict | None = None) -> str:

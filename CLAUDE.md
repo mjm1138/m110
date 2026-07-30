@@ -277,10 +277,12 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   `monkeypatch` `config.IMAGES_DIR` / `DERIVED_DIR` / etc. Don't point tests (or
   ad-hoc validation) at a real data root. **A session-autouse seal in
   `tests/conftest.py` (`_seal_live_store`/`_reset_to_seal`) hard-points
-  `M110_DATA_ROOT` + the `config.*` globals + `SETTINGS_FILE` at a throwaway dir for
-  the whole run** — so even a `QThread` worker that leaks past its per-test
-  `monkeypatch` (which once corrupted a live `library.toml`) can never read/write
-  `~/Documents/M110`. Keep per-test `seed_root` + the MainWindow `_ready = False`
+  `M110_DATA_ROOT` + the `config.*` globals + `SETTINGS_FILE` + `APP_CONFIG_DIR` at a
+  throwaway dir for the whole run** — so even a `QThread` worker that leaks past its
+  per-test `monkeypatch` (which once corrupted a live `library.toml`) can never read/write
+  `~/Documents/M110` **or `~/.m110`** (the log lives there, and the crash report embeds
+  its tail — an unsealed log made `test_error_report` fail whenever the developer's own
+  app had crashed). Keep per-test `seed_root` + the MainWindow `_ready = False`
   guard anyway (defense in depth).
 - **Dependencies:** core = PySide6, astropy, numpy, pillow, tifffile (FITS
   stack-metadata reads + image rendering). Optional `online` extra = astroquery
@@ -300,8 +302,16 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   dies on the first unit parse and *every* coordinate transform fails (planning + prioritizer
   show "astronomy engine unavailable"; astroquery can't load either — issue #75). **Validate
   frozen-app fixes against a real PyInstaller build, not a PYZ reconstruction** — a
-  loose-`.py` reconstruction hid this (the parsetab existed as a file there). Dev = pytest
-  (+ astroquery for `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
+  loose-`.py` reconstruction hid this (the parsetab existed as a file there). Optional
+  **sky map** = `uranometria`, deliberately **not** declared in `pyproject.toml` (not on
+  PyPI; a direct-URL requirement would poison any future upload, extras included) — so
+  each build job `pip install`s it *explicitly*, and the three specs
+  `collect_data_files("uranometria")`. **Both halves are load-bearing**: skip the install
+  and that installer silently has no Map view; skip the data and the frozen app **crashes
+  at launch** — `uranometria.catalog` reads its constellation JSON at import, and the
+  Library builds the Map view inside `CatalogPage.__init__` (0.3.0-beta.1). Data only, no
+  `collect_submodules` — `uranometria.annotate` imports the excluded matplotlib. Dev =
+  pytest (+ astroquery for `tools/gen_caldwell.py`). Declared in `pyproject.toml`.
 
 ---
 
