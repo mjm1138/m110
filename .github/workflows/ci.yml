@@ -54,5 +54,14 @@ jobs:
           # and `publish` extras — no need to list them separately.
           pip install -e ".[dev]"
 
+      # The sky map (ROADMAP item 12) draws its charts with uranometria, which
+      # is not on PyPI yet — so it cannot be declared in `pyproject.toml` (a
+      # direct URL reference there would be rejected on any future PyPI upload,
+      # extras included) and is installed here instead. Without it the render
+      # tests in tests/test_skymap.py skip, which would quietly leave the chart
+      # path uncovered on CI; the engine itself degrades via SkymapDepsMissing.
+      - name: Install the optional sky-map dependency
+        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+
       - name: Run the test suite
         run: pytest -q

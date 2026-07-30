@@ -329,6 +329,18 @@ dropping the JS:
 - **12a — "Where is my collection?"** *(core)* Every filtered Library object
   plotted; click → select → detail pane. Hemisphere toggle only when the set
   actually reaches past dec −35° (uranometria's own threshold).
+  - 🔶 **Engine done** — `m110/skymap.py` (Qt-free): `build_config` turns a slug
+    selection into a fully-specified chart config (coords from
+    `catalog.load_coords`, so uranometria never does a lookup and the render is
+    offline and deterministic), and `render` returns the per-hemisphere charts
+    plus each marker's position for hit-testing. Callers pass their own slug
+    list, so the Library page's search / catalog filter / captured-only apply to
+    the map without this module knowing they exist. Objects with no coordinates
+    (`M42_mosaic`, `Unknown`) are skipped and reported, never fatal. Marker color
+    reuses `build_derived`'s own `deep_stack`/`initial` verdict so the map, the
+    status chips and the prioritizer cannot disagree. Optional import throughout
+    (`SkymapDepsMissing`). **Remaining: the Map view itself** — the fourth
+    segment button, `QGraphicsView`/`QGraphicsSvgItem`, marker hit-testing.
 - **12b — Goal progress as a picture.** Marker style by capture depth —
   uncaptured goal member (dashed outline) / captured (ring) / deep (filled).
   Sources already exist: `goals.goal_members`, `derived` totals,
