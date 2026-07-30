@@ -27,8 +27,8 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | [↓](#4--in-app-assistant-bring-your-own-llm--next-major-milestone) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
-| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — scoping for review ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#12--sky-map-uranometria-integration) |
-| 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoping for review ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
+| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — **upstream dependency landed** ([uranometria 0.11.0](https://github.com/devonjones/uranometria/pull/22)); M110 side next | [↓](#12--sky-map-uranometria-integration) |
+| 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
 | 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
 | 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
 
@@ -215,7 +215,36 @@ spatially — Overview's goal percentages become a picture of the sky filling in
   `OnlineLookupError`), so a lean source install still runs — the Map view just
   hides itself. That stays true even after the extra exists.
 
-#### The rendering constraint — verified, and the one change we need
+#### Upstream dependency: ✅ **landed** (2026-07-30)
+
+The SVG mode below was written by us and **merged upstream** as
+[uranometria#22](https://github.com/devonjones/uranometria/pull/22), released in
+**0.11.0**. The shipped API differs from the proposal in one way: it returns
+**one entry per hemisphere** rather than taking a `hemisphere=` kwarg, which
+reuses uranometria's own `need_north`/`need_south` derivation untouched — and
+matches this item's Map view, where the N|S toggle only appears when southern
+objects exist.
+
+```python
+charts, warnings = uranometria.render_svg(config, palette=…, font_family=…)
+# [{"hemisphere": "north", "svg": "<svg xmlns=…>…</svg>",
+#   "objects": [{"uid": 0, "id": "mk-0", "disp": "M31", "image": "heroes/m31.jpg",
+#                "x": 612.4, "y": 388.1,
+#                "label": {"dx": 16, "dy": 4, "anchor": "start"}}]}]
+```
+
+Verified end to end before merge: QtSvg renders the document correctly (dominant
+disc color `#0A0F24`, **zero** black samples, every marker within 14 px of its
+reported position), the interactive HTML page is **pixel-identical** (0 of
+1,260,000 pixels differ), and a round-trip of M110's own 41-object library
+produces one northern disc with no warnings and every marker inside the disc.
+`uranometria.chart.MARKER_R` is the hit-test radius; `id="mk-N"` survives into
+the markup so `QSvgRenderer.boundsOnElement` is an exact alternative.
+
+Still not on PyPI (Devon's account recovery is weeks out), so the
+build-step install described above stands until it is.
+
+#### The rendering constraint — verified, and the change we made
 
 `packaging/*/M110.spec` **deliberately excludes** `QtWebEngineCore` /
 `QtWebEngineWidgets`. Embedding uranometria's interactive HTML would mean adding
@@ -240,25 +269,21 @@ the CSS cascade. Everything else in `chart.py` is already shaped for it:
 `Chart.markers` already carries computed `x/y`, and label collision-avoidance
 (`place_label`) runs in Python, not JS — so static SVG loses nothing on layout.
 
-**Proposed API (the PR we'd write):**
+What shipped, in the terms above:
 
-```python
-uranometria.render_svg(config, *, hemisphere="north", palette=None,
-                       font_family=None, mirror=False) -> (svg, placed, warnings)
-```
-
-- `palette` — dict for the ~10 color roles (`sky/deep/star/grid/equator/aster/
-  conname/accent/…`). We inject M110 theme tokens, so the chart follows light/dark
-  instead of being fixed dark. A **gain** over the HTML version.
-- `placed` — each object's final `(x, y)` in the viewBox plus label/id/image.
-  The important one: without it we'd re-derive positions and duplicate his marker
-  layout. With it, native hit-testing is exact and free.
+- `palette` — a 15-key dict (`sky/deep/star/grid/equator/aster/conname/accent/…`
+  plus `ecliptic` and the star tints). We inject M110 theme tokens, so the chart
+  follows light/dark instead of being fixed dark. A **gain** over the HTML version.
+- each chart's `objects` — every marker's final `(x, y)` in the viewBox plus
+  label offset / id / image. The important one: without it we'd re-derive
+  positions and duplicate the marker layout. With it, native hit-testing is exact.
 - `font_family` — the page embeds Marcellus / IBM Plex Mono as woff2 data URIs,
-  which QtSvg can't load. We'd pass a family we register ourselves (we already
+  which QtSvg can't load, so we pass a family we register ourselves (we already
   bundle JetBrains Mono via `ui/theme/fonts.py`).
 
-Non-breaking: `page.py` keeps the CSS mode. Confined to `chart.py`'s emitters plus
-a thin `render_svg` in `core.py`.
+Non-breaking: `page.py` keeps the CSS mode. The attributes are emitted
+*unconditionally* — a CSS rule always outranks a presentation attribute, so the
+interactive page renders identically and there is one code path, not two.
 
 #### In-app scope — Library → **Map** view
 
@@ -332,13 +357,10 @@ like `M42_mosaic`, `NGC 7000_mosaic`, `Unknown`, `Markarian's Chain`, and
 `Kochab` would otherwise fail catalog lookup or hit the online Sesame resolver.
 `constellation` is the one field we don't store; it's optional.
 
-**Open questions for Devon.**
-1. Does `render_svg` (attributes + `palette` + `placed`) fit how you'd want the
-   library to grow, or would you rather we post-process the SVG on our side?
-2. Any appetite for publishing to PyPI? Not urgent — we can bundle from git for
-   packaged builds — but it's what lets us declare a normal `skymap` extra, and
-   it makes life easier for anyone running M110 from source.
-3. Should we contribute the SVG mode as a PR, or do you want to own it?
+**Settled with Devon** (issue #98, 2026-07-30). The API shape was approved, we
+wrote the PR, and it merged upstream in 0.11.0. PyPI is a goal on his side but
+gated on account recovery, so M110 installs from git until then. Verified on real
+data: this item's 12a/12b are now purely M110-side work with no upstream blocker.
 
 ### 13 — Image annotation (plate-solved object overlays)
 
