@@ -194,7 +194,10 @@ def prune_superseded_stubs() -> list[str]:
         orphaned by this test: nothing took it over, see below),
       * superseded — its own name now resolves to a *different* object that is
         present in the Library, so its captures live there instead,
-      * un-annotated — its journal has no body the user wrote.
+      * un-annotated — `objects.has_notes` is False. **Every** object gets a
+        generated journal stub, so this must ask whether the user wrote prose,
+        not whether the file has content; the same test that decides whether a
+        goal deactivation may prune an object.
 
     Keying on "orphaned" rather than "looks like a stub" matters: a duplicate
     that was later enriched (`NGC3628` beside `NGC 3628`, with a type and
@@ -221,7 +224,7 @@ def prune_superseded_stubs() -> list[str]:
         target = scan_sessions.folder_to_slugs(str(e.get("id") or slug), known)
         if len(target) != 1 or target[0] == slug or target[0] not in lib:
             continue                     # nothing took it over
-        if objects.read_journal(slug)[1].strip():
+        if objects.has_notes(slug):
             continue                     # the user wrote something here — keep it
         removed.append(slug)
     for slug in removed:

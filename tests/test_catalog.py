@@ -256,8 +256,8 @@ def test_prune_superseded_stubs_removes_orphaned_placeholders(tmp_path, monkeypa
     placeholder behind — no folder points at it, so it's an empty duplicate of
     the object that now holds its captures."""
     from tests._helpers import add_library, seed_root
-    seed_root(tmp_path, monkeypatch)
-    add_library(tmp_path / "M110", {
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
         # the real objects, as add_captured_objects now creates them
         "m42": {"id": "M42", "type": "emission", "ra_deg": "83.82", "dec_deg": "-5.39"},
         "ngc-6543": {"id": "NGC 6543", "type": "planetary",
@@ -268,6 +268,7 @@ def test_prune_superseded_stubs_removes_orphaned_placeholders(tmp_path, monkeypa
         # a genuinely off-catalog object that resolves only to itself — keep
         "unknown": {"id": "Unknown", "type": "unknown"},
     })
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
     removed = catalog.prune_superseded_stubs()
     assert sorted(removed) == ["c-6", "m42-mosaic"]
     lib = catalog.load_library()
@@ -281,11 +282,12 @@ def test_prune_keeps_a_stub_the_user_wrote_notes_on(tmp_path, monkeypatch):
     """A placeholder carrying the user's own words is not disposable."""
     from m110 import objects
     from tests._helpers import add_library, seed_root
-    seed_root(tmp_path, monkeypatch)
-    add_library(tmp_path / "M110", {
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
         "m42": {"id": "M42", "type": "emission", "ra_deg": "83.82", "dec_deg": "-5.39"},
         "m42-mosaic": {"id": "M42_mosaic", "type": "unknown"},
     })
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
     objects.write_journal("m42-mosaic", "---\nid: M42_mosaic\n---\n\nFour panels, windy.\n")
     assert catalog.prune_superseded_stubs() == []
     assert "m42-mosaic" in catalog.load_library()
@@ -294,8 +296,8 @@ def test_prune_keeps_a_stub_the_user_wrote_notes_on(tmp_path, monkeypatch):
 def test_prune_leaves_a_stub_with_no_replacement(tmp_path, monkeypatch):
     """Nothing took it over, so removing it would just lose an object."""
     from tests._helpers import add_library, seed_root
-    seed_root(tmp_path, monkeypatch)
-    add_library(tmp_path / "M110", {
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
         "markarians-chain": {"id": "Markarian's Chain", "type": "unknown"},
     })
     assert catalog.prune_superseded_stubs() == []
@@ -315,6 +317,7 @@ def test_prune_removes_an_enriched_duplicate_too(tmp_path, monkeypatch):
                     "ra_deg": "170.07", "dec_deg": "13.59"},
     })
     (config.IMAGES_DIR / "NGC3628" / "lights").mkdir(parents=True)
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
     assert catalog.prune_superseded_stubs() == ["ngc3628"]
     assert "ngc-3628" in catalog.load_library()
 
