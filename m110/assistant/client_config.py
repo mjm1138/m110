@@ -1,4 +1,11 @@
-"""Connecting an external MCP client to this M110 install.
+"""Connecting an MCP client to this M110 install.
+
+The server speaks plain MCP over stdio, so **any** MCP-capable client can use
+it. What differs between clients is only how they are *configured*: Claude
+Desktop keeps a JSON file we can safely merge into, Claude Code has its own
+CLI and scope rules, and everything else wants the command and environment to
+be typed in by hand. Hence one generic description of the connection
+(`connection_details`) plus per-client conveniences layered on top.
 
 Qt-free on purpose: locating another application's config file, resolving which
 server binary *this* install should advertise, and merging JSON without
@@ -28,8 +35,9 @@ BACKUP_SUFFIX = ".m110-backup"
 DISCLOSURE = (
     "Connecting a client lets it read your M110 library — object notes, capture "
     "history, and image data — and send that to whatever AI model the client uses. "
-    "M110's server is read-only: a client can look, and propose changes, but "
-    "cannot alter your library, your files, or your settings."
+    "M110 can only ever hand that client new files in its own staging folder: it "
+    "cannot change or delete anything in your library, and nothing it suggests "
+    "takes effect until you accept it here."
 )
 
 
@@ -191,12 +199,39 @@ def remove_from_desktop_config(path: Path | None = None) -> bool:
 
 # ── Claude Code ──────────────────────────────────────────────────────────────
 
+def _quoted_command(data_root: Path | None = None) -> str:
+    return " ".join(subprocess.list2cmdline([c]) if " " in c else c
+                    for c in server_command())
+
+
 def cli_add_command(data_root: Path | None = None) -> str:
     """The `claude mcp add` line for Claude Code, which has no config file we
     should be editing — it owns its own scopes and merge rules."""
     from m110 import config
 
     root = str(data_root or config.DATA_ROOT)
-    cmd = " ".join(subprocess.list2cmdline([c]) if " " in c else c
-                   for c in server_command())
-    return f'claude mcp add m110 --env M110_DATA_ROOT="{root}" -- {cmd}'
+    return (f'claude mcp add m110 --env M110_DATA_ROOT="{root}" '
+            f'-- {_quoted_command(data_root)}')
+
+
+def connection_details(data_root: Path | None = None) -> dict:
+    """Everything a client needs, in the forms clients actually ask for.
+
+    Most MCP clients want either the `mcpServers` JSON block or a plain command
+    plus environment. Both describe the same stdio server, and neither is
+    specific to any one client.
+    """
+    from m110 import config
+
+    entry = server_entry(data_root)
+    return {
+        "name": SERVER_KEY,
+        "transport": "stdio",
+        "command": entry["command"],
+        "args": list(entry["args"]),
+        "env": dict(entry["env"]),
+        "command_line": _quoted_command(data_root),
+        "data_root": str(data_root or config.DATA_ROOT),
+        "json": json.dumps({"mcpServers": {SERVER_KEY: entry}}, indent=2),
+        "cli": cli_add_command(data_root),
+    }

@@ -1,9 +1,11 @@
 """Preferences dialog — data folder + processing-prep workflows."""
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox,
+    QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox, QScrollArea,
+    QWidget,
 )
 
 from m110 import config, hints, ingest, launch, processing, updates
@@ -14,18 +16,43 @@ class PreferencesDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Preferences")
-        self.resize(620, 340)
+        self.resize(640, 620)
 
         from m110.ui.theme import tokens
         s = tokens.SPACE
-        lay = QVBoxLayout(self)
+
+        # The settings column scrolls. Without this the dialog's natural height
+        # exceeds a laptop screen (it has grown a group at a time), and Qt
+        # squeezes word-wrapped labels below their heightForWidth — which shows
+        # up as explanatory text with its last line sliced off, not as an
+        # obviously-too-small window. Close stays pinned outside the scroll area.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        # Never scroll sideways: the content must wrap to the viewport width.
+        # Allowed to overflow horizontally, a long data-folder path widens the
+        # whole column and every explanatory line gets clipped at the right edge.
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        body = QWidget()
+        scroll.setWidget(body)
+        outer.addWidget(scroll, 1)
+
+        lay = QVBoxLayout(body)
         lay.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
         lay.setSpacing(s["md"])
-        lay.addWidget(QLabel("Data folder — where M110 stores its catalog, "
-                             "captures, and renders:"))
+        folder_note = QLabel("Data folder — where M110 stores its catalog, "
+                             "captures, and renders:")
+        folder_note.setWordWrap(True)
+        lay.addWidget(folder_note)
 
         row = QHBoxLayout()
         self._edit = QLineEdit(str(config.DATA_ROOT))
+        # A deep path would otherwise set the dialog's minimum width.
+        self._edit.setMinimumWidth(180)
+        self._edit.setCursorPosition(0)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse)
         row.addWidget(self._edit)
@@ -36,14 +63,16 @@ class PreferencesDialog(QDialog):
                       "The folder is created (with a starter catalog) if it doesn't exist. "
                       "Changing it applies on Close and takes effect after you restart M110.")
         hint.setProperty("caption", True)
+        hint.setWordWrap(True)
         lay.addWidget(hint)
 
         # ── processing-prep workflows (persist live on toggle) ───────────────
         box = QGroupBox("Prepare objects for processing in:")
         bl = QVBoxLayout(box)
-        bl.addWidget(QLabel(
-            "M110 sets up a ready-to-go working folder for each object as you "
-            "ingest it — pick your stacking app(s)."))
+        wf_note = QLabel("M110 sets up a ready-to-go working folder for each object "
+                         "as you ingest it — pick your stacking app(s).")
+        wf_note.setWordWrap(True)
+        bl.addWidget(wf_note)
         enabled = set(processing.enabled_workflow_ids())
         self._wf_checks = {}
         for w in processing.WORKFLOWS:
@@ -62,10 +91,12 @@ class PreferencesDialog(QDialog):
         # ── processing tools (external app paths; persist live) ──────────────
         tbox = QGroupBox("Processing tools")
         tl = QVBoxLayout(tbox)
-        tl.addWidget(QLabel(
+        tool_note = QLabel(
             "“Process in Siril” launches Siril with the object's working "
             "folder set as its working directory. M110 finds Siril automatically in "
-            "the usual place — set a path here only if it's installed elsewhere."))
+            "the usual place — set a path here only if it's installed elsewhere.")
+        tool_note.setWordWrap(True)
+        tl.addWidget(tool_note)
         srow = QHBoxLayout()
         srow.addWidget(QLabel("Siril:"))
         self._siril_edit = QLineEdit(self._siril_override())
@@ -84,10 +115,12 @@ class PreferencesDialog(QDialog):
         # ── finished-image hints (persist live on edit) ──────────────────────
         hbox = QGroupBox("Finished-image hints")
         hl = QVBoxLayout(hbox)
-        hl.addWidget(QLabel(
+        hint_note = QLabel(
             "When importing processed work, M110 recognizes finished renders/stacks "
             "and skips intermediate by-products by keywords in the filename "
-            "(case-insensitive, comma-separated)."))
+            "(case-insensitive, comma-separated).")
+        hint_note.setWordWrap(True)
+        hl.addWidget(hint_note)
         cur_hints = hints.get_hints()
         frow = QHBoxLayout()
         frow.addWidget(QLabel("Finished:"))
@@ -155,16 +188,27 @@ class PreferencesDialog(QDialog):
         ul.addWidget(self._update_cb)
         lay.addWidget(ubox)
 
-        # ── AI assistant (connect an external MCP client) ────────────────────
+        # ── AI assistant (any MCP client) ───────────────────────────────────
+        # The server is plain MCP over stdio, so the framing here is
+        # client-neutral: "Connection details…" serves everything, and the
+        # Claude Desktop button is a convenience because its config is a JSON
+        # file we can merge into safely — not because it's the only option.
         abox = QGroupBox("AI assistant")
         al2 = QVBoxLayout(abox)
         blurb = QLabel(
-            "Connect Claude Desktop or Claude Code to M110 and ask it to plan a "
-            "night, explain the priority ranking, or critique an image. The "
-            "connection is read-only — it can look and suggest, never change "
-            "your library.")
+            "M110 can act as an <b>MCP server</b>, so an AI assistant can read your "
+            "library and help you plan a night, explain the priority ranking, or "
+            "critique an image — grounded in your own data. It can hand you a plan "
+            "or suggest a change, but it can never alter your library.")
         blurb.setWordWrap(True)
         al2.addWidget(blurb)
+
+        works_with = QLabel(
+            "Works with any MCP-compatible client. Claude Desktop can be set up for "
+            "you; for anything else use Connection details.")
+        works_with.setProperty("caption", True)
+        works_with.setWordWrap(True)
+        al2.addWidget(works_with)
 
         self._assistant_status = QLabel()
         self._assistant_status.setProperty("caption", True)
@@ -172,15 +216,17 @@ class PreferencesDialog(QDialog):
         al2.addWidget(self._assistant_status)
 
         arow = QHBoxLayout()
-        self._connect_btn = QPushButton("Connect Claude Desktop…")
+        self._details_btn = QPushButton("Connection details…")
+        self._details_btn.setToolTip(
+            "The command, environment and JSON any MCP client needs.")
+        self._details_btn.clicked.connect(self._show_connection_details)
+        self._connect_btn = QPushButton("Set up Claude Desktop…")
         self._connect_btn.clicked.connect(self._connect_desktop)
         self._disconnect_btn = QPushButton("Disconnect")
         self._disconnect_btn.clicked.connect(self._disconnect_desktop)
-        copy_cli = QPushButton("Copy Claude Code command")
-        copy_cli.clicked.connect(self._copy_cli_command)
+        arow.addWidget(self._details_btn)
         arow.addWidget(self._connect_btn)
         arow.addWidget(self._disconnect_btn)
-        arow.addWidget(copy_cli)
         arow.addStretch(1)
         al2.addLayout(arow)
 
@@ -203,13 +249,16 @@ class PreferencesDialog(QDialog):
         # Settings here persist live (workflows + theme); only the data folder is
         # applied on Close (it needs a restart), so a single Close button suffices
         # — no "Save" (#62).
+        lay.addStretch(1)
+
         btns = QHBoxLayout()
+        btns.setContentsMargins(s["lg"], s["sm"], s["lg"], s["lg"])
         btns.addStretch(1)
         close = QPushButton("Close")
         close.setDefault(True)
         close.clicked.connect(self._close)
         btns.addWidget(close)
-        lay.addLayout(btns)
+        outer.addLayout(btns)
 
     # ── AI assistant ─────────────────────────────────────────────────────────
 
@@ -223,14 +272,15 @@ class PreferencesDialog(QDialog):
             self._assistant_status.setText(why)
         elif connected:
             self._assistant_status.setText(
-                f"Connected to Claude Desktop. Restart Claude Desktop if you've "
-                f"just connected.\nConfig: {path}")
+                "Claude Desktop is set up. Quit and reopen it to pick up changes.")
         else:
-            self._assistant_status.setText(f"Not connected.\nConfig would be: {path}")
+            # The line above already points at Connection details; don't repeat it.
+            self._assistant_status.setText("Claude Desktop isn't set up yet.")
 
+        self._details_btn.setEnabled(ok)
         self._connect_btn.setEnabled(ok)
         self._connect_btn.setText("Update Claude Desktop…" if connected
-                                  else "Connect Claude Desktop…")
+                                  else "Set up Claude Desktop…")
         self._disconnect_btn.setEnabled(ok and connected)
 
     def _connect_desktop(self):
@@ -288,15 +338,10 @@ class PreferencesDialog(QDialog):
                                 "M110 was removed. Restart Claude Desktop to apply.")
         self._refresh_assistant_status()
 
-    def _copy_cli_command(self):
-        from PySide6.QtWidgets import QApplication
-        from m110.assistant import client_config as cc
-        cmd = cc.cli_add_command()
-        QApplication.clipboard().setText(cmd)
-        QMessageBox.information(
-            self, "Copied",
-            f"Run this in a terminal to connect Claude Code:\n\n{cmd}\n\n"
-            f"{cc.DISCLOSURE}")
+    def _show_connection_details(self):
+        """Client-neutral setup info — the server is plain MCP over stdio."""
+        from m110.ui.mcp_details_dialog import ConnectionDetailsDialog
+        ConnectionDetailsDialog(self).exec()
 
     def _browse(self):
         d = QFileDialog.getExistingDirectory(self, "Choose data folder", self._edit.text())

@@ -164,10 +164,15 @@ def test_preview_shows_only_our_entry():
 
 
 def test_disclosure_names_what_leaves_the_machine_and_what_cannot_change():
+    """Since M0.5 the assistant CAN create files (in its outbox), so the
+    disclosure must not claim "read-only" — it must state the narrower, true
+    guarantee: it cannot change or delete your library, and nothing lands
+    without you accepting it."""
     low = cc.DISCLOSURE.lower()
-    assert "read-only" in low
+    assert "read-only" not in low, "overstates the guarantee since M0.5"
     assert any(w in low for w in ("notes", "image", "capture"))
-    assert "cannot" in low
+    assert "cannot change or delete" in low
+    assert "accept" in low
 
 
 def test_cli_command_pins_the_root_and_quotes_a_spacey_path(tmp_path):
