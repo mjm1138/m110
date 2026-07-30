@@ -39,9 +39,10 @@ The **Map** view draws a star atlas of your Library: constellation figures, star
 coordinate grid, and a marker for every object you're tracking, in its real position.
 
 Markers carry the same colors as the status chips elsewhere in the app — green for a
-**deep stack**, amber for an **initial capture**, muted grey for something in your Library
-you haven't shot yet — so a few months' work shows up as a bright patch of sky, and the
-gaps show you what's still to come.
+**deep stack**, amber for an **initial capture**, muted grey for **uncaptured** — so a few
+months' work shows up as a bright patch of sky, and the gaps show you what's still to come.
+The key lists only the colors actually on the chart, so an unfiltered map of a collection
+you've shot every object in doesn't explain a grey you can't see.
 
 - **Click** a marker to open that object, exactly as clicking a row or tile does; **hover**
   one to see its hero image.

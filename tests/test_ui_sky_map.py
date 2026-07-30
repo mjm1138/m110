@@ -419,3 +419,33 @@ def test_tooltip_shows_the_hero(tmp_path, monkeypatch, qapp):
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+@needs_uranometria
+def test_the_legend_keys_only_the_tiers_on_the_chart(tmp_path, monkeypatch, qapp):
+    """The Library holds what you've captured, so an unfiltered map has nothing
+    uncaptured on it — keying a colour that never appears just invites the
+    question of where those objects are."""
+    from m110 import goals
+
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)              # a real capture, so the Library isn't all-unshot
+    goals.set_active_goals(["messier"])
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._view_btns["map"].setChecked(True)
+        plotted = {m["status"] for c in page.map_view.charts() for m in c["objects"]}
+        assert plotted == {skymap.STATUS_INITIAL}     # only what was captured
+        legend = page.map_view._legend.text()
+        assert "Uncaptured" not in legend        # nothing unshot is plotted
+        assert "Captured" in legend
+
+        # Filter to the goal and its unshot members arrive — and so does the key.
+        page._catalog_combo.setCurrentIndex(page._catalog_combo.findData("messier"))
+        legend = page.map_view._legend.text()
+        assert "Uncaptured" in legend
+        assert "Not yet shot" not in legend
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

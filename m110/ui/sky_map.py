@@ -31,6 +31,15 @@ MIN_HIT_PX = 11.0          # a comfortable click target when zoomed out
 MIN_ZOOM, MAX_ZOOM = 1.0, 16.0
 ZOOM_STEP = 1.15
 
+# Legend tiers, in the order they're keyed. "Uncaptured" rather than "not yet
+# shot": on a goal-filtered map these are the list's members you haven't got to,
+# and it matches the Library's own captured/uncaptured language.
+LEGEND_TIERS = (
+    (skymap.STATUS_DEEP, "Deep"),
+    (skymap.STATUS_INITIAL, "Captured"),
+    (skymap.STATUS_UNCAPTURED, "Uncaptured"),
+)
+
 
 class SkyMapCanvas(QWidget):
     """The chart surface: paints one hemisphere and reports clicks on objects."""
@@ -274,13 +283,12 @@ class SkyMapView(QWidget):
         """
         self._charts = charts
         self._hemi_seg.setVisible(len(charts) > 1)
-        self._legend.setVisible(True)
         if not self._hemi_btns["north"].isChecked():
             self._hemi_btns["north"].setChecked(True)
         self._show_hemisphere(0)
         plotted = sum(len(c["objects"]) for c in charts)
         self.canvas.set_message("" if plotted else empty_message)
-        self._legend.setVisible(bool(plotted))
+        self._rebuild_legend()
         note = next((w for w in (warnings or []) if "no coordinates" in w), "")
         self._note.setText(note)
         self._note.setVisible(bool(note))
@@ -323,18 +331,24 @@ class SkyMapView(QWidget):
 
     def restyle(self):
         """Theme changed — recolor the legend swatches and repaint."""
-        colors = status_colors()
-        self._legend.setText(
-            "  ".join(
-                f'<span style="color:{colors[key]}">●</span> {label}'
-                for key, label in (
-                    (skymap.STATUS_DEEP, "Deep"),
-                    (skymap.STATUS_INITIAL, "Captured"),
-                    (skymap.STATUS_UNCAPTURED, "Not yet shot"),
-                )
-            )
-        )
+        self._rebuild_legend()
         self.canvas.update()
+
+    def _rebuild_legend(self):
+        """Key only the tiers actually on the chart.
+
+        The Library holds what you've captured, so an unfiltered map has nothing
+        uncaptured on it — keying a colour that never appears just invites the
+        question of where those objects are. Filter to a goal and its unshot
+        members arrive, and the entry arrives with them.
+        """
+        colors = status_colors()
+        present = {m.get("status") for c in self._charts for m in c["objects"]}
+        entries = [(k, lbl) for k, lbl in LEGEND_TIERS if k in present]
+        self._legend.setText(
+            "  ".join(f'<span style="color:{colors[k]}">●</span> {lbl}'
+                      for k, lbl in entries))
+        self._legend.setVisible(bool(entries))
 
 
 TOOLTIP_THUMB_PX = 220
