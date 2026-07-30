@@ -133,8 +133,7 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
 
 App-bundled **reference data** (ships in the package, not in the store):
 `m110/seed/objects.toml` (object **reference** dataset incl. J2000 coords),
-`m110/seed/priorities.toml`, `m110/seed/catalogs/*.toml` (bundled catalog membership lists),
-`m110/guidance/*.md` (workflow playbooks).
+`m110/seed/priorities.toml`, `m110/seed/catalogs/*.toml` (bundled catalog membership lists).
 
 ---
 
@@ -170,7 +169,6 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Renders cache | `.m110_internal_data/renders/` | JPG/PNG | `build_images` (content-hash cached: mtime+size+ver) | **Derived** | Regenerable | Safe to delete; **orphans should be pruned** (open #14) |
 | Store version | `.m110_internal_data/.store_version` | text (`4`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
 | Bundled catalog/priorities/coords | `m110/seed/` | TOML/CSV | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
-| Guidance playbooks | `m110/guidance/*.md` | Markdown | Shipped with the app | **Reference** (read-only) | Persistent (in package) | n/a |
 
 **Status vocabularies** (computed, not stored): capture status `initial` /
 `deep_stack` (by integration; `totals`); processing status `not_processed` /

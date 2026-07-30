@@ -153,44 +153,6 @@ def is_default_preset(preset: dict) -> bool:
                for n in _DEFAULT_PRESET_REPS)
 
 
-# ── guidance (bundled playbooks) ─────────────────────────────────────────────
-
-_CORE_GUIDANCE = [
-    "siril_processing_workflow",
-    "siril_drizzle_guide",
-    "siril_psf_guide",
-    "siril_color_saturation",
-    "seestar_s50_imaging_guide",
-]
-
-
-def guidance_ids() -> list[str]:
-    if not config.GUIDANCE_DIR.is_dir():
-        return []
-    return sorted(p.stem for p in config.GUIDANCE_DIR.glob("*.md"))
-
-
-def guidance_path(doc_id: str) -> Path:
-    return config.GUIDANCE_DIR / f"{doc_id}.md"
-
-
-def guidance_title(doc_id: str) -> str:
-    p = guidance_path(doc_id)
-    if p.is_file():
-        for line in p.read_text(encoding="utf-8").splitlines():
-            if line.startswith("#"):
-                return line.lstrip("# ").strip()
-    return doc_id.replace("_", " ").title()
-
-
-def guidance_for(filters_present: set[str], star_removal: bool) -> list[str]:
-    available = set(guidance_ids())
-    ids = [d for d in _CORE_GUIDANCE if d in available]
-    if "LP" in filters_present and "siril_lp_narrowband_galaxy_blend" in available:
-        ids.append("siril_lp_narrowband_galaxy_blend")
-    return ids
-
-
 # ── prepare: plan (read-only) ────────────────────────────────────────────────
 
 @dataclass
@@ -208,7 +170,6 @@ class PrepPlan:
     target: str
     siril_dir: str
     jobs: list                      # list[PrepJob]
-    guidance: list
     star_removal: bool
     total_lights: int = 0
     total_bytes: int = 0
@@ -307,7 +268,6 @@ def plan_prep(target: str, usable_frames: int | None = None,
         target=target,
         siril_dir=str(config.siril_dir(target)),
         jobs=jobs,
-        guidance=guidance_for(set(filters), star_removal),
         star_removal=star_removal,
         total_lights=len(lights),
         total_bytes=total_bytes,
