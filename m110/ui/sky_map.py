@@ -252,6 +252,11 @@ class SkyMapView(QWidget):
         self._note.setText(message)
         self._note.show()
 
+    def charts(self) -> list[dict]:
+        """The rendered charts (one per hemisphere), as `skymap.render` returned
+        them — so a host can ask what is currently drawn."""
+        return self._charts
+
     def set_selected(self, slug: str | None):
         """Ring the selected object, switching discs if it's on the other one."""
         self.canvas.set_selected(slug)

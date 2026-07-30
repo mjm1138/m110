@@ -106,7 +106,12 @@ class CatalogPage(QWidget):
         # it is built lazily and only re-rendered while it is the visible view —
         # `_map_dirty` records that the filtered set moved underneath it.
         self.map_view = SkyMapView()
-        self.map_view.object_clicked.connect(self.select_object)
+        # Clicking a marker is selection *within* the view, like clicking a row —
+        # not `select_object`, which is the routing entry point other pages use
+        # and clears the search + catalog filter to guarantee the target is
+        # visible. On the map the object is visibly right there, so clearing the
+        # user's filters would be both pointless and destructive.
+        self.map_view.object_clicked.connect(self._on_map_click)
         self._map_dirty = True
         self._map_slug = None              # the map's own "selection"
         self._visible_slugs: list[str] = []
@@ -497,8 +502,11 @@ class CatalogPage(QWidget):
         self.table.deleteLater()
         self.table = new_table
         self._view_stack.insertWidget(0, self.table)
-        self._view_stack.setCurrentWidget(
-            self.table if self._view_mode == "list" else self.grid_view)
+        # Whatever view is active stays active. (This used to hardcode
+        # list-or-grid, which silently dropped Map back to the grid on any
+        # rebuild — a catalog-filter change, a pin toggle, a theme switch —
+        # while the segment still read "Map".)
+        self._view_stack.setCurrentWidget(self._view_widget(self._view_mode))
         self._all_tile_items = self._build_tile_items()
         self._apply_filter()
         if not (prev and self._select_slug(prev)):
@@ -506,6 +514,15 @@ class CatalogPage(QWidget):
             self.detail.hide()
 
     # ---- map view ----
+    def _on_map_click(self, slug: str):
+        """A marker was clicked — select it in place, leaving the filters alone."""
+        self._select_slug(slug)
+
+    def _map_has(self, slug: str) -> bool:
+        """Whether `slug` is currently drawn on either disc."""
+        return any(m["slug"] == slug
+                   for chart in self.map_view.charts() for m in chart["objects"])
+
     def _render_map(self, force: bool = False):
         """Draw the currently filtered objects on the sky chart.
 
@@ -545,6 +562,11 @@ class CatalogPage(QWidget):
         if self._view_mode == "map":
             # The map has no selection model: it rings the object and shows the
             # detail pane, switching hemispheres if it is on the other disc.
+            # Like the other views, an object the current filter excludes is a
+            # miss — so a rebuild that filters out the selection closes the
+            # detail pane instead of leaving a stale one open.
+            if not self._map_has(slug):
+                return False
             self._map_slug = slug
             self.map_view.set_selected(slug)
             if slug in self._cat:

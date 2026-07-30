@@ -237,3 +237,68 @@ def _wheel(pos, delta):
 
     return QWheelEvent(pos, pos, QPoint(0, 0), QPoint(0, delta), Qt.NoButton,
                        Qt.NoModifier, Qt.ScrollUpdate, False)
+
+
+@needs_uranometria
+def test_catalog_filter_keeps_the_map_on_screen(tmp_path, monkeypatch, qapp):
+    """Regression: any rebuild while on the map (a catalog-filter change, a pin
+    toggle, a theme switch) used to swap the grid in underneath while the segment
+    still read Map — `_rebuild_views` hardcoded list-or-grid."""
+    page = _page(tmp_path, monkeypatch)
+    try:
+        page._view_btns["map"].setChecked(True)
+        assert page._view_stack.currentWidget() is page.map_view
+
+        page._catalog_combo.setCurrentIndex(1)          # a real catalog
+        assert page._view_mode == "map"
+        assert page._view_btns["map"].isChecked()
+        assert page._view_stack.currentWidget() is page.map_view   # not the grid
+
+        page.restyle()                                  # the other rebuild path
+        assert page._view_stack.currentWidget() is page.map_view
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+@needs_uranometria
+def test_clicking_a_marker_leaves_the_filters_alone(tmp_path, monkeypatch, qapp):
+    """Regression: the marker click was wired to `select_object`, the routing
+    entry point, which clears the search and resets the catalog filter to
+    guarantee the target is visible — on the map it is visibly right there, and
+    resetting the filter bounced the view back to the grid."""
+    page = _page(tmp_path, monkeypatch)
+    try:
+        page._view_btns["map"].setChecked(True)
+        # Messier explicitly — the fixture objects are Messier, and the combo's
+        # first entries are other catalogs entirely.
+        page._catalog_combo.setCurrentIndex(page._catalog_combo.findData("messier"))
+        chosen = page._catalog_combo.currentIndex()
+        page._search.setText("M")
+        drawn = [m["slug"] for c in page.map_view.charts() for m in c["objects"]]
+        assert drawn, "the Messier filter should still chart the fixture objects"
+
+        page._on_map_click(drawn[0])
+        assert page._view_mode == "map"
+        assert page._view_stack.currentWidget() is page.map_view
+        assert page._catalog_combo.currentIndex() == chosen   # filter untouched
+        assert page._search.text() == "M"                     # search untouched
+        assert page._selected_slug() == drawn[0]
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+@needs_uranometria
+def test_a_filtered_out_selection_closes_the_detail(tmp_path, monkeypatch, qapp):
+    page = _page(tmp_path, monkeypatch)
+    try:
+        page._view_btns["map"].setChecked(True)
+        page._on_map_click("m81")
+        assert page._selected_slug() == "m81"
+        page._search.setText("Andromeda")               # m81 drops off the chart
+        assert not page._map_has("m81")
+        assert page._select_slug("m81") is False        # a miss, like list/grid
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
