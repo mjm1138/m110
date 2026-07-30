@@ -24,7 +24,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open [↓](#8--publishing-remaining-targets))* | [`DONE.md`](DONE.md) |
 | 10 | **Library backup** — hardlinked snapshots, verify, selective restore, auto-backup | ✅ shipped | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
-| 4 | **In-app assistant** (bring-your-own LLM) | ⬜ open — **next major milestone** | [↓](#4--in-app-assistant-bring-your-own-llm--next-major-milestone) |
+| 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
 | 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — **upstream dependency landed** ([uranometria 0.11.0](https://github.com/devonjones/uranometria/pull/22)); M110 side next | [↓](#12--sky-map-uranometria-integration) |
@@ -62,15 +62,14 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 In build-priority order. Numbers are each item's **original slot** (stable across
 this file, [`DONE.md`](DONE.md), and [`BUGS.md`](BUGS.md)).
 
-### 4 — In-app assistant (bring-your-own LLM) — *next major milestone*
+### 4 — In-app assistant (bring-your-own LLM) — *M0 shipped*
 
-Put the LLM value that's proven out in this project — **session planning, image
-analysis, workflow coaching** — *inside* the app, grounded in the user's own
-data. This is **"Checkpoint C" of the session-planning arc**: it layers over the
-deterministic prioritizer + planner — the assistant *proposes* session toggles /
-weights / plans and *explains* the ranking, but the engine still computes (it
-never authors the priority list). Foundation noted in BUGS **#44** (consult the
-`astro-session-planner` skill in ~/Astronomy).
+Put the LLM value proven out in this project — **session planning, image
+analysis, workflow coaching** — over the user's own data. This is **"Checkpoint C"
+of the session-planning arc**: it layers on the deterministic prioritizer +
+planner. The assistant *proposes* toggles / weights / plans and *explains* the
+ranking; the engine still computes, and never yields authorship of the priority
+list.
 
 **Why M110 is unusually well-positioned.** The three things that make an LLM
 genuinely useful here, the app already holds in structured form:
@@ -78,58 +77,40 @@ genuinely useful here, the app already holds in structured form:
   the site / equipment / obstruction profile.
 - **Tools** — the engine's real computations (twilight / moon / transit-altitude
   / obstruction; derived rollups; image access).
-- **Knowledge** — workflow playbooks (drizzle / PSF / colour / planning). ⚠ The
-  original bundled `m110/guidance/*.md` set was **removed** (personal identifiers,
-  dangling `CLAUDE.md` references, a dated forecast standing in for a guide);
-  replacements must be authored against citable sources before the *coaching*
-  feature below can ship. Tracked in [`BUGS.md`](BUGS.md).
+- **Knowledge** — procedures for using the above well. Shipped as skills; the
+  *workflow playbooks* half (drizzle / PSF / colour) is the gap — the bundled
+  set was withdrawn and needs re-authoring before the coaching leg can ship
+  (see **Open**, below).
 
 So "skilling" the model is mostly wiring: **data → context, engine functions →
-tools, docs → reference.** The app is the ideal host because it owns all three;
-the LLM stops guessing and starts calling real functions over real data.
+tools, docs → reference.**
 
-**Architecture (Qt-free `m110/assistant/`):**
-- `credentials` — API keys in the OS keychain (`keyring`), never plaintext;
-  per-provider.
-- `providers/` — adapters behind one interface (chat + tools + vision +
-  streaming). **Claude first** (Anthropic Messages API: tool use, image input,
-  **prompt caching** for the large static context, streaming). Design the seam
-  for OpenAI / local (Ollama) later.
-- `context` — assemble the system payload from app data + playbooks, with cache
-  markers on the static parts.
-- `tools` — expose engine functions as LLM tools: altitude / twilight / moon,
-  priorities, object lookup, captured list, workflow-doc fetch, image fetch
-  (vision), propose-plan, save-critique/journal. Grounds answers in real
-  computation, not guessed numbers.
-- UI — a dockable Assistant chat plus context-seeded entry points
-  ("Plan tonight", "Critique this image", "How should I process this?").
+#### The phasing was inverted (2026-07, with the user)
 
-**The three features:** *planning* (assistant + planning tools + priorities →
-a plan, exported via the plan-file phase); *image analysis* (vision + the
-object's render/stack + processing metadata → a critique saved to the journal);
-*coaching* (grounded Q&A over the playbooks + the object's current state).
+The original plan was A0 in-app chat → … → A4 *(optional)* MCP server. That
+front-loads the **least** agent-agnostic work: credentials, provider adapters,
+streaming, and a chat pane all had to land before a single grounded answer was
+possible. Building the MCP server **first** inverts it — MCP *is* the provider
+abstraction, so agent-agnosticism costs nothing, and the user gets value from
+the client they already have. Revised phasing:
 
-**MCP angle (design toward it).** Expose the engine's tools+data as an **MCP
-server**: the in-app assistant becomes an MCP client, and the *same* server
-lets a user point their own external Claude / Claude Code at M110's data and
-tools. Standards-based, future-proof, keeps the assistant thin.
+- **M0 — tool registry + skills + stdio MCP server. ✅ shipped.**
+- **M1 — in-app HTTP transport over the same registry, plus a confirm-gated
+  safe-write allowlist** (journal append, pins, save field guide, save
+  strategy/weights). The proposal envelope is already designed as this seam.
+- **M2 — *(optional)* in-app chat**: provider adapters, key handling in the OS
+  keychain, cost controls, local models. Only if BYO-client proves insufficient;
+  the MCP topology may make it permanently unnecessary.
 
-**Cross-cutting.** BYO-key (user's account, user pays); model picker (Haiku for
-cheap coaching, Sonnet/Opus for planning/analysis); prompt caching for cheap
-repeat calls; clear disclosure that data/images go to the chosen API, with a
-**local-model option** for privacy/offline; prefer tool-computed facts over
-model guesses; needs a network entitlement (fine for Developer-ID).
+#### Open
 
-**Phasing:** A0 contextualised chat (BYO Claude key, cached context, no tools)
-→ A1 tool use (real planning + grounded answers) → A2 vision (image critique)
-→ A3 provider abstraction + cost controls + local models → A4 (optional) MCP
-server / agentic multi-step (Claude Agent SDK).
+- **M1** — the in-app transport and the safe-write allowlist.
+- **Processing coach**, deferred: the bundled guidance corpus was withdrawn (see
+  [`BUGS.md`](BUGS.md) #45) and replacements need authoring against citable
+  sources before the *coaching* leg can ship.
+- Cost controls and a model picker belong to whichever client the user brings —
+  revisit only if M2 happens.
 
-**Dependencies / risk.** The planning engine + data model it builds on are
-shipped. Risks: provider-API churn; user cost surprises (mitigate: caching +
-model choice + a token/cost readout); hallucination (mitigate: ground in
-tools/data, cite sources); and scope — keep it "an LLM over the existing
-engine," not a bespoke agent framework.
 
 ### 2 — Plan-file generation (device schedules)
 
@@ -158,7 +139,7 @@ the noted refinements, none blocking:
   deep threshold (object detail carries it; badge + scorer read it), and a
   **v2 surface-brightness basis** (mag + size) refining the per-type table.
 - Data/robustness follow-ups tracked in BUGS: **#38b** (reference V-mag audit),
-  **#40b/#40d**, **#44** (assistant foundation, → item 4).
+  **#40b/#40d**. (#44, the assistant foundation, shipped with item 4 M0.)
 
 ### 11 — Lights Table
 

@@ -320,14 +320,14 @@ Legend: `[ ]` open · `[~]` partially done
       already applied `type_weights`).
 *Session-planner items (#40–44) are phased in [`PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md).*
 
-- [ ] **#44 — LLM session-planner skill foundation** *(→ PLANNING_ROADMAP Phase 6;
-  post-release follow-on).* Lay the foundation for an M110-native session-planner
-  skill over the deterministic engine — consult the `astro-session-planner` skill +
-  `scripts/`/`workflows/` in ~/Astronomy and work from there. This is the point where
-  an LLM plugs in (explains/tunes/narrates; the engine stays the source of truth).
-  **Note:** if that skill seeds the M110 one, review it for the same defects that got
-  `m110/guidance/` removed (see #45) — personal identifiers, references to documents
-  the model can't see, and undated/unsourced numbers.
+- [x] **#44 — LLM session-planner skill foundation** *(done — `feature/assistant-mcp`,
+  ROADMAP item 4 M0).* Shipped as a Qt-free tool registry + a `plan-a-night` skill over
+  the deterministic engine, served through a stdio MCP server. The engine remained the
+  source of truth: the skill forbids hand-assembling a schedule, because the sequencer
+  handles slot packing, setting times, the start-altitude ceiling and moon impact
+  together. Not seeded from the `astro-session-planner` skill in ~/Astronomy — that
+  corpus needs the same PII/staleness review that got `m110/guidance/` withdrawn
+  (see #45); the M110 skill was written fresh against the shipped tools.
 
 - [ ] **#45 — Author replacement processing guidance.** The bundled
   `m110/guidance/*.md` playbooks were **removed** (`chore/remove-stale-guidance`)

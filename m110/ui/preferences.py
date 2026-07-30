@@ -155,6 +155,37 @@ class PreferencesDialog(QDialog):
         ul.addWidget(self._update_cb)
         lay.addWidget(ubox)
 
+        # ── AI assistant (connect an external MCP client) ────────────────────
+        abox = QGroupBox("AI assistant")
+        al2 = QVBoxLayout(abox)
+        blurb = QLabel(
+            "Connect Claude Desktop or Claude Code to M110 and ask it to plan a "
+            "night, explain the priority ranking, or critique an image. The "
+            "connection is read-only — it can look and suggest, never change "
+            "your library.")
+        blurb.setWordWrap(True)
+        al2.addWidget(blurb)
+
+        self._assistant_status = QLabel()
+        self._assistant_status.setProperty("caption", True)
+        self._assistant_status.setWordWrap(True)
+        al2.addWidget(self._assistant_status)
+
+        arow = QHBoxLayout()
+        self._connect_btn = QPushButton("Connect Claude Desktop…")
+        self._connect_btn.clicked.connect(self._connect_desktop)
+        self._disconnect_btn = QPushButton("Disconnect")
+        self._disconnect_btn.clicked.connect(self._disconnect_desktop)
+        copy_cli = QPushButton("Copy Claude Code command")
+        copy_cli.clicked.connect(self._copy_cli_command)
+        arow.addWidget(self._connect_btn)
+        arow.addWidget(self._disconnect_btn)
+        arow.addWidget(copy_cli)
+        arow.addStretch(1)
+        al2.addLayout(arow)
+        lay.addWidget(abox)
+        self._refresh_assistant_status()
+
         # Goals (catalogs / custom lists) are managed on the Goals page, not here.
 
         # Settings here persist live (workflows + theme); only the data folder is
@@ -167,6 +198,93 @@ class PreferencesDialog(QDialog):
         close.clicked.connect(self._close)
         btns.addWidget(close)
         lay.addLayout(btns)
+
+    # ── AI assistant ─────────────────────────────────────────────────────────
+
+    def _refresh_assistant_status(self):
+        from m110.assistant import client_config as cc
+        ok, why = cc.server_available()
+        path = cc.desktop_config_path()
+        connected = cc.is_connected()
+
+        if not ok:
+            self._assistant_status.setText(why)
+        elif connected:
+            self._assistant_status.setText(
+                f"Connected to Claude Desktop. Restart Claude Desktop if you've "
+                f"just connected.\nConfig: {path}")
+        else:
+            self._assistant_status.setText(f"Not connected.\nConfig would be: {path}")
+
+        self._connect_btn.setEnabled(ok)
+        self._connect_btn.setText("Update Claude Desktop…" if connected
+                                  else "Connect Claude Desktop…")
+        self._disconnect_btn.setEnabled(ok and connected)
+
+    def _connect_desktop(self):
+        from m110.assistant import client_config as cc
+        try:
+            existing = cc.read_desktop_config()          # refuses to clobber bad JSON
+        except cc.ClientConfigError as exc:
+            QMessageBox.warning(self, "Can't read Claude Desktop's config", str(exc))
+            return
+
+        others = sorted(k for k in (existing.get("mcpServers") or {})
+                        if k != cc.SERVER_KEY)
+        keep = (f"\n\nYour other configured servers ({', '.join(others)}) are kept."
+                if others else "")
+
+        # Show exactly what will be written, and what connecting means, before
+        # touching another application's configuration file.
+        box = QMessageBox(self)
+        box.setWindowTitle("Connect Claude Desktop")
+        box.setIcon(QMessageBox.Question)
+        box.setText(f"Add M110 to Claude Desktop?\n\n{cc.DISCLOSURE}{keep}")
+        box.setInformativeText(f"This will be written to:\n{cc.desktop_config_path()}")
+        box.setDetailedText(cc.preview_desktop_json())
+        box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return
+
+        try:
+            path, backup = cc.write_desktop_config()
+        except cc.ClientConfigError as exc:
+            QMessageBox.warning(self, "Couldn't update Claude Desktop", str(exc))
+            return
+
+        note = f"\n\nA backup of the previous config is at:\n{backup}" if backup else ""
+        QMessageBox.information(
+            self, "Connected",
+            f"M110 was added to Claude Desktop.\n\nQuit and reopen Claude Desktop, "
+            f"then ask it something like \"what should I shoot tonight?\"{note}")
+        self._refresh_assistant_status()
+
+    def _disconnect_desktop(self):
+        from m110.assistant import client_config as cc
+        if QMessageBox.question(
+                self, "Disconnect",
+                "Remove M110 from Claude Desktop's configuration?\n\n"
+                "Your other configured servers are left alone.") != QMessageBox.Yes:
+            return
+        try:
+            cc.remove_from_desktop_config()
+        except cc.ClientConfigError as exc:
+            QMessageBox.warning(self, "Couldn't update Claude Desktop", str(exc))
+            return
+        QMessageBox.information(self, "Disconnected",
+                                "M110 was removed. Restart Claude Desktop to apply.")
+        self._refresh_assistant_status()
+
+    def _copy_cli_command(self):
+        from PySide6.QtWidgets import QApplication
+        from m110.assistant import client_config as cc
+        cmd = cc.cli_add_command()
+        QApplication.clipboard().setText(cmd)
+        QMessageBox.information(
+            self, "Copied",
+            f"Run this in a terminal to connect Claude Code:\n\n{cmd}\n\n"
+            f"{cc.DISCLOSURE}")
 
     def _browse(self):
         d = QFileDialog.getExistingDirectory(self, "Choose data folder", self._edit.text())

@@ -99,3 +99,105 @@ def test_theme_combo_applies_mode(tmp_path, monkeypatch, qapp):
         assert calls and calls[-1] == "dark"
     finally:
         d.deleteLater(); qapp.processEvents()
+
+
+# ── AI assistant section ─────────────────────────────────────────────────────
+
+def test_assistant_section_reports_not_connected(tmp_path, monkeypatch, qapp):
+    """The status line is the only feedback the user gets, so it must be right."""
+    from m110.assistant import client_config as cc
+    seed_root(tmp_path, monkeypatch)
+    monkeypatch.setattr(cc, "desktop_config_path",
+                        lambda: tmp_path / "claude_desktop_config.json")
+    d = _prefs()
+    try:
+        assert "Not connected" in d._assistant_status.text()
+        assert d._connect_btn.text().startswith("Connect")
+        assert not d._disconnect_btn.isEnabled()
+    finally:
+        d.deleteLater()
+
+
+def test_assistant_section_reports_connected(tmp_path, monkeypatch, qapp):
+    from m110.assistant import client_config as cc
+    seed_root(tmp_path, monkeypatch)
+    cfg = tmp_path / "claude_desktop_config.json"
+    monkeypatch.setattr(cc, "desktop_config_path", lambda: cfg)
+    cc.write_desktop_config(cfg)
+    d = _prefs()
+    try:
+        assert "Connected" in d._assistant_status.text()
+        assert d._connect_btn.text().startswith("Update")
+        assert d._disconnect_btn.isEnabled()
+    finally:
+        d.deleteLater()
+
+
+def test_connect_requires_confirmation_and_writes_nothing_on_cancel(
+        tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QMessageBox
+    from m110.assistant import client_config as cc
+    seed_root(tmp_path, monkeypatch)
+    cfg = tmp_path / "claude_desktop_config.json"
+    monkeypatch.setattr(cc, "desktop_config_path", lambda: cfg)
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.Cancel)
+
+    d = _prefs()
+    try:
+        d._connect_desktop()
+        assert not cfg.exists(), "cancelling must not touch another app's config"
+    finally:
+        d.deleteLater()
+
+
+def test_connect_writes_after_confirmation(tmp_path, monkeypatch, qapp):
+    import json
+    from PySide6.QtWidgets import QMessageBox
+    from m110.assistant import client_config as cc
+    seed_root(tmp_path, monkeypatch)
+    cfg = tmp_path / "claude_desktop_config.json"
+    monkeypatch.setattr(cc, "desktop_config_path", lambda: cfg)
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.Ok)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+
+    d = _prefs()
+    try:
+        d._connect_desktop()
+        entry = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]["m110"]
+        assert entry["env"]["M110_DATA_ROOT"] == str(config.DATA_ROOT)
+        assert "Connected" in d._assistant_status.text()   # status refreshed
+    finally:
+        d.deleteLater()
+
+
+def test_connect_surfaces_a_broken_config_instead_of_clobbering_it(
+        tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QMessageBox
+    from m110.assistant import client_config as cc
+    seed_root(tmp_path, monkeypatch)
+    cfg = tmp_path / "claude_desktop_config.json"
+    cfg.write_text("{ broken", encoding="utf-8")
+    monkeypatch.setattr(cc, "desktop_config_path", lambda: cfg)
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning",
+                        lambda *a, **k: warned.append(a[2] if len(a) > 2 else ""))
+
+    d = _prefs()
+    try:
+        d._connect_desktop()
+        assert warned, "the user must be told, not silently ignored"
+        assert cfg.read_text(encoding="utf-8") == "{ broken"
+    finally:
+        d.deleteLater()
+
+
+def test_copy_cli_command_puts_it_on_the_clipboard(tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QApplication, QMessageBox
+    seed_root(tmp_path, monkeypatch)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    d = _prefs()
+    try:
+        d._copy_cli_command()
+        assert "claude mcp add m110" in QApplication.clipboard().text()
+    finally:
+        d.deleteLater()

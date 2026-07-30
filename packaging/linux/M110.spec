@@ -19,6 +19,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 # SPECPATH = the directory holding this spec (packaging/linux).
 ROOT = Path(SPECPATH).resolve().parents[1]                       # repo root
 ENTRY = ROOT / "packaging" / "common" / "m110_launch.py"         # shared entry shim
+MCP_ENTRY = ROOT / "packaging" / "common" / "m110_mcp_launch.py"  # stdio MCP server shim
 HOOKS = ROOT / "packaging" / "common" / "pyinstaller-hooks"      # shared hook overrides
 
 datas = collect_data_files("m110")          # engine package data (seed, fonts, brand)
@@ -46,7 +47,7 @@ datas += copy_metadata("astropy")               # astroquery's minversion('astro
 block_cipher = None
 
 a = Analysis(
-    [str(ENTRY)],
+    [str(ENTRY), str(MCP_ENTRY)],   # both entry points share ONE Analysis
     pathex=[str(ROOT)],
     binaries=[],
     datas=datas,
@@ -62,9 +63,16 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# One Analysis, two executables. `a.scripts` holds the runtime hooks plus BOTH
+# entry scripts, so each EXE takes the shared prefix and only its own script —
+# otherwise each binary would run whichever entry point happened to come first.
+def _scripts_for(stem):
+    other = {"m110_launch", "m110_mcp_launch"} - {stem}
+    return [e for e in a.scripts if e[0] not in other]
+
 exe = EXE(
     pyz,
-    a.scripts,
+    _scripts_for("m110_launch"),
     [],
     exclude_binaries=True,
     name="M110",
@@ -80,8 +88,31 @@ exe = EXE(
     entitlements_file=None,
 )
 
+# The stdio MCP server. console=True is a no-op on Linux, but keep it explicit:
+# this binary speaks JSON-RPC on stdout and must never be built windowed.
+# The AppImage AppRun dispatches to it on `--mcp` (see build_appimage.sh) —
+# an AppImage has no persistent internal path a client config could point at.
+mcp_exe = EXE(
+    pyz,
+    _scripts_for("m110_mcp_launch"),
+    [],
+    exclude_binaries=True,
+    name="m110-mcp",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
 coll = COLLECT(
     exe,
+    mcp_exe,
     a.binaries,
     a.zipfiles,
     a.datas,

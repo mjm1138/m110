@@ -126,7 +126,8 @@ def _encode_png(img, *, final: bool) -> bytes:
     return _oxipng(data) if final else data
 
 
-def _encode_jpeg(img, quality: int) -> bytes:
+def encode_jpeg(img, quality: int) -> bytes:
+    """JPEG bytes for a PIL image. Pure — returns data, writes nothing."""
     from PIL import ImageFile
     # `optimize=True` buffers a whole Huffman-optimization pass; the default
     # MAXBLOCK (64 KB) overflows on large frames → "broken data stream". Size it
@@ -139,8 +140,8 @@ def _encode_jpeg(img, quality: int) -> bytes:
     return buf.getvalue()
 
 
-def _resized(img, long_edge: int):
-    """Lanczos-resize so the longest edge is `long_edge` (no upscaling)."""
+def resize_long_edge(img, long_edge: int):
+    """Lanczos-resize so the longest edge is `long_edge` (no upscaling). Pure."""
     from PIL import Image
     w, h = img.size
     if max(w, h) <= long_edge:
@@ -151,6 +152,11 @@ def _resized(img, long_edge: int):
         nh, nw = long_edge, max(1, round(w * long_edge / h))
     return img.resize((nw, nh), Image.LANCZOS)
 
+
+# Pre-existing private names, kept working. The public pair above is what the
+# assistant's vision tool uses — it needs bytes in memory, never a file.
+_encode_jpeg = encode_jpeg
+_resized = resize_long_edge
 
 def _atomic_write(dest: Path, data: bytes) -> None:
     tmp = dest.with_name(dest.name + ".part")
