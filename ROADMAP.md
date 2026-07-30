@@ -27,7 +27,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
-| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | ⬜ open — **upstream dependency landed** ([uranometria 0.11.0](https://github.com/devonjones/uranometria/pull/22)); M110 side next | [↓](#12--sky-map-uranometria-integration) |
+| 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
 | 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
 | 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
 | 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
@@ -94,10 +94,22 @@ possible. Building the MCP server **first** inverts it — MCP *is* the provider
 abstraction, so agent-agnosticism costs nothing, and the user gets value from
 the client they already have. Revised phasing:
 
-- **M0 — tool registry + skills + stdio MCP server. ✅ shipped.**
-- **M1 — in-app HTTP transport over the same registry, plus a confirm-gated
-  safe-write allowlist** (journal append, pins, save field guide, save
-  strategy/weights). The proposal envelope is already designed as this seam.
+- **M0 — tool registry + skills + stdio MCP server. ✅ shipped** (strictly
+  read-only).
+- **M0.5 — the outbox. ✅ shipped.** Read-only made saving a plan impossible,
+  and copy-pasting markdown out of a chat is not a workflow. The invariant was
+  relaxed *precisely*: **no tool modifies or deletes anything; a tool may create
+  a new file, only in `.m110_internal_data/assistant/outbox/`, under quota.**
+  The value was never zero-write — it was "can't damage or silently alter what
+  you made", and a new file in a staging folder does neither. Artifacts (field
+  guides; **device plan files when item 2 lands**) and proposal envelopes share
+  the queue; a banner surfaces it and a modal applies, re-running each
+  proposal's preview against the store *as it is now* via `basis.store_state`.
+  A preference allows direct saves to `Plans/` once trusted.
+- **M1 — in-app HTTP transport over the same registry.** The safe-write
+  allowlist arrived early with M0.5 (via the outbox rather than direct writes),
+  so what remains is the live transport: an assistant that can see the running
+  app's state and drive its UI.
 - **M2 — *(optional)* in-app chat**: provider adapters, key handling in the OS
   keychain, cost controls, local models. Only if BYO-client proves insufficient;
   the MCP topology may make it permanently unnecessary.
@@ -310,6 +322,30 @@ dropping the JS:
 - **12a — "Where is my collection?"** *(core)* Every filtered Library object
   plotted; click → select → detail pane. Hemisphere toggle only when the set
   actually reaches past dec −35° (uranometria's own threshold).
+  - 🔶 **Engine done** — `m110/skymap.py` (Qt-free): `build_config` turns a slug
+    selection into a fully-specified chart config (coords from
+    `catalog.load_coords`, so uranometria never does a lookup and the render is
+    offline and deterministic), and `render` returns the per-hemisphere charts
+    plus each marker's position for hit-testing. Callers pass their own slug
+    list, so the Library page's search / catalog filter / captured-only apply to
+    the map without this module knowing they exist. Objects with no coordinates
+    (`M42_mosaic`, `Unknown`) are skipped and reported, never fatal. Marker color
+    reuses `build_derived`'s own `deep_stack`/`initial` verdict so the map, the
+    status chips and the prioritizer cannot disagree. Optional import throughout
+    (`SkymapDepsMissing`).
+  - ✅ **Map view shipped** — a fourth button in the Library's existing
+    List·Grid·Feed segment (`ui/sky_map.py`), so it inherits search, the catalog
+    filter and captured-only for free and a marker click is just `select_object`
+    driving the same `DetailPane`. Painted with `QSvgRenderer` on a plain
+    `QWidget` rather than a `QGraphicsView`: the markers are baked into the
+    document, so a scene graph bought nothing, and one scale + centre pair maps
+    document↔widget coordinates for both painting and hit-testing. Wheel-zoom
+    anchors on the cursor, drag pans past a 3 px threshold (so a wobbly click
+    still selects), double-click refits. Selection and hover rings are painted
+    over the chart rather than baked in, since they change far more often than
+    the document. Rendering is deferred while the map is hidden (`_map_dirty`)
+    — a render is ~0.1 s, cheap enough to do synchronously but not on every
+    keystroke of a search you can't see.
 - **12b — Goal progress as a picture.** Marker style by capture depth —
   uncaptured goal member (dashed outline) / captured (ring) / deep (filled).
   Sources already exist: `goals.goal_members`, `derived` totals,

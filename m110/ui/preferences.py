@@ -183,6 +183,18 @@ class PreferencesDialog(QDialog):
         arow.addWidget(copy_cli)
         arow.addStretch(1)
         al2.addLayout(arow)
+
+        from m110.assistant.tools.saving import SETTING_DIRECT_SAVE
+        self._direct_save_cb = QCheckBox("Let the assistant save plans straight to Plans/")
+        self._direct_save_cb.setToolTip(
+            "Off (default): a plan the assistant saves waits for you to accept it in "
+            "M110.\nOn: it goes straight into your Plans folder.\n\nEither way the "
+            "assistant can only ADD files — it can never change or delete anything.")
+        self._direct_save_cb.setChecked(
+            bool(config.get_setting(SETTING_DIRECT_SAVE, False)))
+        self._direct_save_cb.toggled.connect(
+            lambda on: config.save_setting(SETTING_DIRECT_SAVE, bool(on)))
+        al2.addWidget(self._direct_save_cb)
         lay.addWidget(abox)
         self._refresh_assistant_status()
 

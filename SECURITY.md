@@ -40,12 +40,12 @@ client) through a local **MCP server**. This is the largest privacy decision in
 the app, so it's opt-in, and connecting a client shows you a plain-language
 disclosure first.
 
-**What the client can see.** Thirteen tools covering your object list and
-per-object detail, journal notes, capture and processing history, saved plans,
-target ranking, observability calculations, and — on request — **rendered
-image data**. If a tool returns it, the client can send it to whatever model it
-uses. That model is the client's choice, not M110's; M110 holds no API key and
-makes no model calls itself.
+**What the client can see.** A small, fixed set of tools (15 at time of writing)
+covering your object list and per-object detail, journal notes, capture and
+processing history, saved plans, target ranking, observability calculations,
+and — on request — **rendered image data**. If a tool returns it, the client can
+send it to whatever model it uses. That model is the client's choice, not
+M110's; M110 holds no API key and makes no model calls itself.
 
 **How it runs.** The server speaks [MCP](https://modelcontextprotocol.io) over
 stdio — it is started by the client as a child process and talks over pipes.

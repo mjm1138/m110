@@ -177,6 +177,13 @@ class MainWindow(QMainWindow):
         self._content_layout = QVBoxLayout(content)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
         self._content_layout.setSpacing(s["sm"])
+        # The assistant queue indicator. Persistent while the outbox is
+        # non-empty — deliberately not a launch/foreground modal: the app
+        # auto-syncs on every window focus, so that would fire constantly.
+        from m110.ui.assistant_review import AssistantBanner
+        self._assistant_banner = AssistantBanner(self)
+        self._assistant_banner.review.connect(self._review_assistant_items)
+        self._content_layout.addWidget(self._assistant_banner)
         self._content_layout.addWidget(self.stack, 1)
 
         central = QWidget()
@@ -616,11 +623,31 @@ class MainWindow(QMainWindow):
         # there's a visible window to show it in — a refresh that completes with no
         # window shown (headless tests) must not open a stray modal (it double-frees
         # on Linux Qt). Production always show()s the window before events pump.
+        self._refresh_assistant_banner()
         if self.isVisible():
             if not self._auto_backup_checked:
                 self._auto_backup_checked = True
                 self._maybe_auto_backup()
             self._maybe_backup_nudge()
+
+    def _refresh_assistant_banner(self):
+        """Re-read the assistant outbox; the banner shows itself if non-empty."""
+        banner = getattr(self, "_assistant_banner", None)
+        if banner is not None:
+            banner.refresh()
+
+    def _review_assistant_items(self):
+        """The banner's Review — a modal, because applying a change deserves a
+        focused confirm. Triggered by intent, never by the app's lifecycle."""
+        from m110.ui.assistant_review import AssistantReviewDialog
+        dlg = AssistantReviewDialog(self)
+        dlg.changed.connect(self._refresh_assistant_banner)
+        dlg.exec()
+        self._refresh_assistant_banner()
+        # Accepting a plan or applying a pin changes what the pages show.
+        page = self.stack.currentWidget()
+        if hasattr(page, "reload"):
+            page.reload()
 
     def _maybe_backup_nudge(self):
         """Once ever (and only once the user has captures worth losing), nudge a

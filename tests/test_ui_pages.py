@@ -387,6 +387,10 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
         "ngc-7000": {"id": "NGC 7000", "name": "North America", "type": "nebula"},
         "ngc-6992": {"id": "NGC 6992", "name": "Veil", "type": "nebula"},
     })
+    # The filter offers the catalogs you've set as goals, so track the one this
+    # test filters by.
+    from m110 import goals
+    goals.set_active_goals(["messier", "caldwell"])
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
@@ -1155,17 +1159,20 @@ def test_overview_integration_is_per_object(tmp_path, monkeypatch, qapp):
 
 
 def test_library_view_segment_stays_put_in_feed_and_hides_in_media(tmp_path, monkeypatch, qapp):
-    """Item 17: the List/Grid/Feed segment lives on its own row, so hiding the catalog
-    filter in Feed mode can't relocate it. Item 20: Media has no List/Grid/Feed views
+    """Item 17: the List/Grid/Feed/Map segment lives on its own row, so hiding the
+    catalog filter in Feed mode can't relocate it. Item 20: Media has no object views
     yet, so the segment is hidden in Media scope."""
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        assert set(page._view_btns) == {"list", "grid", "feed"}
+        assert set(page._view_btns) == {"list", "grid", "feed", "map"}
         page._view_btns["feed"].setChecked(True)
         assert page._filter_bar.isHidden() and not page._view_seg.isHidden()
+        # The map is an object view: unlike Feed it keeps the search + filter.
+        page._view_btns["map"].setChecked(True)
+        assert not page._filter_bar.isHidden() and not page._search.isHidden()
         page._media_btn.setChecked(True)
         assert page._view_seg.isHidden()        # hidden in Media (no views there yet)
         page._deepsky_btn.setChecked(True)

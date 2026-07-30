@@ -1,4 +1,4 @@
-"""About M110 — a small branded dialog (logo · name · tagline · version · license).
+"""About M110 — a small branded dialog (logo · tagline · version · credits · license).
 
 Reached via Help → About M110 (macOS folds it into the application menu). Colors come
 from the theme tokens; the logo is the theme-aware wordmark from `theme.brand`.
@@ -26,6 +26,7 @@ def app_version() -> str:
 class AboutDialog(QDialog):
     TAGLINE = "Complete the catalog."
     SOURCE_URL = "https://github.com/mjm1138/m110"
+    URANOMETRIA_URL = "https://github.com/devonjones/uranometria"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,12 +60,23 @@ class AboutDialog(QDialog):
         lay.addWidget(version)
 
         blurb = QLabel(
-            "Lightroom for smart telescopes — catalog, capture tracking, ingest,\n"
-            "and Siril processing-prep for your deep-sky imaging collection.")
+            "Catalog, capture tracking, ingest, and Siril processing-prep "
+            "for your deep-sky imaging collection.")
         blurb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         blurb.setWordWrap(True)
         blurb.setStyleSheet(f"color:{t.text_secondary}; margin-top:{s['md']}px;")
         lay.addWidget(blurb)
+
+        # The sky map is drawn by someone else's library, and it's one of the
+        # most visible things in the app — say so where people look for it.
+        credit = QLabel(
+            'Map functionality thanks to <a style="color:%s;" href="%s">Uranometria</a>'
+            % (t.accent, self.URANOMETRIA_URL))
+        credit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        credit.setOpenExternalLinks(True)
+        credit.setWordWrap(True)
+        credit.setStyleSheet(f"color:{t.text_secondary}; margin-top:{s['md']}px;")
+        lay.addWidget(credit)
 
         license = QLabel(
             'Apache-2.0 · <a style="color:%s;" href="%s">source</a>'

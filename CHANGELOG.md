@@ -11,6 +11,40 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **A sky map in the Library.** A fourth view — List · Grid · Feed · **Map** — plots your
+  collection on a star chart, so you can see where everything you've shot actually sits and
+  which parts of the sky are still empty. Markers use the same colors as the status chips
+  elsewhere (green for a deep stack, amber for an initial capture), so a season's work reads
+  at a glance. Click an object to open it; scroll to zoom, drag to pan, double-click to
+  reset. Search and the catalog filter narrow the map exactly as they narrow the list, and a
+  northern/southern toggle appears only if you've shot something far enough south to need
+  one. **Filter to a goal and the rest of that list joins the chart in grey**, so you can
+  see your progress against it — the gaps are the point. Hovering an object shows its hero.
+  If a filter matches nothing you still get the sky, with a line saying why it's bare
+  rather than an empty panel. Objects with no known coordinates — combined capture targets like `M42_mosaic`, or
+  anything unidentified — are listed under the chart rather than quietly left off it.
+
+  **With thanks to [Devon Jones](https://github.com/devonjones)**, who wrote
+  [Uranometria](https://github.com/devonjones/uranometria) — the open-source star-atlas
+  library that draws these charts — proposed the integration, and shaped the library to fit
+  M110. The charts you see are his work; M110 supplies the objects and paints the markers.
+  Uranometria is credited in **Help → About M110**, and is an optional component: without it
+  the Map view explains what to install rather than failing.
+
+- **The assistant can hand you a saved plan.** Ask it to plan a night and then save
+  the field guide, and M110 shows a "from the assistant" bar with a Review button —
+  accept, and the plan lands in your Plans folder like any other. Changes it suggests
+  (a pinned target, a tuning tweak) queue up the same way, so you no longer have to
+  copy-paste anything out of a chat.
+
+  Applying a suggestion re-checks it against your library *as it is now*. If you've
+  shot, imported and refreshed since it was suggested, M110 tells you what changed and
+  shows the updated ranking before you commit.
+
+  **The assistant still can't change your library.** It can only ever *add* a file to
+  one staging folder — it cannot modify or delete anything you made, and nothing takes
+  effect until you accept it. If you'd rather skip the review step for plans,
+  Preferences → AI assistant has a toggle to let them save directly.
 - **Connect Claude to M110.** Preferences → *AI assistant* → **Connect Claude Desktop**
   wires your existing Claude Desktop (or Claude Code) to your library. You can then ask
   it things like "what should I shoot tonight?", "why is M101 ranked above M13?", or
@@ -18,17 +52,22 @@ changes a **user** would notice, per release.
   dome, your capture history, your priority ranking. It can also show you the night's
   schedule and hand you a field guide.
 
-  Two things worth knowing. **It is read-only**: it can look at your library and *suggest*
-  changes — new tuning weights, a pinned target, a journal entry — but it cannot alter
-  your files, your library, or your settings. Suggestions come with the ranking M110
-  itself computes for them, so you can see the effect before deciding, and you apply them
-  in the app. And **your data goes to whoever you connect**: object notes, capture
+  Two things worth knowing. **It cannot change your library**: it can look, and *suggest*
+  changes — new tuning weights, a pinned target, a journal entry — but it cannot alter or
+  delete your files, your library, or your settings. The most it can do is add a file to
+  one staging folder, and nothing takes effect until you accept it. Suggestions come with
+  the ranking M110 itself computes for them, so you can see the effect before deciding,
+  and you apply them in the app. And **your data goes to whoever you connect**: object notes, capture
   history and image data are sent to whatever AI model that client uses. M110 tells you
   this before it writes anything, and Disconnect removes it again.
 
   You bring your own client and your own account — M110 never handles an API key.
 
 ### Changed
+- **The Library's catalog filter lists the catalogs you've set as goals**, rather than every
+  catalog M110 ships. Picking one you weren't working and getting an empty view was a dead
+  end — and since most Messier objects also belong to one of the Popular lists, the full list
+  was mostly noise. Turn a catalog on under **Overview → Manage goals** to filter by it.
 - **The security policy now describes what actually leaves your machine.**
   [`SECURITY.md`](SECURITY.md) lists every network call M110 makes and when it runs,
   covers the AI assistant (what a connected client can see, and the narrow limits on
@@ -39,6 +78,40 @@ changes a **user** would notice, per release.
   object's name to Simbad, instead of referring to an "optional `online` extra" —
   packaged builds already include it, so that was jargon that told you nothing about
   the privacy question you were being asked.
+
+### Fixed
+- **Mosaic folders and catalog-number folders now count toward the right object.** A capture
+  folder named for *how* you shot it (`M42_mosaic`, `NGC 7000_mosaic`) or by a catalog number
+  (`C 6`) was being treated as an object in its own right instead of as frames of M42, NGC
+  7000, and NGC 6543 — so those captures got a placeholder Library entry with no coordinates,
+  no catalog details, and no place on the sky map. Worse, it was self-sustaining: once the
+  placeholder existed, the folder kept matching it. M110 now strips the capture decoration
+  and resolves catalog numbers through catalog membership. **Your integration times and
+  session counts for the affected objects will change after the next refresh** — those frames
+  now count where they belong. **The old placeholder entries are cleaned up for you** on the
+  next refresh: an entry that no capture folder points at any more, whose name resolves to
+  another object in your Library, and that you haven't written notes on, is removed — it was
+  an empty duplicate of the object that now holds its captures. Anything you annotated, and
+  anything nothing took over (a genuinely off-catalog target), is left alone. Only the
+  Library index is touched; no captures, renders or journals are moved or deleted.
+- **A mosaic no longer inflates an object's integration time.** Frames shot as a mosaic
+  can't be stacked with a single-frame capture of the same object, so adding the two
+  together claimed a depth no single stack had — and could push an object to **Deep Stack**
+  when neither framing got there on its own. An object's integration is now its plain
+  capture, with any mosaic listed beside it on the object page as tracked separately. An
+  object you've *only* ever shot as a mosaic still counts that mosaic as its capture, and
+  combined targets like `M81 M82` are unaffected — those frames really do contain both
+  objects. **Some integration times will drop after the next refresh**; nothing on disk
+  changes, and the hours are still shown, just not added together.
+
+- **A mosaic of something off-catalog is filed under the object, not the framing.** Importing
+  `Foo_mosaic` for a target M110 doesn't recognise created an object called "Foo_mosaic" — so a
+  later plain capture of Foo became a *second* object, splitting one target's frames in two.
+  The object is now "Foo", however you framed it.
+- **Markarian's Chain can be charted and planned.** As a chain of galaxies rather than a
+  single object it has no catalogued position, so it had none — which kept it off the sky
+  map and out of session planning. It now carries a hand-set centre (the midpoint of the
+  chain, between M84 and NGC 4477), approximate by nature but enough to point at.
 
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements

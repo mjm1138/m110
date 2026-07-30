@@ -49,6 +49,14 @@ publish = ["jinja2>=3", "markdown>=3"]
 # itself has no MCP dependency — only `assistant.mcp_server` imports it, and it
 # degrades with a friendly message when absent.
 assistant = ["mcp>=1.9,<2"]
+# NOTE — the sky map (ROADMAP item 12) needs `uranometria`, which is deliberately
+# NOT declared here. It isn't on PyPI yet, and a direct URL requirement is
+# rejected on upload *anywhere* in the metadata, extras included — so declaring
+# it now would be a landmine on the first `pip install m110`. Install it
+# explicitly instead (CI does; packaged builds will):
+#     pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+# `m110.skymap` degrades via SkymapDepsMissing when it's absent. Swap this for a
+# real `skymap = ["uranometria>=0.11"]` extra once it's published.
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3",
        "mcp>=1.9,<2", "jsonschema>=4"]  # astroquery also build-time (tools/gen_caldwell.py);
                                         # jsonschema validates the tool schemas in tests

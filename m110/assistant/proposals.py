@@ -56,6 +56,11 @@ def store_fingerprint(*, journal_slug: str | None = None) -> dict:
     totals = config.DERIVED_DIR / "totals.json"
     state = {
         "contexts_generated": generated,
+        # Date granularity isn't enough: `generated` is today's date, so a
+        # same-day Recompute — the ordinary case — would look identical. The
+        # file's mtime is what actually detects it.
+        "contexts_mtime": (datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+                           if path.is_file() else None),
         "contexts_stale": prioritize.is_stale(),
         "totals_mtime": (datetime.fromtimestamp(totals.stat().st_mtime).isoformat()
                          if totals.is_file() else None),
@@ -104,6 +109,34 @@ def build(*, action: str, title: str, rationale: str, payload: dict,
             "Show the user the summary above and let them make the change in the app."
         ),
     }
+
+
+def emit(**kwargs) -> dict:
+    """Build a proposal AND stage it for the app to offer.
+
+    Every proposal tool returns through here, so a tool added later is queued by
+    construction rather than by remembering. Staging is best-effort: if the
+    outbox is full the proposal is still returned — its `summary` carries the
+    manual steps, so the user is never left with nothing to act on.
+    """
+    from m110.assistant import outbox
+
+    envelope = build(**kwargs)
+    try:
+        path = outbox.write_proposal(envelope)
+        envelope["staged_as"] = path.name
+        envelope["how_to_apply"] = (
+            "This has NOT been applied. It is waiting in M110 — the app will show "
+            "the user a prompt to review and apply it. The summary below is also "
+            "there, so they can apply it by hand instead if they prefer."
+        )
+    except outbox.OutboxError as exc:
+        envelope["staged_as"] = None
+        envelope["how_to_apply"] = (
+            f"This has NOT been applied, and could not be queued in M110 ({exc}). "
+            "Show the user the summary below so they can apply it by hand."
+        )
+    return envelope
 
 
 def rank_delta(before: list[dict], after: list[dict], *, limit: int = 10) -> dict:

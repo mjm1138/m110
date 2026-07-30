@@ -6,7 +6,7 @@ The **Library** is the hub of M110 — your captured and tracked collection. Thi
 covers the three ways to view it, how to add and describe objects, and how to curate
 each object's images.
 
-## Three views of your collection
+## Four views of your collection
 
 A segmented control at the top of the Library switches how you see your objects — your
 choice is remembered:
@@ -19,6 +19,11 @@ choice is remembered:
   (M1, M2, … M10, M100 — not alphabetically) and by catalog (Messier before NGC).
 - **Feed** — a reverse-chronological stream of object cards (hero + notes), a photo-blog
   of your imaging that re-orders as you reprocess.
+- **Map** — your collection plotted on a star chart, so you can see where in the sky
+  you've been working and what's still empty. See [The sky map](#the-sky-map) below.
+
+The **catalog filter** lists the catalogs you've set as **goals** (turn them on under
+Overview → Manage goals); catalogs you aren't working aren't offered.
 
 A separate **Deep sky · Media** toggle switches the whole page between your catalog
 objects and your non-catalog **Media** (lunar, planetary, scenery, startrails — photos
@@ -27,6 +32,38 @@ the deep-sky views, and a stat row shows captured / total counts and integration
 
 Click any object to open its **detail pane**: the hero, object notes, the gallery, its
 capture sessions, and its processing status.
+
+## The sky map
+
+The **Map** view draws a star atlas of your Library: constellation figures, stars, the
+coordinate grid, and a marker for every object you're tracking, in its real position.
+
+Markers carry the same colors as the status chips elsewhere in the app — green for a
+**deep stack**, amber for an **initial capture**, muted grey for **uncaptured** — so a few
+months' work shows up as a bright patch of sky, and the gaps show you what's still to come.
+The key lists only the colors actually on the chart, so an unfiltered map of a collection
+you've shot every object in doesn't explain a grey you can't see.
+
+- **Click** a marker to open that object, exactly as clicking a row or tile does; **hover**
+  one to see its hero image.
+- **Filter to a goal** and the rest of that catalog joins the chart in the muted
+  not-yet-shot colour, so the map becomes a picture of your progress against the list —
+  which is what makes the gaps visible.
+- **Scroll** to zoom (the sky under the pointer stays put), **drag** to pan, and
+  **double-click** to fit the disc again.
+- The **search box** and **catalog filter** narrow the map just as they narrow the list,
+  so you can chart one goal list on its own.
+- If you've imaged anything far enough south, an **N · S** toggle appears for the second
+  disc; with a northern-only collection there's nothing to toggle, so it stays hidden.
+- Objects with no known coordinates are named under the chart rather than silently
+  dropped — usually combined capture targets (`M42_mosaic`) or something not yet
+  identified.
+- If nothing matches your filter you still get the sky, with a line saying why it's
+  empty — handy when you've just added a goal and haven't shot any of it yet.
+
+The chart is drawn by [uranometria](https://github.com/devonjones/uranometria), an
+optional component. If it isn't installed, the Map view says so and tells you what to
+install; nothing else in the Library is affected.
 
 ## Adding objects
 

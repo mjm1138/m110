@@ -118,6 +118,50 @@ def slugify(name: str) -> str:
     return s
 
 
+# Words a capture folder adds to an object's name to describe *how* it was shot,
+# not *what* was shot. "M42_mosaic" is still M42's frames.
+_DECORATIONS = {"mosaic", "panel", "panels", "pane"}
+
+
+def undecorated_name(folder_name: str) -> str:
+    """A capture folder's name with any trailing framing decoration removed
+    ("NGC 6888_mosaic" → "NGC 6888").
+
+    The *object* is what was shot; the decoration says how. Used when promoting
+    an off-catalog target so a later plain capture of the same thing lands on
+    the same object instead of creating a second one.
+    """
+    name = folder_name.strip()
+    while True:
+        for sep in ("_", "-", " "):
+            head, found, tail = name.rpartition(sep)
+            if found and tail.lower() in _DECORATIONS and head.strip():
+                name = head.strip()
+                break
+        else:
+            return name
+
+
+def is_decorated_target(folder_name: str) -> bool:
+    """Whether a capture folder names a *framing* of an object rather than the
+    object plainly — "M42_mosaic" vs "M42".
+
+    Frames shot as a mosaic aren't co-stackable with a single-frame capture of
+    the same object, so they're the same object but a separate dataset.
+    """
+    s = slugify(folder_name)
+    return _undecorated(s) != s
+
+
+def _undecorated(slug: str) -> str:
+    """`slug` with any trailing capture decoration removed ("ngc-7000-mosaic"
+    → "ngc-7000"). Returns it unchanged when there is none."""
+    parts = slug.split("-")
+    while len(parts) > 1 and parts[-1] in _DECORATIONS:
+        parts.pop()
+    return "-".join(parts)
+
+
 def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     """Map an FITS folder name to the catalog slugs it contributes to.
 
@@ -138,6 +182,19 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     if len(out) >= 2:
         return out
     s = slugify(folder_name)
+    # A folder named by a *catalog number* ("C 6") names an object the reference
+    # keys by its primary designation (ngc-6543), so ask catalog membership.
+    from .catalog import designation_index, _normalize_designation
+    by_desig = designation_index().get(_normalize_designation(folder_name))
+    if by_desig in catalog_slugs:
+        return [by_desig]
+    # A decorated capture target ("M42_mosaic") is still that object's frames.
+    # This runs *before* the whole-folder match on purpose: once a stray
+    # "m42-mosaic" entry exists in the Library it would otherwise match itself
+    # forever, and the pollution becomes self-sustaining.
+    base = _undecorated(s)
+    if base != s and base in catalog_slugs:
+        return [base]
     if s in catalog_slugs:
         return [s]
     if out:

@@ -39,6 +39,13 @@ a north-star goal to chase.
   start times your telescope will accept, durations that adapt, moon impact per
   slot, an altitude timeline, and a printable **field guide**. Site profiles carry
   your horizon and an estimated light dome.
+- **Ask an AI about your own data** *(optional)* — connect Claude Desktop or
+  Claude Code and ask "what should I shoot tonight?", "why is M101 ranked above
+  M13?", or "critique my M51". It answers from *your* site, horizon, capture
+  history and ranking — calling M110's real astronomy rather than guessing. It
+  can hand you a saved plan or suggest a tuning change; it can't alter your
+  library (see below). You bring your own client and account — M110 never
+  handles an API key. Core M110 works fully without it.
 - **Safe by design** — local-first, open source, with built-in hardlinked backups.
 
 ### It never touches your originals
@@ -46,6 +53,20 @@ a north-star goal to chase.
 Ingest is always **preview-then-confirm** and **copies** from your telescope — your
 capture files stay exactly where they are. Nothing is moved or modified without your
 say-so.
+
+The same rule binds the AI assistant, and it's enforced in code rather than
+promised: **it can hand you things, but it can't change your library.** A
+connected assistant may *create* a new file in one staging folder — a plan it
+drafted, a change it suggests — and nothing else. It cannot modify or delete
+anything you made, and nothing it stages takes effect until you accept it in the
+app. The test suite proves this three ways on every tool: the store is
+byte-identical afterwards, write calls outside that one folder are intercepted,
+and the code is statically checked for any call that could write.
+
+Be aware of the trade you *are* making: whatever client you connect sends your
+object notes, capture history and image data to whatever AI model it uses. M110
+tells you this before it writes any configuration, and disconnecting is one
+click.
 
 ## User guide
 

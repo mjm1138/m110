@@ -46,6 +46,9 @@ _EXCLUDE_INTERNAL = {
     f"{config.INTERNAL_DIRNAME}/derived",
     f"{config.INTERNAL_DIRNAME}/renders",
     f"{config.INTERNAL_DIRNAME}/sessions.jsonl",
+    # Assistant staging: regenerable by asking again, and nothing in it is
+    # authoritative until the user accepts it into the real store.
+    f"{config.INTERNAL_DIRNAME}/assistant",
 }
 
 

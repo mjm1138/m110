@@ -116,6 +116,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         "last_capture": None,
         "has_pre_new_start": False,
         "session_refs": [],   # indices into sessions list
+        "framings": {},       # {target: {counted, frames, integration_min, …}}
     })
 
     # Also track per-object-folder totals (composite frames like M81/M82
@@ -130,18 +131,48 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         "has_pre_new_start": False,
     })
 
+    # An object's sessions, split by the framing they were shot in. A mosaic of
+    # M42 is M42's sky, but its frames don't stack with a single-frame capture —
+    # so summing them into one "integration" would claim a depth no single stack
+    # has, and could promote an object to "deep" when neither framing is. Kept
+    # per framing here and resolved after the loop.
+    from . import scan_sessions as _scan
+    per_framing: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+
     for i, s in enumerate(sessions):
         for slug in s.get("slugs", []):
-            t = by_slug[slug]
-            t["frames"] += s["frames"]
-            t["integration_min"] += s["integration_min"]
-            t["session_dates"].add(s["date"])
-            t["filters"].add(s["filter"])
-            t["exposures"].add(s["exposure_s"])
-            if s.get("pre_new_start"):
-                t["has_pre_new_start"] = True
-            t["session_refs"].append(i)
+            per_framing[slug][s["object_dir"]].append(i)
 
+    for slug, framings in per_framing.items():
+        plain = [f for f in framings if not _scan.is_decorated_target(f)]
+        # Fall back to every framing when there is no plain one: an object
+        # captured *only* as a mosaic has that mosaic as its capture, and must
+        # not read as zero hours.
+        counted = plain or list(framings)
+        for folder in counted:
+            for i in framings[folder]:
+                s = sessions[i]
+                t = by_slug[slug]
+                t["frames"] += s["frames"]
+                t["integration_min"] += s["integration_min"]
+                t["session_dates"].add(s["date"])
+                t["filters"].add(s["filter"])
+                t["exposures"].add(s["exposure_s"])
+                if s.get("pre_new_start"):
+                    t["has_pre_new_start"] = True
+                t["session_refs"].append(i)
+        by_slug[slug]["framings"] = {
+            folder: {
+                "counted": folder in counted,
+                "frames": sum(sessions[i]["frames"] for i in idxs),
+                "integration_min": round(
+                    sum(sessions[i]["integration_min"] for i in idxs), 2),
+                "session_count": len({sessions[i]["date"] for i in idxs}),
+            }
+            for folder, idxs in framings.items()
+        }
+
+    for s in sessions:
         f = folder_totals[s["object_dir"]]
         f["frames"] += s["frames"]
         f["integration_min"] += s["integration_min"]
@@ -189,6 +220,9 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "filters": sorted(t["filters"]),
             "exposures": sorted(t["exposures"]),
             "has_pre_new_start": t["has_pre_new_start"],
+            # Every framing this object was shot in, and whether it counts toward
+            # the integration above (a mosaic beside a plain capture does not).
+            "framings": t["framings"],
             "status": ("deep_stack" if t["integration_min"]
                        >= deep_threshold((catalog.get(slug) or {}).get("type"))
                        else "initial"),
