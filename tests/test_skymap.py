@@ -166,10 +166,26 @@ def test_render_warns_about_uncharted_objects(tmp_path, monkeypatch):
 
 
 @needs_uranometria
-def test_render_of_an_empty_selection_is_not_an_error(tmp_path, monkeypatch):
+def test_an_empty_selection_returns_an_empty_sky(tmp_path, monkeypatch):
+    # Nothing to plot still has a sky worth showing — the chart with no objects
+    # on it, so a filter that matches nothing doesn't blank the view.
     root = seed_root(tmp_path, monkeypatch)
     _library(root)
     charts, warnings = skymap.render([])
+    assert [c["hemisphere"] for c in charts] == ["north"]
+    assert charts[0]["objects"] == []          # nothing clickable
+    assert warnings == []
+    svg = charts[0]["svg"]
+    assert "constellations" in svg             # the sky itself is drawn
+    # The marker that makes uranometria willing to render is painted in nothing.
+    assert 'fill="transparent"' in svg and 'stroke="transparent"' in svg
+
+
+@needs_uranometria
+def test_empty_sky_can_be_declined(tmp_path, monkeypatch):
+    root = seed_root(tmp_path, monkeypatch)
+    _library(root)
+    charts, warnings = skymap.render([], empty_sky=False)
     assert charts == [] and warnings == []
 
 

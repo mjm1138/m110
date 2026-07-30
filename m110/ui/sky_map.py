@@ -48,6 +48,7 @@ class SkyMapCanvas(QWidget):
         self._panned = False
         self._hover: str | None = None
         self._selected: str | None = None
+        self._message = ""
 
     # ---- content -------------------------------------------------------
     def set_chart(self, chart: dict | None):
@@ -58,6 +59,12 @@ class SkyMapCanvas(QWidget):
             self._renderer = QSvgRenderer(chart["svg"].encode())
             self._markers = chart["objects"]
         self.reset_view()
+
+    def set_message(self, text: str):
+        """A line drawn over the chart (an empty sky says why it's empty)."""
+        if text != self._message:
+            self._message = text
+            self.update()
 
     def set_selected(self, slug: str | None):
         if slug != self._selected:
@@ -107,14 +114,40 @@ class SkyMapCanvas(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         tokens = active_tokens()
         painter.fillRect(self.rect(), QColor(tokens.window))
-        if self._renderer is None:
-            painter.end()
-            return
-        origin = self._to_widget(0, 0)
-        side = DOC_SIZE * self._scale()
-        self._renderer.render(painter, QRectF(origin.x(), origin.y(), side, side))
-        self._paint_rings(painter)
+        if self._renderer is not None:
+            origin = self._to_widget(0, 0)
+            side = DOC_SIZE * self._scale()
+            self._renderer.render(painter, QRectF(origin.x(), origin.y(), side, side))
+            self._paint_rings(painter)
+        if self._message:
+            self._paint_message(painter, tokens)
         painter.end()
+
+    def _paint_message(self, painter: QPainter, tokens):
+        """A line across the middle of the chart — for an empty sky, where the
+        disc is drawn but has nothing on it and the reason is worth saying."""
+        painter.save()
+        rect = self.rect().adjusted(24, 0, -24, 0)
+        font = painter.font()
+        # The app sets its fonts in pixels, so pointSizeF() is -1 here — scale
+        # whichever unit this font actually carries.
+        if font.pointSizeF() > 0:
+            font.setPointSizeF(font.pointSizeF() * 1.1)
+        elif font.pixelSize() > 0:
+            font.setPixelSize(round(font.pixelSize() * 1.1))
+        painter.setFont(font)
+        metrics = painter.fontMetrics()
+        text = metrics.elidedText(self._message, Qt.ElideRight, rect.width() - 32)
+        box = metrics.boundingRect(text).adjusted(-16, -10, 16, 10)
+        box.moveCenter(self.rect().center())
+        bg = QColor(tokens.window)
+        bg.setAlpha(232)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawRoundedRect(box, 8, 8)
+        painter.setPen(QColor(tokens.text_secondary))
+        painter.drawText(box, Qt.AlignCenter, text)
+        painter.restore()
 
     def _paint_rings(self, painter: QPainter):
         """Selection and hover rings, drawn over the chart rather than baked into
@@ -229,17 +262,23 @@ class SkyMapView(QWidget):
         lay.addLayout(row)
         self.restyle()
 
-    def set_charts(self, charts: list[dict], warnings: list[str] | None = None):
-        """Show a `skymap.render` result. An empty list clears the map."""
+    def set_charts(self, charts: list[dict], warnings: list[str] | None = None,
+                   empty_message: str = ""):
+        """Show a `skymap.render` result.
+
+        `empty_message` is drawn over the chart when nothing is plotted — the
+        sky is still there, with a line saying why it's bare.
+        """
         self._charts = charts
         self._hemi_seg.setVisible(len(charts) > 1)
         self._legend.setVisible(True)
         if not self._hemi_btns["north"].isChecked():
             self._hemi_btns["north"].setChecked(True)
         self._show_hemisphere(0)
+        plotted = sum(len(c["objects"]) for c in charts)
+        self.canvas.set_message("" if plotted else empty_message)
+        self._legend.setVisible(bool(plotted))
         note = next((w for w in (warnings or []) if "no coordinates" in w), "")
-        if not charts:
-            note = note or "Nothing to chart — no objects with known coordinates."
         self._note.setText(note)
         self._note.setVisible(bool(note))
 

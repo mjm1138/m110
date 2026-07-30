@@ -22,6 +22,9 @@ choice is remembered:
 - **Map** — your collection plotted on a star chart, so you can see where in the sky
   you've been working and what's still empty. See [The sky map](#the-sky-map) below.
 
+The **catalog filter** lists the catalogs you've set as goals plus any you already have
+objects from; catalogs that would only ever filter to nothing aren't offered.
+
 A separate **Deep sky · Media** toggle switches the whole page between your catalog
 objects and your non-catalog **Media** (lunar, planetary, scenery, startrails — photos
 and videos). A search box and a **catalog filter** (All / Messier / Caldwell / …) narrow
@@ -50,6 +53,8 @@ gaps show you what's still to come.
 - Objects with no known coordinates are named under the chart rather than silently
   dropped — usually combined capture targets (`M42_mosaic`) or something not yet
   identified.
+- If nothing matches your filter you still get the sky, with a line saying why it's
+  empty — handy when you've just added a goal and haven't shot any of it yet.
 
 The chart is drawn by [uranometria](https://github.com/devonjones/uranometria), an
 optional component. If it isn't installed, the Map view says so and tells you what to

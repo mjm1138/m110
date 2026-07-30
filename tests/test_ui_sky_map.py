@@ -302,3 +302,64 @@ def test_a_filtered_out_selection_closes_the_detail(tmp_path, monkeypatch, qapp)
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+@needs_uranometria
+def test_a_catalog_with_nothing_in_it_shows_an_empty_sky(tmp_path, monkeypatch, qapp):
+    """A filter that matches nothing draws the sky with a line saying why,
+    rather than a blank pane."""
+    page = _page(tmp_path, monkeypatch)
+    try:
+        page._view_btns["map"].setChecked(True)
+        page._search.setText("nothing matches this")
+        assert page.map_view.charts()                     # the sky is still drawn
+        assert sum(len(c["objects"]) for c in page.map_view.charts()) == 0
+        assert page.map_view.canvas._message == "Nothing matches your search."
+        assert page.map_view._legend.isHidden()           # no colours to explain
+        page._search.clear()
+        assert page.map_view.canvas._message == ""        # and it goes away again
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_catalog_filter_only_offers_goals_or_catalogs_you_have(tmp_path, monkeypatch, qapp):
+    from m110 import goals
+
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, TWO)                     # M31 + M81: Messier objects
+    goals.set_active_goals(["messier"])
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        offered = {page._catalog_combo.itemData(i)
+                   for i in range(page._catalog_combo.count())}
+        assert None in offered                 # "All objects" always
+        assert "messier" in offered            # an active goal
+        # Catalogs that are neither a goal nor represented in the Library would
+        # only ever filter to nothing, so they are not offered at all.
+        assert "bennett" not in offered
+        assert "lacaille" not in offered
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_a_catalog_you_have_objects_from_is_offered_even_without_the_goal(
+        tmp_path, monkeypatch, qapp):
+    from m110 import goals
+
+    root = seed_root(tmp_path, monkeypatch)
+    # NGC 7023 is a Caldwell object; track only Messier.
+    add_library(root, {"ngc-7023": {"id": "NGC 7023", "type": "reflection",
+                                    "ra_deg": "315.39", "dec_deg": "68.16"}})
+    goals.set_active_goals(["messier"])
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        offered = {page._catalog_combo.itemData(i)
+                   for i in range(page._catalog_combo.count())}
+        assert "caldwell" in offered, "a filter that would return your objects stays"
+    finally:
+        page.deleteLater()
+        qapp.processEvents()

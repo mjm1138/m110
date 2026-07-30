@@ -160,6 +160,14 @@ def build_config(
     return config, charted, skipped
 
 
+# uranometria charts an object list, so an empty one has nothing to draw. To
+# still hand back the *sky* — the useful thing to show when a filter matches
+# nothing — render a single marker painted in nothing at all. Verified against
+# QtSvg: a transparent marker alters zero pixels, so what comes back is the bare
+# chart. The dummy is stripped from the returned objects, so it can't be clicked.
+_EMPTY_SKY = {"label": "", "ra": 0.0, "dec": 90.0, "color": "transparent"}
+
+
 def render(
     slugs=None,
     *,
@@ -168,6 +176,7 @@ def render(
     font_family: str | None = None,
     title: str | None = None,
     mirror: bool = False,
+    empty_sky: bool = True,
 ) -> tuple[list, list[str]]:
     """Render the chart as ``(charts, warnings)``.
 
@@ -188,9 +197,11 @@ def render(
     caller that ignores `build_config`'s second return value still hears about
     them.
 
-    Raises `SkymapDepsMissing` when uranometria is not installed, and returns
-    ``([], warnings)`` when the selection has nothing chartable — never an
-    exception for an empty or unresolvable list.
+    Raises `SkymapDepsMissing` when uranometria is not installed. A selection
+    with nothing chartable is never an exception: by default it comes back as
+    one **empty sky** — the chart with no objects on it, which is what a host
+    wants to show when a filter matches nothing. Pass ``empty_sky=False`` for
+    ``([], warnings)`` instead.
     """
     uranometria = _uranometria()
     config, charted, skipped = build_config(
@@ -208,12 +219,16 @@ def render(
             f"{'have' if len(skipped) != 1 else 'has'} no coordinates, so "
             f"{'they aren' if len(skipped) != 1 else 'it isn'}'t on the chart: {shown}"
         )
-    if not config["objects"]:
-        return [], warnings
+    empty = not config["objects"]
+    if empty:
+        if not empty_sky:
+            return [], warnings
+        config["objects"] = [dict(_EMPTY_SKY)]
     charts, chart_warnings = uranometria.render_svg(
         config, palette=palette, font_family=font_family, allow_online=False
     )
     for chart in charts:
-        for marker in chart["objects"]:
-            marker["slug"] = charted[marker["uid"]]
+        chart["objects"] = [] if empty else [
+            {**m, "slug": charted[m["uid"]]} for m in chart["objects"]
+        ]
     return charts, warnings + list(chart_warnings)

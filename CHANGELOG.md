@@ -18,13 +18,19 @@ changes a **user** would notice, per release.
   at a glance. Click an object to open it; scroll to zoom, drag to pan, double-click to
   reset. Search and the catalog filter narrow the map exactly as they narrow the list, and a
   northern/southern toggle appears only if you've shot something far enough south to need
-  one. Objects with no known coordinates — combined capture targets like `M42_mosaic`, or
+  one. If a filter matches nothing you still get the sky, with a line saying why it's bare
+  rather than an empty panel. Objects with no known coordinates — combined capture targets like `M42_mosaic`, or
   anything unidentified — are listed under the chart rather than quietly left off it.
 
   The charts are drawn by [uranometria](https://github.com/devonjones/uranometria), an
   open-source star-atlas library written by **Devon Jones**, who proposed the integration
   and built it to fit. It's an optional component: without it the Map view explains what to
   install instead of failing.
+
+### Changed
+- **The Library's catalog filter only lists catalogs worth filtering by** — the ones you've
+  set as goals, plus any you already have objects from. Picking a catalog and getting an
+  empty view was a dead end, so those entries are simply no longer offered.
 
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements

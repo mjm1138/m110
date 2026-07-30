@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QMenu, QListView, QSlider, QToolButton,
 )
 
-from m110 import config, derived, objects, pins, siril, skymap, catalog as catalog_mod
+from m110 import config, derived, goals, objects, pins, siril, skymap, catalog as catalog_mod
 from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
@@ -67,7 +67,7 @@ class CatalogPage(QWidget):
         self._sort_col = 0
         self._sort_order = Qt.AscendingOrder
         self._catalog_filter = None       # None = all objects; else a catalog id
-        self._catalogs = list_bundled_catalogs()
+        self._catalogs = self._offered_catalogs()
         self._enrich_worker = None        # in-flight online enrichment (single)
         self._thumb_loader = ThumbnailLoader(self)
         self._thumbs = RowThumbnails(self._thumb_loader)
@@ -115,8 +115,6 @@ class CatalogPage(QWidget):
         self._map_dirty = True
         self._map_slug = None              # the map's own "selection"
         self._visible_slugs: list[str] = []
-        self._map_slug = None      # the map's own 'selection'
-        self._visible_slugs: list[str] = []
 
         self._view_stack = QStackedWidget()
         self._view_stack.addWidget(self.table)          # 0
@@ -142,9 +140,7 @@ class CatalogPage(QWidget):
         fb.setContentsMargins(0, 0, 0, 0)
         fb.addWidget(QLabel("Catalog:"))
         self._catalog_combo = QComboBox()
-        self._catalog_combo.addItem("All objects", None)
-        for c in self._catalogs:
-            self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
+        self._fill_catalog_combo()
         self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
         fb.addWidget(self._catalog_combo, 1)
         cat_row.addWidget(self._filter_bar, 1)
@@ -301,6 +297,12 @@ class CatalogPage(QWidget):
         new_totals = derived.totals_by_slug()
         changed = (new_cat != self._cat) or (new_totals != self._totals)
         self._cat, self._totals = new_cat, new_totals
+        # Goals and captures both move which catalogs are worth filtering by.
+        offered = self._offered_catalogs()
+        if offered != self._catalogs:
+            self._catalogs = offered
+            self._fill_catalog_combo()
+            changed = True
         if changed:
             self._rebuild_views()          # preserves selection + sort
             self._update_stat()
@@ -369,6 +371,35 @@ class CatalogPage(QWidget):
         self._render_map()
         if prev and not self._select_slug(prev):
             self._show_selection(None)
+
+    # ---- catalog filter ----
+    def _offered_catalogs(self) -> list[dict]:
+        """Bundled catalogs worth offering as a filter.
+
+        A catalog earns its place by being one of your **active goals** (you're
+        tracking it, even if you haven't shot any of it yet) or by having at
+        least one object **already in your Library** (you have some, whether or
+        not you're tracking the list). Everything else would only ever filter to
+        nothing, so offering it is a dead end.
+        """
+        active = set(goals.active_goal_ids())
+        library = set(self._cat)
+        return [c for c in list_bundled_catalogs()
+                if c["id"] in active or (library & set(c["members"]))]
+
+    def _fill_catalog_combo(self):
+        """(Re)populate the filter, keeping the current choice if it still
+        qualifies — goals change and captures land, so the offer moves."""
+        keep = self._catalog_filter
+        blocked = self._catalog_combo.blockSignals(True)
+        self._catalog_combo.clear()
+        self._catalog_combo.addItem("All objects", None)
+        for c in self._catalogs:
+            self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
+        idx = self._catalog_combo.findData(keep) if keep else 0
+        self._catalog_combo.setCurrentIndex(max(idx, 0))
+        self._catalog_combo.blockSignals(blocked)
+        self._catalog_filter = self._catalog_combo.currentData()
 
     def _filter_members(self) -> set | None:
         """Slugs of the selected catalog, or None for 'All objects'."""
@@ -544,9 +575,19 @@ class CatalogPage(QWidget):
             self.map_view.show_unavailable(str(exc))
             self._map_dirty = False
             return
-        self.map_view.set_charts(charts, warnings)
+        self.map_view.set_charts(charts, warnings, self._empty_map_message())
         self.map_view.set_selected(self._map_slug)
         self._map_dirty = False
+
+    def _empty_map_message(self) -> str:
+        """Why the sky is bare — named for whichever filter emptied it."""
+        if self._search.text().strip():
+            return "Nothing matches your search."
+        name = next((c["name"] for c in self._catalogs
+                     if c["id"] == self._catalog_filter), None)
+        if name:
+            return f"No objects from {name} are in your Library yet."
+        return "Your Library is empty — import captures or add an object to begin."
 
     # ---- view-agnostic selection ----
     def _selected_slug(self):
