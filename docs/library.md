@@ -22,8 +22,8 @@ choice is remembered:
 - **Map** — your collection plotted on a star chart, so you can see where in the sky
   you've been working and what's still empty. See [The sky map](#the-sky-map) below.
 
-The **catalog filter** lists the catalogs you've set as goals plus any you already have
-objects from; catalogs that would only ever filter to nothing aren't offered.
+The **catalog filter** lists the catalogs you've set as **goals** (turn them on under
+Overview → Manage goals); catalogs you aren't working aren't offered.
 
 A separate **Deep sky · Media** toggle switches the whole page between your catalog
 objects and your non-catalog **Media** (lunar, planetary, scenery, startrails — photos
@@ -43,7 +43,11 @@ Markers carry the same colors as the status chips elsewhere in the app — green
 you haven't shot yet — so a few months' work shows up as a bright patch of sky, and the
 gaps show you what's still to come.
 
-- **Click** a marker to open that object, exactly as clicking a row or tile does.
+- **Click** a marker to open that object, exactly as clicking a row or tile does; **hover**
+  one to see its hero image.
+- **Filter to a goal** and the rest of that catalog joins the chart in the muted
+  not-yet-shot colour, so the map becomes a picture of your progress against the list —
+  which is what makes the gaps visible.
 - **Scroll** to zoom (the sky under the pointer stays put), **drag** to pan, and
   **double-click** to fit the disc again.
 - The **search box** and **catalog filter** narrow the map just as they narrow the list,

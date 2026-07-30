@@ -345,8 +345,11 @@ def test_catalog_filter_only_offers_goals_or_catalogs_you_have(tmp_path, monkeyp
         qapp.processEvents()
 
 
-def test_a_catalog_you_have_objects_from_is_offered_even_without_the_goal(
+def test_a_non_goal_catalog_is_not_offered_even_if_you_have_its_objects(
         tmp_path, monkeypatch, qapp):
+    """Most Messier objects also sit in one of the Popular lists, so offering
+    every catalog you happen to have an object from filled the filter with lists
+    the user isn't working. Goals only."""
     from m110 import goals
 
     root = seed_root(tmp_path, monkeypatch)
@@ -359,7 +362,60 @@ def test_a_catalog_you_have_objects_from_is_offered_even_without_the_goal(
     try:
         offered = {page._catalog_combo.itemData(i)
                    for i in range(page._catalog_combo.count())}
-        assert "caldwell" in offered, "a filter that would return your objects stays"
+        assert offered == {None, "messier"}
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+@needs_uranometria
+def test_a_goal_filter_also_charts_what_you_have_not_shot(tmp_path, monkeypatch, qapp):
+    """Filtering to a goal is asking about progress *against the list*, so the
+    gaps belong on the chart too — dim, in the not-yet-shot tier."""
+    from m110 import goals
+    from m110.ui.sky_map import status_colors
+
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, TWO)                     # two Messier objects
+    goals.set_active_goals(["messier"])
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page._view_btns["map"].setChecked(True)
+        mine = {m["slug"] for c in page.map_view.charts() for m in c["objects"]}
+        assert mine == {"m31", "m81"}          # unfiltered: what you have
+
+        page._catalog_combo.setCurrentIndex(page._catalog_combo.findData("messier"))
+        plotted = {m["slug"] for c in page.map_view.charts() for m in c["objects"]}
+        assert {"m31", "m81"} <= plotted
+        assert len(plotted) > 50               # the rest of Messier joins them
+        assert "m1" in plotted and "m1" not in page._cat
+        # …and they're drawn in the tier the legend names.
+        assert status_colors()[skymap.STATUS_UNCAPTURED] in page.map_view.charts()[0]["svg"]
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+@needs_uranometria
+def test_tooltip_shows_the_hero(tmp_path, monkeypatch, qapp):
+    from m110 import config as cfg
+    from m110.ui.sky_map import _tooltip
+
+    page = _page(tmp_path, monkeypatch)
+    try:
+        cfg.HERO_DIR.mkdir(parents=True, exist_ok=True)
+        (cfg.HERO_DIR / "m81.jpg").write_bytes(b"\xff\xd8fake")
+        page._view_btns["map"].setChecked(True)
+        page._render_map(force=True)
+        by_slug = {m["slug"]: m for c in page.map_view.charts() for m in c["objects"]}
+
+        tip = _tooltip(by_slug["m81"])
+        assert "<img" in tip and "m81.jpg" in tip and "M81" in tip
+        # No hero rendered for M31, so it falls back to the plain designation.
+        assert _tooltip(by_slug["m31"]) == "M31"
+        # A hero path that has since gone away must not produce a broken image.
+        assert _tooltip({"disp": "X", "image": str(tmp_path / "gone.jpg")}) == "X"
     finally:
         page.deleteLater()
         qapp.processEvents()

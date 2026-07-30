@@ -127,18 +127,24 @@ def build_config(
     when one is clicked.
     """
     library = catalog.load_library()
+    reference = catalog.load_reference()
     coords = catalog.load_coords()
     by_slug = derived.totals_by_slug()
     palette = {**DEFAULT_COLORS, **(colors or {})}
 
-    wanted = list(library) if slugs is None else [s for s in slugs if s in library]
+    # A slug need not be in the Library: charting a goal's *unshot* members is
+    # the point of the "not yet shot" tier, and those live only in the bundled
+    # reference until you capture one.
+    wanted = list(library) if slugs is None else list(slugs)
     entries, charted, skipped = [], [], []
     for slug in wanted:
+        e = library.get(slug) or reference.get(slug)
+        if e is None:
+            continue                       # not an object we know at all
         if slug not in coords:
             skipped.append(slug)
             continue
         charted.append(slug)
-        e = library[slug]
         ra, dec = coords[slug]
         entry = {
             "label": _label_for(slug, e),

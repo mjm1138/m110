@@ -374,18 +374,13 @@ class CatalogPage(QWidget):
 
     # ---- catalog filter ----
     def _offered_catalogs(self) -> list[dict]:
-        """Bundled catalogs worth offering as a filter.
-
-        A catalog earns its place by being one of your **active goals** (you're
-        tracking it, even if you haven't shot any of it yet) or by having at
-        least one object **already in your Library** (you have some, whether or
-        not you're tracking the list). Everything else would only ever filter to
-        nothing, so offering it is a dead end.
-        """
+        """The bundled catalogs you've set as **goals** — the lists you're
+        actually working, which is what the filter is for. A catalog you aren't
+        tracking isn't a useful lens on your collection even when a capture
+        happens to fall inside it (most Messier objects are also in one of the
+        Popular lists, which is exactly the noise this removes)."""
         active = set(goals.active_goal_ids())
-        library = set(self._cat)
-        return [c for c in list_bundled_catalogs()
-                if c["id"] in active or (library & set(c["members"]))]
+        return [c for c in list_bundled_catalogs() if c["id"] in active]
 
     def _fill_catalog_combo(self):
         """(Re)populate the filter, keeping the current choice if it still
@@ -569,7 +564,7 @@ class CatalogPage(QWidget):
             return
         try:
             charts, warnings = skymap.render(
-                self._visible_slugs, colors=status_colors(),
+                self._map_slugs(), colors=status_colors(),
                 palette=chart_palette(), font_family=mono_font().family())
         except skymap.SkymapDepsMissing as exc:
             self.map_view.show_unavailable(str(exc))
@@ -578,6 +573,33 @@ class CatalogPage(QWidget):
         self.map_view.set_charts(charts, warnings, self._empty_map_message())
         self.map_view.set_selected(self._map_slug)
         self._map_dirty = False
+
+    def _map_slugs(self) -> list[str]:
+        """What to plot: everything the object views are showing, plus — when
+        you're looking at one goal — the rest of that goal's members, drawn in
+        the "not yet shot" tier.
+
+        That's the whole point of filtering to a catalog on the map: you want to
+        see your progress *against the list*, so the gaps have to be on the chart
+        too. Unfiltered, the map stays a picture of what you have.
+        """
+        slugs = list(self._visible_slugs)
+        members = self._filter_members()
+        if members is None:
+            return slugs
+        q = self._search.text().strip().lower()
+        have = set(slugs)
+        rest = []
+        for slug in sorted(members):
+            if slug in have or slug in self._cat:
+                continue                      # already plotted, or filtered out
+            if q:
+                e = catalog_mod.load_reference().get(slug, {})
+                hay = f"{e.get('id', slug)} {e.get('name', '')}".lower()
+                if q not in hay:
+                    continue
+            rest.append(slug)
+        return slugs + rest
 
     def _empty_map_message(self) -> str:
         """Why the sky is bare — named for whichever filter emptied it."""

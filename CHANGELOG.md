@@ -18,7 +18,9 @@ changes a **user** would notice, per release.
   at a glance. Click an object to open it; scroll to zoom, drag to pan, double-click to
   reset. Search and the catalog filter narrow the map exactly as they narrow the list, and a
   northern/southern toggle appears only if you've shot something far enough south to need
-  one. If a filter matches nothing you still get the sky, with a line saying why it's bare
+  one. **Filter to a goal and the rest of that list joins the chart in grey**, so you can
+  see your progress against it — the gaps are the point. Hovering an object shows its hero.
+  If a filter matches nothing you still get the sky, with a line saying why it's bare
   rather than an empty panel. Objects with no known coordinates — combined capture targets like `M42_mosaic`, or
   anything unidentified — are listed under the chart rather than quietly left off it.
 
@@ -28,9 +30,10 @@ changes a **user** would notice, per release.
   install instead of failing.
 
 ### Changed
-- **The Library's catalog filter only lists catalogs worth filtering by** — the ones you've
-  set as goals, plus any you already have objects from. Picking a catalog and getting an
-  empty view was a dead end, so those entries are simply no longer offered.
+- **The Library's catalog filter lists the catalogs you've set as goals**, rather than every
+  catalog M110 ships. Picking one you weren't working and getting an empty view was a dead
+  end — and since most Messier objects also belong to one of the Popular lists, the full list
+  was mostly noise. Turn a catalog on under **Overview → Manage goals** to filter by it.
 
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements

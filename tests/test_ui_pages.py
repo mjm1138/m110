@@ -387,6 +387,10 @@ def test_library_catalog_filter_and_identifiers(tmp_path, monkeypatch, qapp):
         "ngc-7000": {"id": "NGC 7000", "name": "North America", "type": "nebula"},
         "ngc-6992": {"id": "NGC 6992", "name": "Veil", "type": "nebula"},
     })
+    # The filter offers the catalogs you've set as goals, so track the one this
+    # test filters by.
+    from m110 import goals
+    goals.set_active_goals(["messier", "caldwell"])
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:

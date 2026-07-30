@@ -13,7 +13,10 @@ Hit-testing a marker is then just a distance check against the positions
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+import html
+from pathlib import Path
+
+from PySide6.QtCore import QPointF, QRectF, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
@@ -190,7 +193,7 @@ class SkyMapCanvas(QWidget):
         hit = self._marker_at(pos)
         slug = hit["slug"] if hit else None
         self.setCursor(Qt.PointingHandCursor if hit else Qt.ArrowCursor)
-        self.setToolTip(hit["disp"] if hit else "")
+        self.setToolTip(_tooltip(hit) if hit else "")
         if slug != self._hover:
             self._hover = slug
             self.object_hovered.emit(slug or "")
@@ -332,6 +335,25 @@ class SkyMapView(QWidget):
             )
         )
         self.canvas.update()
+
+
+TOOLTIP_THUMB_PX = 220
+
+
+def _tooltip(marker: dict) -> str:
+    """Designation plus its hero, if the object has one.
+
+    Qt tooltips take rich text, so the hero is an `<img>` at a fixed width —
+    which is why the marker carries its image path: `skymap` deliberately
+    doesn't embed photos in the SVG, it hands the path back for exactly this.
+    """
+    name = html.escape(str(marker.get("disp") or ""))
+    image = marker.get("image")
+    if not image or not Path(image).is_file():
+        return name
+    src = QUrl.fromLocalFile(str(image)).toString(QUrl.FullyEncoded)
+    return (f'<div style="text-align:center">'
+            f'<img src="{src}" width="{TOOLTIP_THUMB_PX}"><br>{name}</div>')
 
 
 def status_colors() -> dict:
