@@ -19,6 +19,11 @@ def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
     # *before* scanning, so the session/derived pass picks up their new slug
     # (otherwise they'd show only in folder-derived views, never the catalog).
     added = catalog.add_captured_objects() if catalog_captures else []
+    # …then drop any placeholder a real object has taken over. Improving folder
+    # resolution promotes the real object but leaves the old stub orphaned — no
+    # folder points at it, so it shows as an empty duplicate of the object that
+    # now holds its captures.
+    superseded = catalog.prune_superseded_stubs() if catalog_captures else []
 
     rows = scan_sessions.scan()
     scan_sessions.write_jsonl(rows)
@@ -35,4 +40,5 @@ def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
                                                   derived.load_totals())
         except Exception as exc:  # never let rendering break a refresh
             print(f"  image render skipped: {exc}")
-    return {"sessions": len(rows), "rendered": rendered, "cataloged": added}
+    return {"sessions": len(rows), "rendered": rendered, "cataloged": added,
+            "superseded": superseded}

@@ -44,8 +44,12 @@ changes a **user** would notice, per release.
   placeholder existed, the folder kept matching it. M110 now strips the capture decoration
   and resolves catalog numbers through catalog membership. **Your integration times and
   session counts for the affected objects will change after the next refresh** — those frames
-  now count where they belong. The old placeholder entries stay until you remove them
-  (right-click → Remove from Library); removing one doesn't touch any files.
+  now count where they belong. **The old placeholder entries are cleaned up for you** on the
+  next refresh: an entry that no capture folder points at any more, whose name resolves to
+  another object in your Library, and that you haven't written notes on, is removed — it was
+  an empty duplicate of the object that now holds its captures. Anything you annotated, and
+  anything nothing took over (a genuinely off-catalog target), is left alone. Only the
+  Library index is touched; no captures, renders or journals are moved or deleted.
 - **A mosaic no longer inflates an object's integration time.** Frames shot as a mosaic
   can't be stacked with a single-frame capture of the same object, so adding the two
   together claimed a depth no single stack had — and could push an object to **Deep Stack**

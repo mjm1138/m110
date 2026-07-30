@@ -177,6 +177,58 @@ def remove_library_entry(slug: str) -> bool:
     return True
 
 
+def prune_superseded_stubs() -> list[str]:
+    """Drop auto-created placeholder entries that a real catalog object has since
+    taken over. Returns the slugs removed.
+
+    When a capture folder couldn't be resolved to a catalog object, it was
+    promoted to an object in its own right: a stub with `type = "unknown"` and no
+    coordinates. Improving that resolution (a mosaic's decoration, a catalog
+    number) leaves the stub behind as an **orphan** — no capture folder points at
+    it any more, so it has no images, no sessions and no position, while the real
+    object now sits beside it. Two entries for one thing, one of them empty.
+
+    Only removes an entry that is all three of:
+      * orphaned — no capture folder resolves to it any more, so it holds no
+        frames of its own (an object you simply haven't shot yet is *not*
+        orphaned by this test: nothing took it over, see below),
+      * superseded — its own name now resolves to a *different* object that is
+        present in the Library, so its captures live there instead,
+      * un-annotated — its journal has no body the user wrote.
+
+    Keying on "orphaned" rather than "looks like a stub" matters: a duplicate
+    that was later enriched (`NGC3628` beside `NGC 3628`, with a type and
+    coordinates filled in) is still a duplicate holding nothing.
+
+    Non-destructive: `library.toml` only. Captures, renders and journals stay
+    exactly where they are, and the frames they describe now count toward the
+    object that actually holds them.
+    """
+    from . import objects, scan_sessions
+    lib = load_library()
+    known = set(lib) | set(load_reference())
+
+    referenced: set[str] = set()
+    if config.IMAGES_DIR.is_dir():
+        for d in config.IMAGES_DIR.iterdir():
+            if d.is_dir() and ((d / "lights").is_dir() or (d / "seestar-stacks").is_dir()):
+                referenced.update(scan_sessions.folder_to_slugs(d.name, known))
+
+    removed = []
+    for slug, e in list(lib.items()):
+        if slug in referenced:
+            continue                     # a capture folder still points here
+        target = scan_sessions.folder_to_slugs(str(e.get("id") or slug), known)
+        if len(target) != 1 or target[0] == slug or target[0] not in lib:
+            continue                     # nothing took it over
+        if objects.read_journal(slug)[1].strip():
+            continue                     # the user wrote something here — keep it
+        removed.append(slug)
+    for slug in removed:
+        remove_library_entry(slug)
+    return removed
+
+
 def remove_goal_members_from_library(goal_id: str, *, members=None) -> list[str]:
     """Prune a (de-activated) goal's members from the Library — but only those
     that are **uncaptured AND un-noted AND not in another active goal**. Captured
