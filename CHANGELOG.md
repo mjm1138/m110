@@ -35,6 +35,18 @@ changes a **user** would notice, per release.
   end — and since most Messier objects also belong to one of the Popular lists, the full list
   was mostly noise. Turn a catalog on under **Overview → Manage goals** to filter by it.
 
+### Fixed
+- **Mosaic folders and catalog-number folders now count toward the right object.** A capture
+  folder named for *how* you shot it (`M42_mosaic`, `NGC 7000_mosaic`) or by a catalog number
+  (`C 6`) was being treated as an object in its own right instead of as frames of M42, NGC
+  7000, and NGC 6543 — so those captures got a placeholder Library entry with no coordinates,
+  no catalog details, and no place on the sky map. Worse, it was self-sustaining: once the
+  placeholder existed, the folder kept matching it. M110 now strips the capture decoration
+  and resolves catalog numbers through catalog membership. **Your integration times and
+  session counts for the affected objects will change after the next refresh** — those frames
+  now count where they belong. The old placeholder entries stay until you remove them
+  (right-click → Remove from Library); removing one doesn't touch any files.
+
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements
   written against citable sources. They were never actually shown anywhere in the app —

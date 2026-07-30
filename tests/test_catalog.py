@@ -210,3 +210,42 @@ def test_combined_split_is_not_shadowed_by_a_pseudo_object():
     assert scan_sessions.folder_to_slugs("M108 M97", poisoned) == ["m108", "m97"]
     # a single object still resolves whole (not split)
     assert scan_sessions.folder_to_slugs("NGC 3628", poisoned) == ["ngc-3628"]
+
+
+def test_decorated_capture_folder_resolves_to_its_object():
+    """A folder named for *how* it was shot is still that object's frames.
+    "M42_mosaic" is M42; the decoration describes the capture, not the target."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    assert scan_sessions.folder_to_slugs("M42_mosaic", ref) == ["m42"]
+    assert scan_sessions.folder_to_slugs("NGC 7000_mosaic", ref) == ["ngc-7000"]
+    assert scan_sessions.folder_to_slugs("M31 panel", ref) == ["m31"]
+
+
+def test_decoration_strip_beats_a_stale_pseudo_object():
+    """The self-sustaining case. Once a stray "m42-mosaic" object exists in the
+    Library, the whole-folder match would find it and keep finding it — so the
+    folder's frames would be attributed to a coordinate-less stub forever, which
+    is exactly how they went missing from the sky map. The strip must win."""
+    from m110 import scan_sessions
+    poisoned = set(catalog.load_reference()) | {"m42-mosaic", "ngc-7000-mosaic"}
+    assert scan_sessions.folder_to_slugs("M42_mosaic", poisoned) == ["m42"]
+    assert scan_sessions.folder_to_slugs("NGC 7000_mosaic", poisoned) == ["ngc-7000"]
+
+
+def test_a_catalog_number_resolves_through_membership():
+    """The reference is keyed by an object's primary designation, so "C 6" isn't
+    a key — catalog membership is what knows C6 names NGC 6543."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    assert scan_sessions.folder_to_slugs("C 6", ref) == ["ngc-6543"]
+    assert scan_sessions.folder_to_slugs("C6", ref) == ["ngc-6543"]
+    # A designation that *is* a reference key still resolves to itself.
+    assert scan_sessions.folder_to_slugs("M31", ref) == ["m31"]
+
+
+def test_designation_index_covers_the_bundled_catalogs():
+    idx = catalog.designation_index()
+    assert idx["c6"] == "ngc-6543"
+    assert idx["m31"] == "m31"
+    assert catalog._normalize_designation("C 6") == "c6"

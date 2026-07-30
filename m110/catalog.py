@@ -730,6 +730,32 @@ def add_library_entry(slug: str, entry: dict) -> None:
     config._ensure_object_stubs(config.DATA_ROOT, config.INTERNAL_DIR)
 
 
+_designations: dict[str, str] | None = None
+
+
+def designation_index() -> dict[str, str]:
+    """``{normalized designation: slug}`` across every bundled catalog.
+
+    The object reference is keyed by an object's *primary* designation, so
+    ``C6`` isn't a key — the Cat's Eye lives under ``ngc-6543``. Catalog
+    membership is what knows that C6 names it, and this inverts that mapping so
+    a capture folder called "C 6" can find the object it designates. Normalized
+    to letters+digits, so "C 6", "C6" and "c-6" all land on the same key.
+    """
+    global _designations
+    if _designations is None:
+        idx: dict[str, str] = {}
+        for cat in list_bundled_catalogs():
+            for slug, desig in cat["members"].items():
+                idx.setdefault(_normalize_designation(desig), slug)
+        _designations = idx
+    return _designations
+
+
+def _normalize_designation(text: str) -> str:
+    return "".join(ch for ch in str(text).lower() if ch.isalnum())
+
+
 def add_captured_objects(resolve_coords: bool = True) -> list[str]:
     """Promote captured targets that aren't in the Library into first-class
     objects, so they appear in the Library/Summary views, get an object page +
