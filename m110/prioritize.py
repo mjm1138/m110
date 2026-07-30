@@ -474,10 +474,18 @@ def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTU
 
 # ── persistence (contexts cached so the UI can re-rank without astropy) ─────────
 
-def _context_to_dict(c: TargetContext) -> dict:
+def context_to_dict(c: TargetContext) -> dict:
+    """A context as plain data — the inverse of :func:`context_from_dict`.
+
+    Public because the contexts carry the factors a *score* is explained by
+    (``obs.hours_clear``, ``nights_to_close``, ``integration_min``, magnitude,
+    size) which :func:`score_target` doesn't return."""
     return {"slug": c.slug, "type": c.obj_type, "integration_min": c.integration_min,
             "in_active_goal": c.in_active_goal, "obs": c.obs,
             "magnitude": c.magnitude, "size": c.size}
+
+
+_context_to_dict = context_to_dict   # pre-existing private name, kept working
 
 
 def context_from_dict(d: dict) -> TargetContext:
@@ -496,7 +504,7 @@ def write_contexts(contexts: list[TargetContext]) -> None:
     d = config.DERIVED_DIR
     d.mkdir(parents=True, exist_ok=True)
     payload = {"generated": date.today().isoformat(),
-               "contexts": [_context_to_dict(c) for c in contexts]}
+               "contexts": [context_to_dict(c) for c in contexts]}
     (d / "prioritized.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 

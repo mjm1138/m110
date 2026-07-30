@@ -17,6 +17,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 # SPECPATH = the directory holding this spec (packaging\windows).
 ROOT = Path(SPECPATH).resolve().parents[1]                       # repo root
 ENTRY = ROOT / "packaging" / "common" / "m110_launch.py"         # shared entry shim
+MCP_ENTRY = ROOT / "packaging" / "common" / "m110_mcp_launch.py"  # stdio MCP server shim
 HOOKS = ROOT / "packaging" / "common" / "pyinstaller-hooks"      # shared hook overrides
 ICON = ROOT / "packaging" / "windows" / "M110.ico"               # from make_ico.py
 
@@ -45,7 +46,7 @@ datas += copy_metadata("astropy")               # astroquery's minversion('astro
 block_cipher = None
 
 a = Analysis(
-    [str(ENTRY)],
+    [str(ENTRY), str(MCP_ENTRY)],   # both entry points share ONE Analysis
     pathex=[str(ROOT)],
     binaries=[],
     datas=datas,
@@ -61,9 +62,16 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# One Analysis, two executables. `a.scripts` holds the runtime hooks plus BOTH
+# entry scripts, so each EXE takes the shared prefix and only its own script —
+# otherwise each binary would run whichever entry point happened to come first.
+def _scripts_for(stem):
+    other = {"m110_launch", "m110_mcp_launch"} - {stem}
+    return [e for e in a.scripts if e[0] not in other]
+
 exe = EXE(
     pyz,
-    a.scripts,
+    _scripts_for("m110_launch"),
     [],
     exclude_binaries=True,
     name="M110",
@@ -80,8 +88,34 @@ exe = EXE(
     icon=str(ICON) if ICON.exists() else None,      # embeds the .exe icon
 )
 
+# The stdio MCP server. console=True is MANDATORY here, not cosmetic:
+# console=False links against the Windows GUI subsystem, where a process has
+# no console and no inherited standard handles at all — sys.stdout is None
+# under a frozen Python. A stdio JSON-RPC server cannot exist in that binary,
+# and no argv flag can fix it: the subsystem is baked into the PE header at
+# link time. Hence a second executable rather than a mode switch.
+# No icon= — this is a headless helper, never shown in a shell or on a desktop.
+mcp_exe = EXE(
+    pyz,
+    _scripts_for("m110_mcp_launch"),
+    [],
+    exclude_binaries=True,
+    name="m110-mcp",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
 coll = COLLECT(
     exe,
+    mcp_exe,
     a.binaries,
     a.zipfiles,
     a.datas,
