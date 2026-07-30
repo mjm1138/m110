@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.2] - 2026-07-30
+
 ### Fixed
 - **0.3.0-beta.1 wouldn't start.** The packaged app crashed on launch with a
   `FileNotFoundError` about `constellations.json`: the installer carried the sky-map
