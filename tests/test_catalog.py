@@ -210,3 +210,166 @@ def test_combined_split_is_not_shadowed_by_a_pseudo_object():
     assert scan_sessions.folder_to_slugs("M108 M97", poisoned) == ["m108", "m97"]
     # a single object still resolves whole (not split)
     assert scan_sessions.folder_to_slugs("NGC 3628", poisoned) == ["ngc-3628"]
+
+
+def test_decorated_capture_folder_resolves_to_its_object():
+    """A folder named for *how* it was shot is still that object's frames.
+    "M42_mosaic" is M42; the decoration describes the capture, not the target."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    assert scan_sessions.folder_to_slugs("M42_mosaic", ref) == ["m42"]
+    assert scan_sessions.folder_to_slugs("NGC 7000_mosaic", ref) == ["ngc-7000"]
+    assert scan_sessions.folder_to_slugs("M31 panel", ref) == ["m31"]
+
+
+def test_decoration_strip_beats_a_stale_pseudo_object():
+    """The self-sustaining case. Once a stray "m42-mosaic" object exists in the
+    Library, the whole-folder match would find it and keep finding it — so the
+    folder's frames would be attributed to a coordinate-less stub forever, which
+    is exactly how they went missing from the sky map. The strip must win."""
+    from m110 import scan_sessions
+    poisoned = set(catalog.load_reference()) | {"m42-mosaic", "ngc-7000-mosaic"}
+    assert scan_sessions.folder_to_slugs("M42_mosaic", poisoned) == ["m42"]
+    assert scan_sessions.folder_to_slugs("NGC 7000_mosaic", poisoned) == ["ngc-7000"]
+
+
+def test_a_catalog_number_resolves_through_membership():
+    """The reference is keyed by an object's primary designation, so "C 6" isn't
+    a key — catalog membership is what knows C6 names NGC 6543."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    assert scan_sessions.folder_to_slugs("C 6", ref) == ["ngc-6543"]
+    assert scan_sessions.folder_to_slugs("C6", ref) == ["ngc-6543"]
+    # A designation that *is* a reference key still resolves to itself.
+    assert scan_sessions.folder_to_slugs("M31", ref) == ["m31"]
+
+
+def test_designation_index_covers_the_bundled_catalogs():
+    idx = catalog.designation_index()
+    assert idx["c6"] == "ngc-6543"
+    assert idx["m31"] == "m31"
+    assert catalog._normalize_designation("C 6") == "c6"
+
+
+def test_prune_superseded_stubs_removes_orphaned_placeholders(tmp_path, monkeypatch):
+    """Improving folder resolution promotes the real object but leaves the old
+    placeholder behind — no folder points at it, so it's an empty duplicate of
+    the object that now holds its captures."""
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
+        # the real objects, as add_captured_objects now creates them
+        "m42": {"id": "M42", "type": "emission", "ra_deg": "83.82", "dec_deg": "-5.39"},
+        "ngc-6543": {"id": "NGC 6543", "type": "planetary",
+                     "ra_deg": "269.64", "dec_deg": "66.63"},
+        # …and the stubs they superseded
+        "m42-mosaic": {"id": "M42_mosaic", "type": "unknown"},
+        "c-6": {"id": "C 6", "type": "unknown"},
+        # a genuinely off-catalog object that resolves only to itself — keep
+        "unknown": {"id": "Unknown", "type": "unknown"},
+    })
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
+    removed = catalog.prune_superseded_stubs()
+    assert sorted(removed) == ["c-6", "m42-mosaic"]
+    lib = catalog.load_library()
+    assert "m42" in lib and "ngc-6543" in lib          # the real objects stay
+    assert "unknown" in lib                            # nothing took it over
+    assert "m42-mosaic" not in lib and "c-6" not in lib
+    assert catalog.prune_superseded_stubs() == []      # idempotent
+
+
+def test_prune_keeps_a_stub_the_user_wrote_notes_on(tmp_path, monkeypatch):
+    """A placeholder carrying the user's own words is not disposable."""
+    from m110 import objects
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
+        "m42": {"id": "M42", "type": "emission", "ra_deg": "83.82", "dec_deg": "-5.39"},
+        "m42-mosaic": {"id": "M42_mosaic", "type": "unknown"},
+    })
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
+    objects.write_journal("m42-mosaic", "---\nid: M42_mosaic\n---\n\nFour panels, windy.\n")
+    assert catalog.prune_superseded_stubs() == []
+    assert "m42-mosaic" in catalog.load_library()
+
+
+def test_prune_leaves_a_stub_with_no_replacement(tmp_path, monkeypatch):
+    """Nothing took it over, so removing it would just lose an object."""
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
+        "markarians-chain": {"id": "Markarian's Chain", "type": "unknown"},
+    })
+    assert catalog.prune_superseded_stubs() == []
+    assert "markarians-chain" in catalog.load_library()
+
+
+def test_prune_removes_an_enriched_duplicate_too(tmp_path, monkeypatch):
+    """The duplicate that provoked this: "NGC3628" beside "NGC 3628", with a
+    type and coordinates filled in since. It looks like a real object, but no
+    capture folder points at it — the properly-slugged one holds the frames."""
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {
+        "ngc-3628": {"id": "NGC 3628", "type": "galaxy",
+                     "ra_deg": "170.07", "dec_deg": "13.59"},
+        "ngc3628": {"id": "NGC3628", "type": "galaxy",
+                    "ra_deg": "170.07", "dec_deg": "13.59"},
+    })
+    (config.IMAGES_DIR / "NGC3628" / "lights").mkdir(parents=True)
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
+    assert catalog.prune_superseded_stubs() == ["ngc3628"]
+    assert "ngc-3628" in catalog.load_library()
+
+
+def test_prune_keeps_an_object_you_simply_have_not_shot(tmp_path, monkeypatch):
+    """Having no captures is not the same as being superseded — a goal member
+    you haven't got to yet resolves to itself and must survive."""
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {"m13": {"id": "M13", "type": "globular",
+                               "ra_deg": "250.42", "dec_deg": "36.46"}})
+    assert catalog.prune_superseded_stubs() == []
+    assert "m13" in catalog.load_library()
+
+
+def test_markarians_chain_has_a_plottable_centre():
+    """An asterism has no catalogued position, so its centre is hand-set — but it
+    must exist, or the object can't be charted or planned. Sanity-check it sits
+    in the middle of the chain rather than on one end."""
+    import math
+    ref = catalog.load_reference()
+    e = ref["markarians-chain"]
+    assert e["ra_deg"] is not None and e["dec_deg"] is not None
+    m84 = ref["m84"]
+    sep = math.hypot(e["ra_deg"] - m84["ra_deg"], e["dec_deg"] - m84["dec_deg"])
+    assert 0.5 < sep < 1.0, "a 1.5°-long chain's centre should be ~0.75° from its end"
+    assert "markarians-chain" in catalog.load_coords()
+
+
+def test_undecorated_name_strips_the_framing():
+    from m110 import scan_sessions as s
+    assert s.undecorated_name("NGC 6888_mosaic") == "NGC 6888"
+    assert s.undecorated_name("M31 panel") == "M31"
+    assert s.undecorated_name("Foo-mosaic-panel") == "Foo"
+    assert s.undecorated_name("M42") == "M42"          # nothing to strip
+    assert s.undecorated_name("mosaic") == "mosaic"    # never strips to nothing
+
+
+def test_an_off_catalog_mosaic_is_promoted_under_the_plain_name(tmp_path, monkeypatch):
+    """A mosaic of something the bundled reference doesn't know still names the
+    *object*, not the framing — otherwise a later plain capture of the same
+    thing would land on a second object and recreate the duplication."""
+    from tests._helpers import seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    (config.IMAGES_DIR / "Barnard 150_mosaic" / "lights").mkdir(parents=True)
+    added = catalog.add_captured_objects(resolve_coords=False)
+    assert added == ["barnard-150"]
+    lib = catalog.load_library()
+    assert lib["barnard-150"]["id"] == "Barnard 150"
+    assert "barnard-150-mosaic" not in lib
+
+    # …and a later plain capture of it lands on the same object, not a new one.
+    (config.IMAGES_DIR / "Barnard 150" / "lights").mkdir(parents=True)
+    assert catalog.add_captured_objects(resolve_coords=False) == []
+    assert len(catalog.load_library()) == len(lib)

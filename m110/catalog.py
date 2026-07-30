@@ -177,6 +177,61 @@ def remove_library_entry(slug: str) -> bool:
     return True
 
 
+def prune_superseded_stubs() -> list[str]:
+    """Drop auto-created placeholder entries that a real catalog object has since
+    taken over. Returns the slugs removed.
+
+    When a capture folder couldn't be resolved to a catalog object, it was
+    promoted to an object in its own right: a stub with `type = "unknown"` and no
+    coordinates. Improving that resolution (a mosaic's decoration, a catalog
+    number) leaves the stub behind as an **orphan** — no capture folder points at
+    it any more, so it has no images, no sessions and no position, while the real
+    object now sits beside it. Two entries for one thing, one of them empty.
+
+    Only removes an entry that is all three of:
+      * orphaned — no capture folder resolves to it any more, so it holds no
+        frames of its own (an object you simply haven't shot yet is *not*
+        orphaned by this test: nothing took it over, see below),
+      * superseded — its own name now resolves to a *different* object that is
+        present in the Library, so its captures live there instead,
+      * un-annotated — `objects.has_notes` is False. **Every** object gets a
+        generated journal stub, so this must ask whether the user wrote prose,
+        not whether the file has content; the same test that decides whether a
+        goal deactivation may prune an object.
+
+    Keying on "orphaned" rather than "looks like a stub" matters: a duplicate
+    that was later enriched (`NGC3628` beside `NGC 3628`, with a type and
+    coordinates filled in) is still a duplicate holding nothing.
+
+    Non-destructive: `library.toml` only. Captures, renders and journals stay
+    exactly where they are, and the frames they describe now count toward the
+    object that actually holds them.
+    """
+    from . import objects, scan_sessions
+    lib = load_library()
+    known = set(lib) | set(load_reference())
+
+    referenced: set[str] = set()
+    if config.IMAGES_DIR.is_dir():
+        for d in config.IMAGES_DIR.iterdir():
+            if d.is_dir() and ((d / "lights").is_dir() or (d / "seestar-stacks").is_dir()):
+                referenced.update(scan_sessions.folder_to_slugs(d.name, known))
+
+    removed = []
+    for slug, e in list(lib.items()):
+        if slug in referenced:
+            continue                     # a capture folder still points here
+        target = scan_sessions.folder_to_slugs(str(e.get("id") or slug), known)
+        if len(target) != 1 or target[0] == slug or target[0] not in lib:
+            continue                     # nothing took it over
+        if objects.has_notes(slug):
+            continue                     # the user wrote something here — keep it
+        removed.append(slug)
+    for slug in removed:
+        remove_library_entry(slug)
+    return removed
+
+
 def remove_goal_members_from_library(goal_id: str, *, members=None) -> list[str]:
     """Prune a (de-activated) goal's members from the Library — but only those
     that are **uncaptured AND un-noted AND not in another active goal**. Captured
@@ -730,6 +785,32 @@ def add_library_entry(slug: str, entry: dict) -> None:
     config._ensure_object_stubs(config.DATA_ROOT, config.INTERNAL_DIR)
 
 
+_designations: dict[str, str] | None = None
+
+
+def designation_index() -> dict[str, str]:
+    """``{normalized designation: slug}`` across every bundled catalog.
+
+    The object reference is keyed by an object's *primary* designation, so
+    ``C6`` isn't a key — the Cat's Eye lives under ``ngc-6543``. Catalog
+    membership is what knows that C6 names it, and this inverts that mapping so
+    a capture folder called "C 6" can find the object it designates. Normalized
+    to letters+digits, so "C 6", "C6" and "c-6" all land on the same key.
+    """
+    global _designations
+    if _designations is None:
+        idx: dict[str, str] = {}
+        for cat in list_bundled_catalogs():
+            for slug, desig in cat["members"].items():
+                idx.setdefault(_normalize_designation(desig), slug)
+        _designations = idx
+    return _designations
+
+
+def _normalize_designation(text: str) -> str:
+    return "".join(ch for ch in str(text).lower() if ch.isalnum())
+
+
 def add_captured_objects(resolve_coords: bool = True) -> list[str]:
     """Promote captured targets that aren't in the Library into first-class
     objects, so they appear in the Library/Summary views, get an object page +
@@ -773,13 +854,18 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
                 new[m] = entry
             continue
         # Off-catalog target: no catalog object to credit, so the target doubles
-        # as its own object.
-        slug = scan_sessions.slugify(folder)
+        # as its own object — under the *undecorated* name. "Foo_mosaic" is a
+        # framing of Foo, so the object is Foo; naming it after the framing would
+        # split it from a later plain capture into two objects, which is exactly
+        # the duplication `prune_superseded_stubs` exists to clean up. It also
+        # gives Simbad a name it might actually resolve.
+        base = scan_sessions.undecorated_name(folder)
+        slug = scan_sessions.slugify(base)
         if not slug or slug in cat or slug in new:
             continue
-        entry = {"id": folder, "name": "", "type": "unknown"}
+        entry = {"id": base, "name": "", "type": "unknown"}
         if resolve_coords:
-            rd = _simbad_coords(folder)
+            rd = _simbad_coords(base)
             if rd:
                 entry["ra_deg"], entry["dec_deg"] = rd
         new[slug] = entry

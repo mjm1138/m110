@@ -11,21 +11,22 @@ from PySide6.QtWidgets import (
     QMenu, QListView, QSlider, QToolButton,
 )
 
-from m110 import config, derived, objects, pins, siril, catalog as catalog_mod
+from m110 import config, derived, goals, objects, pins, siril, skymap, catalog as catalog_mod
 from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
 )
 from m110.ui.detail import DetailPane
 from m110.ui.image_grid import TileItem, TileModel, TileDelegate, KEY_ROLE
+from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
 from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
-    can_process_slug, process_in_siril,
+    can_process_slug, process_in_siril, make_segment, mono_font,
 )
 
-LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid"
+LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "feed" | "map"
 LIBRARY_ZOOM_KEY = "library_grid_zoom"   # int px
 GRID_ZOOM_MIN = 80
 GRID_ZOOM_MAX = 220
@@ -66,7 +67,7 @@ class CatalogPage(QWidget):
         self._sort_col = 0
         self._sort_order = Qt.AscendingOrder
         self._catalog_filter = None       # None = all objects; else a catalog id
-        self._catalogs = list_bundled_catalogs()
+        self._catalogs = self._offered_catalogs()
         self._enrich_worker = None        # in-flight online enrichment (single)
         self._thumb_loader = ThumbnailLoader(self)
         self._thumbs = RowThumbnails(self._thumb_loader)
@@ -75,7 +76,8 @@ class CatalogPage(QWidget):
         # Grid (thumbnail) is the default "home" view — the Lightroom-style wall of
         # objects. A user's explicit list/grid/feed choice persists and overrides this.
         view_mode = config.get_setting(LIBRARY_VIEW_KEY, "grid")
-        self._view_mode = view_mode if view_mode in ("list", "grid", "feed") else "grid"
+        self._view_mode = (view_mode if view_mode in ("list", "grid", "feed", "map")
+                           else "grid")
         zoom = config.get_setting(LIBRARY_ZOOM_KEY, GRID_ZOOM_DEFAULT)
         self._zoom = max(GRID_ZOOM_MIN, min(GRID_ZOOM_MAX, int(zoom)))
 
@@ -100,10 +102,25 @@ class CatalogPage(QWidget):
         self.feed_view = JournalPage()
         self.feed_view.open_object.connect(self.select_object)   # card → detail
 
+        # Map view = the sky chart (ROADMAP item 12). Rendering costs ~0.1s, so
+        # it is built lazily and only re-rendered while it is the visible view —
+        # `_map_dirty` records that the filtered set moved underneath it.
+        self.map_view = SkyMapView()
+        # Clicking a marker is selection *within* the view, like clicking a row —
+        # not `select_object`, which is the routing entry point other pages use
+        # and clears the search + catalog filter to guarantee the target is
+        # visible. On the map the object is visibly right there, so clearing the
+        # user's filters would be both pointless and destructive.
+        self.map_view.object_clicked.connect(self._on_map_click)
+        self._map_dirty = True
+        self._map_slug = None              # the map's own "selection"
+        self._visible_slugs: list[str] = []
+
         self._view_stack = QStackedWidget()
         self._view_stack.addWidget(self.table)          # 0
         self._view_stack.addWidget(self.grid_view)      # 1
         self._view_stack.addWidget(self.feed_view)      # 2
+        self._view_stack.addWidget(self.map_view)       # 3
         self._view_stack.setCurrentWidget(self._view_widget(self._view_mode))
 
         self.detail = DetailPane()
@@ -123,9 +140,7 @@ class CatalogPage(QWidget):
         fb.setContentsMargins(0, 0, 0, 0)
         fb.addWidget(QLabel("Catalog:"))
         self._catalog_combo = QComboBox()
-        self._catalog_combo.addItem("All objects", None)
-        for c in self._catalogs:
-            self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
+        self._fill_catalog_combo()
         self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
         fb.addWidget(self._catalog_combo, 1)
         cat_row.addWidget(self._filter_bar, 1)
@@ -193,7 +208,7 @@ class CatalogPage(QWidget):
         self._scope_stack.addWidget(self.splitter)      # 0 = deep sky
         self._scope_stack.addWidget(self.media_view)    # 1 = media
 
-        # One control row: Deep sky · Media (left) + List · Grid · Feed (right), each
+        # One control row: Deep sky · Media (left) + List · Grid · Feed · Map (right), each
         # a joined segmented control. Fixed positions — the view segment no longer
         # rides on the (hideable) catalog filter, so it can't shift in Feed mode.
         self._scope_seg, self._scope_group, scope_btns = self._make_segment(
@@ -202,7 +217,8 @@ class CatalogPage(QWidget):
         self._deepsky_btn.toggled.connect(lambda on: on and self._set_scope(0))
         self._media_btn.toggled.connect(lambda on: on and self._set_scope(1))
         self._view_seg, self._view_group, self._view_btns = self._make_segment(
-            [("list", "List"), ("grid", "Grid"), ("feed", "Feed")], self._view_mode)
+            [("list", "List"), ("grid", "Grid"), ("feed", "Feed"), ("map", "Map")],
+            self._view_mode)
         for mode, b in self._view_btns.items():
             b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
 
@@ -250,38 +266,19 @@ class CatalogPage(QWidget):
         self._update_stat()
 
     def restyle(self):
-        """Theme changed — repaint views (status/muted colors) from new tokens."""
+        """Theme changed — repaint views (status/muted colors) from new tokens.
+
+        The chart bakes its colors into the SVG, so the map is re-rendered rather
+        than merely repainted."""
+        self.map_view.restyle()
+        self._map_dirty = True
         self._rebuild_views()
 
-    # ---- segmented controls (Deep sky|Media, List|Grid|Feed) ----
+    # ---- segmented controls (Deep sky|Media, List|Grid|Feed|Map) ----
     def _make_segment(self, items, active_key):
-        """A joined macOS-style segmented control: exclusive checkable buttons packed
-        into a bordered frame (`#segControl` / `#segButton` in the QSS). `items` =
-        [(key, label)]. Returns (frame, group, {key: button})."""
-        from PySide6.QtWidgets import QButtonGroup, QFrame
-        frame = QFrame()
-        frame.setObjectName("segControl")
-        row = QHBoxLayout(frame)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
-        group = QButtonGroup(frame)
-        group.setExclusive(True)
-        btns: dict[str, QToolButton] = {}
-        n = len(items)
-        for i, (key, label) in enumerate(items):
-            b = QToolButton()
-            b.setObjectName("segButton")
-            # Position so the QSS can round only the outer corners of the end buttons.
-            b.setProperty("segpos", "solo" if n == 1 else
-                          "first" if i == 0 else "last" if i == n - 1 else "mid")
-            b.setText(label)
-            b.setCheckable(True)
-            b.setCursor(Qt.PointingHandCursor)
-            group.addButton(b)
-            btns[key] = b
-            row.addWidget(b)
-        btns[active_key].setChecked(True)
-        return frame, group, btns
+        """This page's segmented controls. See `widgets.make_segment` — shared so
+        the sky map's hemisphere toggle is the same control, not a lookalike."""
+        return make_segment(items, active_key)
 
     def _set_scope(self, idx: int):
         self._scope_stack.setCurrentIndex(idx)
@@ -300,6 +297,12 @@ class CatalogPage(QWidget):
         new_totals = derived.totals_by_slug()
         changed = (new_cat != self._cat) or (new_totals != self._totals)
         self._cat, self._totals = new_cat, new_totals
+        # Goals and captures both move which catalogs are worth filtering by.
+        offered = self._offered_catalogs()
+        if offered != self._catalogs:
+            self._catalogs = offered
+            self._fill_catalog_combo()
+            changed = True
         if changed:
             self._rebuild_views()          # preserves selection + sort
             self._update_stat()
@@ -357,11 +360,41 @@ class CatalogPage(QWidget):
         # silently drop it on every keystroke; if the selected object no
         # longer matches, explicitly hide the (now stale) detail pane rather
         # than relying on a selectionChanged signal that may not fire.
+        kept = [ti for ti in self._all_tile_items if keep(ti)]
+        # The map draws whatever the object views are showing, so search and the
+        # catalog filter reach it without it knowing they exist.
+        self._visible_slugs = [ti.key for ti in kept]
+        self._map_dirty = True
         prev = self._selected_slug() if self._view_mode == "grid" else None
-        self._grid_model.set_items([ti for ti in self._all_tile_items if keep(ti)])
+        self._grid_model.set_items(kept)
         self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        self._render_map()
         if prev and not self._select_slug(prev):
             self._show_selection(None)
+
+    # ---- catalog filter ----
+    def _offered_catalogs(self) -> list[dict]:
+        """The bundled catalogs you've set as **goals** — the lists you're
+        actually working, which is what the filter is for. A catalog you aren't
+        tracking isn't a useful lens on your collection even when a capture
+        happens to fall inside it (most Messier objects are also in one of the
+        Popular lists, which is exactly the noise this removes)."""
+        active = set(goals.active_goal_ids())
+        return [c for c in list_bundled_catalogs() if c["id"] in active]
+
+    def _fill_catalog_combo(self):
+        """(Re)populate the filter, keeping the current choice if it still
+        qualifies — goals change and captures land, so the offer moves."""
+        keep = self._catalog_filter
+        blocked = self._catalog_combo.blockSignals(True)
+        self._catalog_combo.clear()
+        self._catalog_combo.addItem("All objects", None)
+        for c in self._catalogs:
+            self._catalog_combo.addItem(f"{c['name']} ({len(c['members'])})", c["id"])
+        idx = self._catalog_combo.findData(keep) if keep else 0
+        self._catalog_combo.setCurrentIndex(max(idx, 0))
+        self._catalog_combo.blockSignals(blocked)
+        self._catalog_filter = self._catalog_combo.currentData()
 
     def _filter_members(self) -> set | None:
         """Slugs of the selected catalog, or None for 'All objects'."""
@@ -495,16 +528,93 @@ class CatalogPage(QWidget):
         self.table.deleteLater()
         self.table = new_table
         self._view_stack.insertWidget(0, self.table)
-        self._view_stack.setCurrentWidget(
-            self.table if self._view_mode == "list" else self.grid_view)
+        # Whatever view is active stays active. (This used to hardcode
+        # list-or-grid, which silently dropped Map back to the grid on any
+        # rebuild — a catalog-filter change, a pin toggle, a theme switch —
+        # while the segment still read "Map".)
+        self._view_stack.setCurrentWidget(self._view_widget(self._view_mode))
         self._all_tile_items = self._build_tile_items()
         self._apply_filter()
         if not (prev and self._select_slug(prev)):
             self.detail.placeholder()
             self.detail.hide()
 
+    # ---- map view ----
+    def _on_map_click(self, slug: str):
+        """A marker was clicked — select it in place, leaving the filters alone."""
+        self._select_slug(slug)
+
+    def _map_has(self, slug: str) -> bool:
+        """Whether `slug` is currently drawn on either disc."""
+        return any(m["slug"] == slug
+                   for chart in self.map_view.charts() for m in chart["objects"])
+
+    def _render_map(self, force: bool = False):
+        """Draw the currently filtered objects on the sky chart.
+
+        Only while the map is the visible view: a render costs ~0.1s, which is
+        cheap enough to do synchronously but not on every keystroke of a search
+        the user cannot see the result of. `_map_dirty` carries the intent
+        forward so switching to the map picks up whatever changed meanwhile.
+        """
+        if self._view_mode != "map":
+            self._map_dirty = True
+            return
+        if not (self._map_dirty or force):
+            return
+        try:
+            charts, warnings = skymap.render(
+                self._map_slugs(), colors=status_colors(),
+                palette=chart_palette(), font_family=mono_font().family())
+        except skymap.SkymapDepsMissing as exc:
+            self.map_view.show_unavailable(str(exc))
+            self._map_dirty = False
+            return
+        self.map_view.set_charts(charts, warnings, self._empty_map_message())
+        self.map_view.set_selected(self._map_slug)
+        self._map_dirty = False
+
+    def _map_slugs(self) -> list[str]:
+        """What to plot: everything the object views are showing, plus — when
+        you're looking at one goal — the rest of that goal's members, drawn in
+        the "not yet shot" tier.
+
+        That's the whole point of filtering to a catalog on the map: you want to
+        see your progress *against the list*, so the gaps have to be on the chart
+        too. Unfiltered, the map stays a picture of what you have.
+        """
+        slugs = list(self._visible_slugs)
+        members = self._filter_members()
+        if members is None:
+            return slugs
+        q = self._search.text().strip().lower()
+        have = set(slugs)
+        rest = []
+        for slug in sorted(members):
+            if slug in have or slug in self._cat:
+                continue                      # already plotted, or filtered out
+            if q:
+                e = catalog_mod.load_reference().get(slug, {})
+                hay = f"{e.get('id', slug)} {e.get('name', '')}".lower()
+                if q not in hay:
+                    continue
+            rest.append(slug)
+        return slugs + rest
+
+    def _empty_map_message(self) -> str:
+        """Why the sky is bare — named for whichever filter emptied it."""
+        if self._search.text().strip():
+            return "Nothing matches your search."
+        name = next((c["name"] for c in self._catalogs
+                     if c["id"] == self._catalog_filter), None)
+        if name:
+            return f"No objects from {name} are in your Library yet."
+        return "Your Library is empty — import captures or add an object to begin."
+
     # ---- view-agnostic selection ----
     def _selected_slug(self):
+        if self._view_mode == "map":
+            return self._map_slug
         if self._view_mode == "list":
             items = self.table.selectedItems()
             return self.table.item(items[0].row(), 0).data(Qt.UserRole) if items else None
@@ -512,6 +622,21 @@ class CatalogPage(QWidget):
         return sel[0].data(KEY_ROLE) if sel else None
 
     def _select_slug(self, slug) -> bool:
+        if self._view_mode == "map":
+            # The map has no selection model: it rings the object and shows the
+            # detail pane, switching hemispheres if it is on the other disc.
+            # Like the other views, an object the current filter excludes is a
+            # miss — so a rebuild that filters out the selection closes the
+            # detail pane instead of leaving a stale one open.
+            if not self._map_has(slug):
+                return False
+            self._map_slug = slug
+            self.map_view.set_selected(slug)
+            if slug in self._cat:
+                self.detail.show_object(slug, self._cat[slug],
+                                        self._totals.get(slug, {}))
+                self.detail.show()
+            return True
         if self._view_mode == "list":
             for r in range(self.table.rowCount()):
                 if self.table.item(r, 0).data(Qt.UserRole) == slug:
@@ -559,7 +684,7 @@ class CatalogPage(QWidget):
     # ---- view toggle + zoom ----
     def _view_widget(self, mode: str) -> QWidget:
         return {"list": self.table, "grid": self.grid_view,
-                "feed": self.feed_view}[mode]
+                "feed": self.feed_view, "map": self.map_view}[mode]
 
     def _set_view_mode(self, mode: str):
         if mode == self._view_mode:
@@ -583,8 +708,13 @@ class CatalogPage(QWidget):
             self.feed_view.reload()
             self.detail.hide()                 # no per-object detail in the feed
             return
+        if mode == "map":
+            self._render_map()
         if prev_slug:
             self._select_slug(prev_slug)
+        elif mode == "map":
+            self._map_slug = None
+            self.map_view.set_selected(None)
         else:
             self._view_widget(mode).clearSelection()
 

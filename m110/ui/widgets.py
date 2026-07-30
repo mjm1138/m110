@@ -8,9 +8,9 @@ from PySide6.QtGui import (
     QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QMenu, QMessageBox, QStyle, QStyledItemDelegate,
-    QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout,
-    QToolButton,
+    QApplication, QButtonGroup, QFrame, QHBoxLayout, QMenu, QMessageBox, QStyle,
+    QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QTableWidgetItem,
+    QWidget, QVBoxLayout, QToolButton,
 )
 
 from m110 import derived, objects, siril
@@ -396,3 +396,36 @@ class RowThumbnails:
         icon = QIcon(pm)
         for item in self._items.get(slug, []):
             item.setIcon(icon)
+
+
+def make_segment(items, active_key):
+    """A joined macOS-style segmented control: exclusive checkable buttons packed
+    into a bordered frame (`#segControl` / `#segButton` in the QSS). `items` =
+    [(key, label)]. Returns (frame, group, {key: button}).
+
+    Shared so every segment in the app is the same control — the Library's
+    Deep-sky|Media and List|Grid|Feed|Map rows, and the sky map's N|S toggle.
+    """
+    frame = QFrame()
+    frame.setObjectName("segControl")
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(0)
+    group = QButtonGroup(frame)
+    group.setExclusive(True)
+    btns: dict[str, QToolButton] = {}
+    n = len(items)
+    for i, (key, label) in enumerate(items):
+        b = QToolButton()
+        b.setObjectName("segButton")
+        # Position so the QSS can round only the outer corners of the end buttons.
+        b.setProperty("segpos", "solo" if n == 1 else
+                      "first" if i == 0 else "last" if i == n - 1 else "mid")
+        b.setText(label)
+        b.setCheckable(True)
+        b.setCursor(Qt.PointingHandCursor)
+        group.addButton(b)
+        btns[key] = b
+        row.addWidget(b)
+    btns[active_key].setChecked(True)
+    return frame, group, btns

@@ -1238,6 +1238,12 @@ filter = "OFF"
 ra_deg = 23.3392
 dec_deg = 60.6589
 
+# Markarian's Chain is a chain of galaxies, not a single object, so it has no
+# catalogued position and doesn't resolve in Simbad. The coordinates below are a
+# hand-set centre so it can be plotted and planned: the midpoint of the chain's
+# two ends, M84 (186.2656, +12.8870 — this file) and NGC 4477 (187.5092,
+# +13.6364), which is consistent with the 1.5° size. Approximate by nature; it
+# points a telescope at the middle of the chain, which is the useful thing.
 [object.markarians-chain]
 id = "Markarian's Chain"
 name = "Markarian's Chain"
@@ -1246,6 +1252,8 @@ size = "1.5°"
 season = "Mar–May"
 filter = "OFF"
 notes = "Mosaic — chain of galaxies in Virgo Cluster"
+ra_deg = 186.89
+dec_deg = 13.26
 
 # M40 and M73 are non-deep-sky Messier oddities (a double star and a 4-star
 # asterism) that don't resolve in Simbad, so they're authored here by hand to keep

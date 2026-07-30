@@ -337,7 +337,7 @@ class DetailPane(QScrollArea):
         if captured:
             self._add_processing_section(slug)
             self._add_sessions_section(slug)
-        self._add_metadata_section(slug, e)
+        self._add_metadata_section(slug, e, t)
 
         self._lay.addStretch(1)
 
@@ -394,7 +394,7 @@ class DetailPane(QScrollArea):
         self._section_table(
             "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount"], out)
 
-    def _add_metadata_section(self, slug: str, e: dict):
+    def _add_metadata_section(self, slug: str, e: dict, totals: dict | None = None):
         from m110 import catalog
         targets = targets_for_slug(slug)
         rows = []
@@ -428,6 +428,17 @@ class DetailPane(QScrollArea):
         rows.append(("Slug", slug))
         if targets:
             rows.append(("Capture targets", ", ".join(sorted(targets))))
+        # A framing whose frames don't stack with the object's main capture (a
+        # mosaic) is tracked apart, so its hours are missing from the headline
+        # above — say where they went rather than letting them vanish.
+        apart = [(f, d) for f, d in ((totals or {}).get("framings") or {}).items()
+                 if not d.get("counted")]
+        for folder, d in sorted(apart):
+            rows.append((f"Tracked separately · {folder}",
+                         f"{_fmt_hm(d.get('integration_min', 0.0))} · "
+                         f"{d.get('frames', 0)} frames · "
+                         f"{d.get('session_count', 0)} sessions "
+                         f"(not stackable with the above)"))
         if e.get("notes"):
             rows.append(("Remarks", str(e["notes"])))
         self._lay.addWidget(_section_label("Object details"))

@@ -77,5 +77,9 @@ def test_about_dialog_builds_and_shows_version(qapp):
     texts = " ".join(lbl.text() for lbl in dlg.findChildren(QLabel))
     assert app_version() in texts
     assert AboutDialog.TAGLINE in texts
+    # The sky map is drawn by someone else's library, and it's one of the most
+    # visible features — the credit belongs where people look for it.
+    assert "Uranometria" in texts and AboutDialog.URANOMETRIA_URL in texts
+    assert "Lightroom" not in texts
     assert any(not lbl.pixmap().isNull()
                for lbl in dlg.findChildren(QLabel) if lbl.pixmap() is not None)
