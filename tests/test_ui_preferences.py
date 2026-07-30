@@ -201,3 +201,16 @@ def test_copy_cli_command_puts_it_on_the_clipboard(tmp_path, monkeypatch, qapp):
         assert "claude mcp add m110" in QApplication.clipboard().text()
     finally:
         d.deleteLater()
+
+
+def test_direct_save_toggle_persists(tmp_path, monkeypatch, qapp):
+    from m110.assistant.tools.saving import SETTING_DIRECT_SAVE, direct_save_enabled
+    seed_root(tmp_path, monkeypatch)
+    d = _prefs()
+    try:
+        assert direct_save_enabled() is False          # conservative default
+        d._direct_save_cb.setChecked(True)
+        assert config.get_setting(SETTING_DIRECT_SAVE) is True
+        assert direct_save_enabled() is True
+    finally:
+        d.deleteLater()

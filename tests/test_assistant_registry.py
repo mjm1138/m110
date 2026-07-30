@@ -50,6 +50,7 @@ ARGS = {
     "propose_weights": {"rationale": "test", "strategy": "deep"},
     "propose_pins": {"rationale": "test", "pin": ["m101"]},
     "propose_journal_entry": {"slug": "m101", "markdown": "note", "rationale": "test"},
+    "save_field_guide": {"title": "test plan", "markdown": "# Plan\n"},
 }
 
 
@@ -147,10 +148,12 @@ def test_result_is_json_serializable(tool, seed_root):
 
 def _manifest(root: Path) -> dict:
     """Hash every file under root, including mtime, so an idempotent rewrite is
-    still caught."""
+    still caught. The assistant outbox is excluded — creating files there is the
+    one sanctioned write, and its own containment is proven in
+    tests/test_assistant_outbox.py."""
     out = {}
     for p in sorted(root.rglob("*")):
-        if p.is_file():
+        if p.is_file() and "assistant" not in p.relative_to(root).parts:
             st = p.stat()
             out[str(p.relative_to(root))] = (
                 st.st_mtime_ns, st.st_size,
@@ -161,7 +164,10 @@ def _manifest(root: Path) -> dict:
 
 @pytest.mark.parametrize("tool", ALL, ids=lambda t: t.name)
 def test_layer1_store_is_byte_identical_after_call(tool, seed_root):
-    """Nothing under the data root may change — content, size, or mtime."""
+    """Nothing outside the outbox may change — content, size, or mtime.
+
+    This is the load-bearing half of the relaxed invariant: a tool may CREATE a
+    file in the outbox, but everything the user authored is untouchable."""
     before = _manifest(config.DATA_ROOT)
     _invoke(tool)
     after = _manifest(config.DATA_ROOT)
@@ -172,16 +178,22 @@ def test_layer1_store_is_byte_identical_after_call(tool, seed_root):
 
 
 @pytest.mark.parametrize("tool", ALL, ids=lambda t: t.name)
-def test_layer2_no_write_syscalls_into_the_store(tool, seed_root, monkeypatch):
+def test_layer2_no_write_syscalls_outside_the_outbox(tool, seed_root, monkeypatch):
     """Intercept the write paths themselves, so a write to a path this test's
-    arguments happen not to create is still caught."""
+    arguments happen not to create is still caught.
+
+    The outbox is carved out; everything else under the data root and the app
+    config dir is off limits."""
     guarded = [config.DATA_ROOT.resolve(), config.APP_CONFIG_DIR.resolve()]
+    allowed = Path(config.ASSISTANT_DIR).resolve()
 
     def _under_guard(path) -> bool:
         try:
             rp = Path(path).resolve()
         except (OSError, TypeError, ValueError):
             return False
+        if rp == allowed or allowed in rp.parents:
+            return False                      # the sanctioned outbox
         return any(rp == g or g in rp.parents for g in guarded)
 
     def _boom(label):
@@ -234,22 +246,74 @@ ENGINE_WRITERS = {
 }
 
 
-def test_layer3_no_engine_writer_is_referenced_statically():
+# The one sanctioned engine write, as (module path suffix, function). Field
+# guides are additive, regenerable and non-authoritative, and this call is
+# reached only when the user has turned `assistant_direct_save` on. Anything
+# else calling an engine writer is a bug; keep this list at one entry unless
+# there is an equally narrow argument for a second.
+SANCTIONED_WRITES = {("assistant/tools/saving.py", "save")}
+
+# apply.py is the app-side accept path. It calls engine writers by design, and is
+# excluded from the scan below — which is only sound because nothing the server
+# can reach imports it. That is asserted separately, and is what keeps the
+# read-only proof airtight rather than merely narrower.
+APP_SIDE_ONLY = {"assistant/apply.py"}
+
+
+def test_layer3_no_unsanctioned_engine_writer_is_referenced():
     """AST-walk the package. Catches a write path before it is ever executed —
     the layers above only see what the test's arguments happen to reach."""
     offenders = []
     for py in sorted(ASSISTANT_DIR.rglob("*.py")):
+        if py.relative_to(ASSISTANT_DIR.parent).as_posix() in APP_SIDE_ONLY:
+            continue
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
                 fn = node.func
                 called = fn.attr if isinstance(fn, ast.Attribute) else (
                     fn.id if isinstance(fn, ast.Name) else None)
-                if called in ENGINE_WRITERS:
-                    offenders.append(
-                        f"{py.relative_to(ASSISTANT_DIR.parent)}:{node.lineno} -> {called}()")
+                rel = py.relative_to(ASSISTANT_DIR.parent).as_posix()
+                if called in ENGINE_WRITERS and (rel, called) not in SANCTIONED_WRITES:
+                    offenders.append(f"{rel}:{node.lineno} -> {called}()")
     assert not offenders, (
         "assistant tools must not call engine writers:\n  " + "\n  ".join(offenders))
+
+
+def test_the_app_side_apply_path_is_unreachable_from_the_server():
+    """The exemption above is only sound if no tool can reach apply.py.
+
+    Walk every import in the registry, the transport and every tools module; the
+    apply path must appear in none of them. If it ever does, a model could
+    trigger a real write and the guarantee is gone.
+    """
+    server_side = [ASSISTANT_DIR / "registry.py", ASSISTANT_DIR / "mcp_server.py",
+                   ASSISTANT_DIR / "outbox.py", ASSISTANT_DIR / "proposals.py",
+                   *sorted((ASSISTANT_DIR / "tools").rglob("*.py"))]
+    for py in server_side:
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [f"{node.module or ''}.{a.name}" for a in node.names]
+            for n in names:
+                assert not n.endswith("apply") and ".apply." not in n, (
+                    f"{py.name} imports the app-side apply path ({n}) — that would "
+                    "make engine writes reachable from a tool")
+
+
+def test_the_sanctioned_write_list_stays_honest():
+    """A carve-out nobody re-reads becomes a hole. Assert each entry still names
+    a real call site, so a stale exemption can't quietly widen the guarantee."""
+    for rel, fname in SANCTIONED_WRITES:
+        path = ASSISTANT_DIR.parent / rel
+        assert path.is_file(), f"sanctioned write points at a missing file: {rel}"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        calls = {n.func.attr for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+        assert fname in calls, f"{rel} no longer calls {fname}() — drop the exemption"
 
 
 # ── astropy must not be reachable from a non-slow tool ───────────────────────
