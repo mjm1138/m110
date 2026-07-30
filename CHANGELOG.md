@@ -46,6 +46,15 @@ changes a **user** would notice, per release.
   session counts for the affected objects will change after the next refresh** — those frames
   now count where they belong. The old placeholder entries stay until you remove them
   (right-click → Remove from Library); removing one doesn't touch any files.
+- **A mosaic no longer inflates an object's integration time.** Frames shot as a mosaic
+  can't be stacked with a single-frame capture of the same object, so adding the two
+  together claimed a depth no single stack had — and could push an object to **Deep Stack**
+  when neither framing got there on its own. An object's integration is now its plain
+  capture, with any mosaic listed beside it on the object page as tracked separately. An
+  object you've *only* ever shot as a mosaic still counts that mosaic as its capture, and
+  combined targets like `M81 M82` are unaffected — those frames really do contain both
+  objects. **Some integration times will drop after the next refresh**; nothing on disk
+  changes, and the hours are still shown, just not added together.
 
 ### Removed
 - **The bundled Siril/Seestar workflow playbooks have been removed** pending replacements

@@ -72,6 +72,18 @@ Frame headers → Session rollup → Target rollup (totals.by_folder)
 A Catalog Object is the source of truth for *intrinsic* facts. A Capture Target
 holds the *observed* data. Rollups are derived, never authored.
 
+**Framings.** One object can be shot in ways that don't combine: a mosaic of M42
+is M42's sky, but its frames don't stack with a single-frame capture of it.
+Summing them into one integration would claim a depth no single stack has — and
+could promote an object past the deep-stack threshold neither framing reaches. So
+the object rollup counts the **plain** capture targets, and a *decorated* target
+(`M42_mosaic`, recognised by `scan_sessions.is_decorated_target`) is tracked
+beside it: `totals.by_slug[slug].framings` maps each contributing target to
+`{counted, frames, integration_min, session_count}`. An object captured *only* as
+a mosaic has nothing to conflate it with, so that framing is counted — it is the
+capture. Combined targets (`M81 M82`) are one dataset containing both objects and
+are unaffected: they count for each member as before.
+
 ---
 
 ## Store layout

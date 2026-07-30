@@ -123,6 +123,17 @@ def slugify(name: str) -> str:
 _DECORATIONS = {"mosaic", "panel", "panels", "pane"}
 
 
+def is_decorated_target(folder_name: str) -> bool:
+    """Whether a capture folder names a *framing* of an object rather than the
+    object plainly — "M42_mosaic" vs "M42".
+
+    Frames shot as a mosaic aren't co-stackable with a single-frame capture of
+    the same object, so they're the same object but a separate dataset.
+    """
+    s = slugify(folder_name)
+    return _undecorated(s) != s
+
+
 def _undecorated(slug: str) -> str:
     """`slug` with any trailing capture decoration removed ("ngc-7000-mosaic"
     → "ngc-7000"). Returns it unchanged when there is none."""
