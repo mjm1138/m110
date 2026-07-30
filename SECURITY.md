@@ -11,8 +11,8 @@ AI assistant can see and do**. Both are covered below.
 
 The engineering-side threat model lives in
 [`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md) — a
-point-in-time review (2026-07-15, against v0.2.0-beta.1) covering attack surface,
-findings, and the build pipeline.
+point-in-time review (refreshed 2026-07-30) covering attack surface, findings, and
+the build pipeline, including the assistant.
 
 ## What leaves your machine
 

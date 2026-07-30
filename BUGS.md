@@ -519,6 +519,47 @@ Legend: `[ ]` open · `[~]` partially done
   credentials (closes #93). Note **#40d** (restore has no store-version gate) is orthogonal and
   still open either way.
 
+## Security  *(→ [`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md))*
+
+Open findings from the 2026-07-30 assessment refresh. Nothing rated above Low; none
+is a release blocker for 0.3.0-beta.1 except F8, which is one line.
+
+- [ ] **F8 — `uranometria` is installed from an unpinned git URL.** `.github/workflows/ci.yml:64`
+  runs `pip install "uranometria @ git+https://github.com/devonjones/uranometria"`, which
+  resolves to whatever is on the default branch at install time — no tag, no SHA, no hash.
+  Because it isn't a registry package it is **invisible to Dependabot** and `pip-audit`
+  **skips it outright**, so both supply-chain controls have a blind spot exactly here. CI-only
+  today (Low); the `pyproject.toml` note says packaged builds will install it the same way,
+  and baking an unreviewed upstream state into downloadable artifacts is Medium. **Fix:** pin
+  to a commit SHA or tag (`…/uranometria@<sha>`) and treat bumps as reviewed changes; revisit
+  when it reaches PyPI and becomes a normal extra. Do this *before* packaging adopts the line.
+
+- [ ] **F9 — `objects.write_journal` trusts a slug validated upstream.** `journal_path` →
+  `object_folder_name` falls back to the raw slug and neutralizes only `/`, so `..` survives
+  (verified: `Objects/../journal.md`) and on Windows `..\..\x` survives verbatim — `\` is a
+  separator there. Not currently reachable: `propose_journal_entry` checks the slug against
+  the Library first, and Library slugs derive from folder names already reduced by
+  `ingest._safe_segment`. So it's latent — but it's the same shape as the fixed F1 traversal
+  (validation upstream, no guard at the writer), and F1's lesson was that the guard belongs at
+  the writer. **Fix:** reduce `object_folder_name` via `_safe_segment` and/or assert
+  containment under `config.OBJECTS_DIR` in `write_journal`, with a test mirroring
+  `test_apply_ops_refuses_writes_outside_the_store`.
+
+- [ ] **F7 — Indirect prompt injection via library content** (accepted design property, track
+  don't "fix"). Object names and filenames reaching the assistant originate in FITS `OBJECT`
+  headers and on-device filenames — attacker-controlled in a crafted capture file, same source
+  as F1. A model can't distinguish those from M110's own prose. Ceiling is **user deception**
+  (a plausible proposal the user accepts), not access: `apply.py` is unreachable from the
+  server, the outbox is inert and quota'd, and every change is user-accepted against a
+  recomputed preview. **Reduce, don't solve:** label/delimit untrusted-derived fields as data
+  in tool output; never add an auto-apply mode; teach the skills to treat library text as data.
+
+- [ ] **Verify the repo Settings security toggles are actually on** — Dependabot alerts +
+  security updates, CodeQL default setup, secret scanning + push protection. Not visible from
+  the working tree, so the assessment can't confirm them. CodeQL would be the standing check
+  for F9-shaped bugs. Pairs with adding a **`pip-audit` CI job** (fails on a known-vuln dep at
+  PR time; won't cover F8 — pinning is the control there).
+
 ## Packaging & release
 
 - [ ] **`hdiutil create` is deprecated (macOS 27).** `packaging/macos/make_dmg.sh:26`
