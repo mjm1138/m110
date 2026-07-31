@@ -415,6 +415,17 @@ control.
   DYLD half was already cleared via `_LIBPATH_VARS`. Only bites the **frozen** app (from
   source those vars aren't set), so it can't be caught by a dev-run — regression-test the
   env sanitizer, not a live launch.
+- **The macOS `.app` must set `LSBackgroundOnly: False` explicitly.** PyInstaller's
+  `BUNDLE` inherits `console` from the `COLLECT`, which inherits it from its EXE args
+  **last-one-wins** — and ours is the `console=True` MCP server (which cannot become
+  windowed: the Windows GUI subsystem has no stdio). PyInstaller reads that as
+  "console app" and stamps `LSBackgroundOnly=True`, so LaunchServices registers M110 as
+  `type="BackgroundOnly"`: **no menu bar, no Dock icon, not in Force Quit**, window
+  can't take focus properly. The user `info_plist` is merged *over* the defaults, so the
+  explicit key is the fix. Bit 0.3.0-beta.1/b2; invisible in b1 only because that build
+  crashed first. Diagnose this class with `lsappinfo list | grep -A6 space.m110.M110`
+  (`type=`) and `plutil -p <app>/Contents/Info.plist` — not by reading the spec, which
+  looks innocent. Any future console EXE added to the bundle re-arms it.
 - **FITS extensions: `.fit` AND `.fits`.** Seestar/the Astronomy port use `.fit`;
   the Dwarf 3 (and most other rigs) write `.fits`. Any new extension check must go
   through `config.FIT_EXTS`/`config.is_fits_file` — never a bare `endswith(".fit")`
