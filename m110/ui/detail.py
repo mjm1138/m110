@@ -22,7 +22,8 @@ from m110.ui import theme
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
-    process_in_siril, open_in_default, reveal_in_manager,
+    process_in_siril, open_in_default, reveal_in_manager, defer,
+    connect_context_menu,
 )
 
 
@@ -281,9 +282,7 @@ class DetailPane(QScrollArea):
             pm = QPixmap(str(hp))
             if not pm.isNull():
                 self._hero_widget = ScalableImage(pm, max_height=460)
-                self._hero_widget.setContextMenuPolicy(Qt.CustomContextMenu)
-                self._hero_widget.customContextMenuRequested.connect(
-                    self._hero_context_menu)
+                connect_context_menu(self._hero_widget, self._hero_context_menu)
                 self._lay.addWidget(self._hero_widget)
 
         fm, body = objects.read_journal(slug)
@@ -500,9 +499,8 @@ class DetailPane(QScrollArea):
                 "_state": self._img_state(im, objects.get_curation(slug)),
             })
         gallery.itemDoubleClicked.connect(self._open_gallery_item)
-        gallery.setContextMenuPolicy(Qt.CustomContextMenu)
-        gallery.customContextMenuRequested.connect(
-            lambda pos, g=gallery: self._gallery_context_menu(g, pos))
+        connect_context_menu(
+            gallery, lambda pos, g=gallery: self._gallery_context_menu(g, pos))
         self._galleries.append(gallery)
         self._lay.addWidget(gallery)
 
@@ -516,10 +514,18 @@ class DetailPane(QScrollArea):
         return str(obj_id).replace(" ", "")
 
     def _open_gallery_item(self, item):
+        # `itemDoubleClicked` is emitted from inside the gallery's own
+        # `QAbstractItemView::mouseDoubleClickEvent`. Opening the (modal) viewer
+        # here keeps that C++ frame alive for as long as the viewer is up — and a
+        # sync finishing meanwhile rebuilds this pane, deleting the gallery out
+        # from under Qt (the 0.3.0b3 SIGSEGV). Defer past the handler, on a
+        # snapshot of the items so a rebuild can't shift the index either.
         idx = item.data(Qt.UserRole)
-        if isinstance(idx, int) and 0 <= idx < len(self._gallery_items):
-            ImageViewer(list(self._gallery_items), idx, parent=self,
-                        export_stem=self._export_stem()).exec()
+        if not isinstance(idx, int) or not (0 <= idx < len(self._gallery_items)):
+            return
+        items, stem = list(self._gallery_items), self._export_stem()
+        defer(self, lambda: ImageViewer(items, idx, parent=self,
+                                        export_stem=stem).exec())
 
     def _gallery_context_menu(self, gallery, pos):
         item = gallery.itemAt(pos)

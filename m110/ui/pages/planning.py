@@ -25,7 +25,9 @@ from PySide6.QtWidgets import (
 
 from m110 import catalog, pins, prioritize
 from m110 import planning_config as pc
-from m110.ui.widgets import make_table, fit_table_height, CollapsibleSection
+from m110.ui.widgets import (
+    make_table, fit_table_height, CollapsibleSection, connect_context_menu,
+)
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
 
@@ -693,9 +695,7 @@ class PlanningPage(QScrollArea):
         tbl.resizeColumnsToContents()
         fit_table_height(tbl, max_rows=15)
         tbl.itemDoubleClicked.connect(lambda item: self._open_row(tbl, item.row()))
-        tbl.setContextMenuPolicy(Qt.CustomContextMenu)
-        tbl.customContextMenuRequested.connect(
-            lambda pos, t=tbl: self._pin_menu(t, pos))
+        connect_context_menu(tbl, lambda pos, t=tbl: self._pin_menu(t, pos))
         self._ptable_holder.addWidget(tbl)
 
     def _maybe_recompute(self, force: bool = False):

@@ -24,6 +24,7 @@ from m110.ui.widgets import (
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
     can_process_slug, process_in_siril, make_segment, mono_font,
+    connect_context_menu,
 )
 
 LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "feed" | "map"
@@ -94,8 +95,7 @@ class CatalogPage(QWidget):
         self._grid_delegate = TileDelegate(self._zoom, self.grid_view)
         self.grid_view.setItemDelegate(self._grid_delegate)
         self.grid_view.selectionModel().selectionChanged.connect(self._on_grid_select)
-        self.grid_view.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.grid_view.customContextMenuRequested.connect(self._on_context_menu)
+        connect_context_menu(self.grid_view, self._show_context_menu)
 
         # Feed view = the reverse-chron object-card feed (absorbs the Journal pane).
         from m110.ui.pages.journal import JournalPage
@@ -512,8 +512,7 @@ class CatalogPage(QWidget):
         table.setSortingEnabled(True)
         table.sortByColumn(self._sort_col, self._sort_order)
         table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
-        table.setContextMenuPolicy(Qt.CustomContextMenu)
-        table.customContextMenuRequested.connect(self._on_context_menu)
+        connect_context_menu(table, self._show_context_menu)
         return table
 
     def _on_sort_changed(self, col: int, order):
@@ -779,7 +778,10 @@ class CatalogPage(QWidget):
                       "publish": publish_act, "pin": pin_act, "depri": depri_act,
                       "remove": remove_act, "published": published, "state": state}
 
-    def _on_context_menu(self, pos):
+    def _show_context_menu(self, pos):
+        # Opened one event cycle after the click (`connect_context_menu`): the
+        # menu's nested loop must not run inside the view's own C++ mouse handler,
+        # or a sync finishing meanwhile deletes this very table mid-dispatch.
         slug = self._slug_at(pos)
         if slug is None:
             return

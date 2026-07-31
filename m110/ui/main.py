@@ -31,6 +31,7 @@ from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui.pages.planning import PlanningPage
+from m110.ui.widgets import modal_loop_active
 from m110.ui import theme
 
 
@@ -124,6 +125,14 @@ class MainWindow(QMainWindow):
         self._auto_backup_checked = False
         self._update_worker = None
         self._banner = None
+        # A finished sync rebuilds the pages — deferred while a modal/popup owns a
+        # nested event loop (see `_apply_refresh`). Parented, so it dies with the
+        # window rather than firing into a half-torn-down shell.
+        self._pending_refresh = None
+        self._reload_retry = QTimer(self)
+        self._reload_retry.setInterval(250)
+        self._reload_retry.setSingleShot(True)
+        self._reload_retry.timeout.connect(self._retry_pending_refresh)
 
         if not config.data_root_ok():
             self.setCentralWidget(QLabel(
@@ -608,6 +617,28 @@ class MainWindow(QMainWindow):
         if self.catalog.is_editing():
             return                         # don't disturb an open editor
         self.refresh_action.setEnabled(True)
+        self._apply_refresh(summary)
+
+    def _apply_refresh(self, summary: dict):
+        """Rebuild every page from the refreshed store — but **never** while a modal
+        dialog or popup menu is up.
+
+        `reload()` deletes and re-creates widgets (the Library table, the whole
+        detail pane incl. its gallery views). A modal runs a nested event loop, so
+        a `deleteLater()` issued from inside one takes effect while the C++ handler
+        that opened it is still on the stack — Qt then resumes in a freed widget.
+        That is the 0.3.0b3 crash: click back into a backgrounded window (which
+        starts this sync), double-click a gallery thumbnail, and the sync lands
+        while the image viewer's loop is spinning inside the gallery's own
+        `mouseDoubleClickEvent`. Re-check on a timer instead; the pages are only
+        rebuilt once the user is back at the main window."""
+        if modal_loop_active():
+            self._pending_refresh = summary
+            self._reload_retry.start()
+            return
+        self._pending_refresh = None
+        if self.catalog.is_editing():
+            return                         # editor opened while we waited
         for p in self.pages:
             p.reload()
         self._update_status()
@@ -629,6 +660,11 @@ class MainWindow(QMainWindow):
                 self._auto_backup_checked = True
                 self._maybe_auto_backup()
             self._maybe_backup_nudge()
+
+    def _retry_pending_refresh(self):
+        """The deferred rebuild, re-attempted once the modal is (hopefully) gone."""
+        if self._pending_refresh is not None:
+            self._apply_refresh(self._pending_refresh)
 
     def _refresh_assistant_banner(self):
         """Re-read the assistant outbox; the banner shows itself if non-empty."""

@@ -650,7 +650,7 @@ def test_library_fill_missing_metadata(tmp_path, monkeypatch, qapp):
         vis = [r for r in range(page.table.rowCount()) if not page.table.isRowHidden(r)]
         assert any(page.table.item(r, 1).text() == "East Veil Nebula" for r in vis)
         # the page exposes the context-menu hook
-        assert hasattr(page, "_on_context_menu")
+        assert hasattr(page, "_show_context_menu")
     finally:
         page.deleteLater()
         qapp.processEvents()

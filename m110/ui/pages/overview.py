@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from m110 import catalog, config, derived, pins, goals as goals_mod
 from m110.ui.widgets import (
     NumItem, status_label, make_table, CollapsibleSection, fit_table_height,
+    connect_context_menu,
 )
 from m110.ui.theme import status_color
 
@@ -287,9 +288,8 @@ class OverviewPage(QScrollArea):
         pt.resizeColumnsToContents()
         fit_table_height(pt, max_rows=12)
         self._wire_open(pt)
-        pt.setContextMenuPolicy(Qt.CustomContextMenu)
-        pt.customContextMenuRequested.connect(
-            lambda pos, t=pt: self._priority_context_menu(t, pos))
+        connect_context_menu(
+            pt, lambda pos, t=pt: self._priority_context_menu(t, pos))
         body.addWidget(pt)
 
     def _fill_checklists(self, body):
@@ -421,9 +421,8 @@ class OverviewPage(QScrollArea):
         hdr.setSectionResizeMode(1, QHeaderView.Stretch)
         fit_table_height(tbl, max_rows=12)      # long catalogs cap + scroll
         self._wire_open(tbl)
-        tbl.setContextMenuPolicy(Qt.CustomContextMenu)
-        tbl.customContextMenuRequested.connect(
-            lambda pos, t=tbl: self._member_context_menu(t, pos))
+        connect_context_menu(
+            tbl, lambda pos, t=tbl: self._member_context_menu(t, pos))
         return tbl
 
     @staticmethod

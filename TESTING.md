@@ -463,6 +463,14 @@ data / a packaged build where noted).
 - [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends
       only changed objects; narrowing the gallery level shrinks the output **and** the
       deployed branch. *(`test_publish_ghpages.py`.)*
+- [ ] **A sync landing under an open viewer/menu doesn't crash** (the 0.3.0b3 SIGSEGV):
+      open an object, switch to another app, come back (this starts a sync),
+      **double-click a gallery thumbnail** and leave the viewer up until the status bar
+      stops saying "Syncing…" — then close it. The window must survive, and the page
+      refreshes on close. Repeat with a **right-click menu** held open across a sync.
+      Best on a large store, where the sync is slow enough to overlap.
+      *(Policy half: `test_ui_modal_safety.py` — a real nested loop can't be pumped
+      offscreen.)*
 - [ ] **macOS: Process in Siril launches** (its bundled Python isn't SIGKILLed) — **real
       hardware**; the env-sanitizer half is `test_launch.py`.
 - [ ] **Frozen-app astronomy engine** (#75/#74): in a **packaged build**, Planning + the
