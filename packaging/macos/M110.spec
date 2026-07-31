@@ -176,6 +176,15 @@ app = BUNDLE(
         "CFBundleVersion": FULL_VERSION,
         "NSHumanReadableCopyright": "Copyright © 2026 Michael Merideth. Apache-2.0.",
         "LSMinimumSystemVersion": "11.0",
+        # MUST be explicit, and must stay False. BUNDLE inherits `console` from the
+        # COLLECT, which inherits it from its EXE args — LAST ONE WINS, and ours is
+        # the console=True MCP server. PyInstaller then stamps LSBackgroundOnly=True
+        # ("console=True implies…", building/osx.py), which makes the whole app a
+        # background app: no menu bar, no Dock icon, absent from Force Quit. The
+        # user info_plist is merged over the defaults, so this key is the fix.
+        # Latent since the MCP binary landed; invisible in 0.3.0-beta.1 only because
+        # that build crashed before a window ever appeared.
+        "LSBackgroundOnly": False,
         "NSHighResolutionCapable": True,
         # Follow the OS light/dark appearance (the app is theme-aware).
         "NSRequiresAquaSystemAppearance": False,

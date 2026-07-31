@@ -562,6 +562,21 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## Packaging & release
 
+- [x] **The macOS .app launched as a background app — no menu bar, no Dock icon, absent
+  from Force Quit** (done — `fix/macos-background-only`). `BUNDLE` inherits `console`
+  from the `COLLECT`, which inherits it from its EXE args **last-one-wins** — and ours is
+  the `console=True` MCP server (which must stay console=True: the Windows GUI subsystem
+  has no stdio). PyInstaller then stamps `LSBackgroundOnly=True`
+  ("console=True implies…", `building/osx.py`), and LaunchServices registers the app as
+  `type="BackgroundOnly"`. Fix: set `"LSBackgroundOnly": False` explicitly in the spec's
+  `info_plist`, which is merged **over** PyInstaller's defaults. Latent since the MCP
+  binary landed (`3e79691`), so it shipped in 0.3.0-beta.1 too — invisible only because
+  that build crashed before a window appeared. Verified on a real build: the fresh
+  bundle's plist reads `LSBackgroundOnly => false` and the running process registers
+  `type="Foreground"` where the installed b2 registers `type="BackgroundOnly"`. Guarded
+  by `tests/test_packaging_deps.py::test_macos_bundle_is_not_background_only`.
+  ⚠️ Any future spec that adds a console EXE to the same bundle inherits this trap.
+
 - [x] **0.3.0-beta.1 crashed on launch — uranometria's package data wasn't bundled**
   (done — `fix/uranometria-bundle`). The frozen app died with
   `FileNotFoundError: …/Frameworks/uranometria/data/constellations.json` before the window

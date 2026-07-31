@@ -132,6 +132,17 @@ def test_mcp_binary_is_built_with_a_console():
         assert "console=False" in gui_block, f"{platform} GUI binary gained a console"
 
 
+def test_macos_bundle_is_not_background_only():
+    """The .app must declare LSBackgroundOnly=False *explicitly*. BUNDLE inherits
+    `console` from the COLLECT, which inherits it from its EXE args last-one-wins —
+    and ours is the console=True MCP server — so PyInstaller would otherwise stamp
+    LSBackgroundOnly=True and the app launches with no menu bar, no Dock icon, and
+    no entry in Force Quit (0.3.0-beta.2)."""
+    assert '"LSBackgroundOnly": False' in _spec("macos"), (
+        "packaging/macos/M110.spec must set LSBackgroundOnly False — the console=True "
+        "MCP binary makes PyInstaller default it to True")
+
+
 def test_appimage_apprun_dispatches_to_the_server():
     """An AppImage has no persistent internal path, so a client config points at
     the .AppImage itself with --mcp and AppRun routes it."""

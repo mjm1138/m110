@@ -10,6 +10,15 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **The Mac app launched with no menu bar** (and no Dock icon, and no entry in Force
+  Quit): the packaged bundle was marked as a *background* app. That flag was set
+  automatically because M110 ships a second, headless executable — the assistant's
+  connector, which by nature has to be a console program — and the packaging tool
+  applied its console setting to the whole app. Affected 0.3.0-beta.1 and
+  0.3.0-beta.2 on macOS; b1 crashed before a window appeared, so b2 is where it
+  became visible.
+
 ## [0.3.0-beta.2] - 2026-07-30
 
 ### Fixed
