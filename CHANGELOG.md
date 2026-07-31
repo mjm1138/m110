@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.3] - 2026-07-30
+
 ### Fixed
 - **The Mac app launched with no menu bar** (and no Dock icon, and no entry in Force
   Quit): the packaged bundle was marked as a *background* app. That flag was set
