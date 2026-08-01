@@ -811,6 +811,17 @@ def _normalize_designation(text: str) -> str:
     return "".join(ch for ch in str(text).lower() if ch.isalnum())
 
 
+def slug_for_designation(text: str) -> str | None:
+    """The slug a designation names, or None. "C 34"/"C34"/"c-34" → ``ngc-6960``.
+
+    The single entry point for "what object is this name?" when the name may come
+    from a **non-primary** catalog — a capture folder the scope wrote from whichever
+    catalog the target was picked out of. Both the session scanner and ingest resolve
+    through this, so a Caldwell-named capture counts *and* files as the object it is.
+    """
+    return designation_index().get(_normalize_designation(text))
+
+
 def add_captured_objects(resolve_coords: bool = True) -> list[str]:
     """Promote captured targets that aren't in the Library into first-class
     objects, so they appear in the Library/Summary views, get an object page +
