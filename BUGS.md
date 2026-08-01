@@ -213,6 +213,40 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [ ] **`canonical_target` ignores catalog designations — a Caldwell-named capture forks
+  its own folder.** Reported 2026-08-01 from the live store. The Seestar writes the folder
+  name from whichever catalog the target was picked out of in the app, so the 2026-08-01
+  Veil session landed as `C 34` while the same object's five earlier sessions are under
+  `NGC 6960`. Result: two sibling `Images/` folders for one object, and processing-prep
+  offers a *choice* between the two light sets instead of one 696-frame target.
+  **Root cause:** `ingest.canonical_target` resolves alias → existing `Images/<dir>` casing
+  → catalog `id`/slug casing → normalized name. It never asks catalog membership, so a
+  designation from a non-primary catalog can't fold onto the primary id.
+  **The resolution already exists and is already used elsewhere** —
+  `scan_sessions.folder_to_slugs` calls `catalog.designation_index()` /
+  `_normalize_designation()` for exactly this case ("A folder named by a *catalog number*
+  (`C 6`) names an object the reference keys by its primary designation (ngc-6543)").
+  That's why the derived layer is *already correct*: `sessions.jsonl` maps `C 34` →
+  `ngc-6960` and `C 22` → `ngc-7662` today. Only the on-disk folder is forked, which is
+  why the symptom is invisible in totals and only bites at prep time.
+  **Fix:** insert a designation-index lookup into `canonical_target`, between the existing-
+  `Images/`-dir check and the catalog id/slug check — resolve the incoming name to a slug
+  via `designation_index()`, then return that slug's primary `id` (its folder, if one
+  exists). Ordering matters: the existing-dir check must stay first so an established
+  folder keeps its spelling; the designation lookup then catches the *new* alternate
+  designation before it can mint a second folder.
+  **Live instances in the store** (all pre-date the fix; the fix is prospective only and
+  won't heal them — see the reconcile item below): `C 34` ⟂ `NGC 6960` (a genuine fork,
+  182 + 514 lights); `C 6` = NGC 6543 and `C 22` = NGC 7662 (not forks — no NGC-named
+  sibling folder exists — but both are folders named off the primary designation, so their
+  object pages render as bare `C 6` / `C 22` stubs with no catalog metadata, and each has
+  an orphan `Objects/NGC ####/journal.md` stub alongside).
+  **Related:** the "move to the right target" reconcile flow wanted by the misfiled-stack
+  item under *Processing & curation UX* is the same surface that would repair an
+  already-forked pair — a user-facing **merge two targets** action (move `lights/` +
+  `seestar-stacks/`, fold the journal, drop the empty sandbox, re-scan) rather than the
+  hand `mv` that's the only option today.
+
 - [~] **#16 — Robust, layout-flexible, multi-source import.** **6a–6c shipped**
   (any-directory recursive scan, FITS-header classification + layout registry,
   holding-area manual assign — see [`ROADMAP.md`](ROADMAP.md) item 6 / [`DONE.md`](DONE.md)).
