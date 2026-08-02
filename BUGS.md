@@ -239,25 +239,35 @@ Legend: `[ ]` open · `[~]` partially done
   Shipped as `catalog.slug_for_designation()` — now the single entry point for "what
   object is this name?", used by both `canonical_target` and `folder_to_slugs` (which had
   its own inline copy) so the two axes can't drift apart again.
-  **The fix is prospective only** — it stops new forks, it doesn't heal existing ones.
-  `C 34` ⟂ `NGC 6960` (182 + 514 lights) was repaired by hand on 2026-08-01. Still open in
-  the live store: `C 6` = NGC 6543 and `C 22` = NGC 7662 — *not* forks (no NGC-named
-  sibling exists, and the fix deliberately leaves them alone so they aren't split), but
-  both are folders named off the primary designation, so their object pages render as bare
-  `C 6` / `C 22` stubs with no catalog metadata and each has an orphan
-  `Objects/NGC ####/journal.md` beside it. Repairing those means *renaming* a folder, which
-  is the next item.
+  **The fix is prospective only** — it stops new forks, it doesn't heal existing ones. All
+  three live cases were repaired by hand on 2026-08-02: `C 34` merged into `NGC 6960`
+  (182 + 514 lights), and `C 6` / `C 22` renamed to `NGC 6543` / `NGC 7662` (folder rename
+  + sandbox `next-steps.md` paths + folding the orphan `Objects/C 6/journal.md`'s `hero:`
+  pin into the live `Objects/NGC 6543/` one). Frame **filenames** were deliberately left as
+  captured (`Light_C 6_…`): sessions key off the folder, and the `hero:` pin matches a raw
+  filename, so renaming files would have churned ~1,400 of them and broken the pin for
+  nothing. The store is clean; what's missing is the tooling to do this without a shell —
+  next item.
 
 - [ ] **No user-facing way to merge or rename a capture target.** Fallout from the
   designation fix above: repairing an already-forked or misnamed `Images/<target>/` is a
   hand `mv` today. Two shapes, one surface: **merge** two targets (move `lights/` +
   `seestar-stacks/`, fold the journal + hero frontmatter, drop the stale `siril/` sandbox,
   re-scan) and **rename** one onto its primary designation (`C 6` → `NGC 6543`, absorbing
-  the orphan journal stub). Live cases: `C 6`, `C 22`. Same surface the misfiled-stack item
-  under *Processing & curation UX* wants for "this file doesn't belong here" — worth
-  designing once. Note the merge must tolerate a `siril/` sandbox whose `lights/` are
-  **hardlinks** into the folder being emptied (dropping the sandbox is safe; the inodes
-  survive via the destination).
+  the orphan journal stub). Same surface the misfiled-stack item under *Processing &
+  curation UX* wants for "this file doesn't belong here" — worth designing once.
+  Requirements learned from doing all three by hand (2026-08-02):
+  - **Merge** must tolerate a `siril/` sandbox whose `lights/` are **hardlinks** into the
+    folder being emptied — dropping the sandbox is safe, the inodes survive via the
+    destination, but a naive "delete source dir" ordering *looks* like it destroys frames.
+  - **Rename** must rewrite the absolute paths baked into `siril/next-steps.md`, and must
+    not blow away in-progress per-filter sandboxes (`siril/IRCUT`, `siril/LP`) or the
+    `siril/archive/` — re-running prep to regenerate the file is not an acceptable
+    substitute when a Siril job is mid-flight.
+  - Both must **fold the journal**, not just pick one: the orphan carried the `hero:` pin
+    while the live stub carried the proper `name:`.
+  - Both should refuse (or warn hard) when Siril's current working directory is inside the
+    folder being moved.
 
 - [~] **#16 — Robust, layout-flexible, multi-source import.** **6a–6c shipped**
   (any-directory recursive scan, FITS-header classification + layout registry,
