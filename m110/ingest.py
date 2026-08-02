@@ -244,11 +244,31 @@ def _safe_segment(name: str) -> str:
     return s or "unknown"
 
 
+def _existing_image_dir(name: str) -> str | None:
+    """The existing ``Images/<dir>`` that `name` denotes, in *its own* spelling.
+
+    Match is by normalized name so a device "M 10" folds onto an existing "M10"
+    (or vice-versa) — otherwise dedup would look in the wrong dir and re-import
+    already-present frames.
+    """
+    images = config.IMAGES_DIR
+    if not images.is_dir():
+        return None
+    nlow = fits_object_name(name).lower()
+    for d in images.iterdir():
+        if d.is_dir() and (d.name.lower() == nlow
+                           or fits_object_name(d.name).lower() == nlow):
+            return d.name                  # reuse the existing folder's spelling
+    return None
+
+
 def canonical_target(name: str) -> str:
     """Resolve a device folder name to a canonical destination object: alias →
-    existing Images/<dir> casing → catalog id casing → normalized name. Folds
-    case variants (`m82`→`M82`) and known quirks onto one folder. The resolved name
-    is a **safe single path segment** (`_safe_segment`) — never a traversal."""
+    existing Images/<dir> casing → catalog designation → catalog id casing →
+    normalized name. Folds case variants (`m82`→`M82`), alternate catalog
+    designations (`C 34`→`NGC 6960`), and known quirks onto one folder. The
+    resolved name is a **safe single path segment** (`_safe_segment`) — never a
+    traversal."""
     aliases = load_aliases()
     low = name.lower()
     for k, v in aliases.items():
@@ -258,23 +278,35 @@ def canonical_target(name: str) -> str:
     norm = _safe_segment(fits_object_name(name))
     nlow = norm.lower()
 
-    images = config.IMAGES_DIR
-    if images.is_dir():
-        for d in images.iterdir():
-            # Match an existing folder by normalized name so a device "M 10" folds
-            # onto an existing "M10" (or vice-versa) — otherwise dedup would look in
-            # the wrong dir and re-import already-present frames.
-            if d.is_dir() and (d.name.lower() == nlow
-                               or fits_object_name(d.name).lower() == nlow):
-                return d.name              # reuse the existing folder's spelling
+    existing = _existing_image_dir(norm)
+    if existing:
+        return existing
 
     try:
         cat = catalog.load_library()
     except Exception:
         cat = {}
+    ref = catalog.load_reference()
+
+    # A folder named from a *non-primary* catalog ("C 34", because the target was
+    # picked out of the scope's Caldwell list) designates an object the reference
+    # keys by its primary designation (ngc-6960). Only catalog membership knows
+    # that, so ask it — this is the same resolution `scan_sessions.folder_to_slugs`
+    # already does, which is why such a capture counted correctly in the derived
+    # layer while ingest still forked it a second Images/ folder.
+    # Order matters: this runs *after* the existing-folder match, so a store that
+    # already keeps an object under an alternate designation ("Images/C 6") keeps
+    # that folder rather than being split in two; and *before* the id/slug match
+    # below, which only ever sees primary ids.
+    desig_slug = catalog.slug_for_designation(norm)
+    if desig_slug:
+        entry = cat.get(desig_slug) or ref.get(desig_slug) or {}
+        primary = _safe_segment(entry.get("id") or desig_slug)
+        return _existing_image_dir(primary) or primary
+
     # The user's Library first, then the bundled reference (so a brand-new catalog
     # object — not yet in the Library — still folds onto its canonical id casing).
-    for source in (cat, catalog.load_reference()):
+    for source in (cat, ref):
         for slug, e in source.items():
             if (e.get("id") or "").lower() == nlow or slug.lower() == nlow:
                 return e.get("id") or norm

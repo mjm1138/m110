@@ -131,6 +131,30 @@ def test_canonical_target_case_alias_catalog(tmp_path, monkeypatch):
     assert ingest.canonical_target("Weird Thing") == "Weird Thing"   # fallback
 
 
+def test_canonical_target_folds_alternate_catalog_designation(tmp_path, monkeypatch):
+    """A capture named from a non-primary catalog files as the object it designates.
+
+    Live regression: the scope writes the folder name from whichever catalog the
+    target was picked out of, so one Veil session landed as "C 34" beside five
+    earlier "NGC 6960" ones — two folders for one object, and processing-prep asked
+    which set of lights to use. Caldwell membership (`ngc-6960 = "C34"`) is what
+    knows they're the same; `scan_sessions` already consulted it (the *totals* were
+    right all along), `canonical_target` did not.
+    """
+    _make_staging(tmp_path, monkeypatch)
+    assert ingest.canonical_target("C 34") == "NGC 6960"      # no folder yet
+    assert ingest.canonical_target("C34") == "NGC 6960"       # spacing-insensitive
+
+    (config.IMAGES_DIR / "NGC 6960").mkdir(parents=True)
+    assert ingest.canonical_target("C 34") == "NGC 6960"      # folds onto the folder
+
+    # But an object the store already keeps *under* its alternate designation keeps
+    # that folder — resolving to the primary id here would fork what's already whole.
+    (config.IMAGES_DIR / "C 6").mkdir(parents=True)
+    assert ingest.canonical_target("C 6") == "C 6"
+    assert ingest.canonical_target("NGC 6543") == "NGC 6543"
+
+
 def test_alias_roundtrip(tmp_path, monkeypatch):
     _make_staging(tmp_path, monkeypatch)
     assert ingest.load_aliases() == {}

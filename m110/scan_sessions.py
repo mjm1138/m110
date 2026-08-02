@@ -184,8 +184,8 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     s = slugify(folder_name)
     # A folder named by a *catalog number* ("C 6") names an object the reference
     # keys by its primary designation (ngc-6543), so ask catalog membership.
-    from .catalog import designation_index, _normalize_designation
-    by_desig = designation_index().get(_normalize_designation(folder_name))
+    from .catalog import slug_for_designation
+    by_desig = slug_for_designation(folder_name)
     if by_desig in catalog_slugs:
         return [by_desig]
     # A decorated capture target ("M42_mosaic") is still that object's frames.
