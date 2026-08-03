@@ -65,10 +65,15 @@ class RestoreDialog(QDialog):
         self._snap_combo = QComboBox()
         self._snapshots = backup.list_snapshots(self._destination) if self._destination else []
         for snap in self._snapshots:
-            # "full copy" is worth showing per snapshot: a destination that can't
-            # hardlink stores one whole library per backup, and mixed histories
-            # happen (a share remounted with different capabilities).
-            kind = "" if snap.hardlinks else "  ·  full copy"
+            # Label how each snapshot is stored. Mixed histories are normal — the
+            # format follows the destination, and a share can be remounted with
+            # different capabilities. Either way it restores the same.
+            if snap.format == backup.FORMAT_POOLED:
+                kind = "  ·  pooled"
+            elif not snap.hardlinks:
+                kind = "  ·  full copy"
+            else:
+                kind = ""
             self._snap_combo.addItem(
                 f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files{kind}",
                 snap.path)

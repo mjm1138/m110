@@ -22,6 +22,9 @@ DEFAULT_MIN_FREE_GB = 100       # prune oldest snapshots to keep this much free
 SETTING_DAILY_HOUR = "backup_daily_hour"
 DEFAULT_INTERVAL_HOURS = 12
 DEFAULT_DAILY_HOUR = 2          # 02:00 local — the while-running daily backup time
+# "mirrored" | "pooled" — see formats.py. Mirrored is the default; a destination
+# that can't hardlink flips this to pooled and the app persists that.
+SETTING_FORMAT = "backup_format"
 
 
 @dataclass
@@ -61,3 +64,9 @@ class DestinationInfo:
     snapshot_count: int
     newest: SnapshotInfo | None = None
     error: str | None = None
+    # Which snapshot format the *next* backup here would use, what's already
+    # there (None = unused destination), and whether the destination left no
+    # choice (it can't hardlink, so mirrored isn't an option).
+    format: str = "mirrored"
+    detected_format: str | None = None
+    format_forced: bool = False

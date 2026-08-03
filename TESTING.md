@@ -463,12 +463,62 @@ data / a packaged build where noted).
 - [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends
       only changed objects; narrowing the gallery level shrinks the output **and** the
       deployed branch. *(`test_publish_ghpages.py`.)*
+- [ ] **Backup on a destination that can't share files** (#92) — **real hardware**, see
+      the drill below: the format switches to **pooled**, the window says why, and a
+      second backup stores ~no new bytes. *(`test_backup_pooled.py`.)*
 - [ ] **macOS: Process in Siril launches** (its bundled Python isn't SIGKILLed) — **real
       hardware**; the env-sanitizer half is `test_launch.py`.
 - [ ] **Frozen-app astronomy engine** (#75/#74): in a **packaged build**, Planning + the
       priority ranking compute (no "astronomy engine unavailable") and **Enrich online**
       runs. Rebuild required — the PyInstaller-hook tests (`test_packaging_deps.py`) can't
       reproduce the frozen runtime.
+
+---
+
+## 2c. Backup & restore (manual — the automated half can't fake a filesystem)
+
+Always against a **temp root** (§0), never a live library. The interesting cases are
+about the *destination*, which unit tests can only simulate.
+
+**Setup — a destination with no hardlinks.** FAT32 has none, so a disk image is the
+honest test rig (macOS):
+
+```bash
+hdiutil create -size 2g -fs "MS-DOS FAT32" -volname M110TEST /tmp/m110test.dmg
+hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
+```
+
+(Linux: `mkfs.vfat` a loop file. Windows: format a small VHD as exFAT.)
+
+- [ ] **Capability line, before the first backup.** Library → Back up…, choose a normal
+      folder: "Unchanged files are shared between backups", plus free space. Choose
+      `/Volumes/M110TEST`: it says the destination can't share files. Neither needs an
+      existing backup to report this.
+- [ ] **Typing a path doesn't freeze the window** — including a path that doesn't exist,
+      and (if you have one) a disconnected network share.
+- [ ] **Format auto-switch.** On `/Volumes/M110TEST` the format shows **Pooled backups**,
+      disabled, with the reason. Back up now → the destination has `objects/`,
+      `snapshots/`, `INDEX.tsv`, `restore.py`, `README.txt`. Reopen the dialog: the
+      choice stuck.
+- [ ] **Second backup is cheap.** Back up again with nothing changed → the summary
+      reports ~0 new bytes. Repeat on the normal folder in **Mirrored** mode.
+- [ ] **`latest/` is browsable and costs nothing.** On the normal folder in pooled mode,
+      open `M110-Backups/<store>/latest/` in Finder — real filenames, real folders — and
+      confirm the destination's used space didn't roughly double.
+- [ ] **Restore an OLDER backup**, in each format, to a scratch folder; spot-check that a
+      file you changed between backups comes back with its *old* contents.
+- [ ] **Verify integrity** passes on a snapshot of each format.
+- [ ] **Recovery without M110.** In `M110-Backups/<store>/`, run
+      `python3 restore.py latest-manifest.json.gz /tmp/recovered` and confirm the tree
+      comes back with real names. This is the drill that matters if the app is ever
+      unavailable — do it at least once per release.
+- [ ] **Retention across formats.** With both a mirrored and a pooled backup present, set
+      keep = 1 → the older one goes, the newest survives, and files shared with it are
+      intact. Run it again → it never deletes the last backup.
+- [ ] **Mixed destination.** A destination holding both formats lists both in the restore
+      picker, labelled, and restores from either.
+
+Then: `hdiutil detach /Volumes/M110TEST && rm /tmp/m110test.dmg`.
 
 ---
 

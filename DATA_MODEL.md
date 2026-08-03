@@ -239,22 +239,65 @@ for integrity verification.
 
 ## Backup
 
-`m110/backup.py` (ROADMAP item 10) writes the store to a user-chosen destination
-**outside** `<data_root>` as **hardlinked dated snapshots** —
-`<dest>/M110-Backups/<store-name>/<timestamp>/` mirrors the store, with files
-unchanged since the previous snapshot hardlinked to it (immutable raws cost nothing
-to keep across snapshots). Scope is a **denylist** aligned with the lifecycle classes
+`m110/backup/` (ROADMAP item 10) writes the store to a user-chosen destination
+**outside** `<data_root>`. Scope is a **denylist** aligned with the lifecycle classes
 above: everything is backed up **except** the regenerable Derived tier (`derived/`,
-`renders/`, `sessions.jsonl`) and the `Images/<target>/siril/` working sandboxes.
-Each snapshot has a `.m110-backup-manifest.json` (per-file `{size, mtime, sha256}` +
-metadata) enabling integrity/bit-rot **verify**. Restore extracts selected paths to a
-folder (default) or back into the store behind a conflict preview + confirm.
-Retention prunes whole oldest snapshots (keep-N / age / min-free), **explicit, never
-the last one** — consistent with the "user-gated, never automatic" rule above. Backup
-is an **external output** (like the published site): it reads the store and does not
-change its on-disk layout, so it has **no `.store_version` impact**. This partially
-realizes the "checksum manifest of raws for integrity verification" noted under
-*Optional future hardening*.
+`renders/`, `sessions.jsonl`), the assistant outbox, and the `Images/<target>/siril/`
+working sandboxes.
+
+There are **two snapshot formats**, and both are always listable, verifiable and
+restorable at the same destination. Which one a new backup uses is resolved from
+the destination itself (`backup.resolve_format`): what's already there wins, else
+the `backup_format` preference, unless the filesystem can't hardlink — then pooled,
+necessarily. Their namespaces are provably disjoint (mirrored snapshots are
+directories whose *names* parse as a timestamp; `objects/`, `snapshots/`, `latest/`
+never will), so they coexist with no flag day and no conversion.
+
+**Mirrored** (default) — `<dest>/M110-Backups/<store-name>/<timestamp>/` mirrors the
+store, with files unchanged since the previous snapshot hardlinked to it (immutable
+raws cost nothing to keep across snapshots). Per-snapshot
+`.m110-backup-manifest.json`: metadata + `files: {rel: {size, mtime, sha256}}`.
+A snapshot needs no software to restore — it *is* the files, in the right folders.
+
+**Pooled** — for destinations that can't hardlink (a share or filesystem where
+mirrored would silently store a *full copy* every run — issue #92), and the shape
+offsite object storage will use (#93):
+
+```
+<dest>/M110-Backups/<store-name>/
+  objects/ab/cd/<sha256>          every file once, named by content, mode 0444
+  snapshots/<timestamp>.json.gz   self-contained manifest (adds format/app_version/
+                                  host/scope/objects_new; per-file entries are
+                                  byte-identical to the mirrored manifest)
+  latest/                         browsable hardlink tree of the newest snapshot,
+    .m110-latest.json             + the timestamp it mirrors (diff-relinked)
+  latest-manifest.json.gz         copy of the newest manifest
+  INDEX.tsv                       path ⇥ sha256 ⇥ size, plain text
+  restore.py  README.txt          stdlib-only recovery, no M110 needed
+  state.json                      summary cache — nothing depends on it
+```
+
+Incremental **by construction, with no chain state**: dedup is "does this hash
+already exist?" (application-level), not "hardlink to the previous snapshot"
+(filesystem-level). Every snapshot is independently restorable regardless of age;
+retention is "drop a manifest, then sweep objects no surviving manifest
+references" (a 24h grace window on object mtime makes that safe against a
+concurrent run). **Invariant: a manifest exists ⇒ every object it names exists** —
+the manifest is written last, which is also why an interrupted first backup resumes
+for free.
+
+Verify recomputes checksums (mirrored: against the manifest; pooled: against each
+object's own name, so the store is self-validating). Restore extracts selected paths
+to a folder (default) or back into the store behind a conflict preview + confirm.
+Retention prunes whole oldest snapshots across both formats (keep-N / min-free),
+**explicit, never the last one** — consistent with the "user-gated, never automatic"
+rule above. A source hash cache lives at `~/.m110/backup-hashes.sqlite3`, keyed on
+`(path, size, mtime_ns, inode, dev)`; losing it costs a rehash, never correctness.
+
+Backup is an **external output** (like the published site): it reads the store and
+does not change its on-disk layout, so it has **no `.store_version` impact** and
+needs no `migrate.py` step. This partially realizes the "checksum manifest of raws
+for integrity verification" noted under *Optional future hardening*.
 
 ## Versioning & migration
 
