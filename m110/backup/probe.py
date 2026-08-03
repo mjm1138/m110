@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from .destination import store_backup_root, supports_hardlinks
+from .formats import detect_format, resolve_format
 from .options import DestinationInfo
 from .retention import list_snapshots
 
@@ -42,6 +43,11 @@ def probe_destination(destination: Path) -> DestinationInfo:
     store_root = store_backup_root(dest)
     hardlinks = supports_hardlinks(store_root if store_root.is_dir() else dest)
     snaps = list_snapshots(dest)
+    # Read-only: resolving the format here reports what *would* happen. Persisting
+    # a forced switch is the caller's move, so a mere look at a destination never
+    # rewrites the user's preference.
+    fmt, forced = resolve_format(dest, hardlinks=hardlinks)
     return DestinationInfo(
         path=dest, exists=True, writable=True, hardlinks=hardlinks, free_bytes=free,
-        snapshot_count=len(snaps), newest=snaps[0] if snaps else None)
+        snapshot_count=len(snaps), newest=snaps[0] if snaps else None,
+        format=fmt, detected_format=detect_format(dest), format_forced=forced)

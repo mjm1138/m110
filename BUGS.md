@@ -514,75 +514,84 @@ Legend: `[ ]` open · `[~]` partially done
   hardlinks and most Samba-based NASes (Synology, TrueNAS) honor `os.link`, so a given NAS
   user may already be fine.
 
-- [ ] **#92 / #93 — network + offsite backup destinations (content-addressed storage).**
-  Two linked requests from @devonjones: incremental backup to a NAS where the hardlink
-  approach may not apply (#92), and direct-to-S3 offsite backup with a configurable endpoint
-  so B2/R2/Wasabi work too (#93). #93 is correctly gated on #92 — both are the same seam.
+- [x] **#92 — pooled (content-addressed) backups for destinations that can't hardlink**
+  *(done 2026-08-02, `feature/backup-pooled-storage`)*. @devonjones backs up to a NAS,
+  where "the linking approach doesn't necessarily work across a network" — and where
+  mirrored snapshots therefore stored a **full copy of the library every night**, silently.
+  Shipped as a *second* format rather than a replacement: **mirrored stays the default
+  wherever hardlinks work**, because a snapshot that restores in Finder with no software
+  at all is worth keeping for everyone it works for. A destination that fails the link
+  probe resolves to **pooled** and the app persists that (`backup_format`); both formats
+  stay listable/verifiable/restorable at the same destination — provably disjoint
+  namespaces (mirrored dirs parse as timestamps, `objects/`/`snapshots/`/`latest/` never
+  will), so no flag day and no conversion. What landed:
+  `backup/backends/` (put/get/exists/list/delete seam + `LocalBackend`/`MemoryBackend`,
+  registry-shaped like `publish.PUBLISHERS`), `pooled.py` (objects addressed by sha256,
+  self-contained gzipped manifests, **written last** so *a manifest exists ⇒ every object
+  it names exists* — which is also why a cancelled first sync resumes for free),
+  `hashcache.py` (sqlite in `~/.m110`, keyed `(path,size,mtime_ns,inode,dev)`; a miss is
+  always safe, and a stale hit is caught by cross-checking the stored object's size),
+  `recovery.py` (the browsable `latest/` hardlink tree, `INDEX.tsv`, a mirrored
+  `latest-manifest.json.gz`, and a stdlib-only `restore.py` written *into* the backup root
+  — `objects/` alone is a bag of hash-named blobs, and the way back has to travel with the
+  data), object GC with a 24h grace window (safe against a concurrent run without a lock)
+  + a process-wide run lock. **Also fixed a pre-existing retention bug**: the min-free loop
+  read free space inside a loop that deleted nothing until afterwards, so the reading never
+  moved and one pass queued every survivor but one.
 
-  **Don't build full/incremental chains.** The tape-era model (a full every N days,
-  incrementals between) is what makes this feel non-trivial, and it buys the bad properties:
-  restores that need an intact chain, retention that can't drop a full until its dependents
-  expire, and a corruption blast radius spanning days. That's the state engine to avoid.
+- [ ] **#93 — offsite backup destinations (S3 / B2 / R2 / Wasabi).** @devonjones wants
+  offsite: a key pair, a bucket, and optionally an API URL so the cheaper S3-compatible
+  services work. The storage format and the backend seam it needs shipped with #92 above —
+  what remains is the adapter and the multi-destination UI.
 
-  **Content-addressed snapshots are incremental by construction, with no chain state** — and
-  the existing engine is most of the way there, since each snapshot already writes a
-  `{rel: {size, mtime, sha256}}` manifest. Promote that sha256 from metadata to address:
+  **Don't build full/incremental chains** (the reasoning that shaped #92 and still applies):
+  the tape-era model buys restores that need an intact chain, retention that can't drop a
+  full until its dependents expire, and a corruption blast radius spanning days.
 
-  ```
-  <dest>/M110-Backups/<store>/
-    objects/ab/cd/abcdef…             immutable, named by sha256 of contents, mode 0444
-    snapshots/<ts>.json               today's manifest, essentially unchanged
-    state.json
-  ```
+  Remaining work, in order:
 
-  Dedup moves from the filesystem (hardlink to the prior snapshot → needs POSIX links) to the
-  application (object already exists → needs only exists/put), which is what makes it work over
-  SMB, S3, and anything else. Every snapshot stays independently restorable (no chain replay),
-  retention becomes "delete a manifest, then sweep objects no manifest references" — a refcount
-  over data we already have, not a dependency graph — and `verify` gets *stronger*: an object's
-  name is its checksum, so the store is self-validating.
+  - **Destinations become a list.** `backup_destination` is a single setting; offsite
+    implies plurality (local NAS nightly + S3 weekly, different retention each). This — not
+    the storage format — is the real UI change: destination rows with per-row scope,
+    schedule, retention. Format stays *derived from the probed destination*, never a
+    user-facing mode for the cases where there's no real choice; same instinct as
+    `launch.find_app`.
+  - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the
+    bytes, and plenty of users will want offsite to mean journals + `finished/` + `stacks/`
+    for a couple of dollars a month with the raws staying on the NAS. Without it the first
+    sync runs for a week. Layer it on `scope.is_excluded` (the `Images/*/siril/` rule is the
+    shape). One thing to get right: *narrowing* a destination's scope makes the excluded
+    objects unreferenced, so the next GC deletes ~400 GB of raws from the offsite store —
+    correct, but it must be warned about with an estimate.
+  - **`S3Backend`** — boto3 with `endpoint_url`, `object_sizes()` as one paginated LIST (not
+    100k HEADs), `delete_objects` in batches for the sweep, `ThreadPoolExecutor` across files
+    (throughput here is latency-bound, not bandwidth-bound), `abort_multipart_upload` on
+    cancel. Follow the `online`-extra pattern — optional `s3` extra, graceful "not installed"
+    error from source (`BackupDepsMissing`, build-aware like
+    `catalog._astroquery_missing_message`), bundled in packaged builds. Credentials in
+    **keyring**, not `settings.json` (the PyInstaller specs already collect keyring for
+    astroquery); the access key id is an identifier, not a secret, so it can stay in settings
+    where the UI can show which key is configured.
+  - **Provider quirks worth pinning now:** R2 wants `region_name="auto"`; several
+    Wasabi/MinIO setups need path-style addressing; and botocore ≥1.36 sends
+    `x-amz-checksum-crc32` on every PUT by default, which some S3-compatible providers
+    reject — pin `request_checksum_calculation="when_required"` defensively. Since the key
+    *is* the sha256, `ChecksumSHA256` on PutObject gets server-side rejection of a corrupted
+    upload for free where supported. Document a lifecycle rule to abort incomplete multipart
+    uploads (orphaned parts bill silently — the classic S3 backup cost leak), and that egress
+    on *restore* is the expensive direction on AWS but cheap or free on B2/R2.
+  - `Capabilities.free_bytes is None` on an object store, so `min_free_gb` is meaningless
+    there; its analogue is a per-destination `max_store_gb` budget from `state.json`.
+    Default a new offsite destination to keep-N only — never surprise-delete an offsite copy.
 
-  Details that matter:
-  - **Source hash cache** keyed on `(path, size, mtime, inode)`, kept locally in `~/.m110`
-    (must survive destination switches), or a 500 GB library gets rehashed nightly. A cache
-    miss costs a rehash, never corruption — strictly safer than today's reuse test, where a
-    matching size+mtime silently hardlinks possibly-stale bytes.
-  - **Keep hardlinks where they work.** A `latest/` tree beside `objects/`, relinked each run
-    with entries hardlinked *into* the object store, preserves the browsable
-    "my backup is just my files in Finder" property for free (no duplicated bytes). Where the
-    FS can't link (S3, exFAT) it's simply absent and the backup is still correct — browsability
-    becomes a *capability of the destination*, not a *mode of the product*. One format, one
-    restore path, one test surface.
-  - **Backend seam** = put/get/exists/list/delete, mirroring `publish.PUBLISHERS`:
-    `LocalBackend` (dir — DAS or NAS mount) and `S3Backend` (boto3 with `endpoint_url`, so
-    B2/R2/Wasabi fall out free) write the *same layout*. Follow the `online`-extra pattern —
-    optional `s3` extra, graceful "not installed" error from source, bundled in packaged
-    builds. Credentials go in **keyring**, not `settings.json` (the PyInstaller specs already
-    collect keyring for astroquery).
-  - **Destinations become a list.** `backup_destination` is a single setting; offsite implies
-    plurality (local NAS nightly + S3 weekly, different retention each). This — not the storage
-    format — is the real UI change: destination rows with per-row scope, schedule, retention.
-    Format is *derived from the probed destination*, never a user-facing mode; same instinct as
-    `launch.find_app` and the hardlink probe: detect, don't ask.
-  - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the bytes,
-    and plenty of users will want offsite to mean journals + `finished/` + `stacks/` for a couple
-    of dollars a month with the raws staying on the NAS. Without it the first sync runs for a week.
+  **Alternative considered — shell out to `restic`.** Precedent exists (`publish/ghpages.py`
+  drives the system git), and restic is already CAS + dedup + prune + S3-with-custom-endpoint.
+  Costs: bundling/notarizing a ~25 MB Go binary per platform, a hard external dependency on
+  the *data-safety* feature, and an opaque repo the user can't browse without restic. Built
+  natively instead — and with #92 landed the remaining delta really is just the adapter.
+  Hold restic in reserve if S3 retry/multipart correctness turns ugly.
 
-  **Alternative considered — shell out to `restic`.** Precedent exists (`publish/ghpages.py` drives
-  the system git), and restic already is CAS + dedup + prune + S3-with-custom-endpoint + SFTP +
-  rclone, delivering both issues nearly free. Costs: bundling/notarizing a ~25 MB Go binary per
-  platform, a hard external dependency on the *data-safety* feature, and an opaque repo the user
-  can't browse without restic. Preference is to build it natively — the delta is small (manifest,
-  retention, verify, restore UI, cancel/progress, atomic-write discipline all exist) and it keeps
-  the no-external-binary property exactly where it matters most. Hold restic in reserve if S3
-  retry/multipart correctness turns ugly.
-
-  **Sequencing** (each step stands alone and ships something): (1) surface the hardlink probe
-  (above); (2) storage v2 — content-addressed objects + snapshot manifests + GC retention,
-  `LocalBackend` only (closes #92; the hardlinked `latest/` keeps the browsable tree); (3)
-  destinations list + per-destination scope/schedule/retention; (4) `S3Backend` + keyring
-  credentials (closes #93). Note **#40d** (restore has no store-version gate) is orthogonal and
-  still open either way.
+  Note **#40d** (restore has no store-version gate) is orthogonal and still open either way.
 
 ## Security  *(→ [`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md))*
 

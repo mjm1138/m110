@@ -496,6 +496,85 @@ run) so quitting mid-backup never corrupts. It's an external-output feature (wri
 outside `<data_root>`) → no `.store_version` impact. *Deferred:* cloud/remote
 destinations, multiple destinations (3-2-1).
 
+**Pooled (content-addressed) storage — issue #92** *(2026-08-02,
+`fix/backup-destination-probe` → `refactor/backup-package` →
+`feature/backup-pooled-storage`)*. The hardlink model above has a failure mode that
+was invisible by design: where the destination filesystem can't `os.link` — many SMB
+shares, appliance NASes, exFAT — it byte-copies *everything*, so a nightly backup
+quietly stored a **full copy of the library every run**, and the only signal was a
+`hardlinks: false` field in a manifest that didn't exist until after the first run.
+@devonjones hit it on a NAS.
+
+Three changes, deliberately separate:
+
+1. **Probe the destination and say what you found.** `backup.probe_destination` →
+   `DestinationInfo` (exists / writable / hardlinks / free bytes / snapshots /
+   resolved format), read-only: it creates no `M110-Backups/` tree for a candidate
+   the user hasn't committed to, and leaves no probe files. The dialog runs it on a
+   `_ProbeWorker` — the status line previously called `list_snapshots()` **on the GUI
+   thread on every `textChanged` keystroke**, which on a dead SMB mount blocks
+   indefinitely; it now fires on `editingFinished`/Browse and memoizes per path.
+2. **`backup.py` → a layered `backup/` package** (pure move, behavior-identical, its
+   own commit so the storage diff was readable). `destination` imports no format
+   module and `retention`/`probe` sit above `mirrored`, so a second format slots in
+   *beside* it rather than underneath. Also dropped two private-name couplings the
+   package made untenable: `restore_dialog` built its tree from
+   `backup._read_manifest` (now the public `snapshot_files`), and tests patched
+   `backup.os.link` — which only worked while everything shared one module namespace.
+3. **A second format.** Objects under `objects/ab/cd/<sha256>` (mode 0444), one
+   self-contained gzipped manifest per backup under `snapshots/`. Dedup moves from
+   the *filesystem* ("hardlink to the previous snapshot") to the *application*
+   ("does this hash already exist?"), which is what makes it work anywhere.
+
+**Why a second format and not a replacement.** The tempting move was to convert
+everyone. But mirrored has a property nothing else does — a snapshot is your files,
+in dated folders, restorable in Finder with no software at all — and conversion is
+cheap exactly where it isn't needed and ruinous exactly where it is (on a link-less
+destination, converting means re-copying the whole library). So **mirrored stays the
+default**, pooled takes over only where mirrored can't work, and both stay listable,
+verifiable and restorable at the same destination forever. The namespaces are
+provably disjoint: `list_snapshots` has always parsed identity from the directory
+*name*, and `objects`/`snapshots`/`latest` can never parse as a timestamp. No flag
+day, no migration, nothing stranded.
+
+Design points worth keeping:
+
+- **The invariant.** *A manifest exists ⇒ every object it names exists* — enforced by
+  writing the manifest last. That is what makes retention a refcount rather than a
+  dependency graph, and what makes an interrupted first sync **resume for free**: its
+  orphaned objects are content-addressed, so the next run simply finds them.
+- **No chain.** Explicitly rejected the tape-era full+incrementals model, which buys
+  restores needing an intact chain, retention that can't drop a full until its
+  dependents expire, and a corruption blast radius spanning days.
+- **Recoverability was the real cost, so it was paid explicitly.** `objects/` alone is
+  a bag of hash-named blobs — and `latest/` (the browsable hardlink tree, free) is
+  absent precisely in the auto-switch case, since it needs the links the destination
+  lacks. So a pooled backup also writes `INDEX.tsv` (plain text), a mirrored
+  `latest-manifest.json.gz`, `README.txt`, and a **stdlib-only `restore.py` into the
+  backup root** — the way back travels with the data instead of living in docs the
+  user won't have at that moment. Drilled with `/usr/bin/python3` outside the venv.
+- **Hash cache** (`~/.m110/backup-hashes.sqlite3`, keyed
+  `(path,size,mtime_ns,inode,dev)`) — else a 500 GB library rehashes nightly. A miss
+  only costs a rehash; the one hazard is a stale *hit*, caught by cross-checking the
+  size the destination already has for that hash (free — sizes come back with the
+  object listing). Strictly stronger than mirrored's reuse test, which matches
+  size+mtime and then inherits a sha it never recomputes.
+- **GC safety without a lock**: a 24h grace window on object mtime. An object being
+  written by a concurrent run is by definition recent, so it's never swept.
+- **`object_sizes()` enumerates once per run**, not `exists()` per file — 100k
+  round-trips is minutes of latency over SMB, and one paginated LIST on S3.
+- The `backends/` seam (`LocalBackend` + a shipped `MemoryBackend` that is both
+  reference implementation and conformance-suite double) is registry-shaped like
+  `publish.PUBLISHERS`, so **#93's `S3Backend` is an adapter, not a rewrite**.
+
+Verified on a real FAT32 disk image (the only honest test for "no hardlinks"): three
+backups of a 1.2 MB library occupy 1.3 MB, an unchanged re-run stores 0 new bytes, a
+one-line journal edit stores 34, and the oldest snapshot still verifies and restores
+its own older contents. Also fixed a pre-existing retention bug found while
+rewriting: the min-free loop read free space inside a loop that deleted nothing until
+afterwards, so the reading never moved and one pass queued every survivor but one.
+*Still deferred to #93:* the destinations list, per-destination scope tiers, S3.
+
 ---
 
 ## Sharing / Export — image export for web sharing *(done 2026-07-21, `feature/image-export`)*

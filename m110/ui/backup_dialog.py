@@ -13,9 +13,9 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton,
-    QSpinBox, QVBoxLayout,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog,
+    QPushButton, QSpinBox, QVBoxLayout,
 )
 
 from m110 import backup, config
@@ -94,9 +94,9 @@ class BackupDialog(QDialog):
         layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
         layout.setSpacing(s["md"])
         intro = QLabel(
-            "Back up your Library to another drive or folder. Each backup is a "
-            "full, browsable copy; unchanged files (your raw frames) are shared "
-            "with the previous backup, so repeat backups are fast and small.")
+            "Back up your Library to another drive or folder. Only what changed "
+            "is stored each time, so repeat backups are fast and small — and every "
+            "backup can be restored on its own, whatever its age.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -116,6 +116,23 @@ class BackupDialog(QDialog):
         self._status.setProperty("muted", True)
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
+
+        # ── format ──  (a property of the destination, so it sits with it)
+        fmt_row = QHBoxLayout()
+        fmt_row.addWidget(QLabel("Backups are stored as:"))
+        self._format = QComboBox()
+        for fid in backup.FORMATS:
+            self._format.addItem(backup.FORMAT_LABELS[fid], fid)
+        self._select_format(backup.preferred_format())
+        self._format.currentIndexChanged.connect(self._on_format_changed)
+        fmt_row.addWidget(self._format, 1)
+        layout.addLayout(fmt_row)
+
+        self._format_note = QLabel()
+        self._format_note.setProperty("caption", True)
+        self._format_note.setWordWrap(True)
+        layout.addWidget(self._format_note)
+        self._on_format_changed()
 
         # ── automation + retention ──
         settings_box = QGroupBox("Automation & retention")
@@ -215,11 +232,47 @@ class BackupDialog(QDialog):
         self._probe_worker.probed.connect(self._on_probed)
         self._probe_worker.start()
 
+    # ---- format ----
+    def _current_format(self) -> str:
+        return self._format.currentData() or backup.DEFAULT_FORMAT
+
+    def _select_format(self, fmt: str):
+        idx = self._format.findData(fmt)
+        if idx >= 0:
+            blocked = self._format.blockSignals(True)
+            self._format.setCurrentIndex(idx)
+            self._format.blockSignals(blocked)
+
+    def _on_format_changed(self, *_args):
+        self._format_note.setText(backup.FORMAT_BLURBS[self._current_format()])
+
+    def _apply_format(self, info):
+        """Reflect what this destination actually allows.
+
+        A destination that can't share files leaves no choice — mirrored backups
+        there would each be a full copy of the Library — so the choice is made and
+        persisted rather than left as a trap the user discovers a month later."""
+        self._format.setEnabled(not info.format_forced)
+        self._select_format(info.format)
+        self._on_format_changed()
+        if info.format_forced:
+            config.save_setting(backup.SETTING_FORMAT, info.format)
+            self._format_note.setText(
+                "This destination can't share files between backups, so M110 will "
+                "use pooled backups here. " + backup.FORMAT_BLURBS[info.format])
+        elif info.detected_format and info.detected_format != info.format:
+            self._format_note.setText(
+                f"{backup.FORMAT_BLURBS[info.format]}  This destination already has "
+                f"{backup.FORMAT_LABELS[info.detected_format].lower()}; those stay "
+                "restorable either way.")
+
     def _on_probed(self, info):
         self._probe_cache[str(info.path)] = info
         self._finish_probe()
         if str(info.path) == self._dest.text().strip():
             self._show_destination(info)
+            if info.exists and info.writable:
+                self._apply_format(info)
 
     def _show_destination(self, info):
         """One line describing what this destination is and what it can do. The
@@ -241,13 +294,19 @@ class BackupDialog(QDialog):
             head = "No backups here yet."
         if info.free_bytes is not None:
             head += f" · {_fmt_bytes(info.free_bytes)} free"
-        note = ("  ·  Unchanged files are shared between backups." if info.hardlinks
-                else "  ⚠ This destination can't share files between backups — "
-                     "every backup stores a full copy.")
+        if info.hardlinks:
+            note = "  ·  Unchanged files are shared between backups."
+        elif info.format == backup.FORMAT_POOLED:
+            note = ("  ·  This destination can't share files between backups, so "
+                    "M110 stores each file once instead — repeat backups stay small.")
+        else:
+            note = ("  ⚠ This destination can't share files between backups — "
+                    "every backup stores a full copy.")
         self._status.setText(head + note)
 
     def _persist_settings(self, dest: str):
         config.save_setting(backup.SETTING_DEST, dest)
+        config.save_setting(backup.SETTING_FORMAT, self._current_format())
         config.save_setting(backup.SETTING_AUTO, self._auto.isChecked())
         config.save_setting(backup.SETTING_INTERVAL, self._interval.value())
         config.save_setting(backup.SETTING_KEEP, self._keep.value() or None)

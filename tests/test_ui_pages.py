@@ -738,6 +738,99 @@ def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monke
         qapp.processEvents()
 
 
+def test_backup_dialog_offers_the_format_choice_and_explains_it(tmp_path, monkeypatch, qapp):
+    from m110 import backup
+    seed_root(tmp_path, monkeypatch)
+    dest = tmp_path / "backups"
+    dest.mkdir()
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        assert dlg._current_format() == backup.FORMAT_MIRRORED     # the default
+        dlg._dest.setText(str(dest))
+        dlg._refresh_status()
+        _settle_probe(dlg, qapp)
+        assert dlg._format.isEnabled()                             # a real choice
+        assert "browsable copy" in dlg._format_note.text()
+
+        dlg._select_format(backup.FORMAT_POOLED)
+        dlg._on_format_changed()
+        assert "stored once" in dlg._format_note.text()
+        dlg._save_and_close()
+        assert config.get_setting(backup.SETTING_FORMAT) == backup.FORMAT_POOLED
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_backup_dialog_forces_pooled_where_files_cannot_be_shared(tmp_path, monkeypatch, qapp):
+    """#92: on a destination without hardlinks, mirrored backups are a full copy
+    every night. The dialog makes the choice, says why, and remembers it."""
+    import os
+
+    from m110 import backup
+    seed_root(tmp_path, monkeypatch)
+    dest = tmp_path / "backups"
+    dest.mkdir()
+    monkeypatch.setattr(os, "link",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        dlg._dest.setText(str(dest))
+        dlg._refresh_status()
+        _settle_probe(dlg, qapp)
+        assert dlg._current_format() == backup.FORMAT_POOLED
+        assert not dlg._format.isEnabled()
+        assert "can't share files" in dlg._format_note.text()
+        assert config.get_setting(backup.SETTING_FORMAT) == backup.FORMAT_POOLED
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_restore_dialog_lists_both_formats_and_restores_a_pooled_snapshot(
+        tmp_path, monkeypatch, qapp):
+    from PySide6.QtCore import Qt
+    from m110 import backup
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    dest = tmp_path / "backups"
+    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_MIRRORED)
+    backup.create_snapshot(backup.BackupOptions(destination=dest))
+    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_POOLED)
+    backup.create_snapshot(backup.BackupOptions(destination=dest))
+
+    from m110.ui.restore_dialog import RestoreDialog
+    dlg = RestoreDialog(str(dest))
+    try:
+        assert dlg._snap_combo.count() == 2
+        assert "pooled" in dlg._snap_combo.itemText(0)      # newest first
+        assert "pooled" not in dlg._snap_combo.itemText(1)
+        assert dlg._tree.topLevelItemCount() >= 1           # pooled tree builds
+
+        def check_all(node):
+            for i in range(node.childCount()):
+                c = node.child(i)
+                c.setCheckState(0, Qt.Checked)
+                check_all(c)
+        check_all(dlg._tree.invisibleRootItem())
+        light_rel = f"Images/{tid}/lights/Light_{tid}_30.0s_LP_20260529-010101.fit"
+        assert light_rel in dlg._selected_relpaths()
+
+        out = tmp_path / "out"
+        res = backup.restore(dlg._current_snapshot(), [light_rel], out)
+        assert res["written"] == 1
+        assert (out / light_rel).read_bytes() == (root / light_rel).read_bytes()
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
 def test_backup_dialog_save_persists_settings_without_backup(tmp_path, monkeypatch, qapp):
     from m110 import backup, config
     root = seed_root(tmp_path, monkeypatch)
