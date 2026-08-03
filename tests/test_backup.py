@@ -176,7 +176,7 @@ def test_hardlink_unsupported_falls_back_to_copy(tmp_path, monkeypatch):
     dest = tmp_path / "backups"
 
     # Simulate a destination filesystem without hardlink support.
-    monkeypatch.setattr(backup.os, "link",
+    monkeypatch.setattr(os, "link",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
     backup.create_snapshot(backup.BackupOptions(destination=dest))
     second = backup.create_snapshot(backup.BackupOptions(destination=dest))
@@ -221,7 +221,7 @@ def test_probe_destination_detects_no_hardlink_support(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     dest = tmp_path / "backups"
     dest.mkdir()
-    monkeypatch.setattr(backup.os, "link",
+    monkeypatch.setattr(os, "link",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
 
     info = backup.probe_destination(dest)

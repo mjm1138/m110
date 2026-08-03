@@ -131,9 +131,8 @@ class RestoreDialog(QDialog):
         snap = self._current_snapshot()
         if snap is None:
             return
-        manifest = backup._read_manifest(snap) or {}
         nodes: dict[str, QTreeWidgetItem] = {}
-        for rel in sorted(manifest.get("files", {})):
+        for rel in sorted(backup.snapshot_files(snap)):
             parts = rel.split("/")
             parent = None
             path_so_far = ""

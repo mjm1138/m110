@@ -75,7 +75,7 @@ m110 = "m110.ui.main:main"
 m110-mcp = "m110.assistant.mcp_server:main"
 
 [tool.setuptools]
-packages = ["m110", "m110.ui", "m110.ui.theme", "m110.publish",
+packages = ["m110", "m110.ui", "m110.ui.theme", "m110.publish", "m110.backup",
             "m110.assistant", "m110.assistant.tools"]
 
 [tool.setuptools.package-data]
