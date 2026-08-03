@@ -190,6 +190,46 @@ def test_hardlink_unsupported_falls_back_to_copy(tmp_path, monkeypatch):
     assert second["linked"] == 0
 
 
+def test_probe_destination_reports_capabilities(tmp_path, monkeypatch):
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    dest = tmp_path / "backups"
+
+    # Missing folder: reported, not raised — the dialog shows the reason.
+    missing = backup.probe_destination(dest)
+    assert (missing.exists, missing.writable, missing.snapshot_count) == (False, False, 0)
+    assert missing.error
+
+    # A real, empty destination: writable + hardlinks, and the answer is available
+    # *before* any snapshot exists (the point of the probe — issue #92).
+    dest.mkdir()
+    info = backup.probe_destination(dest)
+    assert (info.exists, info.writable, info.hardlinks) == (True, True, True)
+    assert info.snapshot_count == 0 and info.newest is None
+    assert info.free_bytes and info.free_bytes > 0
+    # Probing must not create the backup tree for a destination the user hasn't
+    # committed to, and must leave no probe files behind.
+    assert not backup.store_backup_root(dest).exists()
+    assert list(dest.iterdir()) == []
+
+    backup.create_snapshot(backup.BackupOptions(destination=dest))
+    after = backup.probe_destination(dest)
+    assert after.snapshot_count == 1 and after.newest is not None
+
+
+def test_probe_destination_detects_no_hardlink_support(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    dest = tmp_path / "backups"
+    dest.mkdir()
+    monkeypatch.setattr(backup.os, "link",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
+
+    info = backup.probe_destination(dest)
+    assert info.exists and info.writable
+    assert info.hardlinks is False
+    assert list(dest.iterdir()) == []       # probe files cleaned up on failure too
+
+
 def test_due_for_auto_backup_uses_interval(tmp_path, monkeypatch):
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)

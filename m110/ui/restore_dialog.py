@@ -65,8 +65,13 @@ class RestoreDialog(QDialog):
         self._snap_combo = QComboBox()
         self._snapshots = backup.list_snapshots(self._destination) if self._destination else []
         for snap in self._snapshots:
+            # "full copy" is worth showing per snapshot: a destination that can't
+            # hardlink stores one whole library per backup, and mixed histories
+            # happen (a share remounted with different capabilities).
+            kind = "" if snap.hardlinks else "  ·  full copy"
             self._snap_combo.addItem(
-                f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files", snap.path)
+                f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files{kind}",
+                snap.path)
         self._snap_combo.currentIndexChanged.connect(self._reload_tree)
         snap_row.addWidget(self._snap_combo, 1)
         self._verify_btn = QPushButton("Verify integrity")

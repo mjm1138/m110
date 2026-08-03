@@ -10,6 +10,20 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **The backup window now tells you what your destination can do, before you back up.**
+  Some destinations — exFAT drives, certain network shares and appliance NASes — can't
+  share files between backups, which means every backup stores a *full copy* of your
+  library instead of just what changed. M110 could only mention this after a backup had
+  already run. It now checks when you pick the folder and says either "Unchanged files
+  are shared between backups" or warns that every backup will be a full copy, along with
+  how much room is left. The restore list marks any backup that was stored as a full copy.
+
+### Fixed
+- **The backup window could hang while you typed a destination path.** It re-read the
+  whole backup folder on every keystroke; on a slow or disconnected network share that
+  froze the window. It now checks once, after you finish typing or pick a folder.
+
 ## [0.3.0-beta.3] - 2026-07-30
 
 ### Fixed

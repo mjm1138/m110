@@ -30,6 +30,29 @@ def _fmt_bytes(n: int) -> str:
     return f"{f:.1f} TB"
 
 
+class _ProbeWorker(QThread):
+    """Inspect a destination off the GUI thread.
+
+    `backup.probe_destination` stats the volume, link-probes the filesystem and
+    reads every existing manifest — seconds on a slow share, and indefinite on a
+    dead SMB mount. Running it inline (as the status line used to, on every
+    keystroke) froze the dialog."""
+    probed = Signal(object)     # backup.DestinationInfo
+
+    def __init__(self, dest: str, parent=None):
+        super().__init__(parent)
+        self._dest = dest
+
+    def run(self):
+        try:
+            self.probed.emit(backup.probe_destination(Path(self._dest)))
+        except Exception as exc:  # pragma: no cover - defensive
+            self.probed.emit(backup.DestinationInfo(
+                path=Path(self._dest), exists=False, writable=False, hardlinks=False,
+                free_bytes=None, snapshot_count=0,
+                error=f"{type(exc).__name__}: {exc}"))
+
+
 class _BackupWorker(QThread):
     progressed = Signal(int, int)
     done = Signal(dict)
@@ -61,6 +84,8 @@ class BackupDialog(QDialog):
         self._worker = None
         self._progress = None
         self._cancel_event = None
+        self._probe_worker = None
+        self._probe_cache: dict[str, object] = {}
         self.resize(560, 0)
 
         from m110.ui.theme import tokens
@@ -79,7 +104,8 @@ class BackupDialog(QDialog):
         dest_row = QHBoxLayout()
         dest_row.addWidget(QLabel("Destination:"))
         self._dest = QLineEdit(str(config.get_setting(backup.SETTING_DEST, "")))
-        self._dest.textChanged.connect(self._refresh_status)
+        # Probe on commit, not per keystroke — see _ProbeWorker.
+        self._dest.editingFinished.connect(self._refresh_status)
         dest_row.addWidget(self._dest, 1)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse)
@@ -167,23 +193,58 @@ class BackupDialog(QDialog):
                                              self._dest.text() or str(Path.home()))
         if d:
             self._dest.setText(d)
+            self._refresh_status()
 
-    def _refresh_status(self):
+    def _refresh_status(self, *, force: bool = False):
+        """Probe the destination on a worker and describe it. Results are memoized
+        per path for the dialog's lifetime; `force=True` re-probes (after a run)."""
         dest = self._dest.text().strip()
-        if not dest or not Path(dest).is_dir():
+        if not dest:
             self._status.setText("Choose a destination folder (an external drive or "
                                  "network share).")
             return
-        snaps = backup.list_snapshots(Path(dest))
-        if not snaps:
-            self._status.setText("No backups here yet.")
+        if force:
+            self._probe_cache.pop(dest, None)
+        cached = self._probe_cache.get(dest)
+        if cached is not None:
+            self._show_destination(cached)
             return
-        newest = snaps[0]
-        note = "" if newest.hardlinks else "  ⚠ this destination can't share files " \
-            "between backups — each backup will be a full copy."
-        self._status.setText(
-            f"{len(snaps)} backup(s) · latest {newest.created:%Y-%m-%d %H:%M} · "
-            f"{_fmt_bytes(newest.total_bytes)}{note}")
+        self._status.setText("Checking destination…")
+        self._stop_probe()
+        self._probe_worker = _ProbeWorker(dest, self)
+        self._probe_worker.probed.connect(self._on_probed)
+        self._probe_worker.start()
+
+    def _on_probed(self, info):
+        self._probe_cache[str(info.path)] = info
+        self._finish_probe()
+        if str(info.path) == self._dest.text().strip():
+            self._show_destination(info)
+
+    def _show_destination(self, info):
+        """One line describing what this destination is and what it can do. The
+        hardlink answer is stated *before* the first backup — that's the whole
+        point of probing (issue #92): a destination that can't share files stores
+        a full copy every night, and silence about that is the bug."""
+        if not info.exists:
+            self._status.setText(info.error or "Choose a destination folder (an "
+                                 "external drive or network share).")
+            return
+        if not info.writable:
+            self._status.setText(f"⚠ {info.error or 'Folder is not writable'}.")
+            return
+        if info.snapshot_count:
+            newest = info.newest
+            head = (f"{info.snapshot_count} backup(s) · latest "
+                    f"{newest.created:%Y-%m-%d %H:%M} · {_fmt_bytes(newest.total_bytes)}")
+        else:
+            head = "No backups here yet."
+        if info.free_bytes is not None:
+            head += f" · {_fmt_bytes(info.free_bytes)} free"
+        note = ("  ·  Unchanged files are shared between backups." if info.hardlinks
+                else "  ⚠ This destination can't share files between backups — "
+                     "every backup stores a full copy.")
+        self._status.setText(head + note)
 
     def _persist_settings(self, dest: str):
         config.save_setting(backup.SETTING_DEST, dest)
@@ -197,7 +258,7 @@ class BackupDialog(QDialog):
     def _open_restore(self):
         from m110.ui.restore_dialog import RestoreDialog
         RestoreDialog(self._dest.text().strip(), self).exec()
-        self._refresh_status()
+        self._refresh_status(force=True)
 
     def _save_and_close(self):
         """Persist the destination + automation/retention settings without running a
@@ -205,6 +266,10 @@ class BackupDialog(QDialog):
         be able to change the interval etc. without triggering a snapshot.)"""
         self._persist_settings(self._dest.text().strip())
         self.accept()
+
+    def accept(self):
+        self._stop_probe()
+        super().accept()
 
     # ---- run ----
     def _do_backup(self):
@@ -246,7 +311,7 @@ class BackupDialog(QDialog):
             self._backup_btn.setEnabled(True)
             return
         self.backed_up.emit(result)
-        self._refresh_status()
+        self._refresh_status(force=True)
         self._backup_btn.setEnabled(True)
         new = result.get("bytes_new", 0)
         msg = QMessageBox(self)
@@ -291,6 +356,20 @@ class BackupDialog(QDialog):
             self._progress.deleteLater()
             self._progress = None
 
+    def _finish_probe(self):
+        if self._probe_worker is not None:
+            self._probe_worker.deleteLater()
+            self._probe_worker = None
+
+    def _stop_probe(self):
+        """Drain the probe thread before dropping it — a QThread still running when
+        Qt tears down segfaults (see the export-dialog lesson in CLAUDE.md)."""
+        if self._probe_worker is not None:
+            if self._probe_worker.isRunning():
+                self._probe_worker.wait()
+            self._probe_worker.deleteLater()
+            self._probe_worker = None
+
     def _finish_worker(self):
         if self._worker is not None:
             self._worker.deleteLater()
@@ -307,10 +386,12 @@ class BackupDialog(QDialog):
 
     def reject(self):
         self._stop_worker()
+        self._stop_probe()
         self._close_progress()
         super().reject()
 
     def closeEvent(self, event):
         self._stop_worker()
+        self._stop_probe()
         self._close_progress()
         super().closeEvent(event)

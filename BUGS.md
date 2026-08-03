@@ -494,16 +494,25 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Backup & restore  *(→ ROADMAP item 10)*
 
-- [ ] **Surface the destination's hardlink capability in the backup UI.** `create_snapshot`
-  probes the **destination** filesystem (`backup._supports_hardlinks`, `backup.py:238`) and
-  silently falls back to byte-copying *every* file when links aren't supported — so on an
-  exFAT/appliance/rclone-mounted destination each nightly snapshot is a **full copy** of the
-  library and the user has no way to know. Show the probe result in `backup_dialog` (and per
-  snapshot in the restore picker, the manifest already records `hardlinks`): "unchanged files
-  are shared between snapshots" vs "every snapshot stores a full copy". Cheap, independent of
-  the storage rework below, and it's the first thing to check on a #92-style report — SMB2/3
-  *does* support hardlinks and most Samba-based NASes (Synology, TrueNAS) honor `os.link`, so
-  a given NAS user may already be fine.
+- [x] **Surface the destination's hardlink capability in the backup UI**
+  *(done 2026-08-02, `fix/backup-destination-probe`)*. `create_snapshot` probed the
+  destination filesystem and silently byte-copied *every* file when links weren't
+  supported — so on an exFAT/appliance/rclone-mounted destination each nightly snapshot
+  was a **full copy** of the library and the user had no way to know. The old status line
+  could only warn *after* a snapshot existed (it read `hardlinks` back out of the newest
+  manifest), which is the wrong moment. Now: a public, Qt-free
+  `backup.probe_destination(path) → DestinationInfo` (exists / writable / hardlinks /
+  free bytes / snapshot count + newest) answers the question **before the first backup**,
+  creating nothing and leaving no probe files behind; `backup_dialog._ProbeWorker` runs it
+  on a QThread and the status line says "Unchanged files are shared between backups" vs
+  "⚠ This destination can't share files between backups — every backup stores a full
+  copy." The restore picker labels each snapshot `· full copy` when its manifest says so
+  (mixed histories happen — a share remounted with different capabilities). Also fixed the
+  latent freeze this replaced: `_refresh_status` ran `list_snapshots()` **on the GUI
+  thread on every `textChanged` keystroke**; it now fires on `editingFinished`/Browse and
+  memoizes per path. First thing to check on a #92-style report — SMB2/3 *does* support
+  hardlinks and most Samba-based NASes (Synology, TrueNAS) honor `os.link`, so a given NAS
+  user may already be fine.
 
 - [ ] **#92 / #93 — network + offsite backup destinations (content-addressed storage).**
   Two linked requests from @devonjones: incremental backup to a NAS where the hardlink
