@@ -676,6 +676,17 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def _settle_probe(dlg, qapp):
+    """Wait out the backup dialog's destination-probe worker and deliver its
+    queued result signal."""
+    for _ in range(100):
+        qapp.processEvents()
+        if dlg._probe_worker is None:
+            return
+        dlg._probe_worker.wait(20)
+    qapp.processEvents()
+
+
 def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatch, qapp):
     from m110 import backup
     root = seed_root(tmp_path, monkeypatch)
@@ -686,10 +697,41 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        dlg._dest.setText(str(dest))          # triggers _refresh_status
-        qapp.processEvents()
+        dlg._dest.setText(str(dest))
+        # Typing must NOT probe (it used to walk the destination on the GUI
+        # thread on every keystroke — a freeze on a slow share).
+        assert dlg._probe_worker is None
+        dlg._refresh_status()
+        _settle_probe(dlg, qapp)
         assert "backup" in dlg._status.text()
+        assert "shared between backups" in dlg._status.text()
     finally:
+        dlg.close()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monkeypatch, qapp):
+    """The #92 case: a destination whose filesystem has no hardlinks stores a full
+    copy per backup. Say so *before* the first backup, not after."""
+    from m110 import backup
+    seed_root(tmp_path, monkeypatch)
+    dest = tmp_path / "backups"
+    dest.mkdir()
+    monkeypatch.setattr(backup.os, "link",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        dlg._dest.setText(str(dest))
+        dlg._refresh_status()
+        _settle_probe(dlg, qapp)
+        text = dlg._status.text()
+        assert "No backups here yet." in text          # nothing written yet…
+        assert "can't share files between backups" in text   # …and we still warn
+    finally:
+        dlg.close()
         dlg.deleteLater()
         qapp.processEvents()
 
