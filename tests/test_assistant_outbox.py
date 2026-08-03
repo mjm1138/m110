@@ -206,8 +206,8 @@ def test_writing_changes_nothing_outside_the_assistant_dir(store):
 def test_the_outbox_is_excluded_from_backups():
     """Staging, not authoritative — asking again regenerates it."""
     from m110 import backup
-    assert backup._is_excluded(f"{config.INTERNAL_DIRNAME}/assistant")
-    assert backup._is_excluded(f"{config.INTERNAL_DIRNAME}/assistant/outbox/x.md")
+    assert backup.is_excluded(f"{config.INTERNAL_DIRNAME}/assistant")
+    assert backup.is_excluded(f"{config.INTERNAL_DIRNAME}/assistant/outbox/x.md")
 
 
 # ── the guarantee, attacked ──────────────────────────────────────────────────

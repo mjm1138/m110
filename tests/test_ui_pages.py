@@ -714,11 +714,13 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
 def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monkeypatch, qapp):
     """The #92 case: a destination whose filesystem has no hardlinks stores a full
     copy per backup. Say so *before* the first backup, not after."""
+    import os
+
     from m110 import backup
     seed_root(tmp_path, monkeypatch)
     dest = tmp_path / "backups"
     dest.mkdir()
-    monkeypatch.setattr(backup.os, "link",
+    monkeypatch.setattr(os, "link",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
 
     from m110.ui.backup_dialog import BackupDialog
