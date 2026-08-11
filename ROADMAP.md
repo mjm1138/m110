@@ -117,6 +117,26 @@ the client they already have. Revised phasing:
 #### Open
 
 - **M1** — the in-app transport and the safe-write allowlist.
+- **Migrate to the MCP Python SDK v2** (`mcp>=2`). The dependency stays pinned
+  `<2` for now — v2.0.0 removed the low-level `Server` **decorator API** that
+  `assistant/mcp_server.py` is built on (`@server.list_tools()` /
+  `@server.call_tool()` / the prompt + resource pairs are all gone, replaced by
+  `add_request_handler`), so a bare version bump gives
+  `AttributeError: 'Server' object has no attribute 'list_prompts'` the moment
+  `build_server()` runs. The types we use survived (`mcp.types` is a permanent
+  alias for `mcp_types`, and `Tool`/`TextContent`/`ImageContent`/`Prompt`/
+  `Resource` are unchanged), so the port is confined to the handler wiring —
+  either v2's low-level API or the `MCPServer` decorators, whose surface the
+  release notes call unchanged. **There is a clock on it:** v1.x is maintenance
+  mode, security fixes only. Two things to fix *with* the port, not after:
+  - `build = [… m110[assistant]]` and `release.yml` installs `.[build]`, so the
+    bound is what stands between a release and a frozen `m110-mcp` that dies on
+    startup. Whoever lifts it must have run the server, not just the suite.
+  - **CI must actually load `mcp`.** Dependabot PR #115 resolved to 2.0.0, CI
+    installed it, and both jobs went green — the assistant tests are AST/text
+    checks and `tools/smoke_mcp.py` isn't wired in, so nothing imported the
+    package it was bumping. Add a job step that runs the smoke script (or at
+    minimum calls `build_server()`), so the next attempt fails loudly.
 - **Processing coach**, deferred: the bundled guidance corpus was withdrawn (see
   [`BUGS.md`](BUGS.md) #45) and replacements need authoring against citable
   sources before the *coaching* leg can ship.
