@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.4] - 2026-08-11
+
 ### Added
 - **Backups now work properly on destinations that can't share files between
   backups** — many network drives, appliance NASes and exFAT disks. Previously M110
