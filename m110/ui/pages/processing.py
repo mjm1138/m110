@@ -15,6 +15,7 @@ from m110 import derived, siril
 from m110.ui.widgets import (
     make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails,
     ROW_THUMB_SIZE, fit_table_height, process_target_in_siril,
+    connect_context_menu,
 )
 
 # Status-keyed groups (Up to date is intentionally omitted — fully-processed objects
@@ -65,8 +66,6 @@ class ProcessingPage(QScrollArea):
         table.itemDoubleClicked.connect(go)
 
     def _wire_context(self, table):
-        table.setContextMenuPolicy(Qt.CustomContextMenu)
-
         def show(pos):
             item = table.itemAt(pos)
             if item is None:
@@ -78,7 +77,7 @@ class ProcessingPage(QScrollArea):
             act = menu.addAction("Process in Siril")
             if menu.exec(table.viewport().mapToGlobal(pos)) is act:
                 process_target_in_siril(self, folder)
-        table.customContextMenuRequested.connect(show)
+        connect_context_menu(table, show)
 
     def reload(self):
         self._clear()

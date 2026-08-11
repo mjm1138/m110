@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, QUrl, Signal
+from PySide6.QtCore import (
+    Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, QTimer, QUrl, Signal,
+)
 from PySide6.QtGui import (
     QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPixmap,
 )
@@ -353,6 +355,42 @@ class ThumbnailLoader(QObject):
             pm = QPixmap.fromImage(img)
         for cb in callbacks:
             cb(pm)
+
+
+def modal_loop_active() -> bool:
+    """True while a modal dialog or a popup (menu, combo drop-down) is up.
+
+    Those run a **nested event loop**, and anything `deleteLater()`'d inside one
+    is destroyed as soon as that loop iterates — i.e. while the C++ event handler
+    that opened it is still on the stack. Rebuilding a page from under a nested
+    loop therefore frees the very widget Qt is mid-dispatch on
+    (`QAbstractItemView::mouseDoubleClickEvent` resuming on a deleted view = the
+    0.3.0b3 SIGSEGV). Callers that tear down widgets must wait this out."""
+    return (QApplication.activeModalWidget() is not None
+            or QApplication.activePopupWidget() is not None)
+
+
+def defer(widget, fn) -> None:
+    """Run `fn` after the current Qt event handler has returned.
+
+    For anything opening a modal/popup out of an item-view signal
+    (`itemDoubleClicked`, `customContextMenuRequested`, …): those are emitted
+    from inside the view's own C++ mouse handler, so a nested loop started there
+    keeps that frame alive across every event it pumps. Deferring by one event
+    cycle means no nested loop ever runs beneath an item-view frame. `widget` is
+    the context object — if it's destroyed first, `fn` never runs."""
+    QTimer.singleShot(0, widget, fn)
+
+
+def connect_context_menu(view, handler) -> None:
+    """Wire a custom context menu on `view`, opened **after** the mouse handler
+    returns (`defer`). Every right-click menu goes through here: a `QMenu.exec()`
+    called straight from `customContextMenuRequested` runs its nested loop inside
+    the view's C++ mouse handler, so any rebuild that lands meanwhile deletes the
+    view mid-dispatch. `handler` takes the click position."""
+    view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    view.customContextMenuRequested.connect(
+        lambda pos: defer(view, lambda: handler(pos)))
 
 
 def drain_thumbnail_pool(msecs: int = 5000) -> None:

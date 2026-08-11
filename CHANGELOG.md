@@ -42,6 +42,13 @@ changes a **user** would notice, per release.
   how much room is left. The restore list marks any backup that was stored as a full copy.
 
 ### Fixed
+- **M110 could crash while you were looking at an image.** If a background sync
+  finished while an image viewer or a right-click menu was open, M110 rebuilt the page
+  underneath it and quit with a segfault the moment you closed the viewer. The most
+  likely way to hit it: come back to a window you'd left in the background (which
+  starts a sync), double-click a thumbnail, and browse for a while. Syncs now wait for
+  any open dialog or menu to close before refreshing the page, and viewers and menus
+  no longer open in a way that lets a refresh pull the ground out from under them.
 - **The backup window could hang while you typed a destination path.** It re-read the
   whole backup folder on every keystroke; on a slow or disconnected network share that
   froze the window. It now checks once, after you finish typing or pick a folder.

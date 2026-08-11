@@ -651,6 +651,44 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Crash (SIGSEGV) when a sync finished while an image viewer or menu was open**
+  *(2026-07-31, `fix/refresh-during-modal`)*. Reported from 0.3.0b3 as "crashed while
+  sitting in the background"; the crash report says otherwise — thread 0 died in
+  `QAbstractItemView::mouseDoubleClickEvent` (via `QListWidgetWrapper`, i.e. one of the
+  detail pane's gallery views) on a garbage `d`-pointer, with **`RefreshWorker` still
+  running** on thread 8. Root cause, a textbook Qt use-after-free: the gallery opened
+  `ImageViewer(...).exec()` **directly from `itemDoubleClicked`**, which Qt emits from
+  inside the view's own C++ mouse handler. That nested event loop pumps everything —
+  including the auto-sync's `done` signal (started by the very click that raised the
+  window: `changeEvent` → `_do_refresh`). `_on_refresh_done` unconditionally
+  `reload()`ed every page → `DetailPane.show_object` → `_clear()` → `deleteLater()` on
+  the gallery. A `deleteLater()` issued *inside* a nested loop takes effect as that loop
+  iterates, so the widget was destroyed before `exec()` returned and Qt resumed the
+  double-click handler on freed memory. Reproducible as: leave the app in the background
+  with an object open, click in, double-click a thumbnail, let the sync land, close the
+  viewer. Fixed in two layers. **(1) Don't tear down under a nested loop** —
+  `MainWindow._apply_refresh` (split out of `_on_refresh_done`) skips the page rebuild
+  while `widgets.modal_loop_active()` (any modal dialog *or* popup menu) is true, parks
+  the summary in `_pending_refresh`, and retries on a parented 250 ms timer; the
+  prep-feedback and backup-nudge modals ride along, so a modal never stacks on a modal.
+  **(2) Don't start a nested loop from inside an item-view handler** — `widgets.defer`
+  (a `QTimer.singleShot(0, context, fn)`) pushes the viewer past the handler, and
+  `widgets.connect_context_menu` replaces every `setContextMenuPolicy` +
+  `customContextMenuRequested.connect` pair (Library table/grid, detail gallery + hero,
+  Overview priority/member tables, Planning, Processing, Media) so no right-click menu
+  spins its loop under a view either. Deferred openers work off a **snapshot** of the
+  gallery items, so a rebuild landing in between can't shift the index. Layer 1 alone
+  fixes the reported crash; layer 2 makes the whole class unreachable — the guarantee is
+  "no nested event loop ever runs beneath an item-view frame", which also covers a
+  right-click menu left open across a sync. Guarded by `tests/test_ui_modal_safety.py`
+  (6 tests: the modal detection, refresh deferral + retry, the immediate path, `defer`,
+  the context-menu wiring, and the exact double-click path with a stubbed viewer) — plus
+  **`tools/repro_modal_uaf.py`**, a 40-line stand-in that proves the mechanism rather
+  than the policy: offscreen, `buggy` exits **139** (dying exactly where the crash report
+  did, before "returned from the double-click dispatch" prints) and `fixed` exits 0. It's
+  a manual diagnostic on purpose — a regression segfaults the interpreter instead of
+  failing an assertion, which would take a whole CI run down.
+
 - [x] **Gallery file actions acted on the render, not the source file** *(2026-07-22,
   `fix/gallery-source-path`)*. Reported as "Reveal in file manager on a `.fit` opens the
   renders directory". Root cause: `images.json` only recorded `full` (the *displayable*

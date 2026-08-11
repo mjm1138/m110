@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from m110 import media
 from m110.ui.image_viewer import ImageViewer
+from m110.ui.widgets import defer
 
 
 def _fmt_size(n: int) -> str:
@@ -119,9 +120,14 @@ class MediaPage(QWidget):
         self._sections.append((box, hay))
 
     def _open(self, gallery, paths, item):
+        # Deferred out of `itemDoubleClicked` (emitted from the gallery's own C++
+        # mouse handler): the viewer's nested loop would otherwise keep that frame
+        # alive while a finishing sync `reload()`s this page and deletes the
+        # gallery under it. See `widgets.defer`.
         row = gallery.row(item)
         if 0 <= row < len(paths):
-            ImageViewer(list(paths), row, parent=self).exec()
+            snapshot = list(paths)
+            defer(self, lambda: ImageViewer(snapshot, row, parent=self).exec())
 
     def _apply_filter(self):
         q = self._search.text().strip().lower()
