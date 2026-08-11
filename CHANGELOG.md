@@ -10,6 +10,37 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Backups now work properly on destinations that can't share files between
+  backups** — many network drives, appliance NASes and exFAT disks. Previously M110
+  stored a *complete copy* of your library on every single backup there, without
+  saying so. It now recognises such a destination and switches to **pooled backups**,
+  which store each file once and give each backup a small index of what it contained:
+  the same "only what changed" saving, without needing anything special from the
+  drive. As before, every backup can be restored on its own, at any age — there's no
+  chain of older backups to keep intact.
+
+  On destinations that *can* share files, nothing changes: **mirrored backups stay
+  the default**, because a backup that's simply your files in dated folders can be
+  restored with no software at all, and that's worth keeping. You can pick either
+  from the backup window, and switching never strands backups you already have —
+  both kinds stay listable, verifiable and restorable side by side.
+
+  Because a pooled backup stores files under content-derived names, it also writes
+  its own way back out, next to the data: a browsable copy of the newest backup
+  (where the destination allows it), an `INDEX.tsv` listing every file in plain text,
+  and a `restore.py` that rebuilds your files with nothing but a standard Python
+  install — no M110 needed. See the [backup guide](docs/backup.md).
+
+### Changed
+- **The backup window now tells you what your destination can do, before you back up.**
+  Some destinations — exFAT drives, certain network shares and appliance NASes — can't
+  share files between backups, which means every backup stores a *full copy* of your
+  library instead of just what changed. M110 could only mention this after a backup had
+  already run. It now checks when you pick the folder and says either "Unchanged files
+  are shared between backups" or warns that every backup will be a full copy, along with
+  how much room is left. The restore list marks any backup that was stored as a full copy.
+
 ### Fixed
 - **M110 could crash while you were looking at an image.** If a background sync
   finished while an image viewer or a right-click menu was open, M110 rebuilt the page
@@ -18,6 +49,14 @@ changes a **user** would notice, per release.
   starts a sync), double-click a thumbnail, and browse for a while. Syncs now wait for
   any open dialog or menu to close before refreshing the page, and viewers and menus
   no longer open in a way that lets a refresh pull the ground out from under them.
+- **The backup window could hang while you typed a destination path.** It re-read the
+  whole backup folder on every keystroke; on a slow or disconnected network share that
+  froze the window. It now checks once, after you finish typing or pick a folder.
+- **The "keep at least this much free space" retention rule deleted too much.** Once
+  the destination dropped below the threshold, a single pass queued *every* backup but
+  the newest for deletion instead of removing them one at a time until there was
+  enough room. It now frees space incrementally and stops as soon as the threshold is
+  met.
 
 ## [0.3.0-beta.3] - 2026-07-30
 

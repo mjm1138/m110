@@ -22,7 +22,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open [↓](#5--catalog-growth))* | [`DONE.md`](DONE.md) |
 | 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
 | 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open [↓](#8--publishing-remaining-targets))* | [`DONE.md`](DONE.md) |
-| 10 | **Library backup** — hardlinked snapshots, verify, selective restore, auto-backup | ✅ shipped | [`DONE.md`](DONE.md) |
+| 10 | **Library backup** — mirrored + pooled snapshots, verify, selective restore, auto-backup | ✅ shipped (offsite → #93) | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
@@ -598,8 +598,11 @@ when extending an existing subsystem).
   aids; **DwarfLab Dwarf 3** end-to-end (2026-07-09).
 - **8a — Publishing** — Qt-free `publish/` engine + registry, selective static-
   site export with privacy controls.
-- **10 — Library backup** — hardlinked dated snapshots, checksum verify,
-  selective restore, retention, opt-in auto-backup.
+- **10 — Library backup** — dated snapshots in two formats (mirrored hardlinked
+  trees by default; pooled content-addressed storage where the destination can't
+  share files — #92), checksum verify, selective restore, retention + object GC,
+  opt-in auto-backup. *(Offsite S3-compatible destinations + the destinations list
+  remain open — #93, see [`BUGS.md`](BUGS.md).)*
 - **7 (part) — #17 finished/intermediate hinting + curation gallery** — the
   user-editable hint vocabulary + Finished/Working groups with per-image
   curation.

@@ -65,8 +65,18 @@ class RestoreDialog(QDialog):
         self._snap_combo = QComboBox()
         self._snapshots = backup.list_snapshots(self._destination) if self._destination else []
         for snap in self._snapshots:
+            # Label how each snapshot is stored. Mixed histories are normal — the
+            # format follows the destination, and a share can be remounted with
+            # different capabilities. Either way it restores the same.
+            if snap.format == backup.FORMAT_POOLED:
+                kind = "  ·  pooled"
+            elif not snap.hardlinks:
+                kind = "  ·  full copy"
+            else:
+                kind = ""
             self._snap_combo.addItem(
-                f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files", snap.path)
+                f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files{kind}",
+                snap.path)
         self._snap_combo.currentIndexChanged.connect(self._reload_tree)
         snap_row.addWidget(self._snap_combo, 1)
         self._verify_btn = QPushButton("Verify integrity")
@@ -126,9 +136,8 @@ class RestoreDialog(QDialog):
         snap = self._current_snapshot()
         if snap is None:
             return
-        manifest = backup._read_manifest(snap) or {}
         nodes: dict[str, QTreeWidgetItem] = {}
-        for rel in sorted(manifest.get("files", {})):
+        for rel in sorted(backup.snapshot_files(snap)):
             parts = rel.split("/")
             parent = None
             path_so_far = ""

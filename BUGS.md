@@ -213,6 +213,62 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [x] **`canonical_target` ignores catalog designations — a Caldwell-named capture forks
+  its own folder** (done — `fix/canonical-target-designations`). Reported 2026-08-01 from
+  the live store. The Seestar writes the folder
+  name from whichever catalog the target was picked out of in the app, so the 2026-08-01
+  Veil session landed as `C 34` while the same object's five earlier sessions are under
+  `NGC 6960`. Result: two sibling `Images/` folders for one object, and processing-prep
+  offers a *choice* between the two light sets instead of one 696-frame target.
+  **Root cause:** `ingest.canonical_target` resolves alias → existing `Images/<dir>` casing
+  → catalog `id`/slug casing → normalized name. It never asks catalog membership, so a
+  designation from a non-primary catalog can't fold onto the primary id.
+  **The resolution already exists and is already used elsewhere** —
+  `scan_sessions.folder_to_slugs` calls `catalog.designation_index()` /
+  `_normalize_designation()` for exactly this case ("A folder named by a *catalog number*
+  (`C 6`) names an object the reference keys by its primary designation (ngc-6543)").
+  That's why the derived layer is *already correct*: `sessions.jsonl` maps `C 34` →
+  `ngc-6960` and `C 22` → `ngc-7662` today. Only the on-disk folder is forked, which is
+  why the symptom is invisible in totals and only bites at prep time.
+  **Fix:** insert a designation-index lookup into `canonical_target`, between the existing-
+  `Images/`-dir check and the catalog id/slug check — resolve the incoming name to a slug
+  via `designation_index()`, then return that slug's primary `id` (its folder, if one
+  exists). Ordering matters: the existing-dir check must stay first so an established
+  folder keeps its spelling; the designation lookup then catches the *new* alternate
+  designation before it can mint a second folder.
+  Shipped as `catalog.slug_for_designation()` — now the single entry point for "what
+  object is this name?", used by both `canonical_target` and `folder_to_slugs` (which had
+  its own inline copy) so the two axes can't drift apart again.
+  **The fix is prospective only** — it stops new forks, it doesn't heal existing ones. All
+  three live cases were repaired by hand on 2026-08-02: `C 34` merged into `NGC 6960`
+  (182 + 514 lights), and `C 6` / `C 22` renamed to `NGC 6543` / `NGC 7662` (folder rename
+  + sandbox `next-steps.md` paths + folding the orphan `Objects/C 6/journal.md`'s `hero:`
+  pin into the live `Objects/NGC 6543/` one). Frame **filenames** were deliberately left as
+  captured (`Light_C 6_…`): sessions key off the folder, and the `hero:` pin matches a raw
+  filename, so renaming files would have churned ~1,400 of them and broken the pin for
+  nothing. The store is clean; what's missing is the tooling to do this without a shell —
+  next item.
+
+- [ ] **No user-facing way to merge or rename a capture target.** Fallout from the
+  designation fix above: repairing an already-forked or misnamed `Images/<target>/` is a
+  hand `mv` today. Two shapes, one surface: **merge** two targets (move `lights/` +
+  `seestar-stacks/`, fold the journal + hero frontmatter, drop the stale `siril/` sandbox,
+  re-scan) and **rename** one onto its primary designation (`C 6` → `NGC 6543`, absorbing
+  the orphan journal stub). Same surface the misfiled-stack item under *Processing &
+  curation UX* wants for "this file doesn't belong here" — worth designing once.
+  Requirements learned from doing all three by hand (2026-08-02):
+  - **Merge** must tolerate a `siril/` sandbox whose `lights/` are **hardlinks** into the
+    folder being emptied — dropping the sandbox is safe, the inodes survive via the
+    destination, but a naive "delete source dir" ordering *looks* like it destroys frames.
+  - **Rename** must rewrite the absolute paths baked into `siril/next-steps.md`, and must
+    not blow away in-progress per-filter sandboxes (`siril/IRCUT`, `siril/LP`) or the
+    `siril/archive/` — re-running prep to regenerate the file is not an acceptable
+    substitute when a Siril job is mid-flight.
+  - Both must **fold the journal**, not just pick one: the orphan carried the `hero:` pin
+    while the live stub carried the proper `name:`.
+  - Both should refuse (or warn hard) when Siril's current working directory is inside the
+    folder being moved.
+
 - [~] **#16 — Robust, layout-flexible, multi-source import.** **6a–6c shipped**
   (any-directory recursive scan, FITS-header classification + layout registry,
   holding-area manual assign — see [`ROADMAP.md`](ROADMAP.md) item 6 / [`DONE.md`](DONE.md)).
@@ -438,86 +494,104 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Backup & restore  *(→ ROADMAP item 10)*
 
-- [ ] **Surface the destination's hardlink capability in the backup UI.** `create_snapshot`
-  probes the **destination** filesystem (`backup._supports_hardlinks`, `backup.py:238`) and
-  silently falls back to byte-copying *every* file when links aren't supported — so on an
-  exFAT/appliance/rclone-mounted destination each nightly snapshot is a **full copy** of the
-  library and the user has no way to know. Show the probe result in `backup_dialog` (and per
-  snapshot in the restore picker, the manifest already records `hardlinks`): "unchanged files
-  are shared between snapshots" vs "every snapshot stores a full copy". Cheap, independent of
-  the storage rework below, and it's the first thing to check on a #92-style report — SMB2/3
-  *does* support hardlinks and most Samba-based NASes (Synology, TrueNAS) honor `os.link`, so
-  a given NAS user may already be fine.
+- [x] **Surface the destination's hardlink capability in the backup UI**
+  *(done 2026-08-02, `fix/backup-destination-probe`)*. `create_snapshot` probed the
+  destination filesystem and silently byte-copied *every* file when links weren't
+  supported — so on an exFAT/appliance/rclone-mounted destination each nightly snapshot
+  was a **full copy** of the library and the user had no way to know. The old status line
+  could only warn *after* a snapshot existed (it read `hardlinks` back out of the newest
+  manifest), which is the wrong moment. Now: a public, Qt-free
+  `backup.probe_destination(path) → DestinationInfo` (exists / writable / hardlinks /
+  free bytes / snapshot count + newest) answers the question **before the first backup**,
+  creating nothing and leaving no probe files behind; `backup_dialog._ProbeWorker` runs it
+  on a QThread and the status line says "Unchanged files are shared between backups" vs
+  "⚠ This destination can't share files between backups — every backup stores a full
+  copy." The restore picker labels each snapshot `· full copy` when its manifest says so
+  (mixed histories happen — a share remounted with different capabilities). Also fixed the
+  latent freeze this replaced: `_refresh_status` ran `list_snapshots()` **on the GUI
+  thread on every `textChanged` keystroke**; it now fires on `editingFinished`/Browse and
+  memoizes per path. First thing to check on a #92-style report — SMB2/3 *does* support
+  hardlinks and most Samba-based NASes (Synology, TrueNAS) honor `os.link`, so a given NAS
+  user may already be fine.
 
-- [ ] **#92 / #93 — network + offsite backup destinations (content-addressed storage).**
-  Two linked requests from @devonjones: incremental backup to a NAS where the hardlink
-  approach may not apply (#92), and direct-to-S3 offsite backup with a configurable endpoint
-  so B2/R2/Wasabi work too (#93). #93 is correctly gated on #92 — both are the same seam.
+- [x] **#92 — pooled (content-addressed) backups for destinations that can't hardlink**
+  *(done 2026-08-02, `feature/backup-pooled-storage`)*. @devonjones backs up to a NAS,
+  where "the linking approach doesn't necessarily work across a network" — and where
+  mirrored snapshots therefore stored a **full copy of the library every night**, silently.
+  Shipped as a *second* format rather than a replacement: **mirrored stays the default
+  wherever hardlinks work**, because a snapshot that restores in Finder with no software
+  at all is worth keeping for everyone it works for. A destination that fails the link
+  probe resolves to **pooled** and the app persists that (`backup_format`); both formats
+  stay listable/verifiable/restorable at the same destination — provably disjoint
+  namespaces (mirrored dirs parse as timestamps, `objects/`/`snapshots/`/`latest/` never
+  will), so no flag day and no conversion. What landed:
+  `backup/backends/` (put/get/exists/list/delete seam + `LocalBackend`/`MemoryBackend`,
+  registry-shaped like `publish.PUBLISHERS`), `pooled.py` (objects addressed by sha256,
+  self-contained gzipped manifests, **written last** so *a manifest exists ⇒ every object
+  it names exists* — which is also why a cancelled first sync resumes for free),
+  `hashcache.py` (sqlite in `~/.m110`, keyed `(path,size,mtime_ns,inode,dev)`; a miss is
+  always safe, and a stale hit is caught by cross-checking the stored object's size),
+  `recovery.py` (the browsable `latest/` hardlink tree, `INDEX.tsv`, a mirrored
+  `latest-manifest.json.gz`, and a stdlib-only `restore.py` written *into* the backup root
+  — `objects/` alone is a bag of hash-named blobs, and the way back has to travel with the
+  data), object GC with a 24h grace window (safe against a concurrent run without a lock)
+  + a process-wide run lock. **Also fixed a pre-existing retention bug**: the min-free loop
+  read free space inside a loop that deleted nothing until afterwards, so the reading never
+  moved and one pass queued every survivor but one.
 
-  **Don't build full/incremental chains.** The tape-era model (a full every N days,
-  incrementals between) is what makes this feel non-trivial, and it buys the bad properties:
-  restores that need an intact chain, retention that can't drop a full until its dependents
-  expire, and a corruption blast radius spanning days. That's the state engine to avoid.
+- [ ] **#93 — offsite backup destinations (S3 / B2 / R2 / Wasabi).** @devonjones wants
+  offsite: a key pair, a bucket, and optionally an API URL so the cheaper S3-compatible
+  services work. The storage format and the backend seam it needs shipped with #92 above —
+  what remains is the adapter and the multi-destination UI.
 
-  **Content-addressed snapshots are incremental by construction, with no chain state** — and
-  the existing engine is most of the way there, since each snapshot already writes a
-  `{rel: {size, mtime, sha256}}` manifest. Promote that sha256 from metadata to address:
+  **Don't build full/incremental chains** (the reasoning that shaped #92 and still applies):
+  the tape-era model buys restores that need an intact chain, retention that can't drop a
+  full until its dependents expire, and a corruption blast radius spanning days.
 
-  ```
-  <dest>/M110-Backups/<store>/
-    objects/ab/cd/abcdef…             immutable, named by sha256 of contents, mode 0444
-    snapshots/<ts>.json               today's manifest, essentially unchanged
-    state.json
-  ```
+  Remaining work, in order:
 
-  Dedup moves from the filesystem (hardlink to the prior snapshot → needs POSIX links) to the
-  application (object already exists → needs only exists/put), which is what makes it work over
-  SMB, S3, and anything else. Every snapshot stays independently restorable (no chain replay),
-  retention becomes "delete a manifest, then sweep objects no manifest references" — a refcount
-  over data we already have, not a dependency graph — and `verify` gets *stronger*: an object's
-  name is its checksum, so the store is self-validating.
+  - **Destinations become a list.** `backup_destination` is a single setting; offsite
+    implies plurality (local NAS nightly + S3 weekly, different retention each). This — not
+    the storage format — is the real UI change: destination rows with per-row scope,
+    schedule, retention. Format stays *derived from the probed destination*, never a
+    user-facing mode for the cases where there's no real choice; same instinct as
+    `launch.find_app`.
+  - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the
+    bytes, and plenty of users will want offsite to mean journals + `finished/` + `stacks/`
+    for a couple of dollars a month with the raws staying on the NAS. Without it the first
+    sync runs for a week. Layer it on `scope.is_excluded` (the `Images/*/siril/` rule is the
+    shape). One thing to get right: *narrowing* a destination's scope makes the excluded
+    objects unreferenced, so the next GC deletes ~400 GB of raws from the offsite store —
+    correct, but it must be warned about with an estimate.
+  - **`S3Backend`** — boto3 with `endpoint_url`, `object_sizes()` as one paginated LIST (not
+    100k HEADs), `delete_objects` in batches for the sweep, `ThreadPoolExecutor` across files
+    (throughput here is latency-bound, not bandwidth-bound), `abort_multipart_upload` on
+    cancel. Follow the `online`-extra pattern — optional `s3` extra, graceful "not installed"
+    error from source (`BackupDepsMissing`, build-aware like
+    `catalog._astroquery_missing_message`), bundled in packaged builds. Credentials in
+    **keyring**, not `settings.json` (the PyInstaller specs already collect keyring for
+    astroquery); the access key id is an identifier, not a secret, so it can stay in settings
+    where the UI can show which key is configured.
+  - **Provider quirks worth pinning now:** R2 wants `region_name="auto"`; several
+    Wasabi/MinIO setups need path-style addressing; and botocore ≥1.36 sends
+    `x-amz-checksum-crc32` on every PUT by default, which some S3-compatible providers
+    reject — pin `request_checksum_calculation="when_required"` defensively. Since the key
+    *is* the sha256, `ChecksumSHA256` on PutObject gets server-side rejection of a corrupted
+    upload for free where supported. Document a lifecycle rule to abort incomplete multipart
+    uploads (orphaned parts bill silently — the classic S3 backup cost leak), and that egress
+    on *restore* is the expensive direction on AWS but cheap or free on B2/R2.
+  - `Capabilities.free_bytes is None` on an object store, so `min_free_gb` is meaningless
+    there; its analogue is a per-destination `max_store_gb` budget from `state.json`.
+    Default a new offsite destination to keep-N only — never surprise-delete an offsite copy.
 
-  Details that matter:
-  - **Source hash cache** keyed on `(path, size, mtime, inode)`, kept locally in `~/.m110`
-    (must survive destination switches), or a 500 GB library gets rehashed nightly. A cache
-    miss costs a rehash, never corruption — strictly safer than today's reuse test, where a
-    matching size+mtime silently hardlinks possibly-stale bytes.
-  - **Keep hardlinks where they work.** A `latest/` tree beside `objects/`, relinked each run
-    with entries hardlinked *into* the object store, preserves the browsable
-    "my backup is just my files in Finder" property for free (no duplicated bytes). Where the
-    FS can't link (S3, exFAT) it's simply absent and the backup is still correct — browsability
-    becomes a *capability of the destination*, not a *mode of the product*. One format, one
-    restore path, one test surface.
-  - **Backend seam** = put/get/exists/list/delete, mirroring `publish.PUBLISHERS`:
-    `LocalBackend` (dir — DAS or NAS mount) and `S3Backend` (boto3 with `endpoint_url`, so
-    B2/R2/Wasabi fall out free) write the *same layout*. Follow the `online`-extra pattern —
-    optional `s3` extra, graceful "not installed" error from source, bundled in packaged
-    builds. Credentials go in **keyring**, not `settings.json` (the PyInstaller specs already
-    collect keyring for astroquery).
-  - **Destinations become a list.** `backup_destination` is a single setting; offsite implies
-    plurality (local NAS nightly + S3 weekly, different retention each). This — not the storage
-    format — is the real UI change: destination rows with per-row scope, schedule, retention.
-    Format is *derived from the probed destination*, never a user-facing mode; same instinct as
-    `launch.find_app` and the hardlink probe: detect, don't ask.
-  - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the bytes,
-    and plenty of users will want offsite to mean journals + `finished/` + `stacks/` for a couple
-    of dollars a month with the raws staying on the NAS. Without it the first sync runs for a week.
+  **Alternative considered — shell out to `restic`.** Precedent exists (`publish/ghpages.py`
+  drives the system git), and restic is already CAS + dedup + prune + S3-with-custom-endpoint.
+  Costs: bundling/notarizing a ~25 MB Go binary per platform, a hard external dependency on
+  the *data-safety* feature, and an opaque repo the user can't browse without restic. Built
+  natively instead — and with #92 landed the remaining delta really is just the adapter.
+  Hold restic in reserve if S3 retry/multipart correctness turns ugly.
 
-  **Alternative considered — shell out to `restic`.** Precedent exists (`publish/ghpages.py` drives
-  the system git), and restic already is CAS + dedup + prune + S3-with-custom-endpoint + SFTP +
-  rclone, delivering both issues nearly free. Costs: bundling/notarizing a ~25 MB Go binary per
-  platform, a hard external dependency on the *data-safety* feature, and an opaque repo the user
-  can't browse without restic. Preference is to build it natively — the delta is small (manifest,
-  retention, verify, restore UI, cancel/progress, atomic-write discipline all exist) and it keeps
-  the no-external-binary property exactly where it matters most. Hold restic in reserve if S3
-  retry/multipart correctness turns ugly.
-
-  **Sequencing** (each step stands alone and ships something): (1) surface the hardlink probe
-  (above); (2) storage v2 — content-addressed objects + snapshot manifests + GC retention,
-  `LocalBackend` only (closes #92; the hardlinked `latest/` keeps the browsable tree); (3)
-  destinations list + per-destination scope/schedule/retention; (4) `S3Backend` + keyring
-  credentials (closes #93). Note **#40d** (restore has no store-version gate) is orthogonal and
-  still open either way.
+  Note **#40d** (restore has no store-version gate) is orthogonal and still open either way.
 
 ## Security  *(→ [`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md))*
 
