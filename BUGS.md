@@ -671,19 +671,48 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
   `library_view_mode = "map"`. Guarded by `tests/test_packaging_deps.py`
   (spec + workflow) and `tests/test_skymap.py` (the degrade path).
 
-- [ ] **`hdiutil create` is deprecated (macOS 27).** `packaging/macos/make_dmg.sh:26`
-  builds the DMG with `hdiutil create -volname … -srcfolder …`; macOS 27 warns
-  *"'hdiutil create -volname -format …' is deprecated. Please use 'diskutil image
-  create from/blank --volumeName --format …' instead."* Cosmetic today — the DMG builds,
-  signs, and notarizes fine (0.2.0-beta.2 shipped through it), and deprecated ≠ removed.
-  **Don't switch naively:** `diskutil image create` needs a very recent macOS while
-  `hdiutil` works everywhere, and although the DMG is built locally by the maintainer
-  today, `.github/workflows/release.yml` documents moving the macOS build into CI as a
-  later step — GitHub's macOS runners lag OS versions, so a hard switch would build here
-  and break there. The safe form is a version/capability guard that falls back to
-  `hdiutil` (verify the result still codesigns + passes
-  `spctl -a -t open --context context:primary-signature`). Act when Apple actually
-  removes `hdiutil`, or when the macOS-in-CI move happens — whichever comes first.
+- [x] **`hdiutil create` is deprecated (macOS 27)** (done — `fix/packaging-build-warnings`).
+  `packaging/macos/make_dmg.sh` built the DMG with `hdiutil create -volname … -srcfolder …`;
+  macOS 27 warns *"'hdiutil create -volname -format …' is deprecated. Please use 'diskutil
+  image create from/blank --volumeName --format …' instead."* Taken as prescribed here —
+  a **capability guard**, not a hard switch: `diskutil image create from --help` decides,
+  and anything older falls back to `hdiutil`, so the GitHub macOS runners (which lag OS
+  versions, and which `release.yml` documents building on later) can't be broken by this.
+  Verified equivalent on the real 0.3.0-beta.4 payload rather than a toy folder: identical
+  format (UDZO), partition scheme (GUID), filesystem (APFS), volume name, and contents with
+  the `/Applications` symlink intact — and, mounted from the new DMG, the app inside still
+  reports `valid on disk` + `satisfies its Designated Requirement`, its **stapled ticket
+  validates**, and `spctl` returns `accepted / source=Notarized Developer ID`.
+  ⚠️ One real difference: `diskutil` compresses harder — same payload, 110.6 MB vs
+  hdiutil's 126.3 MB (the shipped b4 DMG is 125.7 MB, matching hdiutil). Smaller is welcome,
+  but it means **a build machine on an older macOS produces a ~12% larger DMG** than a
+  current one. Not a correctness problem; worth knowing before comparing artifact sizes
+  across machines and concluding something is wrong.
+  *(Not verified here: `spctl` on the DMG **itself**, which only passes once the DMG is
+  notarized — that happens in `release.py`'s macos phase. The app-inside check above is
+  the strongest signal available without submitting a throwaway DMG to Apple.)*
+
+- [x] **The macOS build printed astropy-branded deprecation warnings that weren't astropy's**
+  (done — `fix/packaging-build-warnings`). Every build scrolled several
+  `WARNING: AstropyDeprecationWarning: …` lines past, which read as "our astropy usage is
+  deprecated" and prompted an investigation that found nothing wrong with astropy. They came
+  from **astroquery**: the three specs `collect_submodules("astroquery")`, which imports each
+  submodule to enumerate it, and `vamdc`, `exoplanet_orbit_database` and `cds` each warn at
+  import. Two things made them misleading — astroquery raises them with *astropy's*
+  `AstropyDeprecationWarning` class, so astropy's name leads the line; and that class
+  subclasses `Warning`, **not** `DeprecationWarning`, so Python's default filters don't
+  suppress it the way they suppress ordinary deprecations (which is also why a
+  `-W always::DeprecationWarning` test run showed nothing). A fourth,
+  `astroquery.dace`, was removed upstream and raises `ImportError`, which PyInstaller
+  reported as a failed collection. M110 uses `astroquery.simbad` only, so all four are now
+  filtered out of the walk — same move as the `astropy.visualization` filter in
+  `pyinstaller-hooks/hook-astropy.py`, and a filtered subtree is never recursed into, hence
+  never imported. A rebuild confirms zero `AstropyDeprecationWarning` and no failed
+  collection. **Still printed, deliberately:** `PrototypeWarning: pyvo.discover's API is
+  still under design` — that's an API-stability notice, not a deprecation, and `pyvo` is a
+  live astroquery dependency, so filtering it would be excluding a subtree we might actually
+  reach. Lesson for the next one of these: a warning naming a library is not necessarily
+  *from* it.
 
 - [ ] **`release.py` smoke phase can watch the wrong run.** `tools/release.py`'s `smoke`
   sleeps 12s after `gh workflow run`, then takes the newest `workflow_dispatch` run —

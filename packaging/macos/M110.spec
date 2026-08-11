@@ -59,8 +59,20 @@ hiddenimports += collect_submodules("tzdata")   # zoneinfo loads these region su
 # per-service modules), so collect them explicitly — the hook-astropy lesson: name the
 # package, collect its submodules; don't hand-pick. certifi/urllib3/charset_normalizer
 # carry their own contrib hooks; requests/bs4/html5lib are static-import only.
+# Four astroquery services M110 never touches misbehave when the walk imports them:
+# `vamdc`, `exoplanet_orbit_database` and `cds` each raise an AstropyDeprecationWarning
+# (astropy's class, and it subclasses Warning rather than DeprecationWarning — so the
+# default filters *don't* hide it and the build prints astropy-branded deprecations that
+# have nothing to do with astropy), and `dace` was removed upstream and raises ImportError
+# outright, which PyInstaller catches and reports as a failed collection. M110 uses
+# astroquery.simbad only. Filtering them keeps the noise (and the dead weight) out —
+# the same move as the astropy.visualization filter in pyinstaller-hooks/hook-astropy.py,
+# and as there, a filtered subtree is never recursed into, so it's never imported.
+_SKIP = ("astroquery.vamdc", "astroquery.exoplanet_orbit_database",
+         "astroquery.cds", "astroquery.dace")
+
 for _pkg in ("astroquery", "pyvo", "keyring"):
-    hiddenimports += collect_submodules(_pkg)
+    hiddenimports += collect_submodules(_pkg, filter=lambda n: not n.startswith(_SKIP))
     datas += collect_data_files(_pkg, excludes=["**/tests/**", "**/test/**"])
 datas += copy_metadata("astroquery")            # version / entry points
 datas += copy_metadata("keyring")               # keyring finds its backends via entry points
