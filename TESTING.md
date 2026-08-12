@@ -338,6 +338,35 @@ re-run when its area changes and you want eyes on the visuals).
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
 
+### G2b. Rejecting subs — the `rejected/` tier (#110)  ⚙ *(prune/import/session rules automated — `test_rejected_lights.py`)*
+> Driven entirely from a **file manager** for now — there is no UI yet (that's the
+> Lights Table). The whole point is that a rejected sub doesn't come back, so the
+> device half needs a real telescope.
+- [ ] Pick a prepped object. Create `Images/<target>/rejected/` and **move** two
+      subs there out of `lights/`. Note their names and the object's integration time.
+- [ ] Refresh (Ctrl+R) or refocus the window → integration time and session frame
+      counts **drop by two**; the two names are **gone from
+      `Images/<target>/siril/lights/`** (and from every `siril/<FILTER>/lights/` if
+      the target is split), while the files themselves are still in `rejected/`,
+      untouched. Everything else in the sandbox — `presets/`, `archive/`, any
+      darks/flats/biases — is exactly as it was.
+- [ ] **The frame is not destroyed:** `ls -li` the file in `rejected/` — it's still
+      there and readable. Move it back into `lights/`, refresh → it's re-linked into
+      the sandbox and counts again.
+- [ ] **In-progress runs are not disturbed:** drop a `*_processed.png` into the
+      sandbox (so the object reads *Ready to import*), reject another sub, refresh →
+      the sandbox links are left **alone** until you import the finished work.
+- [ ] **A sub that merely vanished is left alone:** delete a sub from `lights/`
+      *without* putting it in `rejected/`, refresh → its sandbox hardlink is **kept**
+      (it may be the last copy). The log (`~/.m110/logs/m110.log`) records it as an
+      orphan.
+- [ ] **No re-sync (needs the device):** with the Seestar mounted, run an import
+      that covers a session you rejected frames from → the rejected names are **not**
+      offered and **not** copied back into `lights/`. Genuinely new subs still import.
+- [ ] **Store-to-store keeps the exclusion:** point Import at a *copy* of your store
+      (or a restored backup) → files under `Images/<target>/rejected/` are offered as
+      **"rejected subs"** routing back to `rejected/`, never into `lights/`.
+
 ### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
 > Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
 - [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target

@@ -181,6 +181,18 @@ def lights_dir(name: str) -> Path:
     return IMAGES_DIR / name / "lights"
 
 
+def rejected_dir(name: str) -> Path:
+    """Subs the user has excluded from processing (#110) — kept on disk, out of
+    the population. A sibling of ``lights/`` rather than a flag file, because the
+    tiers that consume subs already read ``lights/`` and nothing else: Siril prep
+    (`siril._lights`) won't hardlink them into a sandbox, `scan_sessions` won't
+    count them toward integration, and the gallery never looked here. Import
+    treats the two tiers as one population (`ingest._light_tier_names`), so a
+    rejected sub is **not re-copied** from the telescope on the next import —
+    which is the whole point of moving it instead of deleting it."""
+    return IMAGES_DIR / name / "rejected"
+
+
 def stacks_dir(name: str) -> Path:
     """Siril stacks for a capture target."""
     return IMAGES_DIR / name / "stacks"

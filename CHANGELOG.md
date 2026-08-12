@@ -10,6 +10,26 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **You can now set aside subs you don't want stacked, without deleting them.**
+  Move any frames you don't want — clouds, trails, bad focus — from an object's
+  `lights/` folder into a folder called `rejected/` beside it (create it yourself;
+  M110 won't make one for you). From then on those frames are out of the picture:
+  they aren't linked into the Siril working folder, they stop counting toward the
+  object's integration time and session totals, and — the part that makes this
+  worth doing instead of deleting — **M110 won't copy them back off your telescope
+  the next time you import.** Previously the only way to keep a bad sub out of a
+  stack was to delete it, and the next import brought it straight back.
+
+  The frames themselves are never touched: M110 only ever reads the names in
+  `rejected/`, and removes the *link* to them from the working folder. If you
+  reject frames for an object you've already prepped, the working folder is
+  tidied up on the next sync. Change your mind by moving the files back.
+
+  This is the groundwork for the planned Lights Table, where you'll be able to
+  review and flag subs from inside the app instead of in a file manager.
+  (Thanks to @devonjones — [#110](https://github.com/mjm1138/m110/issues/110).)
+
 ## [0.3.0-beta.4] - 2026-08-11
 
 ### Added

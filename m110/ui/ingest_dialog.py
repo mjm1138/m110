@@ -23,6 +23,7 @@ KIND_LABEL = {
     "dark": "darks", "flat": "flats", "bias": "biases",
     "siril-stack": "Siril stack", "finished": "finished",
     "preview": "sub previews", "unassigned": "→ holding area",
+    "rejected": "rejected subs",
 }
 
 # Kinds a held file can be manually assigned to (6c), in dropdown order.

@@ -20,6 +20,7 @@ Mirrors `ingest`'s read-only-plan → gated-apply contract.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -28,6 +29,8 @@ from datetime import datetime
 from pathlib import Path
 
 from . import config, hints, objects
+
+_log = logging.getLogger("m110")
 
 # Filter token in a Seestar light filename:
 #   Light_<object>_<exp>s_<FILTER>_<YYYYMMDD>-<HHMMSS>.fit
@@ -415,6 +418,65 @@ def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
             apply_prep(plan, should_cancel=should_cancel)
             prepared.append(target)
     return {"prepared": prepared, "skipped": skipped}
+
+
+def _sandbox_lights_dirs(base: Path) -> list[Path]:
+    """Every ``lights/`` inside a sandbox — the root's *and* each per-filter job's.
+
+    Deliberately wider than `_job_dirs`, which returns the per-filter dirs *instead
+    of* the root once a target splits. A target that became multi-filter leaves its
+    earlier single-filter ``siril/lights/`` behind (BUGS #28), and a stale job dir is
+    exactly where a frame the user thinks they excluded would go on being stacked."""
+    out = [base / "lights"] if (base / "lights").is_dir() else []
+    out += [p / "lights" for p in sorted(base.iterdir())
+            if p.is_dir() and (p / "lights").is_dir()]
+    return out
+
+
+def prune_rejected(target: str) -> dict:
+    """Drop sandbox hardlinks for subs the user has since moved to ``rejected/`` (#110).
+
+    `apply_prep` is add-only, so a sub rejected *after* prep keeps its hardlink in
+    ``siril/[<FILTER>/]lights/`` and Siril goes on stacking it — without this the
+    exclusion would only ever work on a target that had never been prepped, i.e. on
+    none of the targets a user actually wants it for.
+
+    Narrow on purpose, because the sandbox's posture is **never deletes**:
+
+    * only files directly inside a job's ``lights/`` are considered — never the
+      archive, the presets, the calibration links, or anything else the user put there;
+    * a file is unlinked **only** when that same name is present in ``rejected/`` —
+      the store still holds the frame and we are dropping a redundant link, not data.
+      A sub that merely vanished from ``lights/`` is left alone and counted as an
+      orphan: it may be the *last* copy (on a filesystem where `_link_or_copy` fell
+      back to a byte copy it certainly is);
+    * a target holding un-imported finished output is skipped whole — the same guard
+      `autoprep` uses, so an in-progress run is never disturbed.
+    """
+    base = config.siril_dir(target)
+    if not base.is_dir():
+        return {"pruned": 0, "orphans": 0, "skipped": False}
+    if has_unimported_output(target):
+        return {"pruned": 0, "orphans": 0, "skipped": True}
+
+    rdir = config.rejected_dir(target)
+    rejected = ({f.name for f in rdir.iterdir() if f.is_file()}
+                if rdir.is_dir() else set())
+    live = {f.name for f in _lights(target)}
+    pruned = orphans = 0
+    for ldir in _sandbox_lights_dirs(base):
+        for f in sorted(ldir.iterdir()):
+            if not f.is_file() or not config.is_light_frame(f.name) or f.name in live:
+                continue
+            if f.name in rejected:
+                f.unlink()
+                pruned += 1
+            else:
+                orphans += 1
+    if pruned or orphans:
+        _log.info("prune_rejected %s: unlinked %d rejected, left %d orphan(s)",
+                  target, pruned, orphans)
+    return {"pruned": pruned, "orphans": orphans, "skipped": False}
 
 
 # ── import: detect + plan (read-only) ────────────────────────────────────────
