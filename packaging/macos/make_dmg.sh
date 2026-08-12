@@ -23,8 +23,20 @@ ln -s /Applications "$STAGE/Applications"     # drag-target
 
 echo "==> building $DMG"
 rm -f "$DMG"
-hdiutil create -volname "M110 ${VERSION}" -srcfolder "$STAGE" \
-  -ov -format UDZO "$DMG" >/dev/null
+# macOS deprecated `hdiutil create -volname -format` in favour of `diskutil image
+# create from` (it prints a WARNING on every build). Verified equivalent on this
+# toolchain: both produce a UDZO image, GUID scheme, APFS volume, same volume name,
+# with the /Applications symlink intact, and the result codesigns and notarizes the
+# same. `diskutil image` is recent, so fall back to hdiutil where it's absent —
+# the deprecated form still works, and a build machine on an older macOS should not
+# be a broken build. No `-ov` equivalent is needed; the rm above is the overwrite.
+if diskutil image create from --help >/dev/null 2>&1; then
+  diskutil image create from --format UDZO --volumeName "M110 ${VERSION}" \
+    "$STAGE" "$DMG" >/dev/null
+else
+  hdiutil create -volname "M110 ${VERSION}" -srcfolder "$STAGE" \
+    -ov -format UDZO "$DMG" >/dev/null
+fi
 
 # Sign the DMG too if an identity is available (optional but tidy).
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
