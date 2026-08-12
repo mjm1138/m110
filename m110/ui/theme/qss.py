@@ -97,13 +97,24 @@ QListView {{
 QListView::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
 QListView::item:hover:!selected {{ background-color: {t.surface_alt}; }}
 
-/* ── nav rail (left) ── */
-QListWidget#navRail {{
+/* ── nav column (left): the rail + the brand mark anchored under it ──
+   The surface and the divider belong to the *column*, not the rail — the mark
+   sits below the list, so a rail-owned border would stop short of it and leave
+   the logo on the window background. (Needs WA_StyledBackground on the plain
+   QWidget; see MainWindow.__init__.) */
+QWidget#navColumn {{
     background-color: {t.surface};
-    border: none;
     border-right: 1px solid {t.border};
+}}
+QListWidget#navRail {{
+    background-color: transparent;
+    border: none;
     padding-top: {SPACE['sm']}px;
 }}
+/* The mark must not punch a `window`-colored hole in the column: the base
+   `QWidget` rule above paints every widget, QLabel included. (Invisible while the
+   mark sat on the window background; obvious once it sits on the column.) */
+QLabel#navLogo {{ background-color: transparent; }}
 QListWidget#navRail::item {{
     padding: {SPACE['sm']}px {SPACE['md']}px;
     margin: 1px {SPACE['xs']}px;

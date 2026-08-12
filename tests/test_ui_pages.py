@@ -663,14 +663,24 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
     w._ready = False    # neuter the deferred launch-refresh worker (else it can run
                         # after monkeypatch unwinds → writes the LIVE store)
     try:
-        # Library menu carries Refresh + Add object + Fill + Enrich online
+        # Library menu = operations on the collection itself. (Back up / Restore /
+        # Prepare / Preferences moved to Tools; Import / Publish to File.)
         labels = [a.text() for a in w.lib_menu.actions()]
         assert "Refresh" in labels
         assert any("Add object" in t for t in labels)
         assert any("Fill missing metadata" in t for t in labels)
         assert any("Enrich online" in t for t in labels)
-        assert any("Back up" in t for t in labels)
-        assert any("Restore" in t for t in labels)
+
+        tools = [a.text() for a in w.tools_menu.actions()]
+        assert any("Prepare working folders" in t for t in tools)
+        assert any("Back up" in t for t in tools)
+        assert any("Restore" in t for t in tools)
+        assert any("Preferences" in t for t in tools)
+
+        files = [a.text() for a in w.file_menu.actions()]
+        assert any("Import" in t for t in files)
+        assert any("Publish" in t for t in files)
+        assert any("Exit" in t for t in files)
     finally:
         w.close()
         qapp.processEvents()
