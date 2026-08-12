@@ -24,6 +24,15 @@ small rendered PNGs) that exercises the whole app:
         multi-identifier labels ("C20 (NGC 7000)")
       - a stale Library stub (C33/NGC 6992: blank name, "unknown" type) → the
         right-click "Fill in missing metadata" target (repairs from the reference)
+  * **M101 mid-rejection** (#110): a sandbox hardlinking all 18 subs, built *before*
+        two of them were moved to `rejected/` → ships with stale links the first
+        refresh must prune (`processing.reconcile_rejected`), and with integration
+        already excluding the pair
+  * a **fake mounted telescope** shipped beside the store (Seestar `MyWorks/` +
+        Dwarf `Astronomy/DWARF_RAW_*`) holding M101/M42's frames *including the
+        rejected ones* plus a couple of genuinely new subs → re-import must offer
+        only the new ones. A device is just a mounted filesystem, so a directory is
+        a faithful stand-in for it
   * unclassifiable files in the Inbox holding area   → Import → Holding area panel
         (6c): headerless FITS + a stray render (a grouped dump), a no-IMAGETYP
         loose FITS, and a loose orphan → manual assign (object + kind)
@@ -51,6 +60,7 @@ Then test against it (no install changes needed):
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import tarfile
 from datetime import datetime, timedelta
@@ -114,13 +124,17 @@ def _png(path: Path, seed: int = 0):
 
 def _lights(folder: str, obj: str, ra: float, dec: float, exp: int, filt: str,
             start: datetime, n: int, seed0: int, kind: str = "Light"):
-    """Write n light subs into Images/<folder>/lights/ (Seestar filename form)."""
+    """Write n light subs into Images/<folder>/lights/ (Seestar filename form).
+    Returns the filenames, in capture order."""
     d = config.lights_dir(folder)
+    names = []
     for i in range(n):
         when = start + timedelta(seconds=21 * i)
         name = (f"{kind}_{obj}_{exp}s_{filt}_"
                 f"{when.strftime('%Y%m%d-%H%M%S')}.fit")
         _fits(d / name, obj, ra, dec, exp, filt, when, seed0 + i)
+        names.append(name)
+    return names
 
 
 def _seestar_stack(folder: str, obj: str, ra: float, dec: float, n: int,
@@ -178,6 +192,41 @@ def _dwarf_stack(folder: str, obj: str, ra: float, dec: float, n: int, exp: int,
     _png(d / "stacked.jpg", seed)   # the device preview render
 
 
+def _reject(folder: str, names: list[str]):
+    """Move subs out of `lights/` into `rejected/` — the #110 exclusion, exactly as
+    a user does it by hand in a file manager."""
+    dest = config.rejected_dir(folder)
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (config.lights_dir(folder) / name).rename(dest / name)
+
+
+def _prebuilt_sandbox(folder: str, names: list[str]):
+    """A Siril sandbox whose `lights/` are **real hardlinks** to the target's subs
+    (`ls -li` shows shared inodes / link count 2, as the app's own prep produces).
+
+    Built here so the corpus can ship a sandbox that *predates* a rejection — which
+    is the only way to exercise `siril.prune_rejected` manually. Prep itself is
+    add-only, so a frame rejected afterwards keeps its link until the reconcile runs
+    on the next refresh."""
+    sb = config.siril_dir(folder) / "lights"
+    sb.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        src, dst = config.lights_dir(folder) / name, sb / name
+        if dst.exists():
+            continue
+        try:
+            os.link(src, dst)
+        except OSError:                       # cross-device / no-link FS → copy
+            shutil.copyfile(src, dst)
+    presets = config.siril_dir(folder) / "presets"
+    presets.mkdir(exist_ok=True)
+    (presets / "naztronomy_smart_scope_presets.json").write_text(
+        '{"_note": "synthetic preset for testing"}\n')
+    (config.siril_dir(folder) / "next-steps.md").write_text(
+        "# Next steps\n\nSynthetic sandbox (pre-dates the rejection).\n")
+
+
 def _video(path: Path):
     """A tiny placeholder video file (valid enough for extension-based listing)."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -213,8 +262,15 @@ def build(out: Path):
     _lights("M81", "M81", ra, dec, 20, "IRCUT", base + timedelta(days=1), 15, 400)
     _seestar_stack("M81", "M81", ra, dec, 80, 20, "IRCUT", base + timedelta(days=1, hours=1), 500)
 
+    # M101 — the #110 `rejected/` demo. It gets a sandbox built by hand FIRST,
+    # hardlinking all 18 subs, and only then are two of them rejected — so the store
+    # ships in the state that only `siril.prune_rejected` can resolve (prep is
+    # add-only, so those two links survive until the reconcile runs on refresh).
+    # Watch: integration drops by two, and the two names leave siril/lights/.
     ra, dec = C("m101")
-    _lights("M101", "M101", ra, dec, 30, "LP", base + timedelta(days=2), 18, 600)
+    m101 = _lights("M101", "M101", ra, dec, 30, "LP", base + timedelta(days=2), 18, 600)
+    _prebuilt_sandbox("M101", m101)
+    _reject("M101", m101[:2])
 
     # M63 — already imported finished work (finished/ render + stacks/ stack)
     ra, dec = C("m63")
@@ -256,17 +312,15 @@ def build(out: Path):
                    base + timedelta(days=12, hours=1), 5300)
 
     # ---- M106 — a Siril sandbox with UNIMPORTED output (round-trip test) ----
+    # Its sandbox hardlinks M106's *real* subs (it used to hold unrelated synthetic
+    # names, which made the sandbox and the object disagree about what was being
+    # stacked). One sub is then rejected: because M106 has pending output, the
+    # refresh prune must **skip** it — the in-progress guard, observable as shipped.
     ra, dec = C("m106")
-    _lights("M106", "M106", ra, dec, 20, "LP", base + timedelta(days=7), 13, 1000)
+    m106 = _lights("M106", "M106", ra, dec, 20, "LP", base + timedelta(days=7), 13, 1000)
+    _prebuilt_sandbox("M106", m106)
+    _reject("M106", m106[:1])
     sb = config.siril_dir("M106")
-    (sb / "lights").mkdir(parents=True, exist_ok=True)
-    for i in range(13):                            # the (would-be hardlinked) inputs
-        _fits(sb / "lights" / f"Light_M106_20s_LP_2026052{i%9}-01000{i%9}.fit",
-              "M106", ra, dec, 20, "LP", base + timedelta(days=7, seconds=i), 1000 + i)
-    (sb / "presets").mkdir(exist_ok=True)
-    (sb / "presets" / "naztronomy_smart_scope_presets.json").write_text(
-        '{"_note": "synthetic preset for testing"}\n')
-    (sb / "next-steps.md").write_text("# Next steps\n\nSynthetic sandbox.\n")
     stem = "M106_119x20sec_2026-05-27_drizzle-1-5x_spcc"
     _png(sb / f"{stem}_processed.png", 1100)        # deliverable render
     _fits(sb / f"{stem}_processed.fit", "M106", ra, dec, 20, "LP",
@@ -321,6 +375,10 @@ def build(out: Path):
     # ---- An external import source to Browse→Import (ships beside the store) ----
     _build_import_source(out.parent / f"{out.name}-import-source")
 
+    # ---- A fake mounted telescope, for the #110 no-re-sync check (ships beside
+    # the store). Built AFTER the rejection above so it carries the rejected frames.
+    _build_device_mount(out.parent / f"{out.name}-device-mount")
+
     # Refresh once so captured folders are promoted into the Library (5d: the
     # Library is the captured collection, no longer bulk-seeded from goals) and
     # derived/renders are built — i.e. the post-launch state the app would produce.
@@ -364,6 +422,47 @@ def _build_import_source(src: Path):
                           "M 1", *C("m1"))
     _dwarf_startrails(src, "STARTRAILS_DWARF_RAW_WIDE_EXP_10_GAIN_0_2026-06-19-23-00-00")
     _dwarf_unknown(src, "DWARF_RAW_WIDE_Unknown_EXP_10_GAIN_0_2026-06-19-23-30-00")
+
+
+def _build_device_mount(dev: Path):
+    """A folder shaped like a **mounted telescope**, so the no-re-sync half of #110
+    is testable by hand. A device is just a filesystem — USB or SMB, it lands under
+    /Volumes either way — so a directory is a faithful stand-in.
+
+    It holds M101's frames **exactly as captured**, including the two the store has
+    since rejected, plus two genuinely new subs. Re-importing must offer only the two
+    new ones: the rejected pair is already in the library (in the other tier) and must
+    not come back. The Dwarf half repeats it for M42.
+
+    Point Import → Browse… at `<mount>/Seestar S50/MyWorks` (the device *button*
+    needs a real mount under /Volumes; the recursive scan treats both identically)."""
+    if dev.exists():
+        shutil.rmtree(dev)
+    coords = catalog.load_coords()
+
+    # ---- Seestar: every M101 sub the device captured, rejected ones included ----
+    myworks = dev / "Seestar S50" / "MyWorks" / "M101_sub"
+    myworks.mkdir(parents=True)
+    for tier in (config.lights_dir("M101"), config.rejected_dir("M101")):
+        for f in sorted(tier.iterdir()):
+            shutil.copyfile(f, myworks / f.name)
+    ra, dec = coord(coords, "m101")
+    start = datetime(2026, 5, 22, 3, 0, 0)          # a later session = new frames
+    for i in range(2):
+        when = start + timedelta(seconds=21 * i)
+        _fits(myworks / f"Light_M101_30s_LP_{when.strftime('%Y%m%d-%H%M%S')}.fit",
+              "M101", ra, dec, 30, "LP", when, 6000 + i)
+
+    # ---- Dwarf 3: the same shape on the other device ----
+    session = (dev / "DWARF3" / "Astronomy"
+               / "DWARF_RAW_TELE_M 42_EXP_15_GAIN_60_2026-05-30-22-00-00")
+    session.mkdir(parents=True)
+    for f in sorted(config.lights_dir("M42").iterdir()):
+        shutil.copyfile(f, session / f.name)
+    ra, dec = coord(coords, "m42")
+    when = datetime(2026, 5, 30, 23, 0, 0)
+    _dwarf_fits(session / f"M42_15s60_Duo-Band_{when.strftime('%Y%m%d-%H%M%S')}099_0C.fits",
+                "M42", ra, dec, 15, "Duo-Band", when, 6100, 60)
 
 
 def _src_sub(src, obj, ra, dec, exp, filt, n, seed0):
@@ -526,6 +625,46 @@ def verify(out: Path):
     print(f"  M106 has unimported output: {siril.has_unimported_output('M106')}")
     assert sessions, "corpus produced no sessions"
 
+    # #110: M101 ships mid-rejection — two subs moved out of lights/ into rejected/
+    # *after* its sandbox was built, so the stale links are still there and the
+    # first refresh has real work to do (`processing.reconcile_rejected`).
+    rejected = sorted(f.name for f in config.rejected_dir("M101").iterdir())
+    assert len(rejected) == 2, "M101 should ship with two rejected subs"
+    live = {f.name for f in config.lights_dir("M101").iterdir()}
+    assert not (set(rejected) & live), "a rejected sub is still in lights/"
+    linked = {f.name for f in (config.siril_dir("M101") / "lights").iterdir()}
+    assert set(rejected) <= linked, \
+        "the sandbox should still hold the stale links — that's what refresh prunes"
+    assert not siril.has_unimported_output("M101"), \
+        "M101 must have no pending output, or the prune would be skipped"
+    m101_frames = sum(s["frames"] for s in sessions if s["object_dir"] == "M101")
+    assert m101_frames == len(live), \
+        "rejected subs must not count toward sessions/integration"
+    print(f"  M101 #110: {len(rejected)} rejected, {m101_frames} counted, "
+          f"{len(linked)} stale sandbox links awaiting the refresh prune")
+
+    # M106 is the mirror case: also mid-rejection, but it has pending output, so the
+    # prune must SKIP it — the in-progress guard, observable without any setup.
+    m106_rej = {f.name for f in config.rejected_dir("M106").iterdir()}
+    m106_linked = {f.name for f in (config.siril_dir("M106") / "lights").iterdir()}
+    assert m106_rej <= m106_linked, "M106's sandbox should still link its rejected sub"
+    assert siril.has_unimported_output("M106"), "M106 must have pending output"
+    assert siril.prune_rejected("M106")["skipped"] is True, \
+        "a target with pending output must be skipped by the prune"
+    print(f"  M106 #110: {len(m106_rej)} rejected but pending output → prune skips it")
+
+    # …and the fake device mount still holds them, so a re-import proves no re-sync.
+    dev = out.parent / f"{out.name}-device-mount"
+    myworks = dev / "Seestar S50" / "MyWorks"
+    on_device = {f.name for f in (myworks / "M101_sub").iterdir()}
+    assert set(rejected) <= on_device, "the device should still hold the rejected subs"
+    dev_ops = ingest.scan_directory_plan(myworks)
+    offered = {Path(o.src).name for o in dev_ops}
+    assert not (set(rejected) & offered), "a rejected sub was offered for re-import"
+    assert len(offered) == 2, f"only the two new subs should be offered, got {offered}"
+    print(f"  device mount: {len(on_device)} frame(s) present, "
+          f"{len(offered)} offered (rejected pair correctly withheld)")
+
     # Phase 5 (5d): Caldwell goal active; the Library is the captured collection
     # (only *captured* Caldwell members land here, not the whole catalog), and the
     # stale stub is left incomplete for the Fill-missing demo.
@@ -569,13 +708,15 @@ def main():
 
     out = args.out.expanduser().resolve()
     import_src = out.parent / f"{out.name}-import-source"
+    device = out.parent / f"{out.name}-device-mount"
     print(f"Building synthetic corpus → {out}")
     print(f"  + external import source → {import_src}")
+    print(f"  + fake device mount      → {device}")
     build(out)
     print("Verifying (read-only)…")
     verify(out)
     if not args.no_tar:
-        tar = make_tar([out, import_src], args.tar.expanduser().resolve())
+        tar = make_tar([out, import_src, device], args.tar.expanduser().resolve())
         size = tar.stat().st_size / 1024
         print(f"Wrote tarball → {tar}  ({size:.0f} KB)")
     print("\nTo test:")
@@ -583,6 +724,8 @@ def main():
     print(f"  M110_DATA_ROOT=~/Documents/{out.name} m110     # then Refresh (Ctrl+R)")
     print(f"  # then Import → Browse… → ~/Documents/{import_src.name}  "
           f"(classifies + sweeps strays to the Holding area panel)")
+    print(f"  # and  Import → Browse… → ~/Documents/{device.name}/'Seestar S50'/MyWorks  "
+          f"(#110: only the 2 new subs are offered — the rejected pair is withheld)")
 
 
 if __name__ == "__main__":

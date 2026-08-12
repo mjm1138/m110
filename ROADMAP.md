@@ -207,6 +207,15 @@ etc).
     time via `processing.reconcile_rejected`, kept separate from `prepare_missing` so
     that function's "never touches an existing sandbox" invariant stays true.
 
+  Testing note: a telescope is **just a mounted filesystem**, so the device half is
+  automated rather than manual-only. `config.VOLUMES_DIR` made the mount probe
+  injectable, `tests/_helpers.mount_seestar`/`mount_dwarf` build scratch volumes
+  shaped like each device, and the import→reject→re-import round trip runs through
+  the *real* probe and scan. `make_test_corpus.py` ships the matching fixtures:
+  M101 mid-rejection with a sandbox that pre-dates it (the prune has real work on
+  first refresh), M106 the same but with pending output (the skip), and a
+  `-device-mount/` sibling still holding the rejected frames.
+
   **Still open — the view itself:** the autostretched sub browser, in-app flagging
   (which becomes "move to `rejected/`"), per-frame analysis, and delete-with-confirm.
   The `FrameProfile` fingerprint under [#18](BUGS.md) and the per-session capture
