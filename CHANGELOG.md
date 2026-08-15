@@ -10,6 +10,17 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **Working out your priority targets is about 10× faster** — on a Messier-sized
+  list it went from roughly 23 seconds to under 3. This is the calculation behind
+  the Planning page's target ranking, which runs in the background the first time
+  you open Planning each day and whenever you press **Recompute**. M110 was working
+  out sunset and sunrise separately for *every single target*, over and over, even
+  though the sky gets dark at the same time no matter what you're pointing at. It
+  now works each night out once. Same numbers, same rankings — just far less waiting.
+  The saving grows with the size of your goal lists: the more targets you track, the
+  more repeated work this removes.
+
 ## [0.3.0-beta.4] - 2026-08-11
 
 ### Added

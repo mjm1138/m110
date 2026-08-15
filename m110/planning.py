@@ -17,6 +17,7 @@ project's ``scripts/sky.py`` + the observability gate of ``scripts/prioritize.py
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from . import catalog
@@ -99,37 +100,67 @@ def to_utc(naive_local: datetime, site: Site):
     return Time(aware.astimezone(_UTC).replace(tzinfo=None))
 
 
-def twilight(year: int, month: int, day: int, site: Site, step_min: int = 5):
-    """``(astro_dusk, astro_dawn)`` as naive local datetimes for the night of the
-    given evening date — the astronomical-darkness window (sun below −18°). Either
-    may be ``None`` at high latitude in summer (no astro dark)."""
-    from astropy.coordinates import AltAz, get_sun
+def _utc_times(naive_locals, site: Site):
+    """The batched partner to `to_utc`: naive local wall times → **one** astropy
+    ``Time`` array. Same conversion, one object instead of N.
+
+    Worth its own function because `Time.__init__` is not cheap and this sits on
+    the twilight hot path — building one `Time` per 5-minute step ran to ~204k
+    constructions (≈10 s) in a single prioritizer pass over the Messier list."""
     from astropy.time import Time
+    return Time([site.localize(t).astimezone(_UTC).replace(tzinfo=None)
+                 for t in naive_locals])
+
+
+# Twilight is a pure function of (site geometry, timezone, date) — the answer for a
+# given night never changes — so it memoizes safely for the life of the process.
+# It matters because it sits under `observability`, which the prioritizer calls per
+# target across a ~22-date forward grid: one uncached run over the Messier list made
+# 535 twilight calls for 22 distinct dates (24× redundant, and 91% of the runtime).
+# Caching turns that cost from O(targets × dates) into O(dates).
+#
+# The key is the four Site fields the computation actually reads, and the cached
+# function takes only those — reconstructing a minimal Site — so it *cannot* quietly
+# start depending on a field that isn't in the key. Editing a site profile changes
+# the key, so a stale hit isn't possible.
+@lru_cache(maxsize=512)
+def _twilight_cached(lat: float, lon: float, elev: float, tz: str,
+                     year: int, month: int, day: int, step_min: int):
+    from astropy.coordinates import AltAz, get_sun
+    site = planning_config.Site(latitude_deg=lat, longitude_deg=lon,
+                                elevation_m=elev, timezone=tz)
     loc = _location(site)
     base = datetime(year, month, day, 15, 0)
     times = [base + timedelta(minutes=step_min * i)
              for i in range(int(18 * 60 / step_min))]
-    T = Time([to_utc(t, site) for t in times])
+    T = _utc_times(times, site)
     alt = get_sun(T).transform_to(AltAz(obstime=T, location=loc)).alt.deg
 
-    def cross(thr, rising):
-        for i in range(len(alt) - 1):
-            if (rising and alt[i] < thr <= alt[i + 1]) or \
-               (not rising and alt[i] >= thr > alt[i + 1]):
-                return times[i + 1]
-        return None
-
-    dusk = cross(-18, False)
-    dawn = None
-    if dusk:
-        after = [t for t in times if t > dusk]
-        T2 = Time([to_utc(t, site) for t in after])
-        alt2 = get_sun(T2).transform_to(AltAz(obstime=T2, location=loc)).alt.deg
-        for i in range(len(alt2) - 1):
-            if alt2[i] < -18 <= alt2[i + 1]:
-                dawn = after[i + 1]
+    dusk = dawn = None
+    for i in range(len(alt) - 1):
+        if alt[i] >= -18 > alt[i + 1]:
+            dusk = times[i + 1]
+            break
+    if dusk is not None:
+        # The post-dusk samples are a *slice* of the ones already transformed — the
+        # sun's altitude at a given instant doesn't depend on which array it was
+        # computed in — so the dawn crossing is read out of `alt`, not out of a
+        # second `get_sun` transform over the tail (which is what this used to do).
+        for i in range(times.index(dusk) + 1, len(alt) - 1):
+            if alt[i] < -18 <= alt[i + 1]:
+                dawn = times[i + 1]
                 break
     return dusk, dawn
+
+
+def twilight(year: int, month: int, day: int, site: Site, step_min: int = 5):
+    """``(astro_dusk, astro_dawn)`` as naive local datetimes for the night of the
+    given evening date — the astronomical-darkness window (sun below −18°). Either
+    may be ``None`` at high latitude in summer (no astro dark). Memoized per
+    (site, date) — see `_twilight_cached`."""
+    return _twilight_cached(site.latitude_deg, site.longitude_deg,
+                            site.elevation_m, site.timezone,
+                            year, month, day, step_min)
 
 
 def pick_start(samples, ceiling, hard: bool):

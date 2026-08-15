@@ -103,3 +103,68 @@ def test_zoneinfo_resolves_without_a_system_tzdb():
         assert ZoneInfo("America/Denver") is not None   # site-profile localization
     finally:
         zoneinfo.reset_tzpath(saved)              # restore for the rest of the session
+
+
+# ── twilight memoization (perf/twilight-cache) ───────────────────────────────
+#
+# Twilight sits under `observability`, which the prioritizer calls once per target
+# across a ~22-date forward grid. It depends only on (site geometry, timezone, date),
+# so the work must scale with *nights*, not with how many targets are being ranked.
+# These pin both halves of that: the answers stay correct, and the work stays bounded.
+
+def test_utc_times_matches_to_utc_element_wise():
+    """`_utc_times` is only worth having if it's the same conversion, batched."""
+    site = planning.Site()
+    ts = [datetime(2026, 6, 10, 22, 0), datetime(2026, 6, 11, 3, 30),
+          datetime(2026, 12, 10, 22, 0)]        # spans MDT → MST
+    assert ([t.iso for t in planning._utc_times(ts, site)]
+            == [planning.to_utc(t, site).iso for t in ts])
+
+
+def test_twilight_cache_returns_the_cold_answer():
+    planning._twilight_cached.cache_clear()
+    cold = planning.twilight(2026, 6, 10, planning.Site())
+    warm = planning.twilight(2026, 6, 10, planning.Site())
+    info = planning._twilight_cached.cache_info()
+    assert warm == cold
+    assert (info.misses, info.hits) == (1, 1)     # computed once, served once
+
+
+def test_twilight_is_computed_once_per_night_not_once_per_target():
+    """The regression guard for the 24×-redundancy this cache exists to remove:
+    ranking more targets over the same forward grid must add **zero** computation."""
+    site = planning.Site()
+    day = date(2026, 6, 10)
+    planning._twilight_cached.cache_clear()
+    for slug in ("m51", "m81", "m13", "m101"):
+        planning.observability(slug, day, site, horizon_days=28, grid_days=7)
+    info = planning._twilight_cached.cache_info()
+    # tonight + offsets 7/14/21/28 = at most 5 distinct nights, however many
+    # targets asked and however many times `_clear_hours` called through.
+    assert info.misses <= 5
+    assert info.hits > info.misses                # the repeats are all cache hits
+
+
+def test_twilight_cache_does_not_serve_a_stale_answer_for_another_site():
+    """The key discriminates on the site fields the computation reads, so changing
+    the profile can't hand back the previous location's night."""
+    day = (2026, 6, 10)
+    boulder = planning.Site()
+    reykjavik = planning.Site(latitude_deg=64.13, longitude_deg=-21.90,
+                              elevation_m=0.0, timezone="Atlantic/Reykjavik")
+    a = planning.twilight(*day, boulder)
+    b = planning.twilight(*day, reykjavik)
+    assert a[0] is not None                       # Boulder has astro dark in June…
+    assert b == (None, None)                      # …Reykjavik does not
+    assert planning.twilight(*day, boulder) == a  # and the first is still itself
+
+
+def test_twilight_cache_shares_across_profiles_that_differ_only_in_unread_fields():
+    """The cached function takes only the four fields it uses, so it cannot depend
+    on one that isn't in the key — two profiles differing in their masks share the
+    answer instead of recomputing it."""
+    planning._twilight_cached.cache_clear()
+    a = planning.Site(name="Home", horizon_mask="ridge.hrz")
+    b = planning.Site(name="Field trip", glow_mask="dome.hrz", bortle=4)
+    assert planning.twilight(2026, 6, 10, a) == planning.twilight(2026, 6, 10, b)
+    assert planning._twilight_cached.cache_info().misses == 1

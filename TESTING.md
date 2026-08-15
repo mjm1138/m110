@@ -397,6 +397,11 @@ re-run when its area changes and you want eyes on the visuals).
       recompute runs once/day; **Recompute** forces it). Flip **Strategy**
       (capture-many ↔ go-deep) and nudge a **weight** → the order changes *instantly*
       (no worker spin-up). Right-click **Pin** → floats to #1 with ▲.
+- [ ] **Recompute is quick** (`perf/twilight-cache`): with a Messier-sized goal set it
+      finishes in **a few seconds**, not ~half a minute. If it crawls, the twilight
+      memoization has regressed — check that ranking more targets isn't re-deriving
+      each night per target (`planning._twilight_cached.cache_info()` should show far
+      more hits than misses, with misses ≈ the number of distinct nights scanned).
 - [ ] **Site profiles:** create a profile (coordinates via **Look up location…** if
       online), import a `.hrz`, **Compute light-dome…** → a `<profile>.glow.hrz`
       appears beside the profile. Switching **Location** re-ranks.
