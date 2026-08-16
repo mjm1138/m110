@@ -55,6 +55,10 @@ publish = ["jinja2>=3", "markdown>=3"]
 # ROADMAP item 4 → Open. Note the suite won't catch a bad bump (the assistant
 # tests never import `mcp`); run `tools/smoke_mcp.py`. Keep this bound in sync
 # with `dev`, below.
+# The bound is tracked debt, not a preference — ROADMAP item 4b carries the
+# verified breakage, the port target and the exit criteria. CI now starts the
+# server (`tools/smoke_mcp.py`), and Dependabot holds `mcp` majors, so lifting
+# this without doing the port fails loudly instead of shipping a dead binary.
 assistant = ["mcp>=1.9,<2"]
 # NOTE — the sky map (ROADMAP item 12) needs `uranometria`, which is deliberately
 # NOT declared here. It isn't on PyPI yet, and a direct URL requirement is
