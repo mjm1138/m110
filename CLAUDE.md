@@ -30,6 +30,31 @@ pytest -q                          # run tests
   and seeded on first launch. It does **not** require any other project to run.
 - Offscreen smoke (no display): `QT_QPA_PLATFORM=offscreen python -c "..."`.
 
+### Working in a git worktree
+
+No build step and **no second venv** — the one venv at the main checkout serves
+every worktree. But the editable install hardcodes the **main checkout's**
+package dir, so *how* you launch decides which code actually runs:
+
+```bash
+cd ~/Documents/Code/m110/.claude/worktrees/<name>
+source ~/Documents/Code/m110/.venv/bin/activate
+python -m m110.ui.main             # ✅ the worktree's code  (NOT `m110`)
+pytest -q                          # ✅ the worktree's code
+PYTHONPATH=$PWD python tools/x.py  # ✅ tools/ needs the path set
+```
+
+**`m110` — the console script — always runs `main`'s code, from any worktree.**
+Its `sys.path[0]` is `.venv/bin`, not your cwd, so the editable finder wins and
+you test `main` while believing you're testing your branch; nothing errors. Same
+trap for `python tools/<script>.py`, whose `sys.path[0]` is `tools/`. `-m` and
+`pytest` are safe because both put the cwd first.
+
+Rule: **`-m` or `pytest` from the worktree root; everything else needs
+`PYTHONPATH=$PWD`.** And don't `pip install -e .` inside a worktree — it re-points
+the shared venv at *that* worktree and breaks the others (recover by re-running it
+from the main checkout). Runbook + the safe-data-root protocol: [`TESTING.md`](TESTING.md) §0.
+
 ---
 
 ## What this is, and where it came from
