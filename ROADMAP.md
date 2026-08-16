@@ -31,7 +31,6 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
 | 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
 | 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
-| 4b | **MCP SDK v2 migration** — the assistant server is pinned to `mcp<2`, which is **maintenance-only (security fixes)** upstream | ⚠️ **acknowledged debt, scheduled** — contained by a CI smoke gate + a Dependabot major-hold; exit criteria listed | [↓](#4b--mcp-python-sdk-v2-migration-maintenance-debt) |
 
 ---
 
@@ -118,68 +117,13 @@ the client they already have. Revised phasing:
 #### Open
 
 - **M1** — the in-app transport and the safe-write allowlist.
-- **Migrate to the MCP Python SDK v2** — **carried as acknowledged debt with a
-  clock**; own section below ([↓](#4b--mcp-python-sdk-v2-migration-maintenance-debt)).
+- ✅ **MCP Python SDK v2 migration** *(done 2026-08-16, `feature/mcp-v2`)* — the
+  assistant server is off the maintenance-only v1 line; see [`DONE.md`](DONE.md).
 - **Processing coach**, deferred: the bundled guidance corpus was withdrawn (see
   [`BUGS.md`](BUGS.md) #45) and replacements need authoring against citable
   sources before the *coaching* leg can ship.
 - Cost controls and a model picker belong to whichever client the user brings —
   revisit only if M2 happens.
-
-
-### 4b — MCP Python SDK v2 migration *(maintenance debt)*
-
-**This is the one piece of M110 knowingly running on an unsupported framework
-version, and it is tracked here rather than in a dependency pin's comment so it
-can't quietly become permanent.** `mcp` is held at `<2`; v1.x is **maintenance
-mode — security fixes only**. Everything below was re-verified 2026-08-16 against
-a real install of 2.0.0, not read off release notes.
-
-**Why the bound exists.** v2.0.0 removed the low-level `Server` **decorator API**
-that `assistant/mcp_server.py` is built on. All six decorators `build_server()`
-uses are gone — probed directly on 2.0.0:
-
-| used at | `list_prompts` :61 · `get_prompt` :72 · `list_resources` :85 · `read_resource` :93 · `list_tools` :101 · `call_tool` :108 |
-|---|---|
-| in 2.0.0 | **all six removed** |
-
-A bare bump therefore dies on `build_server()`'s first line with
-`AttributeError: 'Server' object has no attribute 'list_prompts'` (reproduced).
-`mcp.server.fastmcp` is gone too.
-
-**Why the port is small.** The *types* survived — `mcp.types` is a permanent alias
-and `Tool`/`TextContent`/`ImageContent`/`Prompt`/`Resource` are unchanged — so this
-is confined to handler wiring. Two landing spots exist in 2.0.0:
-- `Server.add_request_handler(...)` / `add_notification_handler(...)` — the
-  low-level replacement (`Server` now exposes exactly these plus `run`,
-  `get_capabilities`, `create_initialization_options`, the session/HTTP surface).
-- **`mcp.server.mcpserver.MCPServer`** — still carries `tool` / `prompt` /
-  `resource` / `list_tools` / `call_tool` decorators, so it is the closer shape to
-  what we already have and the likely target.
-
-**Guards now in place** (so the debt is *contained*, not merely noted):
-- **CI actually starts the server.** `ci.yml` runs `tools/smoke_mcp.py` against a
-  bootstrapped store on both matrix legs, under `if: !cancelled()` so a failing
-  suite can't mask it. Verified in both directions: exit 0 healthy, and exit 1
-  with the `AttributeError` traceback when forced onto 2.0.0. This closes the hole
-  that let Dependabot **#115** (and **#121**, the same branch re-raised a week
-  later) pass CI green while breaking the server.
-- **Dependabot ignores `mcp` majors** (`.github/dependabot.yml`) — minor/patch and
-  any **security advisory** against 1.x still come through. A deliberate,
-  temporary hold to stop the same PR recurring weekly.
-
-**Exit criteria — all in one PR, and the PR is not done until they all hold:**
-1. `build_server()` ported; `tools/smoke_mcp.py` green against `mcp>=2` *run by
-   hand*, not just CI-green.
-2. Bound lifted in **both** places in `pyproject.toml` (`assistant` **and** `dev`
-   — they must stay in sync).
-3. The `ignore` block removed from `.github/dependabot.yml`.
-4. A **real packaged build** exercised, not just a source run: `build` self-
-   references `m110[assistant]` and `release.yml` installs `.[build]`, so the bound
-   is what stands between a release and a frozen `m110-mcp` that dies at startup.
-   This is the same "validate against a real PyInstaller build" lesson as the
-   astropy/uranometria bundling bugs (#64, #74, #75).
-5. `PROTO` in `tools/smoke_mcp.py` reviewed against the version v2 negotiates.
 
 
 ### 2 — Plan-file generation (device schedules)

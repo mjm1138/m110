@@ -9,23 +9,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    # `mcp` 2.x is a breaking rewrite: it removed the low-level `Server` decorator
-    # API (`@server.list_tools()`, `@server.call_tool()`, the prompt/resource
-    # pairs) that `assistant/mcp_server.py` is built on, so `build_server()` dies
-    # on its first line under 2.0.0. Dependabot has proposed the bump twice (#115,
-    # closed; #121, the same branch re-raised a week later) and CI passed both
-    # times, because nothing in the suite imports `mcp` — the smoke-test step
-    # added to ci.yml is what closes that hole.
-    #
-    # Ignoring only MAJOR versions: 1.x patch/minor updates, and any security
-    # advisory against them, still come through — which is the point of having
-    # Dependabot here at all. This is a deliberate, temporary hold, not a
-    # decision to stay on 1.x: v1 is maintenance-only (security fixes), so the
-    # port is scheduled work — ROADMAP item 4. **Remove this block as part of
-    # that port**, in the same PR that lifts the bound in pyproject.toml.
-    ignore:
-      - dependency-name: "mcp"
-        update-types: ["version-update:semver-major"]
+    # (The temporary `mcp` major-ignore that lived here is gone: the v2 port
+    # landed, so there is nothing left to hold back. It was only ever a stopgap
+    # while a known-breaking major sat unported — the durable guard is the
+    # smoke-test step in ci.yml, which starts the server and speaks JSON-RPC to
+    # it, so the next breaking major fails CI loudly instead of passing green
+    # the way #115 and #121 did.)
     groups:
       # Batch routine version bumps into one PR to cut noise; security updates
       # still come through even when they land outside the group window.

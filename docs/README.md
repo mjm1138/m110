@@ -18,7 +18,8 @@ each page links to the next.
 6. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
 7. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
 8. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
-9. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
+9. **[Using an AI assistant](assistant.md)** — connect your own assistant to your library, the skills and tools it gets, and why it can't change anything
+10. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
 
 ---
 
@@ -107,7 +108,8 @@ Everything that isn't your object collection lives here as **collapsible section
   data is sent; turn the check off in Preferences → Updates.
 - **Other preferences** worth knowing: your **data folder**, the processing **workflows**
   to prepare (and your Siril path), the **finished-image hints** that decide what counts as
-  a finished render vs. an intermediate, and whether to import per-sub JPG previews.
+  a finished render vs. an intermediate, whether to import per-sub JPG previews, and the
+  **AI assistant** connection (see **[Using an AI assistant](assistant.md)**).
 
 **Slow operations** (refresh, ingest, backup) run in the background with a progress
 dialog you can cancel — the window never freezes.
