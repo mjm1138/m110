@@ -59,7 +59,7 @@ publish = ["jinja2>=3", "markdown>=3"]
 # verified breakage, the port target and the exit criteria. CI now starts the
 # server (`tools/smoke_mcp.py`), and Dependabot holds `mcp` majors, so lifting
 # this without doing the port fails loudly instead of shipping a dead binary.
-assistant = ["mcp>=1.9,<2"]
+assistant = ["mcp>=1.9,<3"]
 # NOTE — the sky map (ROADMAP item 12) needs `uranometria`, which is deliberately
 # NOT declared here. It isn't on PyPI yet, and a direct URL requirement is
 # rejected on upload *anywhere* in the metadata, extras included — so declaring
@@ -69,7 +69,7 @@ assistant = ["mcp>=1.9,<2"]
 # `m110.skymap` degrades via SkymapDepsMissing when it's absent. Swap this for a
 # real `skymap = ["uranometria>=0.11"]` extra once it's published.
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3",
-       "mcp>=1.9,<2", "jsonschema>=4"]  # astroquery also build-time (tools/gen_caldwell.py);
+       "mcp>=1.9,<3", "jsonschema>=4"]  # astroquery also build-time (tools/gen_caldwell.py);
                                         # jsonschema validates the tool schemas in tests;
                                         # `mcp` bound: see the `assistant` extra above
 # Packaging the desktop app into native bundles/installers (see packaging/).
