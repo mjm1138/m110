@@ -246,6 +246,28 @@ from **8 panes → 4**: **Library · Overview · Import · Processing**.
 - **Sessions** → a "View all sessions…" dialog on Overview (per-object sessions already
   live in the object detail pane). The Library stat strip gained total integration hours.
 
+### Phase 6 — Shell chrome pass  *(done 2026-08-12)*
+Four small corrections to the shell itself, once the pages had settled.
+- **The brand mark moved to the foot of the nav column** (Phase 4 put it at the *top*
+  of the rail, where it competed with the nav items for the eye's first landing spot).
+  It's now a quiet anchor just above the status bar — and it earns its place by being
+  **clickable → About**, which puts version + update status one click from anywhere.
+  The **surface and divider moved from `#navRail` to `#navColumn`** so the column reads
+  as one panel: a rail-owned border stops where the list stops, which was invisible with
+  the mark above it and obvious with the mark below.
+- **About gained a live update line** — it re-checks on every appearance (`record=False`,
+  so it never eats the daily launch throttle) and says "You're up to date" or offers the
+  newer version. The version line provoked the question; the dialog now answers it.
+- **The status bar dropped its `n/n captured` prefix** — the Library's own stat row
+  already shows that tally *in context*; in permanent chrome it was noise competing with
+  the data-root path and the operation messages that actually change.
+- **Menus reorganised to File · View · Library · Tools · Help.** The old Library+Help
+  pair only read acceptably on macOS, where the `MenuRole`s hoist About/Preferences into
+  the app menu; on Windows and Linux it filed Preferences under "Library" and offered
+  **no way to quit at all**. One structure covers all three — the roles still do the
+  hoisting, so there's no `sys.platform` branch to drift. A **View** menu (Ctrl+1–5)
+  came with it, giving the rail keyboard access it never had.
+
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
   across the whole collection (not grouped by object) — a bigger feature + data work;

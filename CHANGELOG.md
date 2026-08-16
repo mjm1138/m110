@@ -29,6 +29,39 @@ changes a **user** would notice, per release.
   This is the groundwork for the planned Lights Table, where you'll be able to
   review and flag subs from inside the app instead of in a file manager.
   (Thanks to @devonjones — [#110](https://github.com/mjm1138/m110/issues/110).)
+- **The menus have been reorganised into File, View, Library, Tools and Help.**
+  Previously almost everything lived under a single "Library" menu — including
+  Preferences, backups and publishing — which read oddly on Windows and Linux, and
+  there was **no Exit command at all** outside macOS. Import and Publish now sit under
+  File, backups and Preferences under Tools, and File → Exit closes the app. On macOS
+  nothing moves out from under you: About, Preferences and Quit stay in the M110
+  application menu where they belong.
+- **A View menu switches panes from the keyboard** — Ctrl+1 to Ctrl+5 (Cmd on macOS)
+  jump straight to Library, Overview, Planning, Import or Processing.
+- **About M110 now tells you whether an update is waiting.** Open it and it checks in
+  the background, then shows either "You're up to date" or the newer version with a
+  Download link. It re-checks each time you open it, and never counts against the
+  daily launch check.
+
+### Changed
+- **The M110 mark has moved to the bottom of the sidebar**, just above the status bar,
+  and **clicking it opens About** — so the version and update status are one click
+  away from anywhere in the app. The sidebar now reads as a single panel, with its
+  divider running the full height of the window.
+- **The status bar no longer leads with a captured/total count.** The Library page
+  already shows that tally in context; in permanent chrome it was noise. The status
+  bar now shows where your data lives, plus whatever an in-progress operation
+  (syncing, backing up) has to say.
+### Changed
+- **Working out your priority targets is about 10× faster** — on a Messier-sized
+  list it went from roughly 23 seconds to under 3. This is the calculation behind
+  the Planning page's target ranking, which runs in the background the first time
+  you open Planning each day and whenever you press **Recompute**. M110 was working
+  out sunset and sunrise separately for *every single target*, over and over, even
+  though the sky gets dark at the same time no matter what you're pointing at. It
+  now works each night out once. Same numbers, same rankings — just far less waiting.
+  The saving grows with the size of your goal lists: the more targets you track, the
+  more repeated work this removes.
 
 ## [0.3.0-beta.4] - 2026-08-11
 

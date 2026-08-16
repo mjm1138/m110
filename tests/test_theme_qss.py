@@ -23,6 +23,26 @@ def test_qss_contains_key_selectors_and_palette():
     assert tokens.DARK.accent in qss
 
 
+def test_nav_column_owns_the_surface_and_divider():
+    """The brand mark sits *below* the rail, so a rail-owned border would stop short
+    of it and leave the logo on the window background. (Asserted on the QSS, not by
+    painting — QMacStyle-only gaps can't be caught offscreen.)"""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        col = re.search(r"QWidget#navColumn \{(.*?)\}", qss, re.S)
+        assert col, "missing QWidget#navColumn rule"
+        assert t.surface in col.group(1)
+        assert f"border-right: 1px solid {t.border}" in col.group(1)
+
+        rail = re.search(r"QListWidget#navRail \{(.*?)\}", qss, re.S)
+        assert rail and "border-right" not in rail.group(1)
+
+        # …and the mark must not punch a `window`-colored hole in that column —
+        # the base QWidget rule paints QLabel too.
+        logo = re.search(r"QLabel#navLogo \{(.*?)\}", qss, re.S)
+        assert logo and "background-color: transparent" in logo.group(1)
+
+
 def test_table_check_indicator_is_stylesheet_drawn():
     """Item check indicators must carry explicit ::indicator rules.
 
