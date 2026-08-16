@@ -752,8 +752,44 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## UI niceties (backlog)
 
-- [ ] **Surface skipped files** after an import ("N already present, skipped") — copies
-  are already skip-if-present + partial-safe, so this is just reporting.
+- [x] **Buttons in table rows were clipped in both directions**
+  *(done — `fix/table-row-buttons`)*. Reported against **Saved field guides**, where the
+  row read `View | Revea | Delete` with the button tops shaved off, at every window size.
+  **Root cause:** the app QSS pads table items (`QTableView::item { padding: 4px 8px }`),
+  and Qt lays a cell **widget** out inside that padded rect — but `resizeColumnsToContents`
+  measures *items* and skips cell widgets entirely, and the row height is sized for one line
+  of text. Measured under the real macOS style: the column was 195px where the buttons
+  needed 194 + 17 of inset, and the row 33px where they needed 30 + 9.
+  **Fix:** `widgets.fit_cell_widgets(table, *cols)` — a sibling to `fit_table_height` —
+  measures the cell widgets themselves and adds the padding, in the *same* `SPACE` tokens
+  the stylesheet uses so the two can't drift (a test fails the build if they do). Two
+  traps found while fixing it: the grid line eats another pixel, and the row height must be
+  a **minimum section size**, because `fit_table_height` calls `resizeRowsToContents`, which
+  re-measures from the items and silently undid a per-row height (the first attempt fixed
+  the width and left the vertical clipping in place).
+  **This was app-wide, not one page.** The Import holding area had hit the same bug
+  earlier (#65, *Assign* clipped to *ssig*) and papered over it with hand-tuned widths
+  150/130/210 — which fixed that one row, never addressed the row *height*, and was itself
+  **3px short** (the cluster needs 213). Both preview tables' remap combos (`ingest_dialog`,
+  `import_page`) were vertically clipped too and are now measured. The two holding pickers
+  keep an explicit **minimum** width, since the Object combo is editable and wants typing
+  room the content can't imply — the intent the old magic numbers carried silently.
+  *Open follow-up:* whether a three-button cluster is the right affordance for the guides
+  list at all — see the next item.
+
+- [ ] **Per-row action buttons vs. a context menu.** Raised alongside the clipping fix.
+  The **Saved field guides** row carries `View · Reveal · Delete` as three equal buttons.
+  Three reasons to reconsider: **View duplicates** the row's existing double-click;
+  **Delete is styled identically to the benign actions** and sits a few pixels away (there
+  *is* a confirm dialog, so the cost is annoyance rather than data loss); and it's the odd
+  one out in this app — the Library, Processing queue and detail gallery all expose per-row
+  actions through `widgets.connect_context_menu`, and the cluster spends ~210px of every
+  row on actions that apply to one row at a time (the minimal-chrome rule in
+  [`UI_ROADMAP.md`](UI_ROADMAP.md)). **Not a blanket rule:** the Import holding area's
+  `Assign · Reveal · Discard` buttons are arguably right, because Assign is the *primary*
+  action you perform on row after row in a triage pass, and burying it in a context menu
+  would make that flow slower. If the buttons stay there, `Discard` is still the one worth
+  demoting.
 
 ## Open questions
 

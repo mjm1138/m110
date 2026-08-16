@@ -26,6 +26,7 @@ from m110.ui import theme
 from m110.ui.ingest_dialog import (
     _ScanWorker, _ApplyWorker, _fmt_size, KIND_LABEL, ASSIGNABLE_KINDS,
 )
+from m110.ui.widgets import fit_cell_widgets
 
 RECENTS_KEY = "import_recents"
 MAX_RECENTS = 8
@@ -295,6 +296,9 @@ class ImportPage(QWidget):
         self._loading = False
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        # Column 1 carries a remap combo on mis-pointed rows (#12) — measure it, or
+        # it's clipped the same way the holding-area buttons were.
+        fit_cell_widgets(self.table, 1)
         self._update_summary()
 
     def _catalog_ids(self):
@@ -527,15 +531,23 @@ class ImportPage(QWidget):
                     kind.setCurrentIndex(ki)
             self.holding_table.setCellWidget(r, 4, kind)
             self.holding_table.setCellWidget(r, 5, self._holding_actions(r))
-        # resizeColumnsToContents ignores cell *widgets*, so the Object/Kind/Actions
-        # columns would collapse (the "Assign" button clipped to "ssig", #65) — give
-        # them explicit widths.
+        # resizeColumnsToContents ignores cell *widgets*, so Object/Kind/Actions
+        # would collapse (the "Assign" button clipped to "ssig", #65). This used to
+        # carry hand-tuned pixel widths, which fixed that one row and went stale on
+        # any label/font/padding change — and never addressed the row *height*, so
+        # the same widgets were clipped vertically the whole time. Measure them.
         self.holding_table.resizeColumnsToContents()
         hdr = self.holding_table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        self.holding_table.setColumnWidth(3, 150)   # Object
-        self.holding_table.setColumnWidth(4, 130)   # Kind
-        self.holding_table.setColumnWidth(5, 210)   # Assign · Reveal · Discard
+        fit_cell_widgets(self.holding_table, 3, 4, 5)   # Object · Kind · Actions
+        # …then a floor for the two pickers. Fitting alone would size the Object
+        # combo to its longest *existing* id (~98px), but it's editable and you
+        # type new names into it (#34) — that wants elbow room the content can't
+        # imply. The old hardcoded 150/130 encoded this without saying so; keeping
+        # it as an explicit minimum keeps the intent and still can't clip, since
+        # fit_cell_widgets has already guaranteed the lower bound.
+        for col, floor in ((3, 150), (4, 130)):
+            hdr.resizeSection(col, max(hdr.sectionSize(col), floor))
 
     def _make_object_combo(self, ids) -> QComboBox:
         """An editable Object picker for a held row. Starts **empty** (so the

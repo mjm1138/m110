@@ -243,6 +243,10 @@ class IngestDialog(QDialog):
         self._loading = False
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        # Column 1 carries a remap combo on mis-pointed rows (#12) — measure it, or
+        # it's clipped the same way the holding-area buttons were.
+        from m110.ui.widgets import fit_cell_widgets
+        fit_cell_widgets(self.table, 1)
         self._update_summary()
 
     def _catalog_ids(self):

@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
 from m110 import catalog, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
-    make_table, fit_table_height, CollapsibleSection, connect_context_menu,
+    make_table, fit_table_height, fit_cell_widgets, CollapsibleSection,
+    connect_context_menu,
 )
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
@@ -580,6 +581,10 @@ class PlanningPage(QScrollArea):
         self._guides_table.resizeColumnsToContents()
         from PySide6.QtWidgets import QHeaderView
         self._guides_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        # The action column holds a cell *widget*, which resizeColumnsToContents
+        # doesn't measure — size it (and the rows) from the buttons themselves,
+        # before fit_table_height sums the row heights.
+        fit_cell_widgets(self._guides_table, 2)
         fit_table_height(self._guides_table, max_rows=10)
 
     def _view_guide(self, r: int):

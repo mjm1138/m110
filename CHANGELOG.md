@@ -10,6 +10,16 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **Buttons in table rows were cut off.** Most visibly in Planning → *Saved field
+  guides*, where the row read "View · Revea · Delete" with the tops and bottoms of
+  the buttons shaved off, at any window size. The same thing was happening more
+  subtly elsewhere: the Import holding area's **Discard** button was a few pixels
+  short, and the object pickers in both import previews were squeezed vertically.
+  Rows are now measured against the controls they actually contain, so nothing is
+  clipped — and the holding area's columns size themselves rather than relying on
+  fixed widths that went stale whenever a label changed.
+
 ### Changed
 - **The AI-assistant connection now uses the current version of the MCP standard
   library.** M110 had been held on the previous major version, which upstream now

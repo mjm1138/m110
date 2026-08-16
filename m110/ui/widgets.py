@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from m110 import derived, objects, siril
 from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
+from m110.ui.theme.tokens import SPACE
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
 # Per-cell role carrying the raw status key (e.g. "deep_stack") so the pill delegate
@@ -228,6 +229,57 @@ def fit_table_height(tbl: QTableWidget, max_rows: int | None = None,
         Qt.ScrollBarAsNeeded if capped else Qt.ScrollBarAlwaysOff)
     header = tbl.horizontalHeader().height() + 2 * tbl.frameWidth()
     tbl.setFixedHeight(header + body + pad)
+
+
+# The app QSS pads table items — `QTableView::item { padding: xs sm }` in
+# `theme/qss.py` — and Qt lays a cell **widget** out inside that padded rect too.
+# Nothing else knows about it: `resizeColumnsToContents` measures *items* and skips
+# cell widgets entirely, and the default row height is sized for one line of text.
+# So a row of buttons gets clipped in both directions at once — horizontally into a
+# column sized for an empty item, vertically into a ~24 px row when the buttons need
+# 30. Kept in the same units the stylesheet uses (not hardcoded pixels) so the two
+# can't drift; `tests/test_ui_table_widgets.py` fails the build if they ever do.
+CELL_WIDGET_PAD_H = 2 * SPACE["sm"]
+CELL_WIDGET_PAD_V = 2 * SPACE["xs"]
+
+
+def fit_cell_widgets(tbl: QTableWidget, *cols: int) -> None:
+    """Size `cols` — and every row — so no cell **widget** is clipped.
+
+    Call **after** the rows are populated and **before** `fit_table_height`, which
+    sums row heights and would otherwise bake in the pre-growth ones.
+
+    Rows are measured across *all* columns, not just `cols`: a combo box in an
+    un-listed column raises the row just as a button does. Widths are only touched
+    for the columns you name, so a stretch column stays stretchy.
+
+    This replaces per-page magic numbers. The Import page's holding table carried
+    hand-tuned widths (150/130/210) from the first time this bit — issue #65, the
+    *Assign* button clipped to *ssig* — which fixed that row and nothing else, and
+    silently goes stale the moment a label, the font, or the padding changes."""
+    rows, cols_n = tbl.rowCount(), tbl.columnCount()
+    grid = 1 if tbl.showGrid() else 0       # the grid line eats a pixel of the cell
+    for c in cols:
+        need = max((tbl.cellWidget(r, c).sizeHint().width()
+                    for r in range(rows) if tbl.cellWidget(r, c) is not None),
+                   default=0)
+        if need:
+            tbl.setColumnWidth(c, need + CELL_WIDGET_PAD_H + grid)
+    tallest = max((tbl.cellWidget(r, c).sizeHint().height()
+                   for r in range(rows) for c in range(cols_n)
+                   if tbl.cellWidget(r, c) is not None), default=0)
+    if tallest:
+        # Set the *minimum section size*, not per-row heights: `fit_table_height`
+        # (and any later reload) calls `resizeRowsToContents`, which re-measures
+        # from the items and would drop a row straight back to one line of text —
+        # cell widgets aren't consulted. A minimum is a floor Qt won't resize below,
+        # so it survives, and it keeps the rows uniform rather than only growing
+        # whichever ones happen to hold a widget.
+        tbl.verticalHeader().setMinimumSectionSize(
+            tallest + CELL_WIDGET_PAD_V + grid)
+        for r in range(rows):
+            tbl.setRowHeight(r, max(tbl.rowHeight(r),
+                                    tallest + CELL_WIDGET_PAD_V + grid))
 
 
 class CollapsibleSection(QWidget):
