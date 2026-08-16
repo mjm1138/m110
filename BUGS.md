@@ -398,6 +398,31 @@ Legend: `[ ]` open · `[~]` partially done
   dated forecasts. **Prerequisite for** the assistant's deferred *processing-coach*
   skill (ROADMAP item 4) and for any future in-app guidance surface.
 
+- [x] **Priority computation took ~23 s on a Messier-sized list** *(done — `perf/twilight-cache`)*.
+  Profiled, not guessed: **91% of the runtime was `planning.twilight`**, recomputed per
+  target. `observability` calls `_clear_hours` up to 22× per target (tonight + the
+  `nights_to_close` forward grid, `SEASON_GRID_DAYS=7` out to `SEASON_HORIZON_DAYS=150`),
+  and *each* call recomputed twilight — **535 calls for 22 distinct nights, 24× redundant**,
+  with tonight's alone computed 110 times (once per target, identical every time). Twilight
+  depends only on (site, date); it has nothing to do with the target, so the cost was
+  O(targets × nights) for no reason — and got worse the more goal lists you activate.
+  Fixes: (a) **memoize** — `_twilight_cached`, keyed on the four `Site` fields the math
+  reads (lat/lon/elev/tz) + date + step, with the cached function taking *only* those so it
+  can't grow a dependency outside the key; a profile edit changes the key, so a stale hit
+  isn't possible. (b) **batch the `Time` construction** — `Time([to_utc(t) for t in times])`
+  built one astropy `Time` per 5-minute step (204,664 `Time.__init__` calls, ~10 s a run);
+  `_utc_times` does the identical conversion in one. (c) the second `get_sun` transform over
+  the post-dusk tail was **redundant** — those samples are a slice of the ones already
+  transformed, so dawn is read out of the existing array. **23 s → 2.4 s cold (9.5×),
+  1.4 s warm.** Verified byte-identical against the old implementation over **488 nights ×
+  4 sites** (incl. 49 no-astro-dark nights at 64°N and a southern site): zero mismatches;
+  the existing June/December twilight goldens still pass. Guarded by five tests in
+  `test_planning.py`, incl. one asserting that ranking *more* targets adds **zero**
+  twilight computation. Remaining ~1.4 s is thin — ERFA `epv00`/`pnm06a` for the per-target
+  transforms plus a one-time IERS table parse; vectorizing the target transform across
+  targets or astropy's `ErfaAstromInterpolator` would chip at it, judged not worth the
+  complexity.
+
 *Findings from the 2026-07-13 prioritizer/planner review below — reasoning in
 [`prioritizer-review.md`](docs-archive/prioritizer-review.md).*
 

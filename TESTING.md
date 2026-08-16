@@ -39,6 +39,66 @@ rm -rf /tmp/m110-test                     # reset between runs
   folders into the temp root's `Images/<target>/lights/` and
   `Images/<target>/seestar-stacks/`, then Refresh.
 
+### Testing from a git worktree
+
+Feature work often happens in a `git worktree` (an isolated checkout of another
+branch, e.g. under `.claude/worktrees/<name>/`), and there is one thing to get
+right before any result from one means anything.
+
+**Setup: nothing.** No build step — M110 is pure Python — and **no second venv**.
+The venv at the main checkout has every dependency and works from any worktree.
+
+**The catch: `pip install -e .` binds to one checkout, and it isn't yours.** The
+editable install writes a finder that hardcodes the *main* checkout's package dir:
+
+```
+.venv/…/__editable___m110_0_3_0b4_finder.py → /Users/…/Code/m110/m110
+```
+
+So whether you exercise your branch or `main` depends entirely on how you launch —
+and when it picks the wrong one, **nothing errors**. You get a clean run, a green
+suite, a working app, all from code you didn't change. Verified from inside a
+worktree by importing a symbol that exists only on the branch:
+
+| how you launch | `sys.path[0]` | code that runs |
+|---|---|---|
+| `python -m m110.ui.main` (from worktree root) | the cwd | **the worktree** ✅ |
+| `pytest -q` (from worktree root) | rootdir | **the worktree** ✅ |
+| `m110` (the console script) | `.venv/bin` | **main checkout** ❌ |
+| `python tools/<script>.py` | `tools/` | **main checkout** ❌ |
+
+`-m` and `pytest` put the current directory first, which shadows the finder;
+a script's directory is first for the other two, which doesn't.
+
+```bash
+cd ~/Documents/Code/m110/.claude/worktrees/<name>
+source ~/Documents/Code/m110/.venv/bin/activate
+export M110_DATA_ROOT=/tmp/m110-test      # §0 still applies — never the real root
+python -m m110.ui.main                    # run the app  (NOT `m110`)
+pytest -q                                 # run the suite
+PYTHONPATH=$PWD python tools/make_test_corpus.py --no-tar   # tools/ needs this
+```
+
+**The rule:** `-m` or `pytest` from the worktree root are safe; **everything else
+needs `PYTHONPATH=$PWD`.** The `tools/` case is not hypothetical — it surfaced as
+`AttributeError: module 'm110.config' has no attribute 'rejected_dir'` while
+generating the corpus from a branch that had just added that function.
+
+**Don't `pip install -e .` inside a worktree.** It re-points the shared venv's
+finder at *that* worktree, so the main checkout and every other worktree silently
+start running the wrong code too. If it happens, re-run it from the main checkout:
+
+```bash
+cd ~/Documents/Code/m110 && pip install -e ".[dev]"
+```
+
+**Sanity check when a result surprises you** — one line, and it settles the
+question before you debug anything else:
+
+```bash
+python -c "import m110; print(m110.__file__)"
+```
+
 **Migration check (#13).** To exercise the in-place migration, **copy** (never
 move) an old-shaped root — one with `data/`, `Images/FITS/…`, `site/img/` — to a
 temp dir, point `M110_DATA_ROOT` at the copy, and launch. The store should
@@ -397,6 +457,11 @@ re-run when its area changes and you want eyes on the visuals).
       recompute runs once/day; **Recompute** forces it). Flip **Strategy**
       (capture-many ↔ go-deep) and nudge a **weight** → the order changes *instantly*
       (no worker spin-up). Right-click **Pin** → floats to #1 with ▲.
+- [ ] **Recompute is quick** (`perf/twilight-cache`): with a Messier-sized goal set it
+      finishes in **a few seconds**, not ~half a minute. If it crawls, the twilight
+      memoization has regressed — check that ranking more targets isn't re-deriving
+      each night per target (`planning._twilight_cached.cache_info()` should show far
+      more hits than misses, with misses ≈ the number of distinct nights scanned).
 - [ ] **Site profiles:** create a profile (coordinates via **Look up location…** if
       online), import a `.hrz`, **Compute light-dome…** → a `<profile>.glow.hrz`
       appears beside the profile. Switching **Location** re-ranks.
