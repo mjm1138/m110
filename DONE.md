@@ -1553,16 +1553,33 @@ client-visible protocol change with no business riding along in a transport port
 `ToolError` (a decline — a wrong data root is the likeliest real one) likewise
 still returns plain content without `is_error`, exactly as v1 did.
 
-**Packaging risk isolated.** The specs never name `mcp`; it rides in on
-PyInstaller's static analysis, which is precisely the shape of the astropy /
-uranometria bundling bugs (#64/#74/#75) where the source run is fine and the
-frozen app dies. A minimal PyInstaller build of just the v2 import chain
-(`mcp.types`, `mcp.server.lowlevel`, `mcp.server.stdio`) runs clean frozen:
-`Server(on_*=…)` constructs, `create_initialization_options()` works, and the
-pydantic models round-trip with their aliases. **No spec change is needed** — and
-notably no `copy_metadata("mcp")`: only `mcp/cli/*` reads mcp's own dist-info and
-both call sites guard with `try/except PackageNotFoundError`, and M110 never
-imports `mcp.cli`.
+**Packaging verified two ways, because this is the failure mode that ships.** The
+specs never name `mcp`; it rides in on PyInstaller's static analysis, which is
+precisely the shape of the astropy / uranometria bundling bugs (#64/#74/#75) where
+the source run is fine and the frozen app dies.
+
+1. *The mcp-specific risk, isolated.* A minimal PyInstaller build of just the v2
+   import chain (`mcp.types`, `mcp.server.lowlevel`, `mcp.server.stdio`) runs clean
+   **frozen**: `Server(on_*=…)` constructs, `create_initialization_options()`
+   works, and the pydantic models round-trip with their aliases. **No spec change
+   is needed** — and notably no `copy_metadata("mcp")`: only `mcp/cli/*` reads
+   mcp's own dist-info, both call sites guard with `try/except
+   PackageNotFoundError`, and M110 never imports `mcp.cli`.
+2. *The real thing.* `release.yml` dispatched on the branch (run
+   **31929725089**) built the **Linux AppImage and the Windows installer** with
+   `mcp-2.0.0` resolved into the build env, and produced the `m110-mcp` binary on
+   both. The only PyInstaller warnings are the two `pycparser.lextab`/`yacctab`
+   hidden-import notes, which are **pre-existing** — the same two appear in the
+   shipped 0.3.0-beta.4 release build (run 31542846417) and come from cffi, not
+   mcp. Nothing was published: `gh release create` is guarded by
+   `startsWith(github.ref, 'refs/tags/')` and was skipped.
+
+   *Residual gap, stated plainly:* the frozen `m110-mcp` was **built** on those two
+   platforms but not **executed** there (the artifacts are Linux/Windows; the
+   development machine is macOS). The macOS frozen probe in (1) is what covers
+   "does the collected mcp v2 actually work at runtime"; between them the risk is
+   covered, but a first-run check of the packaged binary on a real Linux/Windows
+   box is still worth doing when one is at hand.
 
 **The hold came off with it.** The Dependabot `mcp` major-ignore added days
 earlier was a stopgap for exactly this unported major; it is deleted. The durable
