@@ -17,21 +17,20 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
     QListWidget, QStackedWidget, QMessageBox,
 )
 
 from m110 import config, derived, updates
-from m110.catalog import object_count
 from m110.ui.update_notice import UpdateCheckWorker
 from m110.ui.pages.overview import OverviewPage
 from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui.pages.planning import PlanningPage
-from m110.ui.widgets import modal_loop_active
+from m110.ui.widgets import modal_loop_active, defer
 from m110.ui import theme
 
 
@@ -92,19 +91,32 @@ class _EnrichWorker(QThread):
 
 
 class _LogoLabel(QLabel):
-    """Nav-rail brand mark — the M110 wordmark in the active theme's ink. Call
-    `refresh()` when the theme changes to recolor it."""
+    """Brand mark at the foot of the nav column — the M110 wordmark in the active
+    theme's ink. Click it to open About (`clicked`); call `refresh()` when the theme
+    changes to recolor it."""
     _HEIGHT = 26
+
+    clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("navLogo")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("About M110")
+        self.setAccessibleName("About M110")
         self.refresh()
 
     def refresh(self):
         dpr = self.devicePixelRatioF() or 1.0
         self.setPixmap(theme.logo_pixmap(self._HEIGHT, theme.ink_color(), dpr))
+
+    def mouseReleaseEvent(self, event):
+        # Press-then-drag-away must not count as a click (the button convention).
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -168,17 +180,22 @@ class MainWindow(QMainWindow):
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.nav.currentRowChanged.connect(self._on_nav_changed)
 
-        # Left column: brand mark above the nav rail (a persistent mark on every screen).
+        # Left column: the rail, with the brand mark anchored at its foot just above
+        # the status bar (a persistent, quiet mark on every screen — and the way in
+        # to About). The column paints the surface + divider, so the mark shares the
+        # rail's panel; WA_StyledBackground is what lets a plain QWidget honor that.
         self.logo = _LogoLabel()
+        self.logo.clicked.connect(lambda: defer(self, self._open_about))
         left = QWidget()
         left.setObjectName("navColumn")
+        left.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         left.setMaximumWidth(160)
         left.setMinimumWidth(130)
         col = QVBoxLayout(left)
-        col.setContentsMargins(0, s["md"], 0, 0)
+        col.setContentsMargins(0, 0, 0, s["md"])
         col.setSpacing(s["sm"])
-        col.addWidget(self.logo)
         col.addWidget(self.nav, 1)
+        col.addWidget(self.logo)
 
         # Content column: a slot for the (usually hidden) update banner above the
         # page stack, so the nudge spans the content area but not the nav rail.
@@ -235,67 +252,7 @@ class MainWindow(QMainWindow):
         if theme.manager() is not None:
             theme.manager().changed.connect(self._restyle_pages)
 
-        # Global actions + menu. Import is reached via the nav rail (the toolbar
-        # button was redundant); the Ctrl+I shortcut stays, registered on the window.
-        self.ingest_action = QAction("Import…", self)
-        self.ingest_action.setShortcut("Ctrl+I")
-        self.ingest_action.triggered.connect(self._open_ingest)
-        self.addAction(self.ingest_action)
-
-        self.refresh_action = QAction("Refresh", self)
-        self.refresh_action.setShortcut("Ctrl+R")
-        self.refresh_action.triggered.connect(self._do_refresh)
-        self.prep_action = QAction("Prepare working folders", self)
-        self.prep_action.triggered.connect(self._prepare_working_folders)
-        self.add_object_action = QAction("Add object…", self)
-        self.add_object_action.triggered.connect(self._add_object)
-        self.fill_meta_action = QAction("Fill missing metadata…", self)
-        self.fill_meta_action.triggered.connect(self._fill_missing_metadata)
-        self.enrich_online_action = QAction("Enrich online…", self)
-        self.enrich_online_action.triggered.connect(self._enrich_online_all)
-        self.publish_action = QAction("Publish / share…", self)
-        self.publish_action.triggered.connect(self._open_publish)
-        self.backup_action = QAction("Back up…", self)
-        self.backup_action.triggered.connect(self._open_backup)
-        self.restore_action = QAction("Restore…", self)
-        self.restore_action.triggered.connect(self._open_restore)
-        prefs_action = QAction("Preferences…", self)
-        prefs_action.setShortcut(QKeySequence.Preferences)
-        prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)  # → app menu on macOS
-        prefs_action.triggered.connect(self._open_prefs)
-        # Library menu — store-level operations (room to grow: open / archive / export).
-        # (No separate "M110" menu: Preferences folds into the macOS app menu by role, and
-        # Prepare lives here with the other maintenance actions.)
-        self.lib_menu = self.menuBar().addMenu("Library")
-        self.lib_menu.addAction(self.refresh_action)
-        self.lib_menu.addAction(self.prep_action)
-        self.lib_menu.addSeparator()
-        self.lib_menu.addAction(self.add_object_action)
-        self.lib_menu.addAction(self.fill_meta_action)
-        self.lib_menu.addAction(self.enrich_online_action)
-        self.lib_menu.addSeparator()
-        self.lib_menu.addAction(self.publish_action)
-        self.lib_menu.addSeparator()
-        self.lib_menu.addAction(self.backup_action)
-        self.lib_menu.addAction(self.restore_action)
-        self.lib_menu.addSeparator()
-        self.lib_menu.addAction(prefs_action)          # macOS: hops to the app menu
-        # Help menu — About folds into the application menu on macOS (AboutRole).
-        self.about_action = QAction("About M110", self)
-        self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
-        self.about_action.triggered.connect(self._open_about)
-        self.report_action = QAction("Report a problem…", self)
-        self.report_action.triggered.connect(self._open_report)
-        self.check_updates_action = QAction("Check for updates…", self)
-        self.check_updates_action.triggered.connect(self._check_updates)
-        self.user_guide_action = QAction("User guide", self)
-        self.user_guide_action.triggered.connect(self._open_user_guide)
-        self.help_menu = self.menuBar().addMenu("Help")
-        self.help_menu.addAction(self.user_guide_action)
-        self.help_menu.addSeparator()
-        self.help_menu.addAction(self.check_updates_action)
-        self.help_menu.addAction(self.report_action)
-        self.help_menu.addAction(self.about_action)
+        self._build_menus()
 
         # Hourly tick for the daily (02:00) auto backup while the app stays running.
         # Cheap: it only starts a snapshot when `due_for_scheduled_backup` says so.
@@ -315,6 +272,125 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._do_refresh)
         QTimer.singleShot(0, self._maybe_check_updates)   # quiet launch update check
 
+    # ---- menus ----
+    def _build_menus(self):
+        """File · View · Library · Tools · Help — one structure on every platform.
+
+        The conventional ordering (app-specific menus after View, before Tools) reads
+        native on Windows and Linux, and macOS needs no branch: the `MenuRole`s hoist
+        About / Preferences / Quit into the application menu by themselves. The old
+        two-menu shape (Library + Help) only worked because of that hoisting — off
+        macOS it left Preferences filed under "Library" and offered no way to quit.
+        """
+        bar = self.menuBar()
+        # macOS hoists the role actions out of these menus, which would strand the
+        # separator that introduced them as a dangling rule at the foot of the menu
+        # (Qt leaves it in the NSMenu, unhidden). The *structure* stays identical on
+        # every platform — only this rule is conditional.
+        hoists_roles = sys.platform == "darwin"
+
+        # ── File ── the things that move data in and out of the store.
+        self.ingest_action = QAction("Import…", self)
+        self.ingest_action.setShortcut("Ctrl+I")
+        self.ingest_action.triggered.connect(self._open_ingest)
+        self.publish_action = QAction("Publish / share…", self)
+        self.publish_action.triggered.connect(self._open_publish)
+        # There was no quit action at all — harmless on macOS (the app menu has one),
+        # but off it the menubar offered no way out. QuitRole merges with the macOS
+        # entry rather than duplicating it.
+        self.quit_action = QAction("Exit", self)
+        self.quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        self.quit_action.setMenuRole(QAction.MenuRole.QuitRole)
+        self.quit_action.triggered.connect(self._quit)
+        self.file_menu = bar.addMenu("File")
+        self.file_menu.addAction(self.ingest_action)
+        self.file_menu.addAction(self.publish_action)
+        if not hoists_roles:
+            self.file_menu.addSeparator()
+        self.file_menu.addAction(self.quit_action)
+
+        # ── View ── the nav rail, keyboard-reachable. Built from NAV so the two can't
+        # drift apart, and kept checked in step with the rail (which `open_object`
+        # drives too, from any page).
+        self.view_menu = bar.addMenu("View")
+        self.view_group = QActionGroup(self)
+        self.view_group.setExclusive(True)
+        self.view_actions = []
+        for i, name in enumerate(self.NAV):
+            act = QAction(name, self)
+            act.setCheckable(True)
+            act.setShortcut(f"Ctrl+{i + 1}")
+            act.triggered.connect(lambda _checked=False, row=i:
+                                  self.nav.setCurrentRow(row))
+            self.view_group.addAction(act)
+            self.view_menu.addAction(act)
+            self.view_actions.append(act)
+        self.nav.currentRowChanged.connect(self._sync_view_menu)
+        self._sync_view_menu(self.nav.currentRow())
+
+        # ── Library ── operations on the collection itself.
+        self.refresh_action = QAction("Refresh", self)
+        self.refresh_action.setShortcuts([QKeySequence("Ctrl+R"), QKeySequence("F5")])
+        self.refresh_action.triggered.connect(self._do_refresh)
+        self.add_object_action = QAction("Add object…", self)
+        self.add_object_action.triggered.connect(self._add_object)
+        self.fill_meta_action = QAction("Fill missing metadata…", self)
+        self.fill_meta_action.triggered.connect(self._fill_missing_metadata)
+        self.enrich_online_action = QAction("Enrich online…", self)
+        self.enrich_online_action.triggered.connect(self._enrich_online_all)
+        self.lib_menu = bar.addMenu("Library")
+        self.lib_menu.addAction(self.refresh_action)
+        self.lib_menu.addSeparator()
+        self.lib_menu.addAction(self.add_object_action)
+        self.lib_menu.addAction(self.fill_meta_action)
+        self.lib_menu.addAction(self.enrich_online_action)
+
+        # ── Tools ── maintenance + settings (Preferences hops to the macOS app menu).
+        self.prep_action = QAction("Prepare working folders", self)
+        self.prep_action.triggered.connect(self._prepare_working_folders)
+        self.backup_action = QAction("Back up…", self)
+        self.backup_action.triggered.connect(self._open_backup)
+        self.restore_action = QAction("Restore…", self)
+        self.restore_action.triggered.connect(self._open_restore)
+        self.prefs_action = QAction("Preferences…", self)
+        self.prefs_action.setShortcut(QKeySequence.StandardKey.Preferences)
+        self.prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
+        self.prefs_action.triggered.connect(self._open_prefs)
+        self.tools_menu = bar.addMenu("Tools")
+        self.tools_menu.addAction(self.prep_action)
+        self.tools_menu.addSeparator()
+        self.tools_menu.addAction(self.backup_action)
+        self.tools_menu.addAction(self.restore_action)
+        if not hoists_roles:
+            self.tools_menu.addSeparator()
+        self.tools_menu.addAction(self.prefs_action)
+
+        # ── Help ── About folds into the application menu on macOS (AboutRole).
+        self.user_guide_action = QAction("User guide", self)
+        self.user_guide_action.triggered.connect(self._open_user_guide)
+        self.check_updates_action = QAction("Check for updates…", self)
+        self.check_updates_action.triggered.connect(self._check_updates)
+        self.report_action = QAction("Report a problem…", self)
+        self.report_action.triggered.connect(self._open_report)
+        self.about_action = QAction("About M110", self)
+        self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
+        self.about_action.triggered.connect(self._open_about)
+        self.help_menu = bar.addMenu("Help")
+        self.help_menu.addAction(self.user_guide_action)
+        self.help_menu.addSeparator()
+        self.help_menu.addAction(self.check_updates_action)
+        self.help_menu.addAction(self.report_action)
+        self.help_menu.addAction(self.about_action)
+
+    def _sync_view_menu(self, row: int):
+        if 0 <= row < len(self.view_actions):
+            self.view_actions[row].setChecked(True)
+
+    def _quit(self):
+        app = QApplication.instance()
+        if app is not None:      # aboutToQuit drains the refresh worker + thumb pool
+            app.quit()
+
     def _on_nav_changed(self, row: int):
         # Opening Planning kicks off the (lazy, once/day) prioritizer recompute —
         # only in a live, ready window, never during construction/tests.
@@ -328,10 +404,11 @@ class MainWindow(QMainWindow):
 
     # ---- status ----
     def _update_status(self, extra: str = ""):
-        captured = len(derived.totals_by_slug())
+        # Where the data lives, plus whatever a running operation wants to say. The
+        # captured/total count used to lead this line; it duplicated the Library's own
+        # stat row and read as noise in persistent chrome.
         note = "" if derived.derived_available() else " · derived rollups not found"
-        self.statusBar().showMessage(
-            f"{captured}/{object_count()} captured · {config.DATA_ROOT}{note}{extra}")
+        self.statusBar().showMessage(f"{config.DATA_ROOT}{note}{extra}")
 
     # ---- import / prefs ----
     def _open_ingest(self):
@@ -469,6 +546,8 @@ class MainWindow(QMainWindow):
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
         self.prep_action.setEnabled(not editing)
+        for act in self.view_actions:      # else Ctrl+1..5 walks around the lock
+            act.setEnabled(not editing)
 
     def _on_notes_saved(self, _slug: str):
         # Object Notes were edited in the detail pane — reload the other views (the

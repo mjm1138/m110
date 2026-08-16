@@ -83,3 +83,41 @@ def test_about_dialog_builds_and_shows_version(qapp):
     assert "Lightroom" not in texts
     assert any(not lbl.pixmap().isNull()
                for lbl in dlg.findChildren(QLabel) if lbl.pixmap() is not None)
+
+
+def test_about_dialog_does_not_check_updates_on_construction(qapp):
+    """Workers start on an explicit action, never on construction — otherwise merely
+    building the dialog (as tests and tooling do) hits the network."""
+    from m110.ui.about_dialog import AboutDialog
+    dlg = AboutDialog()
+    assert dlg._worker is None
+    assert dlg._status.text() == ""
+
+
+def test_about_dialog_update_status_states(qapp):
+    from m110.ui.about_dialog import AboutDialog
+    from m110.updates import UpdateInfo
+    dlg = AboutDialog(check_updates=False)
+
+    dlg._on_update_checked(None)
+    assert dlg._status.text() == AboutDialog.CHECK_FAILED
+
+    dlg._on_update_checked(UpdateInfo(current="0.3.0b4", latest="0.3.0b4",
+                                      url="https://example.invalid/r", is_newer=False))
+    assert dlg._status.text() == AboutDialog.UP_TO_DATE
+
+    url = "https://github.com/mjm1138/m110/releases/tag/v0.3.0b5"
+    dlg._on_update_checked(UpdateInfo(current="0.3.0b4", latest="0.3.0b5",
+                                      url=url, is_newer=True))
+    assert "0.3.0b5" in dlg._status.text()
+    assert url in dlg._status.text()          # the Download link points at the release
+
+
+def test_about_dialog_check_can_be_suppressed(qapp):
+    """The `check_updates=False` escape hatch keeps even a *shown* dialog off the
+    network — showEvent is what fires the check in the real app."""
+    from m110.ui.about_dialog import AboutDialog
+    dlg = AboutDialog(check_updates=False)
+    dlg.start_update_check()
+    assert dlg._worker is None
+    assert dlg._status.text() == ""
