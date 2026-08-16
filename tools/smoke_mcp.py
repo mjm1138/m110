@@ -33,6 +33,12 @@ import time
 from pathlib import Path
 
 # Protocol version to negotiate. Bump only alongside the pinned `mcp` dependency.
+# Reviewed at the SDK v2 port and deliberately LEFT: the server agrees to this
+# exact version under v2, so it still proves the handshake, and it is the more
+# useful thing to assert — a version real clients actually send, i.e. that we
+# haven't broken backward compatibility. (Asking for the SDK's own newest,
+# 2026-07-28, is not the same test: the server negotiates that down to 2025-11-25,
+# so pinning it here would assert a version we never actually speak.)
 PROTO = "2025-06-18"
 HANDSHAKE_BUDGET_S = 1.0
 

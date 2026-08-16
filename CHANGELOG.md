@@ -10,6 +10,16 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **The AI-assistant connection now uses the current version of the MCP standard
+  library.** M110 had been held on the previous major version, which upstream now
+  only patches for security. Nothing changes in how you connect an assistant, what
+  it can see, or what it can do — the tools, skills and the read-only guarantees
+  are identical, and existing client configurations keep working unchanged. Two
+  small improvements came with it: skill documents are now correctly labelled as
+  Markdown when an assistant reads them, and a mistaken tool argument produces a
+  clearer message naming the tool and the argument.
+
 ### Added
 - **You can now set aside subs you don't want stacked, without deleting them.**
   Move any frames you don't want — clouds, trails, bad focus — from an object's

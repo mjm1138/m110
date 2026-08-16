@@ -1487,3 +1487,92 @@ the hero via `build_images.hero_source_path`'s `.src` sidecar rather than
 `objects.hero_path`: the latter returns the already-downscaled hero JPG, and
 judging star shape on a re-compressed thumbnail is worse than useless.
 
+
+---
+
+## 4b — MCP Python SDK v2 migration *(done 2026-08-16, `feature/mcp-v2`)*
+
+M110 was pinned to `mcp<2` while v1.x sat in upstream **maintenance mode —
+security fixes only**. That pin was the project's one piece of knowingly
+unsupported framework, and it is now gone: `assistant/mcp_server.py` runs on
+**`mcp>=2,<3`**.
+
+**What v2 actually changed for us.** It removed the low-level `Server` *decorator*
+API the module was built on — all six of `list_prompts` / `get_prompt` /
+`list_resources` / `read_resource` / `list_tools` / `call_tool`, verified gone by
+probing a real 2.0.0 install — in favour of handler callables passed to the
+constructor. `mcp.server.fastmcp` went too. Three mechanical consequences, and
+they are the whole of the port:
+
+* a handler takes `(context, params)` instead of unpacked domain arguments, so
+  `name` / `arguments` / `uri` now arrive on `params`;
+* a handler returns a **Result** model instead of a bare list or string —
+  `ListToolsResult(tools=…)` where v1 returned the list, and
+  `ReadResourceResult(contents=[TextResourceContents(…)])` where v1 could return
+  the markdown as a plain `str`;
+* the models are snake_case with camelCase aliases and `populate_by_name`, so
+  `inputSchema=` / `mimeType=` still bind and were kept as the wire spells them.
+
+The *types* survived (`mcp.types` is a permanent alias; `Tool`/`TextContent`/
+`ImageContent`/`Prompt`/`Resource` unchanged), which is why this stayed a
+transport change. Nothing in `registry`, `skills` or the tools moved — that
+separation is exactly what `registry` owning the content was for.
+
+**Chose the low-level `Server(on_*=…)` constructor over `MCPServer`.** The other
+candidate, `mcp.server.mcpserver.MCPServer`, still has `tool`/`prompt`/`resource`
+decorators, but they are *per-function* and derive each schema from the
+function's type hints. M110's 15 tools are **dynamic** — built from
+`registry.all_tools()` with explicit JSON Schema in `Tool.params` — so that shape
+would have meant either fabricating typed wrappers per tool or losing schema
+fidelity. The low-level constructor takes our dynamic list directly.
+
+**Proved by diffing the wire, not by reading release notes.** A throwaway client
+exercised every handler path — `tools/list`, `prompts/list`, `prompts/get` (+
+unknown), `resources/list`, `resources/read` (+ unknown), `tools/call` for a good
+call, a list call, a missing-argument call, a not-found slug and an unknown tool —
+against **old code on 1.28.1** and **ported code on 2.0.0**, and diffed the
+normalized responses. Two differences remain, both deliberate:
+
+1. `resources/read` now reports `text/markdown` instead of `text/plain`. v1 was
+   internally inconsistent — `resources/list` already advertised `text/markdown`
+   while `read` fell back to the SDK's default. The skills are markdown.
+2. A bad-argument message now reads `get_object: missing required argument 'slug'`
+   instead of jsonschema's `Input validation error: …`. v1's SDK pre-validated
+   against `inputSchema`; v2 doesn't, so `registry._validate` — which was always
+   there and checks *more* (unexpected args, types, enums, ranges) — is the one
+   that speaks. No validation was lost, only a redundant layer.
+
+**One behaviour was preserved on purpose.** Under v1 the decorator wrapper turned
+any exception the handler raised into `CallToolResult(isError=True)`, so the
+`raise ValueError` on a `ToolInputError` never actually reached the wire as a
+protocol error. v2 propagates a raise, so keeping the old shape took saying it
+explicitly — the handler now returns `is_error=True` content. Kept deliberately:
+a model recovers from an `is_error` result (read the message, retry with the right
+argument) far better than from a transport-level failure, and flipping it is a
+client-visible protocol change with no business riding along in a transport port.
+`ToolError` (a decline — a wrong data root is the likeliest real one) likewise
+still returns plain content without `is_error`, exactly as v1 did.
+
+**Packaging risk isolated.** The specs never name `mcp`; it rides in on
+PyInstaller's static analysis, which is precisely the shape of the astropy /
+uranometria bundling bugs (#64/#74/#75) where the source run is fine and the
+frozen app dies. A minimal PyInstaller build of just the v2 import chain
+(`mcp.types`, `mcp.server.lowlevel`, `mcp.server.stdio`) runs clean frozen:
+`Server(on_*=…)` constructs, `create_initialization_options()` works, and the
+pydantic models round-trip with their aliases. **No spec change is needed** — and
+notably no `copy_metadata("mcp")`: only `mcp/cli/*` reads mcp's own dist-info and
+both call sites guard with `try/except PackageNotFoundError`, and M110 never
+imports `mcp.cli`.
+
+**The hold came off with it.** The Dependabot `mcp` major-ignore added days
+earlier was a stopgap for exactly this unported major; it is deleted. The durable
+guard is the CI step that *starts the server* (`tools/smoke_mcp.py`), which is why
+`<3` is ordinary prudence rather than a new debt — the next breaking major fails
+CI loudly instead of passing green the way #115 and #121 did.
+
+`PROTO` in `tools/smoke_mcp.py` was reviewed and deliberately left at
+`2025-06-18`: the server agrees to that exact version under v2, so it still proves
+the handshake *and* asserts backward compatibility with what real clients send.
+Asking for the SDK's own newest (`2026-07-28`) is a different and weaker test —
+the server negotiates it down to `2025-11-25`, so pinning it would assert a
+version we never actually speak.
