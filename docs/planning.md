@@ -81,8 +81,11 @@ conditions.
 
 **Save field guide…** writes the plan as clean Markdown into the **`Plans/`** folder
 of your library — dark window, moon summary, the schedule table, and your per-object
-remarks. Saved guides are listed on the Planning page: view them in the app, print
-them, or open the folder. Each guide records both when it was generated and which
-night it's for.
+remarks. Each guide records both when it was generated and which night it's for.
+
+Saved guides are listed on the Planning page under **Saved field guides**.
+**Double-click** one to read it in the app (from there you can copy or print it), or
+**right-click** a row for **View**, **Reveal in file manager** (to open the `Plans/`
+folder), and **Delete**.
 
 Next: **[Publishing your collection →](publishing.md)**

@@ -26,8 +26,7 @@ from PySide6.QtWidgets import (
 from m110 import catalog, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
-    make_table, fit_table_height, fit_cell_widgets, CollapsibleSection,
-    connect_context_menu,
+    make_table, fit_table_height, CollapsibleSection, connect_context_menu,
 )
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
@@ -545,18 +544,77 @@ class PlanningPage(QScrollArea):
         self._reload_guides()          # refresh the browser (B3)
 
     # ---- saved field guides (browser) ----
+    # Per-row actions are a **context menu**, not a button cluster in every row.
+    # Three reasons: "View" only duplicated the double-click that was already
+    # wired; a Delete styled identically to the benign actions, a few pixels from
+    # them, is a misclick surface for no gain; and every other per-row action
+    # surface in this app (Library, Processing queue, detail gallery) is already a
+    # right-click menu, so the buttons were the odd one out — while spending ~210px
+    # of every row on actions that apply to one row at a time.
+    #
+    # This is NOT a blanket rule against row buttons: the Import holding area keeps
+    # its Assign/Reveal/Discard, because Assign is the *primary* action performed on
+    # row after row in a triage pass and a menu would make that flow slower.
     def _build_guides(self, body):
-        self._guides_table = QTableWidget(0, 3)
-        self._guides_table.setHorizontalHeaderLabels(["Date", "Title", ""])
+        self._guides_table = QTableWidget(0, 2)
+        self._guides_table.setHorizontalHeaderLabels(["Date", "Title"])
         self._guides_table.verticalHeader().setVisible(False)
         self._guides_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._guides_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._guides_table.setSelectionMode(QTableWidget.SingleSelection)
         self._guides_table.cellDoubleClicked.connect(
             lambda r, _c: self._view_guide(r))
+        connect_context_menu(self._guides_table, self._guides_menu)
         from PySide6.QtWidgets import QHeaderView
         self._guides_table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.Stretch)
         body.addWidget(self._guides_table)
+        # The actions are discoverable by convention elsewhere in the app, but this
+        # pane is visited rarely — so say it once, quietly, instead of relying on
+        # the user thinking to try a right-click.
+        hint = QLabel("Double-click a guide to open it · right-click for more")
+        hint.setProperty("caption", True)
+        body.addWidget(hint)
         self._guides = []
+
+    def _guide_row_at(self, pos):
+        """The guide row under `pos`, or None off the rows. Resolved from the click,
+        never from the selection — a right-click acts on what you pointed at."""
+        item = self._guides_table.itemAt(pos)
+        if item is None:
+            return None
+        row = item.row()
+        return row if 0 <= row < len(self._guides) else None
+
+    def _guide_menu(self, row):
+        """Build (menu, actions) for a guide row **without** exec'ing it — the
+        split `pages/catalog._object_menu` uses, because a modal exec can't run
+        headless and PySide6's `QMenu.exec` can't be monkeypatched, so this is the
+        only part a test can reach."""
+        menu = QMenu(self)
+        acts = {"view": menu.addAction("View"),
+                "reveal": menu.addAction("Reveal in file manager")}
+        menu.addSeparator()          # keep the destructive one off the main cluster
+        acts["delete"] = menu.addAction("Delete…")
+        return menu, acts
+
+    def _guides_menu(self, pos):
+        """Right-click a guide → View · Reveal · Delete.
+
+        Opened through `connect_context_menu`, so `QMenu.exec` runs *after* the
+        view's own mouse handler returns — a menu exec'd inside it spins a nested
+        loop while a background refresh could rebuild this page underneath it."""
+        row = self._guide_row_at(pos)
+        if row is None:
+            return
+        menu, acts = self._guide_menu(row)
+        chosen = menu.exec(self._guides_table.viewport().mapToGlobal(pos))
+        if chosen is acts["view"]:
+            self._view_guide(row)
+        elif chosen is acts["reveal"]:
+            self._reveal_guide(row)
+        elif chosen is acts["delete"]:
+            self._delete_guide(row)
 
     def _reload_guides(self):
         from m110 import fieldguide
@@ -565,26 +623,9 @@ class PlanningPage(QScrollArea):
         for r, g in enumerate(self._guides):
             self._guides_table.setItem(r, 0, QTableWidgetItem(g["date"]))
             self._guides_table.setItem(r, 1, QTableWidgetItem(g["title"]))
-            cell = QWidget()
-            h = QHBoxLayout(cell)
-            h.setContentsMargins(0, 0, 0, 0)
-            h.setSpacing(4)
-            view = QPushButton("View")
-            view.clicked.connect(lambda _=False, i=r: self._view_guide(i))
-            reveal = QPushButton("Reveal")
-            reveal.clicked.connect(lambda _=False, i=r: self._reveal_guide(i))
-            delete = QPushButton("Delete")
-            delete.clicked.connect(lambda _=False, i=r: self._delete_guide(i))
-            for b in (view, reveal, delete):
-                h.addWidget(b)
-            self._guides_table.setCellWidget(r, 2, cell)
         self._guides_table.resizeColumnsToContents()
         from PySide6.QtWidgets import QHeaderView
         self._guides_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        # The action column holds a cell *widget*, which resizeColumnsToContents
-        # doesn't measure — size it (and the rows) from the buttons themselves,
-        # before fit_table_height sums the row heights.
-        fit_cell_widgets(self._guides_table, 2)
         fit_table_height(self._guides_table, max_rows=10)
 
     def _view_guide(self, r: int):

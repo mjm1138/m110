@@ -777,19 +777,23 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
   *Open follow-up:* whether a three-button cluster is the right affordance for the guides
   list at all — see the next item.
 
-- [ ] **Per-row action buttons vs. a context menu.** Raised alongside the clipping fix.
-  The **Saved field guides** row carries `View · Reveal · Delete` as three equal buttons.
-  Three reasons to reconsider: **View duplicates** the row's existing double-click;
-  **Delete is styled identically to the benign actions** and sits a few pixels away (there
-  *is* a confirm dialog, so the cost is annoyance rather than data loss); and it's the odd
-  one out in this app — the Library, Processing queue and detail gallery all expose per-row
-  actions through `widgets.connect_context_menu`, and the cluster spends ~210px of every
-  row on actions that apply to one row at a time (the minimal-chrome rule in
-  [`UI_ROADMAP.md`](UI_ROADMAP.md)). **Not a blanket rule:** the Import holding area's
-  `Assign · Reveal · Discard` buttons are arguably right, because Assign is the *primary*
-  action you perform on row after row in a triage pass, and burying it in a context menu
-  would make that flow slower. If the buttons stay there, `Discard` is still the one worth
-  demoting.
+- [x] **Per-row action buttons → a context menu, for the guides list**
+  *(done — same branch)*. The **Saved field guides** row carried `View · Reveal · Delete`
+  as three equal buttons. **View duplicated** the row's existing double-click; **Delete was
+  styled identically to the benign actions** a few pixels away (there *is* a confirm
+  dialog, so the cost was annoyance, not data loss); and it was the odd one out — the
+  Library, Processing queue and detail gallery all expose per-row actions through
+  `widgets.connect_context_menu`, while the cluster spent ~210px of every row on actions
+  that apply to one row at a time (the minimal-chrome rule in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
+  Now: double-click opens, right-click gives View / Reveal / Delete… with the destructive
+  one behind a separator, and a one-line caption under the table says so — the pane is
+  visited rarely enough that relying on right-click-by-convention would have hidden it.
+  Split into `_guide_row_at` + an exec-free `_guide_menu` builder, mirroring
+  `pages/catalog._object_menu`, because a modal exec can't run headless and PySide6's
+  `QMenu.exec` can't be monkeypatched — so the row resolution and the menu contents are
+  testable. **Deliberately not applied to the Import holding area:** `Assign` is the
+  *primary* action performed on row after row in a triage pass, and burying it in a menu
+  would make that flow slower. If anything changes there, `Discard` is the one to demote.
 
 ## Open questions
 

@@ -10,6 +10,14 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **Saved field guides are now managed by right-click instead of a row of buttons.**
+  Double-click a guide to open it, or right-click for **View**, **Reveal in file
+  manager** and **Delete** — the same way object actions already work everywhere
+  else in M110. The three buttons in every row are gone: *View* only repeated the
+  double-click, and *Delete* sat a few pixels from it looking exactly the same.
+  The list is quieter and the titles get the space back.
+
 ### Fixed
 - **Buttons in table rows were cut off.** Most visibly in Planning → *Saved field
   guides*, where the row read "View · Revea · Delete" with the tops and bottoms of

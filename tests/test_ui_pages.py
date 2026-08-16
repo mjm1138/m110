@@ -1709,3 +1709,49 @@ def test_planning_page_save_uses_plan_day_and_invalidates_on_change(
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+def test_saved_guides_row_actions_moved_to_a_context_menu(
+        tmp_path, monkeypatch, qapp):
+    """The guides list's per-row actions moved from three buttons into a right-click
+    menu — the buttons duplicated the double-click and put Delete a few pixels from
+    View. They were the only visible affordance, so pin what replaced them.
+
+    Uses the exec-free `_guide_menu` builder + `_guide_row_at`, per the same
+    constraint as the Library's `_object_menu`: a modal exec can't run headless and
+    PySide6's QMenu.exec can't be monkeypatched."""
+    from datetime import date
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import fieldguide
+    for i, title in enumerate(["First night", "Second night", "Third night"]):
+        fieldguide.save(date(2026, 8, 10 + i), title, f"# {title}\n\nBody.\n")
+
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._reload_guides()
+        tbl = page._guides_table
+        assert tbl.rowCount() == 3
+        # The action column is gone entirely — no cell widgets left to clip.
+        assert tbl.columnCount() == 2
+        assert all(tbl.cellWidget(r, c) is None
+                   for r in range(tbl.rowCount()) for c in range(tbl.columnCount()))
+
+        # The row comes from the CLICK, not the selection: select row 0, point at
+        # the last row, and the menu must target the last row.
+        tbl.selectRow(0)
+        target = tbl.rowCount() - 1
+        pos = tbl.visualItemRect(tbl.item(target, 0)).center()
+        assert page._guide_row_at(pos) == target
+        # …and a click below the rows resolves to nothing rather than row 0.
+        assert page._guide_row_at(tbl.viewport().rect().bottomRight()) is None
+
+        menu, acts = page._guide_menu(target)
+        assert set(acts) == {"view", "reveal", "delete"}
+        assert acts["delete"].text().startswith("Delete")
+        menu.deleteLater()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
