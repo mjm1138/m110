@@ -26,7 +26,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
-| 11 | **Lights Table** (bulk sub inspection/culling) | ⬜ open | [↓](#11--lights-table) |
+| 11 | **Lights Table** (bulk sub inspection/culling) | 🔶 the `rejected/` exclusion tier shipped (#110); the view is open [↓](#11--lights-table) | [↓](#11--lights-table) |
 | 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
 | 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
 | 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
@@ -183,6 +183,43 @@ hardlinked into workflow (e.g. "Siril") directories. Future versions might
 support batched background extraction, plate solving, SPCC, or maybe image
 analysis (find frames with satellite trails, find frames with low star count,
 etc).
+
+- ✅ **Exclusion mechanism shipped** (`feature/rejected-lights`, issue
+  [#110](https://github.com/mjm1138/m110/issues/110), asked for by @devonjones —
+  explicitly *"not asking for a UI on this yet"*). The **`Images/<target>/rejected/`**
+  tier: move a sub there by hand and it leaves the population. Deliberately built as
+  a sibling directory rather than a flag file, because every consumer of subs already
+  reads `lights/` **and nothing else** — so prep (`siril._lights`), `scan_sessions`
+  integration, `build_processing` and the gallery all exclude it for free, with no new
+  branch to keep in sync. Two things did need building:
+  - **Import treats the two tiers as one population** (`ingest._light_tier_names`), in
+    both directions, which is what stops the telescope re-syncing a rejected frame —
+    the entire reason to move rather than delete. Plus a `rejected` layout kind, so a
+    store-to-store import (a backup, the precursor library) preserves the exclusion
+    instead of reading the subs as loose FITS and routing them back into `lights/`.
+  - **`siril.prune_rejected`** — `apply_prep` is add-only, so a sub rejected *after*
+    prep kept its sandbox hardlink and went on being stacked; without this the feature
+    would only ever work on a target that had never been prepped. It unlinks **only**
+    when the frame is present in `rejected/` (a sub that merely vanished may be the
+    last copy, so it's left alone and counted as an orphan), skips a target with
+    un-imported output (`autoprep`'s in-progress guard), and reaches the stale
+    `siril/lights/` a multi-filter target leaves behind (BUGS #28). Runs at refresh
+    time via `processing.reconcile_rejected`, kept separate from `prepare_missing` so
+    that function's "never touches an existing sandbox" invariant stays true.
+
+  Testing note: a telescope is **just a mounted filesystem**, so the device half is
+  automated rather than manual-only. `config.VOLUMES_DIR` made the mount probe
+  injectable, `tests/_helpers.mount_seestar`/`mount_dwarf` build scratch volumes
+  shaped like each device, and the import→reject→re-import round trip runs through
+  the *real* probe and scan. `make_test_corpus.py` ships the matching fixtures:
+  M101 mid-rejection with a sandbox that pre-dates it (the prune has real work on
+  first refresh), M106 the same but with pending output (the skip), and a
+  `-device-mount/` sibling still holding the rejected frames.
+
+  **Still open — the view itself:** the autostretched sub browser, in-app flagging
+  (which becomes "move to `rejected/`"), per-frame analysis, and delete-with-confirm.
+  The `FrameProfile` fingerprint under [#18](BUGS.md) and the per-session capture
+  diagnostics (#45) want the same per-sub facts — worth building that layer once.
 
 ### 12 — Sky map (uranometria integration)
 

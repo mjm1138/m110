@@ -135,3 +135,30 @@ def test_setting_get_save_roundtrip(tmp_path, monkeypatch):
 def test_find_seestar_no_crash():
     res = config.find_seestar_myworks()
     assert res is None or res.name == "MyWorks"
+
+
+# The probe below runs for real against a scratch "volumes" root — a mounted
+# telescope is just a filesystem, so a directory is a faithful stand-in and the
+# preference ordering can be tested instead of assumed.
+
+def test_find_seestar_finds_a_mounted_volume(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "VOLUMES_DIR", tmp_path)
+    mw = tmp_path / "Seestar S50" / "MyWorks"
+    mw.mkdir(parents=True)
+    assert config.find_seestar_myworks() == mw
+
+
+def test_find_seestar_prefers_an_obviously_named_volume(tmp_path, monkeypatch):
+    """Both a backup drive and the scope are mounted, and both happen to hold a
+    MyWorks — the Seestar/EMMC name wins (SMB mounts show up as 'EMMC Images')."""
+    monkeypatch.setattr(config, "VOLUMES_DIR", tmp_path)
+    (tmp_path / "Archive Drive" / "MyWorks").mkdir(parents=True)
+    scope = tmp_path / "EMMC Images" / "MyWorks"
+    scope.mkdir(parents=True)
+    assert config.find_seestar_myworks() == scope
+
+
+def test_find_seestar_none_when_nothing_is_mounted(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "VOLUMES_DIR", tmp_path)
+    (tmp_path / "Archive Drive").mkdir()
+    assert config.find_seestar_myworks() is None

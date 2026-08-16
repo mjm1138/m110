@@ -181,6 +181,18 @@ def lights_dir(name: str) -> Path:
     return IMAGES_DIR / name / "lights"
 
 
+def rejected_dir(name: str) -> Path:
+    """Subs the user has excluded from processing (#110) — kept on disk, out of
+    the population. A sibling of ``lights/`` rather than a flag file, because the
+    tiers that consume subs already read ``lights/`` and nothing else: Siril prep
+    (`siril._lights`) won't hardlink them into a sandbox, `scan_sessions` won't
+    count them toward integration, and the gallery never looked here. Import
+    treats the two tiers as one population (`ingest._light_tier_names`), so a
+    rejected sub is **not re-copied** from the telescope on the next import —
+    which is the whole point of moving it instead of deleting it."""
+    return IMAGES_DIR / name / "rejected"
+
+
 def stacks_dir(name: str) -> Path:
     """Siril stacks for a capture target."""
     return IMAGES_DIR / name / "stacks"
@@ -391,14 +403,23 @@ def _ensure_object_stubs(root: Path, internal: Path) -> None:
 
 # ── Seestar device detection ────────────────────────────────────────────────
 
+# Where mounted volumes appear. macOS only today — a Linux user's Seestar shows up
+# under /media/<user>/ or /mnt, and Windows uses drive letters, so neither gets the
+# device source button (they can still Import → Browse… to the mount). Module-level
+# so it can be pointed at a scratch dir: a telescope is *just a mounted filesystem*,
+# which is what lets the tests exercise the real probe against a fake mount instead
+# of stubbing `find_seestar_myworks` out (see `tests/_helpers.mount_seestar`).
+VOLUMES_DIR = Path("/Volumes")
+
+
 def find_seestar_myworks() -> Path | None:
     """Locate the Seestar's ``MyWorks`` dir across possible mounts.
 
     Handles USB (``/Volumes/Seestar``) and SMB (``/Volumes/EMMC Images``, etc.)
-    by scanning /Volumes for any volume containing a ``MyWorks`` directory,
+    by scanning `VOLUMES_DIR` for any volume containing a ``MyWorks`` directory,
     preferring obviously-named ones.
     """
-    vol = Path("/Volumes")
+    vol = VOLUMES_DIR
     if not vol.is_dir():
         return None
     try:

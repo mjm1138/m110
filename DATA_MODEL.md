@@ -98,6 +98,10 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     journal.md                      frontmatter (name/hero_caption/hero) + Markdown body
   Images/<target>/                  capture-target axis (e.g. Images/"M81 M82"/)
     lights/                         raw light subs (.fit/.fits)           [immutable]
+    rejected/                       subs the user excluded from processing (#110;
+                                    user-created, lazily) — same frames, out of the
+                                    population: not linked into a sandbox, not counted
+                                    as integration, never re-imported [immutable]
     stacks/                         Siril stacks (.fit/.tif)              [output]
     seestar-stacks/                 device in-app stacks (+ preview .jpg) [output]
                                     (generic on-device stack tier: Seestar
@@ -174,6 +178,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Processing overrides | `.m110_internal_data/processing_overrides.toml` | TOML (`[folder.<name>]`) | Authored (e.g. dismiss a folder) | **Mutable** — user-owned | Persistent | Never auto-deleted |
 | Ingest aliases | `.m110_internal_data/ingest_aliases.toml` | TOML (`[alias]`) | Written by the ingest "remember" action (`ingest.add_alias`) | **Mutable** — app-written, user-editable | Persistent | Never auto-deleted |
 | Light frames | `Images/<target>/lights/*.fit`/`*.fits` | FITS | Ingested from device/staging (`ingest.apply_ops`) | **Immutable** — engine never writes into `lights/`; ingest writes bytes-only to `.part` then atomic `os.replace` (convention) | Persistent | Never auto-deleted |
+| Rejected subs | `Images/<target>/rejected/` | FITS | **User-created** — the user moves a sub here by hand to exclude it (#110); import routes one here only when the *source* store already filed it so (kind `rejected`) | **Immutable** — same posture as `lights/`; the engine only ever *reads* the names, and unlinks the sandbox hardlink that pointed at the frame (`siril.prune_rejected`), never the frame | Persistent | Never auto-deleted. Lazily created; every consumer of subs already read `lights/` and nothing else, so moving a frame here drops it from prep, sessions and integration for free. Import treats `lights/`+`rejected/` as **one population** (`ingest._light_tier_names`), which is what stops the telescope re-syncing it — the reason to move rather than delete. Additive → **no `.store_version` bump** |
 | Calibration frames | `Images/<target>/{darks,flats,biases}/` | FITS | Preserved if present | **Immutable** (convention) | Persistent | Never auto-deleted |
 | Siril stacks | `Images/<target>/stacks/` | FITS/TIFF | Imported from the siril sandbox (`siril.apply_import`) | **Output** — replaceable by re-import | Persistent | Never auto-deleted |
 | Device stacks | `Images/<target>/seestar-stacks/` | FITS (+ preview .jpg) | Ingested from device — the generic on-device/in-app stack tier (Seestar `Stacked_*`, Dwarf `stacked-16_*` + `stacked.jpg`) | **Output** | Persistent | Never auto-deleted |

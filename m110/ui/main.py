@@ -47,6 +47,10 @@ class RefreshWorker(QThread):
             prep = processing.prepare_missing()   # heal missing working folders
             summary["prepared"] = sum(len(r.get("prepared", []))
                                       for r in prep.values())
+            # …and drop working-folder links for subs excluded since prep (#110),
+            # so a rejection takes effect without waiting for the next import.
+            pruned = processing.reconcile_rejected()
+            summary["pruned"] = sum(r.get("pruned", 0) for r in pruned.values())
             self.done.emit(summary)
         except Exception as exc:  # surface to the UI rather than crash
             self.failed.emit(f"{type(exc).__name__}: {exc}")

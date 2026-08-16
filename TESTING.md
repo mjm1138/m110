@@ -122,7 +122,8 @@ What it contains (and what each fixture exercises):
 | Fixture | Tests |
 |---|---|
 | `M51` (lights ×2 nights + Seestar stack + real journal notes) | gallery / hero / sessions / journal feed + detail notes |
-| `M81` (lights + stack + notes), `M101` (lights only) | captured-with-stack vs captured-lights-only (no gallery) |
+| `M81` (lights + stack + notes) | captured-with-stack vs captured-lights-only (no gallery) |
+| **`M101`** (18 lights, a `siril/` sandbox hardlinking **all 18**, then **2 moved to `rejected/`**) | the **#110 exclusion tier**, shipped mid-rejection: the sandbox pre-dates the rejection, so the first Refresh has real work to do (`processing.reconcile_rejected` prunes exactly those 2 links). Integration/sessions already exclude the pair; the frames are still on disk |
 | **`M42`** (**DwarfLab Dwarf 3**: Duo-Band **`.fits`** lights + an in-app `stacked-16_*.fits` stack + `stacked.jpg`) | the **`.fits`** extension end-to-end (sessions + rendering), a **narrowband** filter, a 2nd device in the store; `stacked.jpg` is force-curated **finished** → the detail **Finished / Working** split (#17) |
 | **`M13`** (globular cluster: lights + Seestar stack) | object-**type** variety (the corpus is otherwise galaxies + nebulae) — the prioritizer type-weights + a non-galaxy hero |
 | `M63` (+ `finished/` render + `stacks/` stack) | "up to date" processing status + an imported deliverable in the gallery |
@@ -133,12 +134,36 @@ What it contains (and what each fixture exercises):
 | `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) |
 
+| **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one |
+
 Regenerate any time (`python tools/make_test_corpus.py`); `--out`/`--tar` relocate
-it, `--no-tar` leaves just the directories. The tarball unpacks **two** siblings — the
-store `M110-test/` and the external `M110-test-import-source/` you Browse to. The
-data-root override is the existing `M110_DATA_ROOT` env var — no special flag. To
-exercise the Seestar **copy** path specifically you still need a real mounted device;
-the import-source fixture covers the same classification/grouping/pointing logic.
+it, `--no-tar` leaves just the directories. The tarball unpacks **three** siblings —
+the store `M110-test/`, the external `M110-test-import-source/` you Browse to, and
+`M110-test-device-mount/`. The data-root override is the existing `M110_DATA_ROOT`
+env var — no special flag.
+
+**On simulating a mounted telescope.** A device is just a filesystem: USB or SMB,
+Seestar or Dwarf, it appears as a mount and the importer walks it like any other
+directory. So `M110-test-device-mount/` reproduces the real thing for everything
+except the Import page's **device button**, which probes `/Volumes` for a `MyWorks`
+folder (`config.find_seestar_myworks`). Two ways to cover that last inch:
+
+- **Browse… to the mount folder** — same recursive scan, same classification, no
+  privileges needed. This is enough for every check below.
+- **A real mount**, if you want the device button itself:
+  ```bash
+  hdiutil create -size 100m -fs APFS -volname "Seestar S50" /tmp/seestar.dmg
+  hdiutil attach /tmp/seestar.dmg
+  cp -R ~/Documents/M110-test-device-mount/"Seestar S50"/MyWorks "/Volumes/Seestar S50/"
+  ```
+  M110 then offers **Seestar** as a source exactly as it would for the real scope.
+  `hdiutil detach "/Volumes/Seestar S50"` when done.
+
+The probe's own logic (finds a mount, prefers a Seestar/EMMC-named volume over
+another disk that happens to hold a `MyWorks`) is covered automatically in
+`tests/test_config.py` against a scratch volumes root, and the full
+import→reject→re-import round trip for **both** devices in
+`tests/test_rejected_lights.py` (`tests/_helpers.mount_seestar` / `mount_dwarf`).
 
 ---
 
@@ -397,6 +422,55 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Re-import keeps the hero:** process again, import again → the hero picker
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
+
+### G2b. Rejecting subs — the `rejected/` tier (#110)  ⚙ *(prune/import/session rules automated — `test_rejected_lights.py`)*
+> Driven entirely from a **file manager** for now — there is no UI yet (that's the
+> Lights Table). The whole point is that a rejected sub doesn't come back, so the
+> device half needs a real telescope.
+**The corpus ships mid-rejection**, so most of this is *observe*, not *set up*: `M101`
+has 18 subs, a `siril/` sandbox hardlinking **all 18**, and 2 of them already moved to
+`rejected/`. Because the sandbox pre-dates the rejection, the first Refresh has real
+work to do. Before launching, note the state:
+
+```bash
+cd ~/Documents/M110-test/Images/M101
+ls rejected/                        # the 2 excluded frames
+ls lights/ | wc -l                  # 16
+ls siril/lights/ | wc -l            # 18  ← still linking the rejected pair
+```
+
+- [ ] Launch against the corpus and **Refresh (Ctrl+R)**. Re-run the commands:
+      `siril/lights/` is now **16** and the two rejected names are gone from it,
+      while `rejected/` still holds both files, byte-for-byte. `presets/` and
+      `next-steps.md` are untouched.
+- [ ] M101's **integration time and session frame counts reflect 16, not 18** —
+      before *and* after the refresh (moving the files is what excluded them; the
+      prune only tidies the working folder).
+- [ ] **The frame is not destroyed:** `ls -li rejected/<name>` — still there and
+      readable. Move one back into `lights/`, Refresh → it's re-linked into the
+      sandbox and counts again.
+- [ ] **A sub that merely vanished is left alone:** `rm` a sub from `lights/`
+      *without* putting it in `rejected/`, Refresh → its sandbox hardlink is **kept**
+      (it may be the last copy). `~/.m110/logs/m110.log` records it as an orphan.
+- [ ] **In-progress runs are not disturbed:** `M106` ships in the *same* state — one
+      sub rejected, sandbox still linking it — but it also has unimported output, so
+      the prune **skips it entirely**. After Refresh, `Images/M106/siril/lights/`
+      still has all 13. Import its finished work, Refresh again → *now* the link is
+      pruned. (This is the guard that keeps a mid-flight Siril run intact.)
+
+**No re-sync — the part that makes this worth doing.** Use the shipped
+`M110-test-device-mount/` (see §0 for how it stands in for a real scope, and for
+mounting it as an actual volume if you want the device button):
+
+- [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50/MyWorks`. The
+      preview offers **2 files** — the two new subs. The two rejected names are
+      **not listed**, even though the device still holds them. Confirm the import →
+      `lights/` goes 16 → 18, `rejected/` is unchanged.
+- [ ] Same for the Dwarf: → `M110-test-device-mount/DWARF3/Astronomy`. Only the
+      one new `.fits` sub is offered for M42.
+- [ ] **Store-to-store keeps the exclusion:** point Import at a *copy* of the store
+      (or a restored backup) → files under `Images/<target>/rejected/` are offered as
+      **"rejected subs"** routing back to `rejected/`, never into `lights/`.
 
 ### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
 > Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).

@@ -494,6 +494,7 @@ _KIND_DIR = {
     "finished": config.finished_dir,
     "working": config.working_files_dir,
     "preview": config.previews_dir,
+    "rejected": config.rejected_dir,
     "siril-preset": lambda name: config.siril_dir(name) / "presets",
 }
 
@@ -516,6 +517,10 @@ def _import_sub_previews() -> bool:
 _STORE_SUBDIR_KIND = {
     "lights": "light", "darks": "dark", "flats": "flat", "biases": "bias",
     "stacks": "siril-stack", "seestar-stacks": "stack", "finished": "finished",
+    # Importing from another M110 store (a backup, the precursor library) must
+    # preserve the exclusion — without this the subs read as loose FITS, route by
+    # OBJECT header, and land back in `lights/` (#110).
+    "rejected": "rejected",
 }
 _STORE_PARENT_KIND = {
     "finished images": "finished", "finished": "finished",
@@ -573,12 +578,26 @@ def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
     return _emit_one_kind(src_dir, files, kind, obj, group, action, layout)
 
 
+# The two tiers that hold raw subs. A sub in **either** is already in the library,
+# so import must not copy it again: moving a sub to ``rejected/`` is precisely a
+# request to stop it coming back from the telescope (#110). Checking both ways round
+# also keeps a store-to-store import from landing one frame in both tiers.
+_LIGHT_TIERS = ("light", "rejected")
+
+
+def _light_tier_names(obj: str) -> set[str]:
+    """Filenames of every raw sub already held for `obj`, across both sub tiers."""
+    return (set(_all_files(config.lights_dir(obj)))
+            | set(_all_files(config.rejected_dir(obj))))
+
+
 def _emit_one_kind(src_dir: Path, files, kind: str, obj: str, group: str,
                    action: str, layout: str) -> list[IngestOp]:
     """Route `files` into the single target subdir for `kind` (skip already-present)."""
     root = config.DATA_ROOT
     dst_dir = _KIND_DIR[kind](obj)
-    existing = set(_all_files(dst_dir))
+    existing = (_light_tier_names(obj) if kind in _LIGHT_TIERS
+                else set(_all_files(dst_dir)))
     new_object = not config.target_dir(obj).is_dir()
     ops: list[IngestOp] = []
     for f in files:
@@ -630,7 +649,8 @@ def _classify_store_dir(src_dir: Path, name: str, action: str,
     sub_kind = _STORE_SUBDIR_KIND.get(name.lower())
     if sub_kind:
         obj = _project_object(src_dir.parent.name)
-        files = (_fit_files(src_dir) if sub_kind in ("light", "dark", "flat", "bias")
+        files = (_fit_files(src_dir)
+                 if sub_kind in ("light", "dark", "flat", "bias", "rejected")
                  else _all_files(src_dir))
         handled.update(files)
         return _emit_files(src_dir, files, sub_kind, obj, name, action, "m110-store")
