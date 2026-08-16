@@ -65,3 +65,31 @@ jobs:
 
       - name: Run the test suite
         run: pytest -q
+
+      # The suite does NOT import `mcp`. The assistant tests are deliberately AST
+      # and text checks (that is what makes the "nothing the server can reach can
+      # write" proof airtight), so nothing in pytest touches the MCP library — and
+      # a dependency bump that breaks the server sails through green. That is not
+      # hypothetical: Dependabot PR #115 resolved `mcp` to 2.0.0, CI installed it,
+      # both matrix legs passed, and every decorator `build_server()` is built on
+      # (`@server.list_tools()`, `@server.call_tool()`, the prompt/resource pairs)
+      # had been removed in that release — `build_server()` dies on its first line
+      # with `AttributeError: 'Server' object has no attribute 'list_prompts'`.
+      #
+      # That bound is load-bearing for a RELEASE, not just for local dev: the
+      # `build` extra self-references `m110[assistant]` and release.yml installs
+      # `.[build]`, so a bad bump ships a frozen `m110-mcp` that dies at startup.
+      #
+      # So: actually start the server and speak JSON-RPC to it. `smoke_mcp.py`
+      # spawns it exactly as a client would and checks the handshake, the tool
+      # list and the skills — the surface an API break destroys. It needs a store
+      # to exist (it reads one), hence the bootstrap; an empty one is enough, and
+      # the "no derived data yet" notes it prints are warnings, not failures.
+      #
+      # `!cancelled()` rather than `success()` so a failing suite doesn't mask this
+      # signal — both results land in the same run.
+      - name: Smoke-test the assistant MCP server (guards the `mcp` bound)
+        if: ${{ !cancelled() }}
+        run: |
+          python -c "from m110 import config; config.ensure_data_root('${{ runner.temp }}/m110-smoke')"
+          python tools/smoke_mcp.py --root "${{ runner.temp }}/m110-smoke"
