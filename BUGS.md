@@ -752,6 +752,40 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## UI niceties (backlog)
 
+- [x] **Spin-box values clipped top-and-bottom in the Backup dialog**
+  *(done — `fix/spinbox-text-crop`)*. Reported from the packaged app: the interval,
+  keep-newest and min-free fields rendered "11 h" / "all" / "100" with the glyph tops
+  and bottoms shaved off. **Root cause is the same asymmetry the buttons already
+  fixed:** the QSS styles inputs with `padding: 4px 8px`, which sits *inside* the
+  widget — and `QPushButton` and `QCheckBox` each carry an explicit `min-height`
+  (the button rule's own comment says why: "a styled QPushButton in a tight layout
+  (esp. on macOS) otherwise clips its text top-and-bottom"), while the inputs rule
+  declared none. So when a layout squeezed, the inputs were the only thing that
+  collapsed. Measured under the real macOS style: `sizeHint` **28**, actual height
+  **16**, leaving the inner line edit **6px for a 16px font**.
+  The trigger in this dialog is `self.resize(560, 0)` — asking for zero height before
+  the layout exists, so Qt clamps against an incomplete minimum. Either fix alone
+  resolves it (verified both ways); the **`min-height` on the inputs is the durable
+  one**, because it protects every dialog rather than the one that happened to be
+  squeezed. `publish_dialog.py` uses the same `resize(w, 0)` idiom and is worth
+  keeping in mind. An app-wide sweep of every page + dialog found **3 clipped inputs
+  before, 0 after**.
+
+- [x] **"Automation & retention" rendered as "Automation  retention"**
+  *(done — same branch)*. Qt reads a single `&` in a `QGroupBox` title as a **mnemonic
+  marker**: it's consumed and the next character underlined. A literal ampersand must
+  be written `&&`. Guarded by a source scan over `m110/ui/**` for lone ampersands in
+  widget labels (`QGroupBox`/`QCheckBox`/`QPushButton`/`QLabel`/`QAction`/`setTitle`/
+  `setText`), which also covers `&amp;`-style entities correctly — a widget walk would
+  have missed labels behind dialogs a test doesn't construct.
+
+- [ ] **The Backup dialog's retention fields don't line up.** Noticed while fixing the
+  clipping above, not part of it. "…at most once every", "Keep newest" and "Keep at
+  least" are three independent `QHBoxLayout`s, so their labels have different widths
+  and the three input boxes start at three different x positions with three different
+  widths. A `QFormLayout`/`QGridLayout` would align them. Cosmetic, uncontroversial,
+  but a layout change rather than a fix — left for a deliberate pass.
+
 - [x] **Buttons in table rows were clipped in both directions**
   *(done — `fix/table-row-buttons`)*. Reported against **Saved field guides**, where the
   row read `View | Revea | Delete` with the button tops shaved off, at every window size.

@@ -228,6 +228,14 @@ QPlainTextEdit, QTextEdit {{
     border: 1px solid {t.border};
     border-radius: {r['sm']}px;
     padding: {SPACE['xs']}px {SPACE['sm']}px;
+    /* Same guarantee QPushButton carries above, and for the same reason: styling
+       these puts the padding INSIDE the widget, so in a tight layout Qt hands the
+       inner line edit less room than the font needs and the value is clipped top
+       and bottom. Buttons and checkboxes already declared a floor; the inputs did
+       not, which is why they were the only thing that collapsed in the Backup
+       dialog (measured: a 28px sizeHint squeezed to 16, leaving 6px for a 16px
+       font). A floor stops a layout squeezing them below legibility. */
+    min-height: {SPACE['xl'] - SPACE['xs']}px;
     selection-background-color: {t.selection_bg};
     selection-color: {t.selection_text};
 }}

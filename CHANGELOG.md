@@ -16,6 +16,14 @@ changes a **user** would notice, per release.
   thumbnail does — and it opens *at that image*, so Prev/Next carry on through the
   object's other pictures from there. Previously the hero was the one image you
   couldn't click on to see it larger.
+### Fixed
+- **The numbers in the backup window were cut off.** In *Back up Library*, the
+  backup interval, "keep newest" and "keep at least … GB free" fields showed their
+  values with the tops and bottoms of the digits sliced away — "100" was barely
+  readable. They're now given enough room, in that window and anywhere else a
+  crowded layout could have squeezed an input field.
+- **A missing "&" in the backup window.** The *Automation & retention* section
+  heading read "Automation  retention".
 
 ### Changed
 - **Saved field guides are now managed by right-click instead of a row of buttons.**

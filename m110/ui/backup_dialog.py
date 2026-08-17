@@ -135,7 +135,10 @@ class BackupDialog(QDialog):
         self._on_format_changed()
 
         # ── automation + retention ──
-        settings_box = QGroupBox("Automation & retention")
+        # "&&" renders one literal ampersand: Qt reads a single "&" in a QGroupBox
+        # title as a mnemonic marker, so "Automation & retention" displayed as
+        # "Automation  retention" with the R underlined.
+        settings_box = QGroupBox("Automation && retention")
         sl = QVBoxLayout(settings_box)
         auto_row = QHBoxLayout()
         self._auto = QCheckBox("Back up automatically")
