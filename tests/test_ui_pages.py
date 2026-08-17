@@ -721,6 +721,41 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
         qapp.processEvents()
 
 
+def test_backup_dialog_exit_button_says_close_until_something_changes(
+        tmp_path, monkeypatch, qapp):
+    """"Cancel" should only appear when it can actually undo something.
+
+    The reported confusion: after "Back up now" — which persists the settings
+    itself, before running — the exit button still read "Cancel", as though it
+    would roll back the snapshot that just ran. `reject()` only closes the window,
+    so there was nothing to cancel and the label was simply untrue."""
+    seed_root(tmp_path, monkeypatch)
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        assert dlg._reject_btn.text() == "Close"
+        assert dlg._save_btn.isEnabled() is False      # nothing to save either
+
+        dlg._interval.setValue(dlg._interval.value() + 1)
+        assert dlg._reject_btn.text() == "Cancel"      # now it can discard an edit
+        assert dlg._save_btn.isEnabled() is True
+
+        # Persisting is what makes the widgets and the stored settings agree —
+        # whether it came from Save or from "Back up now".
+        dlg._persist_settings(str(tmp_path / "dest"))
+        assert dlg._reject_btn.text() == "Close"
+        assert dlg._save_btn.isEnabled() is False
+
+        # A destination filled in programmatically (Browse, or a probe result
+        # rewriting the field) is not a user edit and must not arm "Cancel".
+        dlg._dest.setText(str(tmp_path / "elsewhere"))
+        assert dlg._reject_btn.text() == "Close"
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
 def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monkeypatch, qapp):
     """The #92 case: a destination whose filesystem has no hardlinks stores a full
     copy per backup. Say so *before* the first backup, not after."""
@@ -1751,6 +1786,34 @@ def test_saved_guides_row_actions_moved_to_a_context_menu(
         assert set(acts) == {"view", "reveal", "delete"}
         assert acts["delete"].text().startswith("Delete")
         menu.deleteLater()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_reveal_guide_opens_the_folder_not_the_file(tmp_path, monkeypatch, qapp):
+    """"Reveal in file manager" must show the guide's enclosing folder. It used to
+    hand the .md file itself to QDesktopServices, which opens whatever app owns
+    Markdown — a text editor, not the file manager. The shared
+    `widgets.reveal_in_manager` already resolves a file to its parent."""
+    from datetime import date
+    seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import fieldguide
+    path = fieldguide.save(date(2026, 8, 10), "A night", "# A night\n\nBody.\n")
+
+    opened = []
+    from PySide6.QtGui import QDesktopServices
+    monkeypatch.setattr(QDesktopServices, "openUrl",
+                        lambda url: opened.append(url.toLocalFile()) or True)
+
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        page._reload_guides()
+        page._reveal_guide(0)
+        assert opened == [str(path.parent)]        # the Plans/ folder…
+        assert opened[0] != str(path)              # …not the guide itself
     finally:
         page.deleteLater()
         qapp.processEvents()

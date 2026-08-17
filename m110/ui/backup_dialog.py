@@ -199,13 +199,50 @@ class BackupDialog(QDialog):
         buttons = QDialogButtonBox()
         self._restore_btn = buttons.addButton("Restore…", QDialogButtonBox.ActionRole)
         self._restore_btn.clicked.connect(self._open_restore)
-        save_btn = buttons.addButton("Save", QDialogButtonBox.AcceptRole)
-        save_btn.clicked.connect(self._save_and_close)
-        buttons.addButton("Cancel", QDialogButtonBox.RejectRole)
+        self._save_btn = buttons.addButton("Save", QDialogButtonBox.AcceptRole)
+        self._save_btn.clicked.connect(self._save_and_close)
+        # Label depends on whether there is anything to discard — see `_set_dirty`.
+        self._reject_btn = buttons.addButton("Close", QDialogButtonBox.RejectRole)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        self._dirty = False
+        self._wire_dirty_tracking()
+        self._sync_exit_buttons()
         self._refresh_status()
+
+    # ---- dirty tracking ----
+    def _wire_dirty_tracking(self):
+        """Every control whose value `_persist_settings` writes.
+
+        Kept as one list beside that method on purpose: if a new setting is added to
+        one and not the other, the dialog either forgets a change (offers "Close"
+        over unsaved edits) or nags about one that doesn't exist."""
+        self._dest.textEdited.connect(self._mark_dirty)      # not textChanged:
+        # `_show_destination` and Browse set the text programmatically, and a probe
+        # result landing shouldn't make the dialog look edited.
+        self._format.currentIndexChanged.connect(self._mark_dirty)
+        self._auto.toggled.connect(self._mark_dirty)
+        for spin in (self._interval, self._keep, self._min_free):
+            spin.valueChanged.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *_):
+        self._set_dirty(True)
+
+    def _set_dirty(self, dirty: bool):
+        self._dirty = dirty
+        self._sync_exit_buttons()
+
+    def _sync_exit_buttons(self):
+        """"Cancel" only when it can actually undo something.
+
+        With no pending edits the dialog has nothing to discard — and after "Back up
+        now" (which persists the settings itself before running) a button labelled
+        "Cancel" reads as though it would roll back the snapshot that just ran. It
+        can't: `reject()` only closes the window. So it says **Close** until an edit
+        is made, and Save is disabled while there's nothing to save."""
+        self._reject_btn.setText("Cancel" if self._dirty else "Close")
+        self._save_btn.setEnabled(self._dirty)
 
     # ---- helpers ----
     def _browse(self):
@@ -308,6 +345,10 @@ class BackupDialog(QDialog):
         self._status.setText(head + note)
 
     def _persist_settings(self, dest: str):
+        # Whatever the caller was doing (Save, or "Back up now" saving before it
+        # runs), the on-disk settings now match the widgets — so there is nothing
+        # left to discard and the exit button goes back to "Close".
+        self._set_dirty(False)
         config.save_setting(backup.SETTING_DEST, dest)
         config.save_setting(backup.SETTING_FORMAT, self._current_format())
         config.save_setting(backup.SETTING_AUTO, self._auto.isChecked())

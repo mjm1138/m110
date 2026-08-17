@@ -27,6 +27,7 @@ from m110 import catalog, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
     make_table, fit_table_height, CollapsibleSection, connect_context_menu,
+    reveal_in_manager,
 )
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
@@ -634,10 +635,12 @@ class PlanningPage(QScrollArea):
             FieldGuideDialog(self._guides[r]["path"], self).exec()
 
     def _reveal_guide(self, r: int):
+        # `reveal_in_manager`, not `openUrl` on the file itself: the action says
+        # "Reveal in file manager" and this used to hand the .md straight to
+        # whatever app owns Markdown, which opens a text editor instead of showing
+        # you the Plans/ folder. The shared helper reveals a file's parent.
         if 0 <= r < len(self._guides):
-            from PySide6.QtGui import QDesktopServices
-            from PySide6.QtCore import QUrl
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._guides[r]["path"])))
+            reveal_in_manager(self._guides[r]["path"])
 
     def _delete_guide(self, r: int):
         if not (0 <= r < len(self._guides)):
