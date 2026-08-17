@@ -238,9 +238,16 @@ def fit_table_height(tbl: QTableWidget, max_rows: int | None = None,
 # So a row of buttons gets clipped in both directions at once — horizontally into a
 # column sized for an empty item, vertically into a ~24 px row when the buttons need
 # 30. Kept in the same units the stylesheet uses (not hardcoded pixels) so the two
-# can't drift; `tests/test_ui_table_widgets.py` fails the build if they ever do.
-CELL_WIDGET_PAD_H = 2 * SPACE["sm"]
-CELL_WIDGET_PAD_V = 2 * SPACE["xs"]
+# can't drift; `tests/test_ui_cell_widgets.py::test_padding_constants_match_the_stylesheet`
+# fails the build if they ever do.
+#
+# These two lines and the `QTableView::item` rule in `theme/qss.py` are ONE edit, and
+# the failure is asymmetric: lowering these WITHOUT the QSS hands a cell widget less
+# room than it needs and clips it (measured: a 30px button given 26px), while lowering
+# the QSS without these only wastes a few pixels. That regex test is the guard —
+# don't "simplify" it away.
+CELL_WIDGET_PAD_H = 2 * (SPACE["sm"] - 2)
+CELL_WIDGET_PAD_V = 2 * (SPACE["xs"] // 2)
 
 
 def fit_cell_widgets(tbl: QTableWidget, *cols: int) -> None:

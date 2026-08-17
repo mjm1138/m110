@@ -23,6 +23,8 @@ def build_qss(t: Tokens) -> str:
     check_url = _icon_url("check.svg")
     dash_url = _icon_url("dash.svg")
     radio_dot_url = _icon_url("radio-dot.svg")
+    chevron_up_url = _icon_url("chevron-up.svg")
+    chevron_down_url = _icon_url("chevron-down.svg")
     return f"""
 /* ── base ── */
 QWidget {{
@@ -53,11 +55,14 @@ QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['capt
 /* The container has no border/background; each button carries the border, and the
    end buttons round their outer corners so the whole control reads as one pill. */
 #segControl {{ background-color: transparent; }}
+/* Sized like an NSSegmentedControl: macOS draws tool-button text at 11pt, and the
+   blanket 13px + 12px padding made each segment 63x27 against a native 37x22. */
 #segControl QToolButton#segButton {{
     border: 1px solid {t.border};
     border-left-width: 0px;             /* shared edges collapse to one line */
     border-radius: 0px;
-    padding: 3px 12px;
+    font-size: {FONT_SIZE['caption']}px;
+    padding: 2px {SPACE['sm']}px;
     color: {t.text_primary};
     background-color: {t.surface};
 }}
@@ -115,8 +120,11 @@ QListWidget#navRail {{
    `QWidget` rule above paints every widget, QLabel included. (Invisible while the
    mark sat on the window background; obvious once it sits on the column.) */
 QLabel#navLogo {{ background-color: transparent; }}
+/* A sidebar row, not a touch target: macOS sidebars (Finder, Mail) run 24–28px.
+   `8px` padding made these 36px against a native 17 — +112%, the most visible
+   clunky surface in the app because five of them stack down every screen. */
 QListWidget#navRail::item {{
-    padding: {SPACE['sm']}px {SPACE['md']}px;
+    padding: {SPACE['xs']}px {SPACE['sm'] + 2}px;
     margin: 1px {SPACE['xs']}px;
     border-radius: {r['sm']}px;
 }}
@@ -132,7 +140,13 @@ QTableView, QTableWidget {{
     selection-color: {t.selection_text};
     outline: 0;
 }}
-QTableView::item, QTableWidget::item {{ padding: {SPACE['xs']}px {SPACE['sm']}px; }}
+/* Rows were 27px against a native 19. Keep a little horizontal breathing room and
+   spend almost nothing vertically — a table is the densest surface in the app, so
+   this is where padding costs the most rows on screen.
+   NOTE: `widgets.CELL_WIDGET_PAD_H/V` restate these two numbers, because Qt lays a
+   cell *widget* out inside this padding and nothing else accounts for it.
+   `tests/test_ui_cell_widgets.py` fails the build if the two ever disagree. */
+QTableView::item, QTableWidget::item {{ padding: {SPACE['xs'] // 2}px {SPACE['sm'] - 2}px; }}
 /* Item check indicators are drawn by the stylesheet, not the platform style.
    QMacStyle only paints an item-view check indicator for the *current* row — every
    other checked row rendered blank (the model + click handling were fine, so the
@@ -161,10 +175,15 @@ QTableView::indicator:indeterminate, QTableWidget::indicator:indeterminate {{
     border-color: {t.accent};
     image: url({dash_url});
 }}
+/* macOS draws header text at 11pt, deliberately smaller than body — the blanket
+   QWidget font-size above was overriding that up to 13pt and taking the header
+   from 21px to 33px. Restating the smaller size here is additive and can't affect
+   body text anywhere else. */
 QHeaderView::section {{
     background-color: {t.surface_alt};
     color: {t.text_secondary};
-    padding: {SPACE['xs']}px {SPACE['sm']}px;
+    font-size: {FONT_SIZE['caption']}px;
+    padding: {SPACE['xs'] // 2}px {SPACE['sm']}px;
     border: none;
     border-bottom: 1px solid {t.border};
     border-right: 1px solid {t.divider};
@@ -209,8 +228,12 @@ QPushButton {{
     border-radius: {r['sm']}px;
     padding: {SPACE['xs']}px {SPACE['md']}px;
     /* Guarantee vertical room for the label — a styled QPushButton in a tight
-       layout (esp. on macOS) otherwise clips its text top-and-bottom. */
-    min-height: {SPACE['xl'] - SPACE['xs']}px;
+       layout (esp. on macOS) otherwise clips its text top-and-bottom. A literal,
+       not `SPACE['xl'] - SPACE['xs']`: retuning an unrelated spacing token must not
+       silently move a clipping floor. Buttons are deliberately left at 30px — they
+       already measure 2px UNDER the native macOS 32px, so they were never the
+       source of the "clunky" feel and shrinking them would undershoot the platform. */
+    min-height: 20px;
 }}
 QPushButton:hover {{ background-color: {t.surface_alt}; }}
 QPushButton:pressed {{ background-color: {t.selection_bg}; }}
@@ -227,18 +250,79 @@ QPlainTextEdit, QTextEdit {{
     color: {t.text_primary};
     border: 1px solid {t.border};
     border-radius: {r['sm']}px;
-    padding: {SPACE['xs']}px {SPACE['sm']}px;
-    /* Same guarantee QPushButton carries above, and for the same reason: styling
-       these puts the padding INSIDE the widget, so in a tight layout Qt hands the
-       inner line edit less room than the font needs and the value is clipped top
-       and bottom. Buttons and checkboxes already declared a floor; the inputs did
-       not, which is why they were the only thing that collapsed in the Backup
-       dialog (measured: a 28px sizeHint squeezed to 16, leaving 6px for a 16px
-       font). A floor stops a layout squeezing them below legibility. */
-    min-height: {SPACE['xl'] - SPACE['xs']}px;
+    /* macOS draws a text field MUCH shorter than a button — 21px against 32 — and
+       flattening both to one height is what made the app read as clunky. Measured
+       against the native metrics from the same style and font: `4px` padding with a
+       20px floor put every input at 30px, +43% over native, while our buttons were
+       already 2px *under* it. `2px` + a floor of just the line height lands at 24px.
+       Still a touch roomier than the platform, which suits a data-dense app, but no
+       longer a slab.
+       The floor is NOT reduced with the padding, and that is deliberate. `min-height`
+       sizes the *content* box, so it is the anti-clipping guarantee itself — the
+       inner edit stays 20px at either padding — while the padding is what was making
+       the control a slab. Cutting only the padding takes 30px to 26px and cannot
+       narrow the text band at all. Written as a literal rather than
+       `SPACE['xl'] - SPACE['xs']`: that expression made a clipping floor move
+       silently whenever someone retuned an unrelated spacing token. */
+    padding: {SPACE['xs'] // 2}px {SPACE['sm']}px;
+    min-height: 20px;
     selection-background-color: {t.selection_bg};
     selection-color: {t.selection_text};
 }}
+/* Styling a spin box at all hands its whole rendering to the stylesheet, including
+   the stepper — and with no sub-control rules the base style mispositioned it: the
+   14x14 buttons landed on the widget's 1px border, inside the corner radius, and
+   the macOS chevrons degraded into two ~2px dots. (We can't keep the native stepper
+   and the themed colours: setting any property switches the widget over. The colours
+   are the reason the rule exists — see the QDateEdit note above.) So place the
+   buttons explicitly, inside the frame, with a divider of their own. */
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QDateEdit::up-button, QDateTimeEdit::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: {SPACE['md']}px;
+    margin: 1px 1px 0 0;
+    border-left: 1px solid {t.border};
+    border-top-right-radius: {r['sm']}px;
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button,
+QDateEdit::down-button, QDateTimeEdit::down-button {{
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: {SPACE['md']}px;
+    margin: 0 1px 1px 0;
+    border-left: 1px solid {t.border};
+    border-bottom-right-radius: {r['sm']}px;
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background-color: {t.surface_alt};
+}}
+/* Styling the buttons means Qt stops drawing their arrows and waits for these —
+   without them the stepper is an empty compartment, which looks more broken than
+   the mispositioned default did. */
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow,
+QDateEdit::up-arrow, QDateTimeEdit::up-arrow {{
+    image: url({chevron_up_url});
+    width: {SPACE['sm']}px;
+    height: {SPACE['sm']}px;
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow,
+QDateEdit::down-arrow, QDateTimeEdit::down-arrow {{
+    image: url({chevron_down_url});
+    width: {SPACE['sm']}px;
+    height: {SPACE['sm']}px;
+}}
+QSpinBox::up-arrow:disabled, QSpinBox::down-arrow:disabled,
+QDoubleSpinBox::up-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
+    opacity: 80;
+}}
+/* A pop-up button is NOT a text field: macOS draws it at 32px, button height, not
+   the 21px of a QLineEdit. It shares the rule above for colour and border, so put
+   its height back — otherwise trimming the text fields drags the combo 6px under
+   the platform and it reads as undersized next to the buttons it sits beside. */
+QComboBox {{ min-height: 24px; }}
+
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
 QDateEdit:focus, QDateTimeEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{
     border-color: {t.focus_ring};
