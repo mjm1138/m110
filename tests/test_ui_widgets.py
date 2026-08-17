@@ -134,3 +134,35 @@ def test_row_thumbnails_reset_drops_stale_slug(tmp_path, qapp, monkeypatch):
     thumbs.reset()
     thumbs._apply("m1", QPixmap(4, 4))   # simulate a late callback landing post-reset
     assert item.icon().isNull()
+
+
+def test_no_widget_label_eats_an_ampersand_as_a_mnemonic():
+    """Qt reads a single "&" in a button/checkbox/group-box label as a mnemonic
+    marker: it is consumed and the next character is underlined. "Automation &
+    retention" therefore rendered as "Automation  retention" in the Backup dialog.
+    A literal ampersand has to be written "&&".
+
+    A source scan rather than a widget walk: it covers every label in the UI,
+    including ones behind a dialog that a test would have to construct, and it's
+    the same shape as the assistant's static AST checks."""
+    import re
+    from pathlib import Path
+
+    ui = Path(__file__).resolve().parents[1] / "m110" / "ui"
+    # A label passed straight to a widget constructor / setter.
+    call = re.compile(
+        r"(?:QGroupBox|QCheckBox|QPushButton|QRadioButton|QLabel|QAction|QMenu)\("
+        r"\s*(['\"])(.*?)\1"
+        r"|set(?:Title|Text)\(\s*(['\"])(.*?)\3")
+    # A lone "&" — not "&&", and not an HTML entity (QLabel accepts rich text).
+    lone = re.compile(r"(?<!&)&(?!&|amp;|nbsp;|lt;|gt;|quot;|#)")
+
+    offenders = []
+    for py in sorted(ui.rglob("*.py")):
+        for m in call.finditer(py.read_text(encoding="utf-8")):
+            text = m.group(2) if m.group(2) is not None else m.group(4)
+            if text and lone.search(text):
+                offenders.append(f"{py.relative_to(ui)}: {text!r}")
+    assert not offenders, (
+        "these labels contain a single '&', which Qt eats as a mnemonic — "
+        "write '&&' for a literal ampersand:\n  " + "\n  ".join(offenders))

@@ -110,6 +110,21 @@ def test_pushbutton_has_min_height():
     assert "min-height" in btn_block
 
 
+def test_inputs_have_min_height():
+    """The sibling of the QPushButton rule above, and the same failure: styling an
+    input puts the padding INSIDE it, so a tight layout hands the inner line edit
+    less room than the font needs and the value clips top-and-bottom. Buttons and
+    checkboxes declared a floor; the inputs didn't, so they were the only thing
+    that collapsed in the Backup dialog — a 28px sizeHint squeezed to 16, leaving
+    6px for a 16px font ("100" rendered as a row of stubs).
+
+    Asserted on the generated QSS rather than by painting, per the theme gotcha:
+    offscreen falls back to Fusion and can't validate what QMacStyle draws."""
+    qss = build_qss(tokens.LIGHT)
+    block = qss.split("QPlainTextEdit, QTextEdit {", 1)[1].split("}", 1)[0]
+    assert "min-height" in block
+
+
 def test_disabled_menu_items_are_greyed():
     """Styling QMenu::item stops Qt from auto-greying disabled entries, so a disabled
     context-menu item would draw at full strength and merely fail to highlight — it
