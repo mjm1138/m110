@@ -25,6 +25,14 @@ changes a **user** would notice, per release.
   unsaved changes, and **Save** is greyed out when there's nothing to save.
 
 ### Fixed
+- **The backup window could refuse to save a corrected destination.** If you fixed
+  the backup folder with **Browse…**, the **Save** button stayed greyed out, and the
+  only way to enable it was to change some unrelated setting as well. Picking a
+  folder now counts as a change, as it always should have.
+- **The backup window can no longer erase your backup folder.** Saving with the
+  destination box empty used to write the empty value straight over the folder you'd
+  configured — silently leaving you with no backups. An empty box is now treated as
+  "not entered" and your saved folder is kept.
 - **The backup window opened too short, squashing the settings together.** The
   three retention fields overlapped each other by a few pixels, and the window
   couldn't show what it contained. It now opens at the size it actually needs, and

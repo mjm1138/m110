@@ -746,10 +746,14 @@ def test_backup_dialog_exit_button_says_close_until_something_changes(
         assert dlg._reject_btn.text() == "Close"
         assert dlg._save_btn.isEnabled() is False
 
-        # A destination filled in programmatically (Browse, or a probe result
-        # rewriting the field) is not a user edit and must not arm "Cancel".
+        # Changing the destination arms it too — including programmatically, because
+        # Browse sets the field with `setText` and picking a folder is very much a
+        # change worth saving. (An earlier version listened to `textEdited` to skip
+        # programmatic writes; that left Save greyed out after Browse. Nothing else
+        # writes this field — the destination probe updates the status label.)
         dlg._dest.setText(str(tmp_path / "elsewhere"))
-        assert dlg._reject_btn.text() == "Close"
+        assert dlg._reject_btn.text() == "Cancel"
+        assert dlg._save_btn.isEnabled() is True
     finally:
         dlg.close()
         dlg.deleteLater()
@@ -1818,3 +1822,74 @@ def test_reveal_guide_opens_the_folder_not_the_file(tmp_path, monkeypatch, qapp)
         page.deleteLater()
         qapp.processEvents()
 
+
+
+def test_backup_dialog_browse_enables_save(tmp_path, monkeypatch, qapp):
+    """Picking a folder with **Browse** must enable Save.
+
+    Regression: dirty-tracking listened to `textEdited`, which by design ignores
+    programmatic writes — and Browse sets the field with `setText`. So a user who
+    fixed a wrong destination via Browse got a greyed-out Save and no way to keep
+    the correction. Only the constructor and Browse ever write this field; the
+    destination probe writes the status label, never the path."""
+    seed_root(tmp_path, monkeypatch)
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        assert dlg._save_btn.isEnabled() is False
+        chosen = tmp_path / "picked"
+        chosen.mkdir()
+        monkeypatch.setattr(
+            "PySide6.QtWidgets.QFileDialog.getExistingDirectory",
+            lambda *a, **k: str(chosen))
+        dlg._browse()
+        assert dlg._dest.text() == str(chosen)
+        assert dlg._save_btn.isEnabled() is True
+        assert dlg._reject_btn.text() == "Cancel"
+    finally:
+        dlg.close()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_backup_dialog_never_erases_a_configured_destination(
+        tmp_path, monkeypatch, qapp):
+    """An empty box means "not entered", not "clear it".
+
+    The destination is a path the user chose once and may not remember, and losing
+    it silently stops their backups. Saving with the field blank used to write ""
+    straight over it."""
+    seed_root(tmp_path, monkeypatch)
+    from m110 import backup, config
+    config.save_setting(backup.SETTING_DEST, "/Volumes/Archive/M110-backup")
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        assert dlg._dest.text() == "/Volumes/Archive/M110-backup"   # loads it back
+        dlg._dest.setText("")
+        dlg._save_and_close()
+        assert config.get_setting(backup.SETTING_DEST) == "/Volumes/Archive/M110-backup"
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_backup_dialog_round_trips_the_destination_untouched(
+        tmp_path, monkeypatch, qapp):
+    """Open, change nothing, Save: the stored destination must come back byte-identical.
+    A settings dialog that rewrites a value it merely displayed is how a path gets
+    silently replaced."""
+    seed_root(tmp_path, monkeypatch)
+    from m110 import backup, config
+    original = "/Volumes/AstroArchive/M110-backup/"
+    config.save_setting(backup.SETTING_DEST, original)
+
+    from m110.ui.backup_dialog import BackupDialog
+    dlg = BackupDialog()
+    try:
+        dlg._save_and_close()
+        assert config.get_setting(backup.SETTING_DEST) == original
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
