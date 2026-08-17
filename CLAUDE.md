@@ -532,6 +532,27 @@ control.
 - **Never validate rendering/refresh against a live data root.** (A render
   pointed at the wrong root once clobbered a real `images.json`.) Use a temp
   copy or a throwaway root.
+- **An ad-hoc GUI script must isolate `SETTINGS_FILE`/`APP_CONFIG_DIR`, not just
+  `M110_DATA_ROOT`.** Settings live at **`~/.m110/settings.json` — outside the data
+  root**, so pointing `M110_DATA_ROOT` at a scratch dir does *nothing* to protect
+  them. `tests/conftest.py` seals both (that's what `_seal_live_store` is for), but a
+  throwaway script run by hand — or by a subagent — inherits no such seal, and any
+  code path that reaches `config.save_setting` writes the developer's real
+  preferences. This is not hypothetical: an audit script constructed a
+  `BackupDialog` and called its `_persist_settings("/tmp/typed")` to check a button
+  state, and **overwrote the user's real backup destination** — silently disabling
+  their backups until they noticed. Constructing a dialog is enough to be dangerous:
+  dialogs read settings on open and write them on any save-shaped action. Before
+  running one:
+  ```python
+  import tempfile, pathlib
+  from m110 import config
+  scratch = pathlib.Path(tempfile.mkdtemp())
+  config.SETTINGS_FILE = scratch / "settings.json"     # NOT under the data root
+  config.APP_CONFIG_DIR = scratch / "app_config"       # the log lives here too
+  ```
+  Prefer driving the *engine* over constructing UI when a question can be answered
+  without a widget, and prefer a pytest case (already sealed) over a scratch script.
 - **Capturing UI screenshots — render offscreen, don't drive the live app.** For
   marketing/site screenshots (or any "show me the UI" grab), skip computer-use
   entirely: it's deterministic, needs no window management/coordinate mapping, and

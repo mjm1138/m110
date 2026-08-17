@@ -239,9 +239,14 @@ class BackupDialog(QDialog):
         Kept as one list beside that method on purpose: if a new setting is added to
         one and not the other, the dialog either forgets a change (offers "Close"
         over unsaved edits) or nags about one that doesn't exist."""
-        self._dest.textEdited.connect(self._mark_dirty)      # not textChanged:
-        # `_show_destination` and Browse set the text programmatically, and a probe
-        # result landing shouldn't make the dialog look edited.
+        # `textChanged`, NOT `textEdited`. Only two things ever write this field: the
+        # constructor (before this wiring runs, so it can't arm anything) and
+        # **Browse**, which is a user action that changes the setting and absolutely
+        # must enable Save. `textEdited` skips programmatic writes, so picking a
+        # folder with Browse left Save greyed out and the correction unsavable —
+        # exactly the "I fixed the path and couldn't save it" report. The probe
+        # writes `_status`, never `_dest`, so nothing else can arm this.
+        self._dest.textChanged.connect(self._mark_dirty)
         self._format.currentIndexChanged.connect(self._mark_dirty)
         self._auto.toggled.connect(self._mark_dirty)
         for spin in (self._interval, self._keep, self._min_free):
@@ -370,7 +375,12 @@ class BackupDialog(QDialog):
         # runs), the on-disk settings now match the widgets — so there is nothing
         # left to discard and the exit button goes back to "Close".
         self._set_dirty(False)
-        config.save_setting(backup.SETTING_DEST, dest)
+        # Never let an empty field erase a configured destination. Everything else
+        # here has a real value whatever the widget state, but the destination is a
+        # path the user chose once and may not remember — and losing it silently
+        # disables their backups. An empty box means "not entered", not "clear it".
+        if dest:
+            config.save_setting(backup.SETTING_DEST, dest)
         config.save_setting(backup.SETTING_FORMAT, self._current_format())
         config.save_setting(backup.SETTING_AUTO, self._auto.isChecked())
         config.save_setting(backup.SETTING_INTERVAL, self._interval.value())
