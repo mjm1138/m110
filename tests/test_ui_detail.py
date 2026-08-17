@@ -211,6 +211,51 @@ def test_gallery_promote_demote_persists(tmp_path, monkeypatch, qapp):
         d.deleteLater(); qapp.processEvents()
 
 
+def test_hero_double_click_opens_the_viewer(tmp_path, monkeypatch, qapp):
+    """End-to-end for the hero gesture: a real double-click on the hero widget
+    opens the image viewer at that same image's place in the gallery.
+
+    Deliberately driven through `QTest.mouseDClick` rather than by calling the
+    handler — that's what covers the parts a direct call would skip:
+    `ScalableImage.mouseDoubleClickEvent`, the signal, and the `connect` in
+    `show_object`. (`tests/test_ui_modal_safety.py` covers the deferral.)"""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from m110 import objects
+    slug, e, t = _seed_object_with_images(tmp_path, monkeypatch)
+    from m110.ui import detail as detail_mod
+
+    shown = []
+
+    class _FakeViewer:
+        def __init__(self, items, idx, **kw):
+            self._args = (items, idx)
+
+        def exec(self):
+            shown.append(self._args)
+
+    monkeypatch.setattr(detail_mod, "ImageViewer", _FakeViewer)
+
+    d = detail_mod.DetailPane()
+    try:
+        d.show_object(slug, e, t)
+        assert d._hero_widget is not None, "no hero rendered — fixture changed?"
+        hero_name = objects.read_journal(slug)[0].get("hero")
+        expected = next(i for i, gi in enumerate(d._gallery_items)
+                        if gi["name"] == hero_name) if hero_name else \
+            d._hero_gallery_index(slug)
+
+        QTest.mouseDClick(d._hero_widget, Qt.LeftButton)
+        qapp.processEvents()                 # the open is deferred past the handler
+
+        assert len(shown) == 1
+        items, idx = shown[0]
+        assert idx == expected                            # opened ON the hero
+        assert len(items) == len(d._gallery_items)        # with the whole gallery
+    finally:
+        d.deleteLater(); qapp.processEvents()
+
+
 def test_gallery_set_hero_writes_and_rerenders(tmp_path, monkeypatch, qapp):
     from m110 import objects
     slug, e, t = _seed_object_with_images(tmp_path, monkeypatch)

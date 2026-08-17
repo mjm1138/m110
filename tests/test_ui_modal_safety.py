@@ -160,3 +160,62 @@ def test_gallery_double_click_defers_the_viewer(tmp_path, monkeypatch, qapp):
                                                     "src": "/a.jpg"}]
     finally:
         pane.deleteLater(); qapp.processEvents()
+
+
+def test_hero_double_click_opens_the_viewer_at_the_heros_own_image(
+        tmp_path, monkeypatch, qapp):
+    """Double-clicking the hero opens the viewer exactly as double-clicking that
+    image in the gallery does: the **same item list**, positioned at the hero, so
+    Prev/Next carry on from there rather than restarting at the first tile.
+
+    Same deferral requirement as the gallery — `ScalableImage.doubleClicked` is
+    emitted from inside `mouseDoubleClickEvent`, so a modal opened there would keep
+    that C++ frame alive underneath it (the 0.3.0b3 crash shape)."""
+    root = seed_root(tmp_path, monkeypatch)
+    from m110 import objects
+    from m110.ui import detail as detail_mod
+
+    shown = []
+
+    class _FakeViewer:
+        def __init__(self, items, idx, **kw):
+            self._args = (items, idx)
+
+        def exec(self):
+            shown.append(self._args)
+
+    monkeypatch.setattr(detail_mod, "ImageViewer", _FakeViewer)
+    # The hero is the SECOND gallery image, so "opens at the hero" can't be
+    # confused with "opens at index 0".
+    objects.write_journal("m1", "---\nhero: b.jpg\n---\n\nnotes\n")
+
+    pane = detail_mod.DetailPane()
+    try:
+        pane._current = ("m1", {"id": "M1"}, {})
+        pane._gallery_items = [
+            {"name": "a.jpg", "path": "/a.jpg", "src": "/a.jpg"},
+            {"name": "b.jpg", "path": "/b.jpg", "src": "/b.jpg"},
+        ]
+        assert pane._hero_gallery_index("m1") == 1
+        # …and the dict helper the hero's context menu uses still agrees.
+        assert pane._hero_gallery_item("m1")["name"] == "b.jpg"
+
+        pane._open_hero_viewer()
+        assert shown == []                      # nothing modal inside the handler
+        qapp.processEvents()
+        assert len(shown) == 1
+        items, idx = shown[0]
+        assert idx == 1                         # positioned on the hero
+        assert [i["name"] for i in items] == ["a.jpg", "b.jpg"]   # whole gallery
+
+        # A hero that isn't one of the gallery's images opens nothing, rather than
+        # opening the viewer on some other picture.
+        shown.clear()
+        objects.write_journal("m1", "---\nhero: gone.jpg\n---\n\nnotes\n")
+        monkeypatch.setattr(detail_mod.build_images, "hero_source_path",
+                            lambda slug: None)
+        pane._open_hero_viewer()
+        qapp.processEvents()
+        assert shown == []
+    finally:
+        pane.deleteLater(); qapp.processEvents()

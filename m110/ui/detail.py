@@ -282,6 +282,9 @@ class DetailPane(QScrollArea):
             pm = QPixmap(str(hp))
             if not pm.isNull():
                 self._hero_widget = ScalableImage(pm, max_height=460)
+                self._hero_widget.setCursor(Qt.PointingHandCursor)
+                self._hero_widget.setToolTip("Double-click to open in the viewer")
+                self._hero_widget.doubleClicked.connect(self._open_hero_viewer)
                 connect_context_menu(self._hero_widget, self._hero_context_menu)
                 self._lay.addWidget(self._hero_widget)
 
@@ -546,24 +549,51 @@ class DetailPane(QScrollArea):
         if gi is not None:
             self._run_image_menu(gi, self._hero_widget.mapToGlobal(pos))
 
-    def _hero_gallery_item(self, slug):
-        """The gallery-item dict for the current hero's source image, so the hero
-        menu reuses the same actions (set-hero / curation / export / open)."""
+    def _hero_gallery_index(self, slug):
+        """Index into `_gallery_items` of the current hero's source image, or None.
+
+        The *index* rather than the dict, because double-clicking the hero opens the
+        viewer at that position so Prev/Next then walk the gallery from there — the
+        hero is one of the gallery's images, not a separate thing."""
         fm, _ = objects.read_journal(slug)
         name = fm.get("hero")
         if name:
-            for gi in self._gallery_items:
+            for i, gi in enumerate(self._gallery_items):
                 if gi["name"] == name:
-                    return gi
+                    return i
         src = build_images.hero_source_path(slug)
         if src is not None:
             sp = str(src)
-            for gi in self._gallery_items:
+            for i, gi in enumerate(self._gallery_items):
                 # Match on the *source* file — for a FITS hero "path" is the
                 # render, which would never equal the hero's source.
                 if gi.get("src", gi["path"]) == sp:
-                    return gi
+                    return i
         return None
+
+    def _hero_gallery_item(self, slug):
+        """The gallery-item dict for the current hero's source image, so the hero
+        menu reuses the same actions (set-hero / curation / export / open)."""
+        idx = self._hero_gallery_index(slug)
+        return self._gallery_items[idx] if idx is not None else None
+
+    def _open_hero_viewer(self):
+        """Double-click the hero → the image viewer, exactly as double-clicking that
+        same image in the gallery would: same item list, positioned at the hero, so
+        Prev/Next carry on through Finished and Working files.
+
+        Deferred for the reason `_open_gallery_item` documents — the signal comes
+        from inside `mouseDoubleClickEvent`, and opening a modal there keeps that C++
+        frame alive while a background sync could rebuild this pane (the 0.3.0b3
+        SIGSEGV). Works off a snapshot so a rebuild can't shift the index either."""
+        if not self._current:
+            return
+        idx = self._hero_gallery_index(self._current[0])
+        if idx is None:
+            return          # hero isn't one of the gallery's images — nothing to open
+        items, stem = list(self._gallery_items), self._export_stem()
+        defer(self, lambda: ImageViewer(items, idx, parent=self,
+                                        export_stem=stem).exec())
 
     def _run_image_menu(self, gi, global_pos):
         """Shared right-click menu for a single image (gallery tile or hero)."""

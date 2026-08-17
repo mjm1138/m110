@@ -10,6 +10,13 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Double-click the hero image to open it full-size.** The big image at the top of
+  an object's detail pane now opens in the image viewer just like a gallery
+  thumbnail does — and it opens *at that image*, so Prev/Next carry on through the
+  object's other pictures from there. Previously the hero was the one image you
+  couldn't click on to see it larger.
+
 ### Changed
 - **Saved field guides are now managed by right-click instead of a row of buttons.**
   Double-click a guide to open it, or right-click for **View**, **Reveal in file
