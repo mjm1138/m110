@@ -752,6 +752,59 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## UI niceties (backlog)
 
+- [x] **Controls were too heavy — a density pass measured against native macOS**
+  *(done — `fix/ui-density`)*. Reported as "buttons and selectors have unnecessary
+  padding… reduce the padding and/or the text size". Measured first, in a real cocoa
+  app with the stylesheet toggled on and off (offscreen is Fusion and proves nothing),
+  and **two thirds of the report turned out to be mis-aimed** — which is why measuring
+  first mattered:
+  - **Buttons and combos were already at or below native** — `QPushButton` 30px vs the
+    platform's 32, `QComboBox` 30 vs 32, and 4–18px *narrower*. Shrinking them would
+    have undershot macOS. **Left alone.**
+  - **The body font is exactly the macOS system font** — 13.0pt, byte-identical to
+    `QFontDatabase.systemFont(GeneralFont)`. **Not touched.** But the blanket
+    `QWidget { font-size: 13px }` *was* overriding the two classes macOS deliberately
+    draws smaller (`QToolButton` 10pt→13pt, `QHeaderView` 11pt→13pt) — so the text
+    that really was oversized is in table headers and segmented controls, now
+    restated at 11px.
+  - The bloat was in four places, all now trimmed (styled → native): **text inputs**
+    30→26 (21), **nav rail rows** 36→28 (17), **table rows** 27→23 (19), **headers**
+    33→29 (21), **segmented buttons** 27→25 (22).
+
+  The input `min-height` was **kept at 20px** and only the padding cut: `min-height`
+  sizes the *content* box, so it is the anti-clipping guarantee itself, and trimming
+  padding cannot narrow the text band. Both floors are now literals rather than
+  `SPACE['xl'] - SPACE['xs']` — that expression let an unrelated spacing tweak move a
+  clipping floor silently. `QComboBox` gets its own 24px floor so it stays button-height
+  (a pop-up button is not a text field: macOS draws it at 32, not 21).
+  Verified: **0 clipped controls** across the main window and all three dialogs.
+  ⚠️ **The input change is a no-op under Fusion**, so the "more native" win is macOS-only;
+  the table/header/rail changes apply everywhere but are unvalidated on Linux/Windows.
+
+- [x] **Styled spin boxes had no stepper** *(done — same branch)*. Styling a spin box at
+  all hands its whole rendering to the stylesheet, so the macOS chevrons degraded into
+  two ~2px dots — and adding `::up-button`/`::down-button` rules without
+  `::up-arrow`/`::down-arrow` made it *worse*, an empty compartment. Both halves now
+  ship together (`theme/icons/chevron-{up,down}.svg`), guarded by a test. The colours are
+  why the input rule exists at all (see the QDateEdit note in `qss.py`) — we can't have
+  themed colours *and* the native stepper, since setting any property switches the widget
+  over. One neutral grey serves both themes: QSS has no `currentColor`.
+
+- [x] **The Backup dialog opened shorter than its own layout minimum** *(done — same
+  branch)*. This, not the control padding, is what still looked broken after the
+  clipping fix. `self.resize(560, 0)` ran at the *top* of `__init__`, before any widget
+  existed, so the zero height clamped to the layout minimum *as it stood at that moment*
+  — nothing. Measured: dialog 478px against a `heightForWidth(560)` of 536, leaving the
+  group box 58px short and the three spin boxes **physically overlapping by 3px each**
+  (6px once the async destination probe wrapped the status line to two lines). Now sized
+  at the *end* of `__init__` from `max(sizeHint, heightForWidth)`. Row gaps measured
+  −3/−3 → +4/+4.
+  Also in that dialog: the three retention rows were independent `QHBoxLayout`s, so the
+  fields sat at three different x with three different widths (48px spread) — now one
+  `QGridLayout` with a shared label column, measured spread **0px**; and `min_free`'s
+  hardcoded `setFixedWidth(90)` was 18px *below* its own sizeHint (it clipped at large
+  values), replaced by one width derived from the widest of the three.
+
 - [x] **Spin-box values clipped top-and-bottom in the Backup dialog**
   *(done — `fix/spinbox-text-crop`)*. Reported from the packaged app: the interval,
   keep-newest and min-free fields rendered "11 h" / "all" / "100" with the glyph tops

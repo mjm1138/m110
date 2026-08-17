@@ -10,6 +10,30 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **The interface is tighter and closer to the way Mac apps look.** Text fields,
+  drop-downs, the navigation rail down the left, table rows and the List/Grid/Feed
+  buttons all carried more padding than macOS uses, which made everything feel
+  chunky and fitted less on screen. They've been measured against the real system
+  controls and trimmed — a table shows more rows, the nav rail is slimmer, and
+  headers use the smaller text macOS uses for them. Buttons and the body text were
+  measured too and left alone: they already matched the system. Spin boxes also get
+  their up/down arrows back — they'd been reduced to a pair of dots.
+- **The backup window's "Cancel" button now says "Close" unless you've changed
+  something.** After running a backup, "Cancel" suggested it would undo the backup
+  you'd just taken; it never could. It now reads "Cancel" only while you have
+  unsaved changes, and **Save** is greyed out when there's nothing to save.
+
+### Fixed
+- **The backup window opened too short, squashing the settings together.** The
+  three retention fields overlapped each other by a few pixels, and the window
+  couldn't show what it contained. It now opens at the size it actually needs, and
+  those three fields line up in a column instead of each sitting at its own
+  position.
+- **"Reveal in file manager" on a saved field guide opened the file instead.** It
+  handed the guide to whatever app opens Markdown rather than showing you the
+  `Plans/` folder.
+
 ### Added
 - **Double-click the hero image to open it full-size.** The big image at the top of
   an object's detail pane now opens in the image viewer just like a gallery

@@ -164,3 +164,44 @@ def test_date_edit_is_covered_by_the_input_rules():
         input_selector = qss.split("QPlainTextEdit, QTextEdit {", 1)[0].rsplit("*/", 1)[-1]
         assert "QDateEdit" in input_selector          # the color/border rule
         assert "QDateEdit:focus" in qss               # the focus ring rule
+
+
+def test_styled_spinboxes_declare_their_stepper():
+    """Styling a spin box hands its ENTIRE rendering to the stylesheet, stepper
+    included. With `::up-button`/`::down-button` rules but no `::up-arrow`/
+    `::down-arrow` image, Qt draws the buttons and no glyph — an empty compartment,
+    which looks more broken than the mispositioned default it replaced. With
+    neither, the macOS chevrons degrade into two ~2px dots. So the sub-controls and
+    their arrows travel together."""
+    qss = build_qss(tokens.LIGHT)
+    for sub in ("up-button", "down-button", "up-arrow", "down-arrow"):
+        assert f"QSpinBox::{sub}" in qss, f"QSpinBox::{sub} rule missing"
+    for glyph in ("chevron-up.svg", "chevron-down.svg"):
+        assert glyph in qss
+
+
+def test_stepper_chevrons_ship_with_the_package():
+    """The arrows are `url(...)` references to files on disk — a missing asset is a
+    silently empty stepper in a packaged build, not an import error."""
+    from pathlib import Path
+    from m110.ui.theme.qss import ICONS_DIR
+    for name in ("chevron-up.svg", "chevron-down.svg"):
+        assert (Path(ICONS_DIR) / name).is_file(), f"{name} missing from theme/icons"
+
+
+def test_inputs_are_shorter_than_buttons():
+    """macOS draws a text field (21px) much shorter than a button (32px); flattening
+    both to one 30px slab is what made the app read as clunky. The rules must keep
+    them distinct — inputs trimmed, buttons left alone (they already measure UNDER
+    native, so shrinking them would undershoot the platform)."""
+    qss = build_qss(tokens.LIGHT)
+    btn = qss.split("QPushButton {", 1)[1].split("}", 1)[0]
+    inp = qss.split("QPlainTextEdit, QTextEdit {", 1)[1].split("}", 1)[0]
+
+    def vpad(block):
+        line = next(l for l in block.splitlines() if "padding:" in l)
+        return int(line.split("padding:")[1].strip().split("px")[0])
+
+    assert vpad(inp) < vpad(btn), "inputs must be tighter than buttons"
+    assert "min-height: 20px" in btn      # the anti-clipping floors stay literal
+    assert "min-height: 20px" in inp

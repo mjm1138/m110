@@ -14,8 +14,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog,
-    QPushButton, QSpinBox, QVBoxLayout,
+    QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+    QProgressDialog, QPushButton, QSpinBox, QVBoxLayout,
 )
 
 from m110 import backup, config
@@ -86,7 +86,6 @@ class BackupDialog(QDialog):
         self._cancel_event = None
         self._probe_worker = None
         self._probe_cache: dict[str, object] = {}
-        self.resize(560, 0)
 
         from m110.ui.theme import tokens
         s = tokens.SPACE
@@ -157,43 +156,50 @@ class BackupDialog(QDialog):
         auto_hint.setProperty("muted", True)
         sl.addWidget(auto_hint)
 
-        iv_row = QHBoxLayout()
-        iv_row.addWidget(QLabel("…at most once every"))
+        # One grid, not three QHBoxLayouts: independent rows gave each label its own
+        # width, so the three fields started at three different x (a 48px spread) and
+        # had three different widths. A shared label column lines them up.
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(s["sm"])
+        grid.setVerticalSpacing(s["xs"])
+        grid.setColumnStretch(3, 1)               # trailing space absorbs the slack
+
         self._interval = QSpinBox()
         self._interval.setRange(1, 24 * 30)
         self._interval.setSuffix(" h")
         self._interval.setValue(int(config.get_setting(
             backup.SETTING_INTERVAL, backup.DEFAULT_INTERVAL_HOURS)))
-        iv_row.addWidget(self._interval)
-        iv_row.addStretch(1)
-        sl.addLayout(iv_row)
 
-        keep_row = QHBoxLayout()
-        keep_row.addWidget(QLabel("Keep newest"))
         self._keep = QSpinBox()
         self._keep.setRange(0, 999)
         self._keep.setSpecialValueText("all")     # 0 → "all" (no limit)
         self._keep.setValue(int(config.get_setting(backup.SETTING_KEEP, 0) or 0))
-        keep_row.addWidget(self._keep)
-        keep_row.addWidget(QLabel("backups"))
-        keep_row.addStretch(1)
-        sl.addLayout(keep_row)
 
-        free_row = QHBoxLayout()
-        free_row.addWidget(QLabel("Keep at least"))
         self._min_free = QDoubleSpinBox()
         self._min_free.setRange(0.0, 1_000_000.0)
         self._min_free.setDecimals(0)
         self._min_free.setSpecialValueText("off")     # 0 → disabled
-        self._min_free.setFixedWidth(90)
         self._min_free.setToolTip("Prune the oldest backups to maintain this much "
                                   "free space on the destination. 0 = off.")
         self._min_free.setValue(float(config.get_setting(
             backup.SETTING_MIN_FREE, backup.DEFAULT_MIN_FREE_GB)))
-        free_row.addWidget(self._min_free)
-        free_row.addWidget(QLabel("GB free on the destination volume"))
-        free_row.addStretch(1)
-        sl.addLayout(free_row)
+
+        for row, (label, field, suffix) in enumerate((
+                ("…at most once every", self._interval, ""),
+                ("Keep newest", self._keep, "backups"),
+                ("Keep at least", self._min_free, "GB free on the destination volume"))):
+            grid.addWidget(QLabel(label), row, 0)
+            grid.addWidget(field, row, 1)
+            if suffix:
+                grid.addWidget(QLabel(suffix), row, 2)
+        # One width for all three, from the widest — `min_free` used to carry a
+        # hardcoded 90px that was 18px BELOW its own sizeHint, so it clipped at large
+        # values ("1000000" needs 54px in a 58px field).
+        field_w = max(w.sizeHint().width()
+                      for w in (self._interval, self._keep, self._min_free))
+        for w in (self._interval, self._keep, self._min_free):
+            w.setFixedWidth(field_w)
+        sl.addLayout(grid)
         layout.addWidget(settings_box)
 
         buttons = QDialogButtonBox()
@@ -210,6 +216,21 @@ class BackupDialog(QDialog):
         self._wire_dirty_tracking()
         self._sync_exit_buttons()
         self._refresh_status()
+
+        # Size the window LAST, once the layout knows what it needs. This used to be
+        # `self.resize(560, 0)` at the top of __init__ — before any widget existed —
+        # and a zero height is clamped to the layout's minimum *as it stands at that
+        # moment*, which was nothing. The dialog therefore opened 58px shorter than
+        # the layout's real minimum, and the retention rows were squeezed until the
+        # three spin boxes physically OVERLAPPED by 3px each (6px once the async
+        # destination probe wrapped the status line to two lines). That, not the
+        # control padding, is what still looked broken after the padding fix.
+        # heightForWidth is what the layout actually needs at this width; sizeHint
+        # can be shorter when word-wrapped labels are involved.
+        self.setMinimumWidth(420)
+        w = 560
+        self.resize(w, max(self.sizeHint().height(),
+                           self.layout().heightForWidth(w)))
 
     # ---- dirty tracking ----
     def _wire_dirty_tracking(self):
