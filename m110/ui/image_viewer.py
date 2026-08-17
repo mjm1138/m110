@@ -36,7 +36,14 @@ class ScalableImage(QLabel):
     `max_height` caps a tall image.
     `fit="both"` (the viewer): scales into the available box in *both* dimensions
     and claims no minimum size — so the window can be resized smaller in either
-    direction (and never forces the dialog larger than the screen)."""
+    direction (and never forces the dialog larger than the screen).
+
+    Emits `doubleClicked` so a host can treat the image as openable. The signal
+    only reports the gesture — **connect it through `widgets.defer`**, because it
+    is emitted from inside Qt's `mouseDoubleClickEvent` and anything that opens a
+    modal (or tears widgets down) there keeps that C++ frame alive underneath it."""
+
+    doubleClicked = Signal()
 
     def __init__(self, pixmap: QPixmap, max_height: int | None = None,
                  fit: str = "width", parent=None):
@@ -79,6 +86,11 @@ class ScalableImage(QLabel):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._rescale()
+
+    def mouseDoubleClickEvent(self, event):
+        super().mouseDoubleClickEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.doubleClicked.emit()
 
 
 class ZoomableImage(QScrollArea):

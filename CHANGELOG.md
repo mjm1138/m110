@@ -10,6 +10,12 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Double-click the hero image to open it full-size.** The big image at the top of
+  an object's detail pane now opens in the image viewer just like a gallery
+  thumbnail does — and it opens *at that image*, so Prev/Next carry on through the
+  object's other pictures from there. Previously the hero was the one image you
+  couldn't click on to see it larger.
 ### Fixed
 - **The numbers in the backup window were cut off.** In *Back up Library*, the
   backup interval, "keep newest" and "keep at least … GB free" fields showed their

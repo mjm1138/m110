@@ -104,6 +104,13 @@ ever overwrites a value you've set yourself:
 renders, and journal on disk are left untouched. (Re-ingesting or refreshing will
 re-promote a target that still has images.)
 
+## Looking at an object's images
+
+**Double-click any image to open it full-size** in the viewer — a gallery tile, or the
+big hero image at the top of the detail pane. Either way you land on that picture and
+can page through the object's other images with **Prev/Next** (or ← / →), zoom, toggle
+the capture details, and export. Escape closes it.
+
 ## Curating an object's images
 
 The detail-pane gallery is split into two groups — **Finished** (your deliverables) and
