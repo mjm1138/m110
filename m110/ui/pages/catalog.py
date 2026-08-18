@@ -706,10 +706,19 @@ class CatalogPage(QWidget):
         self.detail.show()
 
     def _on_detail_closed(self):
-        if self._view_mode == "list":
+        # Every view clears its own selection — the map's is `_map_slug`, not a
+        # selection model, so the old `else` branch cleared the *grid's* (a no-op
+        # there) and left the ring drawn. And the hide is explicit rather than a
+        # side effect of the resulting selection-changed signal: the map emits no
+        # such signal, so on that view ✕ did nothing at all.
+        if self._view_mode == "map":
+            self._map_slug = None
+            self.map_view.set_selected(None)
+        elif self._view_mode == "list":
             self.table.clearSelection()
         else:
             self.grid_view.clearSelection()
+        self.detail.hide()
 
     def _refresh_open_detail(self):
         slug = self._selected_slug()

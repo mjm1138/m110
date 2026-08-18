@@ -305,6 +305,35 @@ def test_a_filtered_out_selection_closes_the_detail(tmp_path, monkeypatch, qapp)
 
 
 @needs_uranometria
+def test_closing_the_detail_pane_works_in_every_view(tmp_path, monkeypatch, qapp):
+    """✕ dismissed the detail pane in List and Grid but did nothing on the Map.
+
+    The pane was only ever hidden as a *side effect* of a selection-changed
+    signal, and the map has no selection model to emit one — its selection is
+    `_map_slug`. The old handler cleared the grid's selection instead, which on
+    the map is a no-op, so the pane stayed open with the marker still ringed.
+    """
+    page = _page(tmp_path, monkeypatch)
+    try:
+        page.show()
+        for mode in ("map", "grid", "list"):
+            page._view_btns[mode].setChecked(True)
+            assert page._select_slug("m81") is True, f"{mode}: could not select"
+            page._show_selection("m81")
+            assert not page.detail.isHidden(), f"{mode}: pane did not open"
+
+            page.detail.closed.emit()
+            qapp.processEvents()
+            assert page.detail.isHidden(), f"{mode}: ✕ left the pane open"
+            assert page._selected_slug() is None, f"{mode}: selection survived ✕"
+        # The map also drops its ring, not just its slug.
+        assert page.map_view.canvas.selected() is None
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+@needs_uranometria
 def test_a_catalog_with_nothing_in_it_shows_an_empty_sky(tmp_path, monkeypatch, qapp):
     """A filter that matches nothing draws the sky with a line saying why,
     rather than a blank pane."""

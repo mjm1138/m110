@@ -49,6 +49,9 @@ changes a **user** would notice, per release.
   drawn as two detached buttons with a gap between them, instead of the single
   joined control they are everywhere else — the pair was being stretched to the
   width of the four-button deep-sky version.
+- **The ✕ on an object's details did nothing in Map view.** Closing the panel
+  worked in List and Grid but not on the sky map, where the panel stayed open
+  with the object still ringed on the chart.
 - **The close button on a media file's details showed an empty box.** The ✕ was
   squeezed out of a button too narrow to hold it. It's now the same flat ✕ the
   object detail panel uses.
