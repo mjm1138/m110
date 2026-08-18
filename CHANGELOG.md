@@ -61,6 +61,11 @@ changes a **user** would notice, per release.
   breathing room, in the Media and deep-sky views alike.
 
 ### Changed
+- **The placeholder observing site is now a named landmark.** A brand-new data
+  folder starts with its location set to Boulder Public Library, Colorado,
+  rather than an unlabelled set of coordinates — so it's obvious it's a
+  placeholder waiting for your own site. Set yours in **Planning → Manage site
+  profiles**; existing data folders are untouched.
 - **The interface is tighter and closer to the way Mac apps look.** Text fields,
   drop-downs, the navigation rail down the left, table rows and the List/Grid/Feed
   buttons all carried more padding than macOS uses, which made everything feel
