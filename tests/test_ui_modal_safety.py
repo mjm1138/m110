@@ -219,3 +219,59 @@ def test_hero_double_click_opens_the_viewer_at_the_heros_own_image(
         assert shown == []
     finally:
         pane.deleteLater(); qapp.processEvents()
+
+
+def test_drain_worker_waits_before_dropping(qapp):
+    """`drain_worker` must not release a QThread that is still running.
+
+    The failure mode is a **qFatal**, not an exception: destroying a live QThread
+    prints "QThread: Destroyed while thread is still running" and calls abort().
+    A test can't catch that, so assert the property instead — after draining, the
+    thread has finished."""
+    import time
+    from PySide6.QtCore import QThread
+    from m110.ui.widgets import drain_worker
+
+    class _Slow(QThread):
+        def run(self):
+            time.sleep(0.2)
+
+    w = _Slow()
+    w.start()
+    assert w.isRunning()
+    assert drain_worker(w) is None
+    assert w.isFinished(), "drain_worker returned while the thread was still running"
+    qapp.processEvents()
+
+
+def test_drain_worker_tolerates_none(qapp):
+    from m110.ui.widgets import drain_worker
+    assert drain_worker(None) is None
+
+
+def test_every_worker_dialog_drains_instead_of_bare_deletelater():
+    """The bug that caused the Backup-dialog SIGABRT was a `_finish_worker` that
+    called `deleteLater()` and cleared the reference *without waiting* — invoked
+    from a slot connected to a signal emitted **inside** `run()`, so the thread was
+    still alive. `export_dialog` had already learned this and fixed it locally;
+    three sibling dialogs kept the unsafe copy for months.
+
+    So assert the shape across all of them rather than trusting each to remember:
+    a dialog that owns a QThread drops it through `drain_worker`."""
+    import re
+    from pathlib import Path
+
+    ui = Path(__file__).resolve().parents[1] / "m110" / "ui"
+    offenders = []
+    for name in ("backup_dialog", "export_dialog", "restore_dialog", "publish_dialog"):
+        src = (ui / f"{name}.py").read_text(encoding="utf-8")
+        for m in re.finditer(r"def (_finish_worker|_stop_worker|_finish_probe|_stop_probe)"
+                             r"\(self[^)]*\):(.*?)(?=\n    def |\n\nclass |\Z)",
+                             src, re.S):
+            body = m.group(2)
+            if "drain_worker" not in body:
+                offenders.append(f"{name}.{m.group(1)}")
+    assert not offenders, (
+        "these drop a QThread without going through widgets.drain_worker, which is "
+        "how a still-running thread reaches ~QThread and aborts the process:\n  "
+        + "\n  ".join(offenders))

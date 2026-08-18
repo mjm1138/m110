@@ -25,6 +25,11 @@ changes a **user** would notice, per release.
   unsaved changes, and **Save** is greyed out when there's nothing to save.
 
 ### Fixed
+- **M110 could quit unexpectedly when you closed the backup window.** If the
+  window was still checking the destination — likely on an external drive or a
+  network share, where that check takes a moment — closing it crashed the app
+  outright rather than just closing. The same fault was present in the restore,
+  publish and export windows when closing one just as its operation finished.
 - **The backup window could refuse to save a corrected destination.** If you fixed
   the backup folder with **Browse…**, the **Save** button stayed greyed out, and the
   only way to enable it was to change some unrelated setting as well. Picking a

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
 )
 
+from m110.ui.widgets import drain_worker
 from m110 import config, webexport
 from m110.ui.widgets import open_in_default, reveal_in_manager
 
@@ -237,24 +238,14 @@ class ExportShareDialog(QDialog):
             self._progress = None
 
     def _finish_worker(self):
-        if self._worker is not None:
-            # done/failed/cancelled fires from run() *as it returns*, so the
-            # QThread may not have fully finished yet. Wait for it before
-            # deleting, or the deferred ~QThread can run on a still-running
-            # thread and crash (SIGSEGV in ~QThread during event delivery).
-            if self._worker.isRunning():
-                self._worker.wait()
-            self._worker.deleteLater()
-            self._worker = None
+        # This dialog got the wait right first; drain_worker is that same fix,
+        # shared, after three sibling dialogs were found still missing it.
+        self._worker = drain_worker(self._worker)
 
     def _stop_worker(self):
-        if self._worker is not None:
-            if self._cancel_event is not None:
-                self._cancel_event.set()
-            if self._worker.isRunning():
-                self._worker.wait()
-            self._worker.deleteLater()
-            self._worker = None
+        if self._worker is not None and self._cancel_event is not None:
+            self._cancel_event.set()
+        self._worker = drain_worker(self._worker)
 
     def reject(self):
         self._stop_worker()

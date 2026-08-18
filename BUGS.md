@@ -752,6 +752,32 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## UI niceties (backlog)
 
+- [x] **Closing the Backup dialog mid-probe aborted the process (SIGABRT)**
+  *(done — `fix/backup-destination`)*. Reported from a real run: hitting the exit
+  button crashed with `Termination Reason: SIGNAL 6, Abort trap`. The stack named it
+  exactly — `QThread::~QThread()` → `QObjectPrivate::deleteChildren()` →
+  `QWidget::~QWidget()` → `QDialogWrapper::~QDialogWrapper()` — with thread 18
+  (`_ProbeWorker`) still live. That is Qt's qFatal *"QThread: Destroyed while thread
+  is still running"*, which calls `abort()`; it is **not** a catchable exception.
+  **Mechanism:** `_ProbeWorker.probed` is emitted from *inside* `run()`, so the
+  GUI-thread slot (`_on_probed`) executes while the worker is still finishing.
+  `_finish_probe` dropped the reference there with a bare `deleteLater()` and no
+  wait — leaving a **running QThread parented to the dialog with nobody holding it**.
+  Closing the dialog then destroyed it mid-run. Worse, it defeated the guard:
+  `_stop_probe` checks `is not None`, and the reference had already been cleared, so
+  the teardown *looked* protected and did nothing. Reproduced deterministically with
+  a slowed probe, then verified fixed.
+  **The same bug was in three of four worker dialogs.** `export_dialog` had found and
+  fixed it locally — its comment even spells out "fires from run() *as it returns*" —
+  and `backup_dialog`, `restore_dialog` and `publish_dialog` all kept the unsafe copy.
+  Now one `widgets.drain_worker(worker)` (wait → `deleteLater` → return None) is the
+  single way any of them drops a worker, guarded by a test that greps every
+  `_finish_*`/`_stop_*` method in all four for it — because the failure aborts the
+  interpreter rather than failing an assertion, so the *shape* is what has to be
+  asserted. Aggravated by `/Volumes/...` destinations, where the probe is slow enough
+  for the race to be routine rather than rare.
+
+
 - [x] **Controls were too heavy — a density pass measured against native macOS**
   *(done — `fix/ui-density`)*. Reported as "buttons and selectors have unnecessary
   padding… reduce the padding and/or the text size". Measured first, in a real cocoa

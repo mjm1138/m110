@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QProgressDialog, QPushButton, QSpinBox, QVBoxLayout,
 )
 
+from m110.ui.widgets import drain_worker
 from m110 import backup, config
 
 
@@ -491,32 +492,19 @@ class BackupDialog(QDialog):
             self._progress = None
 
     def _finish_probe(self):
-        if self._probe_worker is not None:
-            self._probe_worker.deleteLater()
-            self._probe_worker = None
+        self._probe_worker = drain_worker(self._probe_worker)
 
     def _stop_probe(self):
-        """Drain the probe thread before dropping it — a QThread still running when
-        Qt tears down segfaults (see the export-dialog lesson in CLAUDE.md)."""
-        if self._probe_worker is not None:
-            if self._probe_worker.isRunning():
-                self._probe_worker.wait()
-            self._probe_worker.deleteLater()
-            self._probe_worker = None
+        self._probe_worker = drain_worker(self._probe_worker)
 
     def _finish_worker(self):
-        if self._worker is not None:
-            self._worker.deleteLater()
-            self._worker = None
+        self._worker = drain_worker(self._worker)
 
     def _stop_worker(self):
-        if self._worker is not None:
-            if self._cancel_event is not None:
-                self._cancel_event.set()
-            if self._worker.isRunning():
-                self._worker.wait()
-            self._worker.deleteLater()
-            self._worker = None
+        # Ask it to stop before waiting, or the wait is for the whole backup.
+        if self._worker is not None and self._cancel_event is not None:
+            self._cancel_event.set()
+        self._worker = drain_worker(self._worker)
 
     def reject(self):
         self._stop_worker()

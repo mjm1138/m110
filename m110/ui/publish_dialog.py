@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from m110.ui.widgets import drain_worker
 from m110 import config, publish
 from m110.publish.options import ALL_SECTIONS, PublishOptions
 
@@ -356,18 +357,18 @@ class PublishDialog(QDialog):
             self._progress = None
 
     def _finish_worker(self):
-        if self._worker is not None:
-            self._worker.deleteLater()
-            self._worker = None
+        # Via drain_worker: `done`/`failed` are emitted from inside run(), so this
+        # slot runs while the thread is still finishing. Dropping the reference
+        # here without waiting left a live QThread parented to the dialog that
+        # `_stop_worker` could no longer see — closing then destroyed it mid-run
+        # and aborted the process.
+        self._worker = drain_worker(self._worker)
 
     def _stop_worker(self):
-        if self._worker is not None:
-            if self._cancel_event is not None:
-                self._cancel_event.set()
-            if self._worker.isRunning():
-                self._worker.wait()
-            self._worker.deleteLater()
-            self._worker = None
+        # Ask it to stop before waiting, or the wait is for the whole operation.
+        if self._worker is not None and self._cancel_event is not None:
+            self._cancel_event.set()
+        self._worker = drain_worker(self._worker)
 
     def reject(self):
         self._stop_worker()
