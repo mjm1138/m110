@@ -316,6 +316,21 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
   its tail — an unsealed log made `test_error_report` fail whenever the developer's own
   app had crashed). Keep per-test `seed_root` + the MainWindow `_ready = False`
   guard anyway (defense in depth).
+- **The manual-test harness is part of the change, like the docs.** An engine
+  rename or a removed function must be carried through **`tools/make_test_corpus.py`**
+  (and `create_test_harness.sh`) in the *same* commit. That generator builds the
+  store `./create_test_harness.sh` launches the app against, so it is the only way
+  the [`TESTING.md`](TESTING.md) GUI flows get exercised at all — but it lives
+  outside the package, so a break there doesn't fail anything until a human sits
+  down to run a manual test and gets a traceback instead of an app. That is exactly
+  how `media.scan()` (removed in the media-first-class work) survived in the
+  generator for a whole release cycle. `tests/test_make_test_corpus.py` now **runs
+  the real generator** (~1s into a temp dir) rather than checking that the names it
+  calls still exist: the same change also turned `media.scan`'s dicts into
+  `MediaItem` dataclasses, and a symbol-existence check waves that straight through.
+  When a feature lands, also ask what the corpus must **contain** for a tester to
+  see it — the Media work shipped video posters, recursive discovery and the
+  sidecar clean-up against a corpus holding one bare `.mp4`.
 - **Dependencies:** core = PySide6, astropy, numpy, pillow, tifffile (FITS
   stack-metadata reads + image rendering). Optional `online` extra = astroquery
   (Simbad lookups for Add object / Enrich online — from **source**, runtime stays

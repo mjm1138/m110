@@ -130,11 +130,16 @@ What it contains (and what each fixture exercises):
 | `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) |
 | `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) |
 | `M81 M82` (multi-object folder) | many-to-many target→object rollups |
-| `Media/…_photo` stills + a **`Timelapse_video/*.mp4`** | Media page photo gallery **and** the **video-row** path (Open → OS player) |
+| `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Tools → Clean up imported sidecars** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster |
 | `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) |
 
 | **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one |
+
+The generator is covered by `tests/test_make_test_corpus.py`, which builds and
+self-checks a corpus on every `pytest -q` run (~1s, into a temp dir). Treat a
+failure there as a manual-testing outage, not a test nit: it means
+`./create_test_harness.sh` will hand the next person a traceback instead of an app.
 
 Regenerate any time (`python tools/make_test_corpus.py`); `--out`/`--tar` relocate
 it, `--no-tar` leaves just the directories. The tarball unpacks **three** siblings —
