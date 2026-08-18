@@ -250,6 +250,36 @@ CELL_WIDGET_PAD_H = 2 * (SPACE["sm"] - 2)
 CELL_WIDGET_PAD_V = 2 * (SPACE["xs"] // 2)
 
 
+def drain_worker(worker):
+    """Wait for a QThread to genuinely finish, then schedule its deletion. Returns
+    None so a caller clears its reference in one line: `self._w = drain_worker(self._w)`.
+
+    **Every** drop of a worker reference should go through here, because the unsafe
+    version is not obviously unsafe. Our workers emit their result signals from
+    *inside* `run()` (`done`/`failed`/`probed`), so a slot connected to them runs on
+    the GUI thread while the worker thread is still executing its last statements.
+    Dropping the reference there with a bare `deleteLater()` leaves a **live QThread
+    parented to the dialog with nobody holding it**: closing the dialog then runs
+    `QObjectPrivate::deleteChildren()` over a running thread, which is a qFatal —
+    "QThread: Destroyed while thread is still running" — and an instant SIGABRT, not
+    a catchable exception.
+
+    Worse, it slips past the `_stop_worker`-style teardown guards, which check
+    `is not None` after the reference has already been cleared. The guard looks
+    present and does nothing.
+
+    The `wait()` costs nothing on the finish path (`run()` is one statement from
+    returning) and is the entire point on the teardown path. `export_dialog` learned
+    this in isolation; three other dialogs kept the unsafe version until a user hit
+    it by closing the Backup dialog while a slow destination probe was mid-flight."""
+    if worker is None:
+        return None
+    if worker.isRunning():
+        worker.wait()
+    worker.deleteLater()
+    return None
+
+
 def fit_cell_widgets(tbl: QTableWidget, *cols: int) -> None:
     """Size `cols` — and every row — so no cell **widget** is clipped.
 
