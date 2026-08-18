@@ -546,9 +546,9 @@ checklist, computed on the fly. Consequences:
   ```toml
   [site]
   name = "Home"
-  latitude_deg = 40.015        # +N
-  longitude_deg = -105.270     # +E
-  elevation_m = 1655
+  latitude_deg = 40.014        # +N
+  longitude_deg = -105.282     # +E
+  elevation_m = 1625
   timezone = "America/Denver"  # IANA; DST derived per-date
   [horizon]
   mask = "default.hrz"         # physical skyline (.hrz/.csv); "" = open

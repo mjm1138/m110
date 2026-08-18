@@ -42,9 +42,12 @@ ACTIVE_PROFILE_SETTING = "active_site_profile"
 @dataclass
 class Site:
     name: str = "Home"
-    latitude_deg: float = 40.015
-    longitude_deg: float = -105.270
-    elevation_m: float = 1655.0
+    # A public landmark, not anyone's address: Boulder Public Library, main
+    # branch. Any default is arbitrary — this one is at least obviously a
+    # placeholder to the user who has to replace it.
+    latitude_deg: float = 40.014
+    longitude_deg: float = -105.282
+    elevation_m: float = 1625.0
     timezone: str = "America/Denver"
     # Physical horizon mask — filename (resolved against the profiles dir) or an
     # absolute path. Empty → an open horizon (no obstruction).

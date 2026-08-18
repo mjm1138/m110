@@ -85,9 +85,11 @@ DEFAULT_PROFILE_TOML = """\
 
 [site]
 name = "Home"
-latitude_deg = 40.015        # decimal degrees, +N
-longitude_deg = -105.270     # decimal degrees, +E
-elevation_m = 1655           # metres above sea level
+# Placeholder: Boulder Public Library (main branch), Colorado. Replace it with
+# your own site — every planning number below depends on it.
+latitude_deg = 40.014        # decimal degrees, +N
+longitude_deg = -105.282     # decimal degrees, +E
+elevation_m = 1625           # metres above sea level
 timezone = "America/Denver"  # IANA timezone (DST handled automatically)
 
 [horizon]

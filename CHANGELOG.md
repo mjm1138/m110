@@ -49,6 +49,9 @@ changes a **user** would notice, per release.
   drawn as two detached buttons with a gap between them, instead of the single
   joined control they are everywhere else — the pair was being stretched to the
   width of the four-button deep-sky version.
+- **The ✕ on an object's details did nothing in Map view.** Closing the panel
+  worked in List and Grid but not on the sky map, where the panel stayed open
+  with the object still ringed on the chart.
 - **The close button on a media file's details showed an empty box.** The ✕ was
   squeezed out of a button too narrow to hold it. It's now the same flat ✕ the
   object detail panel uses.
@@ -58,6 +61,11 @@ changes a **user** would notice, per release.
   breathing room, in the Media and deep-sky views alike.
 
 ### Changed
+- **The placeholder observing site is now a named landmark.** A brand-new data
+  folder starts with its location set to Boulder Public Library, Colorado,
+  rather than an unlabelled set of coordinates — so it's obvious it's a
+  placeholder waiting for your own site. Set yours in **Planning → Manage site
+  profiles**; existing data folders are untouched.
 - **The interface is tighter and closer to the way Mac apps look.** Text fields,
   drop-downs, the navigation rail down the left, table rows and the List/Grid/Feed
   buttons all carried more padding than macOS uses, which made everything feel

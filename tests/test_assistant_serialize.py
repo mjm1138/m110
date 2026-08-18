@@ -17,8 +17,8 @@ from m110.assistant import serialize
 from m110.assistant.serialize import ToolResult, to_json_safe
 from m110.planning_config import Device, Site
 
-_SITE = Site(name="Home", latitude_deg=40.015, longitude_deg=-105.27,
-             elevation_m=1655, timezone="America/Denver")
+_SITE = Site(name="Home", latitude_deg=40.014, longitude_deg=-105.282,
+             elevation_m=1625, timezone="America/Denver")
 _DAY = date(2026, 7, 13)          # the same real July night the planning tests use
 _TZ = ZoneInfo("America/Denver")
 
