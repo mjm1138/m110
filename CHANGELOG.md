@@ -11,6 +11,24 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **You can now set aside subs you don't want stacked, without deleting them.**
+  Move any frames you don't want — clouds, trails, bad focus — from an object's
+  `lights/` folder into a folder called `rejected/` beside it (create it yourself;
+  M110 won't make one for you). From then on those frames are out of the picture:
+  they aren't linked into the Siril working folder, they stop counting toward the
+  object's integration time and session totals, and — the part that makes this
+  worth doing instead of deleting — **M110 won't copy them back off your telescope
+  the next time you import.** Previously the only way to keep a bad sub out of a
+  stack was to delete it, and the next import brought it straight back.
+
+  The frames themselves are never touched: M110 only ever reads the names in
+  `rejected/`, and removes the *link* to them from the working folder. If you
+  reject frames for an object you've already prepped, the working folder is
+  tidied up on the next sync. Change your mind by moving the files back.
+
+  This is the groundwork for the planned Lights Table, where you'll be able to
+  review and flag subs from inside the app instead of in a file manager.
+  (Thanks to @devonjones — [#110](https://github.com/mjm1138/m110/issues/110).)
 - **The Media library now has List and Grid views, like the rest of the Library.**
   Media used to be a plain stack of sections; it now gets the same treatment as
   your deep-sky objects — a grid of thumbnails with a tile-size slider, or a
@@ -33,6 +51,74 @@ changes a **user** would notice, per release.
   folder. It shows you exactly what it will delete, nothing is selected until you
   choose it, and thumbnails a video depends on are never offered — they're the
   only preview frame those clips have.
+- **Double-click the hero image to open it full-size.** The big image at the top of
+  an object's detail pane now opens in the image viewer just like a gallery
+  thumbnail does — and it opens *at that image*, so Prev/Next carry on through the
+  object's other pictures from there. Previously the hero was the one image you
+  couldn't click on to see it larger.
+- **The menus have been reorganised into File, View, Library, Tools and Help.**
+  Previously almost everything lived under a single "Library" menu — including
+  Preferences, backups and publishing — which read oddly on Windows and Linux, and
+  there was **no Exit command at all** outside macOS. Import and Publish now sit under
+  File, backups and Preferences under Tools, and File → Exit closes the app. On macOS
+  nothing moves out from under you: About, Preferences and Quit stay in the M110
+  application menu where they belong.
+- **A View menu switches panes from the keyboard** — Ctrl+1 to Ctrl+5 (Cmd on macOS)
+  jump straight to Library, Overview, Planning, Import or Processing.
+- **About M110 now tells you whether an update is waiting.** Open it and it checks in
+  the background, then shows either "You're up to date" or the newer version with a
+  Download link. It re-checks each time you open it, and never counts against the
+  daily launch check.
+
+### Changed
+- **Working out your priority targets is about 10× faster** — on a Messier-sized
+  list it went from roughly 23 seconds to under 3. This is the calculation behind
+  the Planning page's target ranking, which runs in the background the first time
+  you open Planning each day and whenever you press **Recompute**. M110 was working
+  out sunset and sunrise separately for *every single target*, over and over, even
+  though the sky gets dark at the same time no matter what you're pointing at. It
+  now works each night out once. Same numbers, same rankings — just far less waiting.
+  The saving grows with the size of your goal lists: the more targets you track, the
+  more repeated work this removes.
+- **The interface is tighter and closer to the way Mac apps look.** Text fields,
+  drop-downs, the navigation rail down the left, table rows and the List/Grid/Feed
+  buttons all carried more padding than macOS uses, which made everything feel
+  chunky and fitted less on screen. They've been measured against the real system
+  controls and trimmed — a table shows more rows, the nav rail is slimmer, and
+  headers use the smaller text macOS uses for them. Buttons and the body text were
+  measured too and left alone: they already matched the system. Spin boxes also get
+  their up/down arrows back — they'd been reduced to a pair of dots.
+- **The M110 mark has moved to the bottom of the sidebar**, just above the status bar,
+  and **clicking it opens About** — so the version and update status are one click
+  away from anywhere in the app. The sidebar now reads as a single panel, with its
+  divider running the full height of the window.
+- **The status bar no longer leads with a captured/total count.** The Library page
+  already shows that tally in context; in permanent chrome it was noise. The status
+  bar now shows where your data lives, plus whatever an in-progress operation
+  (syncing, backing up) has to say.
+- **Saved field guides are now managed by right-click instead of a row of buttons.**
+  Double-click a guide to open it, or right-click for **View**, **Reveal in file
+  manager** and **Delete** — the same way object actions already work everywhere
+  else in M110. The three buttons in every row are gone: *View* only repeated the
+  double-click, and *Delete* sat a few pixels from it looking exactly the same.
+  The list is quieter and the titles get the space back.
+- **The backup window's "Cancel" button now says "Close" unless you've changed
+  something.** After running a backup, "Cancel" suggested it would undo the backup
+  you'd just taken; it never could. It now reads "Cancel" only while you have
+  unsaved changes, and **Save** is greyed out when there's nothing to save.
+- **The placeholder observing site is now a named landmark.** A brand-new data
+  folder starts with its location set to Boulder Public Library, Colorado,
+  rather than an unlabelled set of coordinates — so it's obvious it's a
+  placeholder waiting for your own site. Set yours in **Planning → Manage site
+  profiles**; existing data folders are untouched.
+- **The AI-assistant connection now uses the current version of the MCP standard
+  library.** M110 had been held on the previous major version, which upstream now
+  only patches for security. Nothing changes in how you connect an assistant, what
+  it can see, or what it can do — the tools, skills and the read-only guarantees
+  are identical, and existing client configurations keep working unchanged. Two
+  small improvements came with it: skill documents are now correctly labelled as
+  Markdown when an assistant reads them, and a mistaken tool argument produces a
+  clearer message naming the tool and the argument.
 
 ### Fixed
 - **Lunar and planetary photos were squashed in the Media view — the Moon showed
@@ -49,37 +135,27 @@ changes a **user** would notice, per release.
   drawn as two detached buttons with a gap between them, instead of the single
   joined control they are everywhere else — the pair was being stretched to the
   width of the four-button deep-sky version.
-- **The ✕ on an object's details did nothing in Map view.** Closing the panel
-  worked in List and Grid but not on the sky map, where the panel stayed open
-  with the object still ringed on the chart.
 - **The close button on a media file's details showed an empty box.** The ✕ was
   squeezed out of a button too narrow to hold it. It's now the same flat ✕ the
   object detail panel uses.
+- **The ✕ on an object's details did nothing in Map view.** Closing the panel
+  worked in List and Grid but not on the sky map, where the panel stayed open
+  with the object still ringed on the chart.
 - **The Library's list and detail panels no longer butt into the divider between
   them.** Both sides of the divider — and the **Play · Reveal · Export** buttons
   under a media file's details, which sat hard against it — now have a little
   breathing room, in the Media and deep-sky views alike.
-
-### Changed
-- **The placeholder observing site is now a named landmark.** A brand-new data
-  folder starts with its location set to Boulder Public Library, Colorado,
-  rather than an unlabelled set of coordinates — so it's obvious it's a
-  placeholder waiting for your own site. Set yours in **Planning → Manage site
-  profiles**; existing data folders are untouched.
-- **The interface is tighter and closer to the way Mac apps look.** Text fields,
-  drop-downs, the navigation rail down the left, table rows and the List/Grid/Feed
-  buttons all carried more padding than macOS uses, which made everything feel
-  chunky and fitted less on screen. They've been measured against the real system
-  controls and trimmed — a table shows more rows, the nav rail is slimmer, and
-  headers use the smaller text macOS uses for them. Buttons and the body text were
-  measured too and left alone: they already matched the system. Spin boxes also get
-  their up/down arrows back — they'd been reduced to a pair of dots.
-- **The backup window's "Cancel" button now says "Close" unless you've changed
-  something.** After running a backup, "Cancel" suggested it would undo the backup
-  you'd just taken; it never could. It now reads "Cancel" only while you have
-  unsaved changes, and **Save** is greyed out when there's nothing to save.
-
-### Fixed
+- **Buttons in table rows were cut off.** Most visibly in Planning → *Saved field
+  guides*, where the row read "View · Revea · Delete" with the tops and bottoms of
+  the buttons shaved off, at any window size. The same thing was happening more
+  subtly elsewhere: the Import holding area's **Discard** button was a few pixels
+  short, and the object pickers in both import previews were squeezed vertically.
+  Rows are now measured against the controls they actually contain, so nothing is
+  clipped — and the holding area's columns size themselves rather than relying on
+  fixed widths that went stale whenever a label changed.
+- **"Reveal in file manager" on a saved field guide opened the file instead.** It
+  handed the guide to whatever app opens Markdown rather than showing you the
+  `Plans/` folder.
 - **M110 could quit unexpectedly when you closed the backup window.** If the
   window was still checking the destination — likely on an external drive or a
   network share, where that check takes a moment — closing it crashed the app
@@ -98,17 +174,6 @@ changes a **user** would notice, per release.
   couldn't show what it contained. It now opens at the size it actually needs, and
   those three fields line up in a column instead of each sitting at its own
   position.
-- **"Reveal in file manager" on a saved field guide opened the file instead.** It
-  handed the guide to whatever app opens Markdown rather than showing you the
-  `Plans/` folder.
-
-### Added
-- **Double-click the hero image to open it full-size.** The big image at the top of
-  an object's detail pane now opens in the image viewer just like a gallery
-  thumbnail does — and it opens *at that image*, so Prev/Next carry on through the
-  object's other pictures from there. Previously the hero was the one image you
-  couldn't click on to see it larger.
-### Fixed
 - **The numbers in the backup window were cut off.** In *Back up Library*, the
   backup interval, "keep newest" and "keep at least … GB free" fields showed their
   values with the tops and bottoms of the digits sliced away — "100" was barely
@@ -116,87 +181,6 @@ changes a **user** would notice, per release.
   crowded layout could have squeezed an input field.
 - **A missing "&" in the backup window.** The *Automation & retention* section
   heading read "Automation  retention".
-
-### Changed
-- **Saved field guides are now managed by right-click instead of a row of buttons.**
-  Double-click a guide to open it, or right-click for **View**, **Reveal in file
-  manager** and **Delete** — the same way object actions already work everywhere
-  else in M110. The three buttons in every row are gone: *View* only repeated the
-  double-click, and *Delete* sat a few pixels from it looking exactly the same.
-  The list is quieter and the titles get the space back.
-
-### Fixed
-- **Buttons in table rows were cut off.** Most visibly in Planning → *Saved field
-  guides*, where the row read "View · Revea · Delete" with the tops and bottoms of
-  the buttons shaved off, at any window size. The same thing was happening more
-  subtly elsewhere: the Import holding area's **Discard** button was a few pixels
-  short, and the object pickers in both import previews were squeezed vertically.
-  Rows are now measured against the controls they actually contain, so nothing is
-  clipped — and the holding area's columns size themselves rather than relying on
-  fixed widths that went stale whenever a label changed.
-
-### Changed
-- **The AI-assistant connection now uses the current version of the MCP standard
-  library.** M110 had been held on the previous major version, which upstream now
-  only patches for security. Nothing changes in how you connect an assistant, what
-  it can see, or what it can do — the tools, skills and the read-only guarantees
-  are identical, and existing client configurations keep working unchanged. Two
-  small improvements came with it: skill documents are now correctly labelled as
-  Markdown when an assistant reads them, and a mistaken tool argument produces a
-  clearer message naming the tool and the argument.
-
-### Added
-- **You can now set aside subs you don't want stacked, without deleting them.**
-  Move any frames you don't want — clouds, trails, bad focus — from an object's
-  `lights/` folder into a folder called `rejected/` beside it (create it yourself;
-  M110 won't make one for you). From then on those frames are out of the picture:
-  they aren't linked into the Siril working folder, they stop counting toward the
-  object's integration time and session totals, and — the part that makes this
-  worth doing instead of deleting — **M110 won't copy them back off your telescope
-  the next time you import.** Previously the only way to keep a bad sub out of a
-  stack was to delete it, and the next import brought it straight back.
-
-  The frames themselves are never touched: M110 only ever reads the names in
-  `rejected/`, and removes the *link* to them from the working folder. If you
-  reject frames for an object you've already prepped, the working folder is
-  tidied up on the next sync. Change your mind by moving the files back.
-
-  This is the groundwork for the planned Lights Table, where you'll be able to
-  review and flag subs from inside the app instead of in a file manager.
-  (Thanks to @devonjones — [#110](https://github.com/mjm1138/m110/issues/110).)
-- **The menus have been reorganised into File, View, Library, Tools and Help.**
-  Previously almost everything lived under a single "Library" menu — including
-  Preferences, backups and publishing — which read oddly on Windows and Linux, and
-  there was **no Exit command at all** outside macOS. Import and Publish now sit under
-  File, backups and Preferences under Tools, and File → Exit closes the app. On macOS
-  nothing moves out from under you: About, Preferences and Quit stay in the M110
-  application menu where they belong.
-- **A View menu switches panes from the keyboard** — Ctrl+1 to Ctrl+5 (Cmd on macOS)
-  jump straight to Library, Overview, Planning, Import or Processing.
-- **About M110 now tells you whether an update is waiting.** Open it and it checks in
-  the background, then shows either "You're up to date" or the newer version with a
-  Download link. It re-checks each time you open it, and never counts against the
-  daily launch check.
-
-### Changed
-- **The M110 mark has moved to the bottom of the sidebar**, just above the status bar,
-  and **clicking it opens About** — so the version and update status are one click
-  away from anywhere in the app. The sidebar now reads as a single panel, with its
-  divider running the full height of the window.
-- **The status bar no longer leads with a captured/total count.** The Library page
-  already shows that tally in context; in permanent chrome it was noise. The status
-  bar now shows where your data lives, plus whatever an in-progress operation
-  (syncing, backing up) has to say.
-### Changed
-- **Working out your priority targets is about 10× faster** — on a Messier-sized
-  list it went from roughly 23 seconds to under 3. This is the calculation behind
-  the Planning page's target ranking, which runs in the background the first time
-  you open Planning each day and whenever you press **Recompute**. M110 was working
-  out sunset and sunrise separately for *every single target*, over and over, even
-  though the sky gets dark at the same time no matter what you're pointing at. It
-  now works each night out once. Same numbers, same rankings — just far less waiting.
-  The saving grows with the size of your goal lists: the more targets you track, the
-  more repeated work this removes.
 
 ## [0.3.0-beta.4] - 2026-08-11
 
