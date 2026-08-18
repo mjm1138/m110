@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.5] - 2026-08-18
+
 ### Added
 - **You can now set aside subs you don't want stacked, without deleting them.**
   Move any frames you don't want — clouds, trails, bad focus — from an object's
