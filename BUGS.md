@@ -752,6 +752,42 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## UI niceties (backlog)
 
+- [x] **Media was a second-class citizen: squashed thumbnails, duplicated photos,
+  no video previews, no views** *(done — `feature/media-first-class`)*. Reported as
+  "lunar photos are scaled improperly and the layout is weird". Four distinct causes,
+  only one of which was the layout:
+  1. **Aspect distortion.** The page built `QIcon(str(path))` against
+     `setIconSize(160, 160)`. Measured on a real capture: the Moon's bounding box is
+     `749x745` (aspect **1.005**) in the source and `111x62` (aspect **1.790**)
+     through QIcon — vertically compressed by exactly 1920/1080. **It is
+     format-dependent**, which is why it survived so long: the JPEG handler
+     advertises `ScaledSize`, so Qt has it decode straight to the requested size and
+     it obeys literally, ignoring aspect; PNG advertises no such support, so Qt loads
+     full-size and scales with `KeepAspectRatio`. The identical call is correct for a
+     PNG and wrong for a JPEG — and the Seestar writes JPEG. Now routed through
+     `widgets.ThumbnailLoader` (off-thread, center-crop-then-scale, cached), with
+     `tests/test_thumbnail_aspect.py` measuring the *subject's* roundness (asserting
+     the pixmap is 160x160 would have **passed** on the broken code) and an AST scan
+     banning `QIcon(<path>)` across `m110/ui`.
+  2. **Every photo listed twice.** `ingest`'s media branch copied `_all_files()`,
+     bypassing the `_thn.` filter every other path applies, and `media.scan()` had no
+     filter either — so each shot appeared once full-size and once as its 296x532
+     sidecar. Import now takes content files **plus** a video's `<stem>_thn.jpg`;
+     that exception is load-bearing, since a blanket `_content_files()` switch would
+     silently leave every future video with no thumbnail.
+  3. **Ragged layout.** No `setGridSize`/`setUniformItemSizes`, so cells were sized
+     by unelided 35-char filenames. Now the shared `image_grid` tile grid.
+  4. **Hidden work.** The scan was shallow and gated each folder on its `_photo`/
+     `_video` suffix, so `Video_Stacked_*.jpg`/`.fit` and an entire
+     `ASIVideoStack_Output/` subtree were invisible. `media.list_media()` walks
+     recursively and decides kind per file — the same lesson
+     `ingest.scan_directory_plan` already learned.
+  Media also gained List/Grid views (swapped into the Library's own view segment
+  rather than parked elsewhere), a detail pane, video posters from the device
+  sidecar (tiered resolver, so a frame-grab tier can slot in later), and
+  **Tools → Clean up imported sidecars** (preview-then-confirm; `media.discard`
+  recomputes the candidate set so a stale selection can never delete a live poster).
+
 - [x] **Closing the Backup dialog mid-probe aborted the process (SIGABRT)**
   *(done — `fix/backup-destination`)*. Reported from a real run: hitting the exit
   button crashed with `Termination Reason: SIGNAL 6, Abort trap`. The stack named it

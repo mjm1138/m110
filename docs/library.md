@@ -30,6 +30,17 @@ objects and your non-catalog **Media** (lunar, planetary, scenery, startrails �
 and videos). A search box and a **catalog filter** (All / Messier / Caldwell / …) narrow
 the deep-sky views, and a stat row shows captured / total counts and integration time.
 
+Media has its own **List** and **Grid** views, in the same place as the deep-sky ones,
+plus a category filter, a **Photos · Videos** switch and a search box. Videos show the
+preview frame your telescope saved next to the clip, marked with a small ▶; opening one
+hands it to your usual video player (M110 doesn't play video itself). Selecting anything
+opens a detail panel with a large preview, its capture date, size and dimensions, and
+buttons to open it, reveal it in your file manager, or export a shareable copy.
+
+Media is scanned right through, including subfolders — so stacked results you saved
+next to a video, or a whole folder of output from a tool like AutoStakkert, show up
+as photos rather than staying hidden.
+
 Click any object to open its **detail pane**: the hero, object notes, the gallery, its
 capture sessions, and its processing status.
 

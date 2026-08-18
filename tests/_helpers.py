@@ -20,6 +20,7 @@ def seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DERIVED_DIR", internal / "derived")
     monkeypatch.setattr(config, "RENDERS_DIR", internal / "renders")
     monkeypatch.setattr(config, "HERO_DIR", internal / "renders" / "hero")
+    monkeypatch.setattr(config, "MEDIA_RENDERS_DIR", internal / "renders" / "media")
     monkeypatch.setattr(config, "SESSIONS_JSONL", internal / "sessions.jsonl")
     monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
     monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")

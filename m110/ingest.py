@@ -22,7 +22,7 @@ import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import catalog, config, hints
+from . import catalog, config, hints, media
 
 _log = logging.getLogger("m110")
 
@@ -742,7 +742,7 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
         dst_dir = config.MEDIA_DIR / name
         existing = set(_all_files(dst_dir))
         ops = []
-        for f in _all_files(src_dir):
+        for f in _media_import_files(src_dir):
             handled.add(f)
             if f in existing:
                 continue
@@ -766,6 +766,26 @@ def _classify_seestar_dir(src_dir: Path, name: str, action: str,
     handled.update(previews)
     ops.extend(_emit_files(src_dir, previews, "stack", obj, name, action, "seestar"))
     return ops
+
+
+def _media_import_files(src_dir: Path) -> list[str]:
+    """Files worth copying out of a `<Category>_photo|_video` device folder.
+
+    Content files, **plus** the `<stem>_thn.jpg` sidecar of a video we're also
+    importing. That exception is the whole subtlety here: this branch used to copy
+    `_all_files()`, which is why the store filled with redundant photo sidecars and
+    `.avi.idx`/`.avi.txt` noise — but a blanket switch to `_content_files()` would
+    also drop the sidecar beside a **video**, and that sidecar is the only poster
+    frame the device gives us (`media.poster_for`). Dropping it would leave every
+    future video with no thumbnail, silently.
+    """
+    keep = _content_files(src_dir)
+    video_stems = {f.rsplit(".", 1)[0] for f in keep
+                   if media.kind_for(f) == "video"}
+    posters = [f.name for f in src_dir.iterdir()
+               if f.is_file() and media.is_sidecar(f.name)
+               and f.name.split(media.SIDECAR_MARKER)[0] in video_stems]
+    return sorted(keep + posters)
 
 
 def _emit_media(src_dir: Path, files, category_dir: str, obj_label: str,

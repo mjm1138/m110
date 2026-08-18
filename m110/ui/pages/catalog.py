@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QTableWidget,
     QTableWidgetItem, QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
-    QMenu, QListView, QSlider, QToolButton,
+    QMenu, QListView, QSlider, QToolButton, QSizePolicy,
 )
 
 from m110 import config, derived, goals, objects, pins, siril, skymap, catalog as catalog_mod
@@ -17,7 +17,10 @@ from m110.catalog import (
     object_label, list_bundled_catalogs,
 )
 from m110.ui.detail import DetailPane
-from m110.ui.image_grid import TileItem, TileModel, TileDelegate, KEY_ROLE
+from m110.ui.image_grid import (
+    TileItem, TileModel, TileDelegate, KEY_ROLE,
+    GRID_ZOOM_MIN, GRID_ZOOM_MAX, GRID_ZOOM_DEFAULT,
+)
 from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
 from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
@@ -29,9 +32,6 @@ from m110.ui.widgets import (
 
 LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "feed" | "map"
 LIBRARY_ZOOM_KEY = "library_grid_zoom"   # int px
-GRID_ZOOM_MIN = 80
-GRID_ZOOM_MAX = 220
-GRID_ZOOM_DEFAULT = 140
 
 
 class _EnrichOneWorker(QThread):
@@ -222,10 +222,33 @@ class CatalogPage(QWidget):
         for mode, b in self._view_btns.items():
             b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
 
+        # Media has its own List|Grid. The two segments are **stacked**, not
+        # rebuilt, so the control keeps the identical top-right position across a
+        # scope switch — a Media view segment parked somewhere else on screen is
+        # exactly the second-class feel this scope was fixing.
+        self._media_view_seg, self._media_view_group, self._media_view_btns = \
+            self._make_segment([("list", "List"), ("grid", "Grid")],
+                               self.media_view.view_mode())
+        for mode, b in self._media_view_btns.items():
+            b.toggled.connect(
+                lambda on, m=mode: on and self.media_view.set_view_mode(m))
+        # …and back the other way, so a mode changed anywhere but the segment
+        # (restored setting, a future keyboard shortcut) can't leave it stale.
+        self.media_view.view_mode_changed.connect(self._sync_media_view_seg)
+
+        self._view_seg_stack = QStackedWidget()
+        self._view_seg_stack.addWidget(self._view_seg)        # 0 = deep sky
+        self._view_seg_stack.addWidget(self._media_view_seg)  # 1 = media
+        # A QStackedWidget claims the largest page's size; the segments differ in
+        # width, so let it shrink to whichever is current.
+        self._view_seg_stack.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        for seg in (self._view_seg, self._media_view_seg):
+            seg.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+
         controls = QHBoxLayout()
         controls.addWidget(self._scope_seg)
         controls.addStretch(1)
-        controls.addWidget(self._view_seg)
+        controls.addWidget(self._view_seg_stack)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -247,6 +270,9 @@ class CatalogPage(QWidget):
     def set_locked(self, locked: bool):
         self.table.setEnabled(not locked)
         self.grid_view.setEnabled(not locked)
+        # The Media scope is reachable while an edit lock is up (the scope segment
+        # stays live), so its views lock too — otherwise the lock is a hole.
+        self.media_view.setEnabled(not locked)
 
     def select_object(self, slug: str):
         # Route from another page (or a Feed card) → show the Deep-sky scope (not
@@ -280,11 +306,16 @@ class CatalogPage(QWidget):
         the sky map's hemisphere toggle is the same control, not a lookalike."""
         return make_segment(items, active_key)
 
+    def _sync_media_view_seg(self, mode: str):
+        btn = self._media_view_btns.get(mode)
+        if btn is not None and not btn.isChecked():
+            btn.setChecked(True)
+
     def _set_scope(self, idx: int):
         self._scope_stack.setCurrentIndex(idx)
-        # Media has no List/Grid/Feed views (yet), so hide the segment in Media scope.
-        # (When Media gains its own grid/list/journal views, show + enable it instead.)
-        self._view_seg.setVisible(idx == 0)
+        # Both scopes have object views now, so the segment swaps rather than
+        # hiding: Deep sky gets List|Grid|Feed|Map, Media gets List|Grid.
+        self._view_seg_stack.setCurrentIndex(idx)
         if idx == 1:                          # entering Media → refresh its contents
             self.media_view.reload()
 
