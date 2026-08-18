@@ -363,11 +363,33 @@ def build(out: Path):
         "# M81 — Bode's Galaxy\n\n"
         "IRCUT looked better than LP here. Pair with M82 next time for the mosaic.\n"))
 
-    # ---- Media: non-catalog stills + a video already in the store (Media page) ----
+    # ---- Media: non-catalog stills + video already in the store (Media page) ----
+    # Sized to what the Media scope actually does, so a manual pass can see each
+    # behavior rather than infer it: posters, recursive discovery, per-file kind,
+    # and something for the sidecar clean-up to find.
     for cat, seeds in (("Moon_photo", (1500, 1501)), ("Nightscape_photo", (1510,))):
         for s in seeds:
             _png(config.MEDIA_DIR / cat / f"IMG_{s}.jpg", s)
-    _video(config.MEDIA_DIR / "Timelapse_video" / "IMG_1600.mp4")   # a video-row case
+    # A photo's `_thn.jpg` — a pure duplicate, and the clean-up tool's main target.
+    _png(config.MEDIA_DIR / "Moon_photo" / "IMG_1500_thn.jpg", 1500)
+
+    lunar = config.MEDIA_DIR / "Lunar_video"
+    _video(lunar / "IMG_1600.mp4")                       # a video-row case
+    # The device's preview frame beside a clip: this is the video's *poster*, so
+    # the grid shows the Moon and not a filename — and the clean-up tool must
+    # never offer it, which is only testable if one exists.
+    _png(lunar / "IMG_1600_thn.jpg", 1600)
+    # `.avi` + its content-free device sidecars (the clean-up tool's other half).
+    _video(lunar / "2026-08-17-205012-Lunar-RAW.avi")
+    _png(lunar / "2026-08-17-205012-Lunar-RAW_thn.jpg", 1601)
+    (lunar / "2026-08-17-205012-Lunar-RAW.avi.idx").write_bytes(b"\x00" * 32)
+    (lunar / "2026-08-17-205012-Lunar-RAW.avi.txt").write_text("frames=1200\n")
+    # Processed output nested under a *video* folder, decided per file by
+    # extension: the shallow, folder-suffix-gated scan hid this entire subtree.
+    stack_out = lunar / "ASIVideoStack_Output"
+    _png(stack_out / "Video_Stacked_20260817-205012.jpg", 1602)
+    _fits(stack_out / "Video_Stacked_20260817-205012.fit", "Moon", 0.0, 0.0,
+          0.01, "IRCUT", datetime(2026, 8, 17, 20, 50), 1603)
 
     # ---- Inbox: the 6c holding area — unclassifiable files only ----
     _inbox_holding(config.STAGING_DIR, 2500)
@@ -579,10 +601,28 @@ def verify(out: Path):
     print(f"  Dwarf M42: {len(m42_lights)} .fits lights + stacked-16 stack; "
           f"M13 cluster captured")
 
-    # video media (the Media page's video-row path)
+    # Media (the Media scope). `list_media` is flat, recursive, and decides kind
+    # per file — so these three assertions are the three things that broke before.
     from m110 import media
-    media_kinds = {c["kind"] for c in media.scan()}
+    items = media.list_media()
+    media_kinds = {it.kind for it in items}
     assert "video" in media_kinds, "no video media in the store"
+    nested = [it for it in items if it.subfolder]
+    assert nested, "no nested media (processed output under a category folder)"
+    assert any(it.kind == "photo" and "_video" in it.path.parent.parent.name
+               for it in nested), \
+        "a photo inside a _video/ folder should still list as a photo"
+    # A video's poster sidecar is content; a photo's is a duplicate. The clean-up
+    # tool must offer the latter and never the former.
+    junk = {p.name for p in media.cleanup_candidates()}
+    assert "IMG_1500_thn.jpg" in junk, "a photo's _thn duplicate should be cleanable"
+    assert "IMG_1600_thn.jpg" not in junk, "a video's poster must never be offered"
+    assert {"2026-08-17-205012-Lunar-RAW.avi.idx",
+            "2026-08-17-205012-Lunar-RAW.avi.txt"} <= junk, ".avi sidecars not found"
+    posters = sum(1 for it in items
+                  if it.kind == "video" and media.poster_for(it) is not None)
+    print(f"  media: {len(items)} items, {len(nested)} nested, "
+          f"{posters} video posters, {len(junk)} cleanable")
 
     # per-image curation override (#17): M42's device preview forced to "finished"
     assert objects.get_curation("m42").get("stacked.jpg") == "finished", \
