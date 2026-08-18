@@ -7,7 +7,7 @@ from m110 import config, planning_config as pc
 def test_defaults_when_file_missing(tmp_path):
     site = pc.load_site(path=tmp_path / "nope.toml")
     dev = pc.load_device(path=tmp_path / "nope.toml")
-    assert site.latitude_deg == pytest.approx(40.015)
+    assert site.latitude_deg == pytest.approx(40.014)
     assert site.timezone == "America/Denver"
     assert site.bortle == 0 and site.glow_mask == ""   # glow defaults empty
     assert dev.start_alt_ceiling_deg == pytest.approx(78.0)

@@ -6,8 +6,8 @@ import pytest
 from m110 import planning
 from m110.planning_config import Site
 
-_SITE = Site(name="Home", latitude_deg=40.015, longitude_deg=-105.27,
-             elevation_m=1655, timezone="America/Denver")
+_SITE = Site(name="Home", latitude_deg=40.014, longitude_deg=-105.282,
+             elevation_m=1625, timezone="America/Denver")
 _DAY = date(2026, 7, 13)          # a real July night from Boulder
 
 

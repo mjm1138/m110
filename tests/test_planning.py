@@ -13,8 +13,8 @@ from m110 import planning
 # ── pure helpers ─────────────────────────────────────────────────────────────
 
 def test_transit_altitude():
-    site = planning.Site()  # Boulder default, lat 40.015
-    assert planning.transit_altitude(40.015, site) == pytest.approx(90.0)   # at the zenith
+    site = planning.Site()  # Boulder default, lat 40.014
+    assert planning.transit_altitude(40.014, site) == pytest.approx(90.0)   # at the zenith
     assert planning.transit_altitude(47.20, site) == pytest.approx(82.8, abs=0.1)  # M51
     assert planning.transit_altitude(-34.84, site) == pytest.approx(15.1, abs=0.2)  # M7, low
 
