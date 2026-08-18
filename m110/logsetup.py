@@ -65,6 +65,11 @@ def setup_logging(level: int = logging.INFO) -> Path:
         version = "?"
     logger.info("M110 %s starting — %s (Python %s)", version,
                 platform.platform(), platform.python_version())
+    # Its own line, and it names the *source* as well as the path: "why is it
+    # opening that folder?" is otherwise unanswerable from a bug report, and a
+    # stale `data_root` preference silently outranks the default forever.
+    logger.info("data root: %s — from %s", config.DATA_ROOT,
+                config.data_root_source())
     return log_path()
 
 

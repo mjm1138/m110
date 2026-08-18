@@ -71,6 +71,13 @@ changes a **user** would notice, per release.
   daily launch check.
 
 ### Changed
+- **The log now records which data folder M110 opened, and why it picked it.**
+  M110 chooses your data folder in a set order — the `M110_DATA_ROOT` environment
+  variable, then the folder saved in Preferences, then the default location — and
+  a folder saved in Preferences keeps winning on every launch until you change it
+  again. Until now nothing said which of those had applied, so an app that opened
+  an unexpected folder was a puzzle. The first lines of the log, and the crash
+  report, now name the folder *and* where the choice came from.
 - **Working out your priority targets is about 10× faster** — on a Messier-sized
   list it went from roughly 23 seconds to under 3. This is the calculation behind
   the Planning page's target ranking, which runs in the background the first time

@@ -53,7 +53,7 @@ def _environment() -> str:
         f"M110 {version}",
         f"OS: {platform.platform()}",
         f"Python {platform.python_version()} · PySide6 {pyside_version} · Qt {qVersion()}",
-        f"Data root: {config.DATA_ROOT}",
+        f"Data root: {config.DATA_ROOT} — from {config.data_root_source()}",
         f"Log: {logsetup.log_path()}",
     ]
     return "\n".join(lines)
