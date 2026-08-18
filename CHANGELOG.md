@@ -128,6 +128,16 @@ changes a **user** would notice, per release.
   clearer message naming the tool and the argument.
 
 ### Fixed
+- **An object could say "up to date" while most of its frames weren't in the
+  stack.** If you stacked and then kept shooting the same night, the new frames
+  were counted as though they'd already been in the stack — so Processing showed
+  nothing to do. One object had 285 frames captured, 79 of them in the stack, and
+  still read "up to date". The same mistake inflated the rejection figure, because
+  the frames that were never stacked were counted as rejected: that object showed
+  72% rejected when the true figure was 5%. Both numbers are now worked out from
+  the actual times the frames were exposed, so a night's new frames show up as
+  waiting to be stacked. Your next Refresh corrects existing objects — nothing to
+  reimport, and no images are touched.
 - **Lunar and planetary photos were squashed in the Media view — the Moon showed
   as a wide oval.** Media thumbnails were being stretched to fill a square instead
   of keeping their proportions, so a tall 1080×1920 frame was flattened by nearly
