@@ -10,9 +10,9 @@ from PySide6.QtGui import (
     QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFrame, QHBoxLayout, QMenu, QMessageBox, QStyle,
-    QStyledItemDelegate, QStyleOptionViewItem, QTableWidget, QTableWidgetItem,
-    QWidget, QVBoxLayout, QToolButton,
+    QApplication, QButtonGroup, QFrame, QHBoxLayout, QMenu, QMessageBox,
+    QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
+    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
 )
 
 from m110 import derived, objects, siril
@@ -523,6 +523,30 @@ class RowThumbnails:
         icon = QIcon(pm)
         for item in self._items.get(slug, []):
             item.setIcon(icon)
+
+
+class SegmentStack(QStackedWidget):
+    """A QStackedWidget that sizes to its **current** page, not its widest one.
+
+    A plain stack reports `max(page.sizeHint())` and stretches the current page
+    to that, so parking a 2-button segment next to a 4-button one hands the short
+    control ~100px of surplus. `make_segment`'s buttons are Fixed-width, and a
+    QBoxLayout with nowhere to put surplus spreads it *between* the items — which
+    is how "List | Grid" ended up drawn as two detached buttons rather than one
+    joined pill.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.currentChanged.connect(lambda _i: self.updateGeometry())
+
+    def sizeHint(self):
+        w = self.currentWidget()
+        return w.sizeHint() if w is not None else super().sizeHint()
+
+    def minimumSizeHint(self):
+        w = self.currentWidget()
+        return w.minimumSizeHint() if w is not None else super().minimumSizeHint()
 
 
 def make_segment(items, active_key):

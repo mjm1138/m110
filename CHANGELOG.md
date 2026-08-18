@@ -45,6 +45,14 @@ changes a **user** would notice, per release.
   and Media listed it as a separate picture — so each shot showed up once
   full-size and once as a small, soft duplicate. Those duplicates are no longer
   imported or listed, and the clean-up tool above removes the ones already there.
+- **The List/Grid buttons drifted apart in the Media view.** In Media they were
+  drawn as two detached buttons with a gap between them, instead of the single
+  joined control they are everywhere else — the pair was being stretched to the
+  width of the four-button deep-sky version.
+- **The Library's list and detail panels no longer butt into the divider between
+  them.** Both sides of the divider — and the **Play · Reveal · Export** buttons
+  under a media file's details, which sat hard against it — now have a little
+  breathing room, in the Media and deep-sky views alike.
 
 ### Changed
 - **The interface is tighter and closer to the way Mac apps look.** Text fields,

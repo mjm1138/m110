@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from m110 import media
 from m110.ui.image_viewer import ScalableImage
+from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import defer, open_in_default, reveal_in_manager
 
 _PREVIEW_MAX_H = 320
@@ -60,7 +61,11 @@ class MediaDetailPane(QWidget):
         self._item: media.MediaItem | None = None
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        # Side margins only — the pane sits hard against the splitter handle on
+        # the left and the window edge on the right, and with zero margins the
+        # title, the ✕ and the action row all butt into them. Top/bottom stay 0
+        # so the title still lines up with the list's own first row.
+        lay.setContentsMargins(SPACE["sm"], 0, SPACE["sm"], 0)
 
         head = QHBoxLayout()
         self._title = QLabel()
