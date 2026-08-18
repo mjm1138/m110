@@ -49,6 +49,9 @@ changes a **user** would notice, per release.
   drawn as two detached buttons with a gap between them, instead of the single
   joined control they are everywhere else — the pair was being stretched to the
   width of the four-button deep-sky version.
+- **The close button on a media file's details showed an empty box.** The ✕ was
+  squeezed out of a button too narrow to hold it. It's now the same flat ✕ the
+  object detail panel uses.
 - **The Library's list and detail panels no longer butt into the divider between
   them.** Both sides of the divider — and the **Play · Reveal · Export** buttons
   under a media file's details, which sat hard against it — now have a little

@@ -771,7 +771,12 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
      alike, so the tile grid ran straight into the divider. Both left panes now
      carry a `SPACE["sm"]` right margin (the deep-sky `DetailPane` already had its
      own `md` content margin inside its scroll area).
-  3. **Play · Reveal · Export hard against the left edge** of the media detail
+  3. **The pane's ✕ rendered as an empty box.** `MediaDetailPane` used a bordered
+     `QPushButton` pinned to `setFixedWidth(28)` — narrower than the QSS button
+     padding, so the glyph elided away entirely. Now the flat auto-raise
+     `QToolButton` `detail.DetailPane` already uses, unconstrained and
+     `AlignTop`, so the two panes close the same way.
+  4. **Play · Reveal · Export hard against the left edge** of the media detail
      pane — the same missing margin, seen on the other side of the handle:
      `MediaDetailPane`'s layout had zero contents margins, so the ✕ crowded the
      window edge too. Now `sm` on both sides, top/bottom left at 0 so the title

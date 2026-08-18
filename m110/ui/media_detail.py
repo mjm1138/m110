@@ -15,8 +15,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImageReader, QPixmap
 from PySide6.QtWidgets import (
-    QFormLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout,
-    QWidget,
+    QFormLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from m110 import media
@@ -72,11 +72,16 @@ class MediaDetailPane(QWidget):
         self._title.setTextFormat(Qt.RichText)
         self._title.setWordWrap(True)
         head.addWidget(self._title, 1)
-        close = QPushButton("✕")
+        # The same flat close affordance as `detail.DetailPane` — a bordered
+        # QPushButton pinned to 28px was narrower than the QSS button padding, so
+        # the ✕ elided away and left an empty box.
+        close = QToolButton()
+        close.setText("✕")
+        close.setAutoRaise(True)
         close.setToolTip("Close")
-        close.setFixedWidth(28)
+        close.setCursor(Qt.PointingHandCursor)
         close.clicked.connect(self.closed)
-        head.addWidget(close)
+        head.addWidget(close, 0, Qt.AlignTop)
         lay.addLayout(head)
 
         # The preview is swapped rather than repainted: `ScalableImage` holds its
