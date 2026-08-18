@@ -15,12 +15,13 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImageReader, QPixmap
 from PySide6.QtWidgets import (
-    QFormLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout,
-    QWidget,
+    QFormLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from m110 import media
 from m110.ui.image_viewer import ScalableImage
+from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import defer, open_in_default, reveal_in_manager
 
 _PREVIEW_MAX_H = 320
@@ -60,18 +61,27 @@ class MediaDetailPane(QWidget):
         self._item: media.MediaItem | None = None
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        # Side margins only — the pane sits hard against the splitter handle on
+        # the left and the window edge on the right, and with zero margins the
+        # title, the ✕ and the action row all butt into them. Top/bottom stay 0
+        # so the title still lines up with the list's own first row.
+        lay.setContentsMargins(SPACE["sm"], 0, SPACE["sm"], 0)
 
         head = QHBoxLayout()
         self._title = QLabel()
         self._title.setTextFormat(Qt.RichText)
         self._title.setWordWrap(True)
         head.addWidget(self._title, 1)
-        close = QPushButton("✕")
+        # The same flat close affordance as `detail.DetailPane` — a bordered
+        # QPushButton pinned to 28px was narrower than the QSS button padding, so
+        # the ✕ elided away and left an empty box.
+        close = QToolButton()
+        close.setText("✕")
+        close.setAutoRaise(True)
         close.setToolTip("Close")
-        close.setFixedWidth(28)
+        close.setCursor(Qt.PointingHandCursor)
         close.clicked.connect(self.closed)
-        head.addWidget(close)
+        head.addWidget(close, 0, Qt.AlignTop)
         lay.addLayout(head)
 
         # The preview is swapped rather than repainted: `ScalableImage` holds its

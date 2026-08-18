@@ -752,6 +752,36 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## UI niceties (backlog)
 
+- [x] **Media-view polish: a detached segment and no clearance at the splitter**
+  *(done — `fix/media-ui-polish`)*. Three cosmetic reports off the new Media view,
+  two of them one bug:
+  1. **"List | Grid" drew as two detached buttons.** The Deep-sky and Media view
+     segments share one slot via a `QStackedWidget`, which reports `max(page
+     sizeHint)` and stretches the current page to it — so the 2-button Media
+     segment (97px) was laid out at the 4-button Deep-sky width (200px). Its
+     buttons are **Fixed**-width, and a QBoxLayout with surplus and nothing that
+     can absorb it spreads the difference *between* the items: 34px before, 34px
+     between, 34px after. A `Maximum` size policy doesn't help — that caps growth
+     past the hint, and the hint was already the wrong one.
+     Fix: `widgets.SegmentStack` overrides `sizeHint`/`minimumSizeHint` to the
+     **current** page. `tests/test_ui_pages.py` asserts the buttons *touch*
+     (`a.right() + 1 == b.x()`) rather than checking the stack's hint — the gap is
+     what the user sees, and it needs a laid-out `show()`n page to appear.
+  2. **Nothing between the panes and the splitter handle**, in Media and Deep sky
+     alike, so the tile grid ran straight into the divider. Both left panes now
+     carry a `SPACE["sm"]` right margin (the deep-sky `DetailPane` already had its
+     own `md` content margin inside its scroll area).
+  3. **The pane's ✕ rendered as an empty box.** `MediaDetailPane` used a bordered
+     `QPushButton` pinned to `setFixedWidth(28)` — narrower than the QSS button
+     padding, so the glyph elided away entirely. Now the flat auto-raise
+     `QToolButton` `detail.DetailPane` already uses, unconstrained and
+     `AlignTop`, so the two panes close the same way.
+  4. **Play · Reveal · Export hard against the left edge** of the media detail
+     pane — the same missing margin, seen on the other side of the handle:
+     `MediaDetailPane`'s layout had zero contents margins, so the ✕ crowded the
+     window edge too. Now `sm` on both sides, top/bottom left at 0 so the title
+     still lines up with the list's first row.
+
 - [x] **Media was a second-class citizen: squashed thumbnails, duplicated photos,
   no video previews, no views** *(done — `feature/media-first-class`)*. Reported as
   "lunar photos are scaled improperly and the layout is weird". Four distinct causes,

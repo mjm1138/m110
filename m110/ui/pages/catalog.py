@@ -22,12 +22,13 @@ from m110.ui.image_grid import (
     GRID_ZOOM_MIN, GRID_ZOOM_MAX, GRID_ZOOM_DEFAULT,
 )
 from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
+from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
     NumItem, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
     can_process_slug, process_in_siril, make_segment, mono_font,
-    connect_context_menu,
+    connect_context_menu, SegmentStack,
 )
 
 LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "feed" | "map"
@@ -178,7 +179,10 @@ class CatalogPage(QWidget):
 
         left = QWidget()
         self._left_lay = QVBoxLayout(left)
-        self._left_lay.setContentsMargins(0, 0, 0, 0)
+        # Right margin only: breathing room against the splitter handle, so the
+        # table/grid doesn't butt straight into the divider (the detail pane on
+        # the far side carries its own `SPACE["md"]` content margin).
+        self._left_lay.setContentsMargins(0, 0, SPACE["sm"], 0)
         self._left_lay.addLayout(cat_row)
         self._left_lay.addWidget(self._search)
         self._left_lay.addWidget(self._stat)
@@ -236,11 +240,12 @@ class CatalogPage(QWidget):
         # (restored setting, a future keyboard shortcut) can't leave it stale.
         self.media_view.view_mode_changed.connect(self._sync_media_view_seg)
 
-        self._view_seg_stack = QStackedWidget()
+        # `SegmentStack`, not a plain QStackedWidget: the segments differ in width,
+        # and a stack sized to its widest page stretches the 2-button Media segment
+        # until its buttons drift apart (see the class docstring).
+        self._view_seg_stack = SegmentStack()
         self._view_seg_stack.addWidget(self._view_seg)        # 0 = deep sky
         self._view_seg_stack.addWidget(self._media_view_seg)  # 1 = media
-        # A QStackedWidget claims the largest page's size; the segments differ in
-        # width, so let it shrink to whichever is current.
         self._view_seg_stack.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         for seg in (self._view_seg, self._media_view_seg):
             seg.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)

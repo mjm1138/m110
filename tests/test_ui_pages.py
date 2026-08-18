@@ -1516,6 +1516,34 @@ def test_library_view_segment_stays_put_and_swaps_for_media(tmp_path, monkeypatc
         qapp.processEvents()
 
 
+def test_view_segment_buttons_stay_joined_in_media_scope(tmp_path, monkeypatch, qapp):
+    """The two segments share one slot, and a plain QStackedWidget sizes to its
+    *widest* page — which stretched the 2-button Media segment and let the
+    QBoxLayout spread the surplus between its Fixed-width buttons, drawing
+    "List | Grid" as two detached buttons. `widgets.SegmentStack` sizes to the
+    current page instead. Assert the buttons touch, not the stack's hint: the
+    gap is what the user sees."""
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110.ui.pages.catalog import CatalogPage
+    page = CatalogPage()
+    try:
+        page.resize(1200, 700)
+        page.show()
+        for scope, btns in ((page._media_btn, page._media_view_btns),
+                            (page._deepsky_btn, page._view_btns)):
+            scope.setChecked(True)
+            qapp.processEvents()
+            rects = [b.geometry() for b in btns.values()]
+            rects.sort(key=lambda r: r.x())
+            for a, b in zip(rects, rects[1:]):
+                assert a.right() + 1 == b.x(), (
+                    f"segment buttons detached: {a} then {b}")
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def _no_prioritizer_worker(monkeypatch):
     """Keep the Planning page from spawning its background astropy worker in tests
     (it would leak a running QThread at teardown). Stubs the recompute entry point,

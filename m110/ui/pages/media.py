@@ -37,6 +37,7 @@ from m110.ui.image_grid import (
 )
 from m110.ui.image_viewer import ImageViewer
 from m110.ui.media_detail import MediaDetailPane, fmt_date, fmt_size
+from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
     NumItem, ROW_THUMB_SIZE, ThumbnailLoader, connect_context_menu, defer,
     drain_worker, make_numeric, make_segment, make_table, open_in_default,
@@ -190,7 +191,7 @@ class MediaPage(QWidget):
 
         left = QWidget()
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(0, 0, 0, 0)
+        ll.setContentsMargins(0, 0, SPACE["sm"], 0)   # clear of the splitter handle
         ll.addLayout(filt)
         ll.addWidget(self._search)
         ll.addWidget(self._stat)
