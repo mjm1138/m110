@@ -10,6 +10,42 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **The Media library now has List and Grid views, like the rest of the Library.**
+  Media used to be a plain stack of sections; it now gets the same treatment as
+  your deep-sky objects — a grid of thumbnails with a tile-size slider, or a
+  sortable list with a detail panel showing a large preview, the capture date,
+  size and dimensions, plus Open, Reveal and Export buttons. There's a category
+  filter, a Photos/Videos switch and a search box, and your choice of view is
+  remembered.
+- **Videos have thumbnails.** Your telescope saves a preview frame next to every
+  clip, and M110 now uses it, so videos look like their contents instead of a
+  filename. A small ▶ marks them apart from photos. Videos still open in your
+  usual player — M110 doesn't play them itself.
+- **Processed work stored alongside your videos is now visible.** Stacked lunar
+  results saved into a video folder — including whole subfolders of output from
+  tools like AutoStakkert — were invisible before, because Media only looked for
+  video files in a video folder and never looked inside subfolders. It now shows
+  every photo and video it finds, wherever it sits. FITS results get a rendered
+  preview like everything else.
+- **Tools → Clean up imported sidecars** removes the small duplicate thumbnails
+  and `.avi.idx`/`.avi.txt` files that earlier imports copied into your Media
+  folder. It shows you exactly what it will delete, nothing is selected until you
+  choose it, and thumbnails a video depends on are never offered — they're the
+  only preview frame those clips have.
+
+### Fixed
+- **Lunar and planetary photos were squashed in the Media view — the Moon showed
+  as a wide oval.** Media thumbnails were being stretched to fill a square instead
+  of keeping their proportions, so a tall 1080×1920 frame was flattened by nearly
+  half. Planets were hit the same way; the subject was just small enough that it
+  was hard to tell. Thumbnails now keep their shape.
+- **Every lunar and planetary photo appeared twice in Media.** Imports were
+  copying in the small preview thumbnail your telescope writes beside each photo,
+  and Media listed it as a separate picture — so each shot showed up once
+  full-size and once as a small, soft duplicate. Those duplicates are no longer
+  imported or listed, and the clean-up tool above removes the ones already there.
+
 ### Changed
 - **The interface is tighter and closer to the way Mac apps look.** Text fields,
   drop-downs, the navigation rail down the left, table rows and the List/Grid/Feed

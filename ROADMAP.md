@@ -622,7 +622,11 @@ when extending an existing subsystem).
   image-rendering port, the two-axis store (#13), the processing-prep round-trip.
 - **0 — Navigation IA** — the 5-pane nav rail after the pre-launch 8→4 cleanup
   (Overview merged Summary+Goals; Media/Journal/Sessions absorbed into Library);
-  Planning added post-beta.
+  Planning added post-beta. **Media brought up to parity** (`feature/media-first-class`):
+  its own List/Grid views swapped into the Library's view segment, a detail pane,
+  device-sidecar video posters, a recursive per-file scan that surfaces stacked
+  results, and the aspect-distortion fix behind "the Moon is an oval" (BUGS → UI
+  niceties).
 - **UI design system** — theme tokens + QSS, follow-OS light/dark, restyled
   surfaces, branding/logo, JetBrains Mono.
 - **1 — Session planning** — Checkpoint A (site profiles, light-dome glow

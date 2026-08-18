@@ -144,6 +144,7 @@ def _apply(root: Path) -> None:
     global DATA_ROOT, IMAGES_DIR, OBJECTS_DIR, MEDIA_DIR, STAGING_DIR
     global INTERNAL_DIR, LIBRARY_TOML, PRIORITIES_TOML, SESSIONS_JSONL
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
+    global MEDIA_RENDERS_DIR
     global PROFILES_DIR, PINS_TOML, PLANS_DIR, ASSISTANT_DIR, ASSISTANT_OUTBOX
     DATA_ROOT = root
     # Visible content axes
@@ -163,6 +164,12 @@ def _apply(root: Path) -> None:
     DERIVED_DIR = INTERNAL_DIR / "derived"
     RENDERS_DIR = INTERNAL_DIR / "renders"  # thumbnails (+ hero/<slug>.jpg)
     HERO_DIR = RENDERS_DIR / "hero"
+    # Media posters (Media/ axis previews). A **subdirectory** on purpose:
+    # `build_images._cleanup_orphaned_renders` deletes any unreferenced *.jpg
+    # sitting directly in RENDERS_DIR, and its loop is `f.is_file()` — which is
+    # exactly how HERO_DIR survives. A poster written flat would be reaped on
+    # every full render, since images.json only ever names catalog-object slugs.
+    MEDIA_RENDERS_DIR = RENDERS_DIR / "media"
     PROFILES_DIR = INTERNAL_DIR / "profiles"  # observing-site / device planning profiles
     # The assistant's outbox: the ONLY place an MCP tool may create a file.
     # Staging, not authoritative — nothing here is load-bearing, and deleting

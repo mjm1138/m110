@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pathlib
+
 import pytest
 from astropy.io import fits
 
@@ -254,6 +256,31 @@ def test_plan_classifies_subs_stacks_media(tmp_path, monkeypatch):
     assert by_kind["stack"][0].dest_rel.startswith("Images/M13/seestar-stacks/")
     assert len(by_kind["media"]) == 1
     assert by_kind["media"][0].dest_rel.startswith("Media/Lunar_photo/")
+
+
+def test_media_import_keeps_video_posters_but_drops_sidecar_noise(tmp_path, monkeypatch):
+    """The media branch used to copy *every* file, filling stores with redundant
+    photo thumbnails and `.avi.idx`/`.avi.txt` companions.
+
+    It can't simply switch to the content-file filter either: that would drop the
+    `<stem>_thn.jpg` beside a **video**, which is the only poster frame the device
+    gives us — every future video would silently lose its thumbnail.
+    """
+    root, staging = _make_staging(tmp_path, monkeypatch)
+    photo = staging / "Lunar_photo"
+    photo.mkdir()
+    (photo / "2026-01-01-000000-Lunar.jpg").touch()
+    (photo / "2026-01-01-000000-Lunar_thn.jpg").touch()      # redundant duplicate
+    video = staging / "Lunar_video"
+    video.mkdir()
+    (video / "clip.mp4").touch()
+    (video / "clip_thn.jpg").touch()                          # the poster — keep
+    (video / "clip.avi.idx").touch()
+    (video / "clip.avi.txt").touch()
+
+    names = sorted(pathlib.Path(op.src).name
+                   for op in ingest.scan_staging_plan() if op.kind == "media")
+    assert names == ["2026-01-01-000000-Lunar.jpg", "clip.mp4", "clip_thn.jpg"]
 
 
 def test_existing_files_excluded(tmp_path, monkeypatch):

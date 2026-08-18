@@ -22,10 +22,16 @@ from m110.ui import theme
 from m110.ui.theme import active_tokens, muted_color, status_color
 from m110.ui.widgets import ThumbnailLoader, paint_status_chip, status_label
 
+# Tile (zoom) size bounds, shared by every consumer of this grid.
+GRID_ZOOM_MIN = 80
+GRID_ZOOM_MAX = 220
+GRID_ZOOM_DEFAULT = 140
+
 KEY_ROLE = Qt.ItemDataRole.UserRole + 1
 STATUS_ROLE = Qt.ItemDataRole.UserRole + 2
 SUBTITLE_ROLE = Qt.ItemDataRole.UserRole + 3
 MUTED_ROLE = Qt.ItemDataRole.UserRole + 4
+BADGE_ROLE = Qt.ItemDataRole.UserRole + 5
 
 
 @dataclass
@@ -38,6 +44,7 @@ class TileItem:
     subtitle: str = ""
     status: str | None = None
     muted: bool = False
+    badge: str = ""     # short glyph drawn over the thumbnail (e.g. "\u25b6" for video)
 
 
 class TileModel(QAbstractListModel):
@@ -85,6 +92,8 @@ class TileModel(QAbstractListModel):
             return it.subtitle
         if role == MUTED_ROLE:
             return it.muted
+        if role == BADGE_ROLE:
+            return it.badge
         return None
 
     def request_thumbnails(self, loader: ThumbnailLoader, size: int):
@@ -137,6 +146,7 @@ class TileDelegate(QStyledItemDelegate):
         subtitle = index.data(SUBTITLE_ROLE) or ""
         status = index.data(STATUS_ROLE)
         muted = bool(index.data(MUTED_ROLE))
+        badge = index.data(BADGE_ROLE) or ""
         pm = index.data(Qt.ItemDataRole.DecorationRole)
 
         s = theme.tokens.SPACE
@@ -159,6 +169,8 @@ class TileDelegate(QStyledItemDelegate):
             painter.setBrush(QColor(active_tokens().surface_alt))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(thumb_rect, 4, 4)
+        if badge:
+            self._paint_badge(painter, thumb_rect, badge)
         painter.restore()
 
         fm = option.fontMetrics
@@ -190,3 +202,25 @@ class TileDelegate(QStyledItemDelegate):
             painter.drawText(sub_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                              elided_sub)
             painter.restore()
+
+    @staticmethod
+    def _paint_badge(painter, thumb_rect: QRectF, text: str):
+        """A small rounded glyph in the thumbnail's bottom-left corner.
+
+        Marks a tile whose content isn't a still image (a video). Drawn over the
+        thumbnail rather than in the caption row so it survives at every zoom
+        level and reads even on the muted no-thumbnail placeholder."""
+        side = max(14.0, thumb_rect.width() * 0.16)
+        pad = 4.0
+        rect = QRectF(thumb_rect.left() + pad,
+                      thumb_rect.bottom() - side - pad, side, side)
+        painter.save()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 140))
+        painter.drawRoundedRect(rect, 3, 3)
+        f = painter.font()
+        f.setPointSizeF(max(7.0, side * 0.5))
+        painter.setFont(f)
+        painter.setPen(QColor(255, 255, 255, 230))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()

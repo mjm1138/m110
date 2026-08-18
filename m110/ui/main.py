@@ -352,6 +352,10 @@ class MainWindow(QMainWindow):
         # ── Tools ── maintenance + settings (Preferences hops to the macOS app menu).
         self.prep_action = QAction("Prepare working folders", self)
         self.prep_action.triggered.connect(self._prepare_working_folders)
+        self.media_cleanup_action = QAction("Clean up imported sidecars…", self)
+        self.media_cleanup_action.setToolTip(
+            "Remove leftover device thumbnails and index files from your Media folder")
+        self.media_cleanup_action.triggered.connect(self._open_media_cleanup)
         self.backup_action = QAction("Back up…", self)
         self.backup_action.triggered.connect(self._open_backup)
         self.restore_action = QAction("Restore…", self)
@@ -362,6 +366,7 @@ class MainWindow(QMainWindow):
         self.prefs_action.triggered.connect(self._open_prefs)
         self.tools_menu = bar.addMenu("Tools")
         self.tools_menu.addAction(self.prep_action)
+        self.tools_menu.addAction(self.media_cleanup_action)
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.backup_action)
         self.tools_menu.addAction(self.restore_action)
@@ -582,6 +587,17 @@ class MainWindow(QMainWindow):
             return
         self._prep_feedback = True
         self._do_refresh()
+
+    def _open_media_cleanup(self):
+        """Tools → Clean up imported sidecars. Preview-then-confirm; the Media
+        scope reloads afterwards only if something was actually removed."""
+        if self.catalog.is_editing() or self._refreshing:
+            return
+        from m110.ui.media_cleanup_dialog import MediaCleanupDialog
+        dlg = MediaCleanupDialog(self)
+        dlg.exec()
+        if dlg.removed_count():
+            self.catalog.media_view.reload()
 
     def _fill_missing_metadata(self):
         """Backfill every Library entry's missing fields from the bundled reference

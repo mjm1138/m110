@@ -1,6 +1,8 @@
 """Offscreen smoke for the pages + shared dialogs: they construct, reload against
 a seeded temp root, and emit open_object on row/card activation. Store/builder
 helpers come from tests/_helpers.py; qtbot/qapp come from pytest-qt."""
+import pathlib
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -362,17 +364,157 @@ def test_image_viewer_arrow_keys_navigate_via_real_focus(tmp_path, qapp, qtbot):
         qapp.processEvents()
 
 
-def test_media_page_sections_and_empty(tmp_path, monkeypatch, qapp):
+def _seed_media(root):
+    """A media folder shaped like a real store: a photo with its redundant
+    sidecar, and a video with the sidecar that is its only poster frame."""
+    photo_dir = config.MEDIA_DIR / "Moon_photo"
+    video_dir = config.MEDIA_DIR / "Lunar_video"
+    photo_dir.mkdir(parents=True)
+    video_dir.mkdir(parents=True)
+    (photo_dir / "a.png").write_text("x")
+    (photo_dir / "a_thn.jpg").write_text("x")
+    (video_dir / "clip.mp4").write_text("x")
+    (video_dir / "clip_thn.jpg").write_text("x")
+
+
+def test_media_renders_fits_posters_off_the_ui_thread(tmp_path, monkeypatch, qapp):
+    """FITS/astro-TIFF media need a generated still (~0.1 s each). Building them
+    inline while populating tiles scales into a multi-second freeze, so the tile
+    starts blank and a worker fills it in."""
+    import numpy as np
+    from astropy.io import fits as afits
+
+    root = seed_root(tmp_path, monkeypatch)
+    (config.MEDIA_DIR / "Lunar_video").mkdir(parents=True)
+    src = config.MEDIA_DIR / "Lunar_video" / "Video_Stacked_Lunar.fit"
+    afits.PrimaryHDU(np.random.rand(64, 64).astype("float32")).writeto(src)
+
+    from m110 import media
+    from m110.ui.pages.media import MediaPage
+    page = MediaPage()
+    try:
+        item = page._visible[0]
+        assert media.needs_render(item)
+        # Nothing cached yet → the bulk path must not have rendered inline.
+        assert page._grid_model.items()[0].thumb_path is None
+        assert page._poster_worker is not None
+
+        page._poster_worker.wait(20000)
+        qapp.processEvents()
+        # Now cached, and the refreshed tile picks it up.
+        assert media.poster_for(item, render=False) is not None
+        assert page._grid_model.items()[0].thumb_path is not None
+    finally:
+        page._stop_poster_worker()
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_cleanup_dialog_lists_only_removable_files(tmp_path, monkeypatch, qapp):
+    """The dialog must never put a video's only preview frame on the chopping
+    block, and nothing is selected until the user says so."""
+    root = seed_root(tmp_path, monkeypatch)
+    _seed_media(root)
+    (config.MEDIA_DIR / "Lunar_video" / "clip.avi.txt").write_text("junk")
+    from m110.ui.media_cleanup_dialog import MediaCleanupDialog
+    dlg = MediaCleanupDialog()
+    try:
+        dlg._set_all(True)
+        listed = sorted(pathlib.Path(p).name for p in dlg._checked_paths())
+        assert listed == ["a_thn.jpg", "clip.avi.txt"]     # clip_thn.jpg is a poster
+        dlg._set_all(False)
+        assert dlg._checked_paths() == []
+        assert not dlg._delete_btn.isEnabled()             # nothing selected → no-op
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_page_lists_items_and_empty(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     from m110.ui.pages.media import MediaPage
     page = MediaPage()
     try:
-        assert page.section_count() == 0          # seeded root has no media yet
-        (config.MEDIA_DIR / "Moon_photo").mkdir(parents=True)
-        (config.MEDIA_DIR / "Moon_photo" / "a.png").write_text("x")
+        assert page.item_count() == 0             # seeded root has no media yet
+        _seed_media(root)
         page.reload()
-        assert page.section_count() == 1
-        assert page._galleries and page._galleries[0][0].count() == 1   # one photo
+        # The two sidecars are not items: one is a duplicate, one is a poster.
+        assert page.item_count() == 2
+        assert page.table.rowCount() == 2
+        assert page._grid_model.rowCount() == 2
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_grid_gives_videos_a_poster_and_a_badge(tmp_path, monkeypatch, qapp):
+    """A video tile has to read as a video, and it gets its still from the
+    device's sibling sidecar rather than a decoder we don't ship."""
+    root = seed_root(tmp_path, monkeypatch)
+    _seed_media(root)
+    from m110.ui.pages.media import MediaPage, VIDEO_BADGE
+    page = MediaPage()
+    try:
+        tiles = {t.title: t for t in page._grid_model.items()}
+        assert tiles["clip.mp4"].badge == VIDEO_BADGE
+        assert tiles["clip.mp4"].thumb_path.name == "clip_thn.jpg"
+        assert tiles["a.png"].badge == ""
+        assert tiles["a.png"].thumb_path.name == "a.png"
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_filters_by_kind_category_and_search(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    _seed_media(root)
+    from m110.ui.pages.media import MediaPage
+    page = MediaPage()
+    try:
+        page._kind_btns["video"].setChecked(True)
+        assert [i.name for i in page._visible] == ["clip.mp4"]
+        page._kind_btns["photo"].setChecked(True)
+        assert [i.name for i in page._visible] == ["a.png"]
+        page._kind_btns["all"].setChecked(True)
+        page._search.setText("clip")
+        assert [i.name for i in page._visible] == ["clip.mp4"]
+        page._search.clear()
+        page._cat_combo.setCurrentIndex(page._cat_combo.findData("Moon"))
+        assert [i.name for i in page._visible] == ["a.png"]
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_view_mode_and_zoom_persist(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    _seed_media(root)
+    from m110.ui.pages.media import MediaPage, MEDIA_VIEW_KEY, MEDIA_ZOOM_KEY
+    page = MediaPage()
+    try:
+        page.set_view_mode("list")
+        assert config.get_setting(MEDIA_VIEW_KEY) == "list"
+        page._zoom_slider.setValue(200)
+        assert page._grid_delegate._tile_size == 200      # live, no re-decode
+        page._zoom_slider.sliderReleased.emit()           # commit on release
+        assert config.get_setting(MEDIA_ZOOM_KEY) == 200
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
+def test_media_selection_shows_detail_pane(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    _seed_media(root)
+    from m110.ui.pages.media import MediaPage
+    page = MediaPage()
+    try:
+        assert page.detail.isHidden()
+        page._select_key(page._visible[0].key)
+        assert not page.detail.isHidden()
+        assert page._visible[0].name in page.detail._title.text()
+        page._clear_selection()
+        assert page.detail.isHidden()
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -1344,25 +1486,31 @@ def test_overview_integration_is_per_object(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
-def test_library_view_segment_stays_put_in_feed_and_hides_in_media(tmp_path, monkeypatch, qapp):
+def test_library_view_segment_stays_put_and_swaps_for_media(tmp_path, monkeypatch, qapp):
     """Item 17: the List/Grid/Feed/Map segment lives on its own row, so hiding the
-    catalog filter in Feed mode can't relocate it. Item 20: Media has no object views
-    yet, so the segment is hidden in Media scope."""
+    catalog filter in Feed mode can't relocate it. Media now has its own object
+    views, so entering that scope **swaps** the segment for List/Grid rather than
+    hiding it — same control, same position, different contents."""
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
         assert set(page._view_btns) == {"list", "grid", "feed", "map"}
+        assert set(page._media_view_btns) == {"list", "grid"}
         page._view_btns["feed"].setChecked(True)
         assert page._filter_bar.isHidden() and not page._view_seg.isHidden()
         # The map is an object view: unlike Feed it keeps the search + filter.
         page._view_btns["map"].setChecked(True)
         assert not page._filter_bar.isHidden() and not page._search.isHidden()
+
         page._media_btn.setChecked(True)
-        assert page._view_seg.isHidden()        # hidden in Media (no views there yet)
+        assert page._view_seg_stack.currentWidget() is page._media_view_seg
+        page._media_view_btns["list"].setChecked(True)
+        assert page.media_view.view_mode() == "list"
+
         page._deepsky_btn.setChecked(True)
-        assert not page._view_seg.isHidden()
+        assert page._view_seg_stack.currentWidget() is page._view_seg
     finally:
         page.deleteLater()
         qapp.processEvents()
