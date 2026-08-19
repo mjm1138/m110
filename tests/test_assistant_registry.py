@@ -51,6 +51,7 @@ ARGS = {
     "propose_pins": {"rationale": "test", "pin": ["m101"]},
     "propose_journal_entry": {"slug": "m101", "markdown": "note", "rationale": "test"},
     "save_field_guide": {"title": "test plan", "markdown": "# Plan\n"},
+    "plan_stack": {"target": "M51"},
 }
 
 
@@ -243,6 +244,12 @@ ENGINE_WRITERS = {
     "import_horizon_mask", "write_glow_masks", "create_snapshot", "restore",
     "apply_retention", "sweep_incomplete", "run_publish", "deploy", "set_hints",
     "write_jsonl", "render_images", "rebuild_hero", "migrate_store", "save",
+    # m110.stacking: `run_siril` spawns Siril (which writes tens of GB into the
+    # sandbox) and `apply_handoff` links a stack into a second workflow's sandbox.
+    # Both are reached only from `stacking.main`, i.e. the `m110-stack` CLI a human
+    # invoked. `build_plan`/`resolve_layout`/`format_report` are pure and stay off
+    # this list on purpose — that pure half is exactly what `plan_stack` exposes.
+    "run_siril", "apply_handoff",
 }
 
 
