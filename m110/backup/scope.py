@@ -3,6 +3,11 @@
 Scope is a **denylist**: back up everything under the store except known
 regenerable/working paths, so new authored data is captured automatically
 without an allowlist to maintain.
+
+A workflow sandbox (`Images/<target>/siril/`, `astrowizard/`, …) is **not**
+excluded wholesale. Only its *linked inputs* are — the hardlink trees declared in
+`config.SANDBOX_LINKED_INPUTS` — because those bytes are already in the snapshot
+under their real path. What a sandbox otherwise holds is authored work.
 """
 from __future__ import annotations
 
@@ -30,13 +35,33 @@ def is_excluded(rel: str) -> bool:
     for ex in _EXCLUDE_INTERNAL:
         if rel.startswith(ex + "/"):
             return True
-    # Any workflow sandbox: Images/<target>/{siril,astrowizard,…}/… — working
-    # areas, regenerable, and hardlink-heavy: an un-excluded one puts a full copy
-    # of the linked inputs into every snapshot.
-    parts = rel.split("/")
-    if len(parts) >= 3 and parts[0] == "Images" and parts[2] in config.SANDBOX_DIRNAMES:
-        return True
-    return False
+    return _is_sandbox_linked_input(rel.split("/"))
+
+
+def _is_sandbox_linked_input(parts: list[str]) -> bool:
+    """True for a workflow sandbox's **linked inputs** — the hardlink trees at
+    `Images/<target>/<sandbox>/lights/…`, or, for a per-filter Siril job, at
+    `Images/<target>/<sandbox>/<FILTER>/lights/…`.
+
+    Only those are skipped, not the whole sandbox. They are hardlinks to frames
+    already backed up under `Images/<target>/lights/`, and the mirrored format
+    dedups by *relative path*, so leaving them in stores a second full copy of
+    every sub. The rest of a sandbox — archived runs, presets, another workflow's
+    exports — is hand-work no refresh regenerates, and is backed up.
+
+    Which subdirectories those are is declared per workflow in
+    `config.SANDBOX_LINKED_INPUTS`; see the note there before adding a workflow.
+    """
+    if len(parts) < 4 or parts[0] != "Images":
+        return False
+    linked = config.SANDBOX_LINKED_INPUTS.get(parts[2])
+    if not linked:
+        return False
+    tail = parts[3:]
+    # A job root is the sandbox itself, or one per-filter dir below it. A deeper
+    # match is deliberately left in scope: `archive/<ts>/…` is authored output, and
+    # a backup denylist should fail toward keeping a file rather than dropping it.
+    return tail[0] in linked or (len(tail) > 1 and tail[1] in linked)
 
 
 def iter_source_files(root: Path) -> list[str]:

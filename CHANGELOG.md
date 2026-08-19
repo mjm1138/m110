@@ -27,6 +27,25 @@ changes a **user** would notice, per release.
   headers and proposes, nothing more.
 
 ### Changed
+- **Backups now keep your processing history.** A backup used to skip each
+  object's `siril/` working folder entirely, which also threw away the archived
+  runs inside it — the stretched, cropped, star-removed and colour-calibrated
+  intermediates from every past processing session. Those are hours of hand-work
+  that nothing regenerates, and the finished image M110 imports for you doesn't
+  carry them. They're now included, along with your hand-edited presets and
+  anything a second tool has exported into its own folder.
+
+  What's still skipped is the part of a working folder that only contains links
+  back to your light frames. Those frames are already in the backup under the
+  object's own `lights/` folder, so storing them twice would roughly **double**
+  the size of every backup while adding nothing you could recover. On a 186 GB
+  library the new material comes to about **39 GB (a 21% increase)**; including
+  the links as well would have added 178 GB.
+
+  Your next backup picks up the archived runs on its own — the run after that is
+  back to normal incremental size. If your backup destination is tight on space,
+  check it before the next run.
+
 - **The log now records which data folder M110 opened, and why it picked it.**
   M110 chooses your data folder in a set order — the `M110_DATA_ROOT` environment
   variable, then the folder saved in Preferences, then the default location — and

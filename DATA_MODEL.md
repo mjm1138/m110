@@ -120,11 +120,17 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       dir would archive the expensive one on every re-finish. Written by
       `m110-stack --handoff` / the app's send-stack flow; lazily created,
       additive → no .store_version bump                          [output]
-    ⚠ Every sandbox dirname above lives in **`config.SANDBOX_DIRNAMES`**, the single
-      authority read by `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS` and
-      `backup.scope.is_excluded`. A new workflow adds its name there and nowhere
-      else — omitting it from any one of the three fails silently (the other
-      workflow claims the output / ingest re-imports it / it lands in every snapshot).
+    ⚠ Every sandbox dirname above is a key of **`config.SANDBOX_LINKED_INPUTS`**, the
+      single authority; `SANDBOX_DIRNAMES` is derived from it and read by
+      `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS` and `backup.scope.is_excluded`.
+      A new workflow is added there and nowhere else — omitting it from any one of
+      the three fails silently (the other workflow claims the output / ingest
+      re-imports it / it lands in every snapshot).
+      Its **value** is which of the workflow's subdirectories hold hardlinks to
+      frames the store already has (`siril` → lights/darks/flats/biases;
+      `astrowizard` → none, its input is a single handed-off file). Backup skips
+      exactly those and keeps the rest — see *Backup* below for why each direction
+      of getting this wrong is costly and silent.
     (darks/ flats/ biases/ — calibration; preserved if present, and **import targets**
                             for frames header-routed by IMAGETYP (ROADMAP item 6b);
                             written by ingest, layout unchanged → no .store_version bump)
@@ -288,8 +294,29 @@ for integrity verification.
 `m110/backup/` (ROADMAP item 10) writes the store to a user-chosen destination
 **outside** `<data_root>`. Scope is a **denylist** aligned with the lifecycle classes
 above: everything is backed up **except** the regenerable Derived tier (`derived/`,
-`renders/`, `sessions.jsonl`), the assistant outbox, and the `Images/<target>/siril/`
-working sandboxes.
+`renders/`, `sessions.jsonl`), the assistant outbox, and a workflow sandbox's
+**linked inputs**.
+
+That last one is narrower than it once was. A sandbox is *not* excluded wholesale:
+only the subdirectories declared in **`config.SANDBOX_LINKED_INPUTS`** — the
+hardlink trees (`siril/lights/`, `siril/<FILTER>/lights/`, and the calibration
+links beside them) whose bytes are already in the snapshot under
+`Images/<target>/lights/`. Everything else a sandbox holds is backed up:
+`archive/<ts>/` past runs, hand-edited presets, `next-steps.md`, another
+workflow's exports. Excluding those was a mistake of category — they are not
+regenerable in the sense the rest of the denylist means, since nothing but the
+user redoing hours of stretching, star removal and colour work produces them
+again, and the finished deliverable that *is* imported to `finished/`/`stacks/`
+does not carry its intermediates.
+
+The distinction is worth stating precisely because the two halves fail in
+opposite directions. Keeping the link trees in is expensive and silent: the
+mirrored format dedups by *relative path*, so `Images/M42/siril/lights/x.fit` and
+`Images/M42/lights/x.fit` are unrelated keys and both get stored — measured on a
+real library at **+139 GB against 186 GB backed up**, near enough to double,
+while adding no recoverable information. Leaving the authored work out is cheap
+and silent in the other direction: **+39 GB (+21%)** on the same library, and the
+user only discovers the gap when they go looking for a run they wanted back.
 
 There are **two snapshot formats**, and both are always listable, verifiable and
 restorable at the same destination. Which one a new backup uses is resolved from

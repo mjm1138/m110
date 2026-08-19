@@ -45,6 +45,9 @@ def test_pooled_snapshot_stores_objects_and_a_manifest(tmp_path, monkeypatch):
     slug, tid = seed_capture(root)
     objects.write_journal(slug, "# notes\nAuthored.\n")
     seed_sandbox(tid)
+    sub = f"Light_{tid}_30.0s_LP_20260529-010101.fit"
+    (config.siril_dir(tid) / "lights").mkdir(parents=True, exist_ok=True)
+    os.link(config.lights_dir(tid) / sub, config.siril_dir(tid) / "lights" / sub)
     dest = tmp_path / "backups"
     _use_pooled()
 
@@ -57,10 +60,12 @@ def test_pooled_snapshot_stores_objects_and_a_manifest(tmp_path, monkeypatch):
     manifest = pooled.read_manifest(snaps[0].path)
     assert manifest["format"] == 2
     assert manifest["files"][_light_rel(tid)]["sha256"]
-    # same scope rules as mirrored: regenerable + working areas stay out
+    # same scope rules as mirrored: regenerable data and a sandbox's linked inputs
+    # stay out, the work inside the sandbox comes in
     assert not any(k.startswith(f"{config.INTERNAL_DIRNAME}/derived")
                    for k in manifest["files"])
-    assert not any(f"Images/{tid}/siril" in k for k in manifest["files"])
+    assert not any(f"Images/{tid}/siril/lights/" in k for k in manifest["files"])
+    assert any(k.startswith(f"Images/{tid}/siril/") for k in manifest["files"])
     # every object the manifest names is present, and named by its own hash
     for meta in manifest["files"].values():
         assert (_store_root(dest) / "objects" / meta["sha256"][:2] /

@@ -313,13 +313,34 @@ def biases_dir(name: str) -> Path:
 # stack costs hours and is stable, a finish is cheap and iterated — so sharing one
 # directory would archive the expensive artifact on every re-finish.
 #
-# **This set is the single authority.** Every walk that must not descend into a
-# sandbox reads it: `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS`,
-# `backup.scope.is_excluded`. A new workflow adds its name here and nowhere else.
-# Getting that wrong is silent in three different ways — the other workflow claims
-# the output as its own, ingest re-imports the sandbox, and every backup snapshot
-# carries a regenerable working area.
-SANDBOX_DIRNAMES = frozenset({"siril", "astrowizard"})
+# **This mapping is the single authority.** Every walk that must not descend into
+# a sandbox reads `SANDBOX_DIRNAMES`, derived from its keys: `siril._ROOT_SKIP_DIRS`,
+# `ingest._SKIP_DIRS`, `backup.scope.is_excluded`. A new workflow adds its name here
+# and nowhere else. Getting that wrong is silent in three different ways — the other
+# workflow claims the output as its own, ingest re-imports the sandbox, and every
+# backup snapshot carries a regenerable working area.
+#
+# The **value** is the question a new workflow has to answer: which of its
+# subdirectories hold **linked inputs** — hardlinks to frames that already live in
+# the managed tiers (`lights/`, `darks/`, …) — rather than work authored inside the
+# sandbox. `backup.scope` excludes exactly those, and nothing else in the sandbox:
+# their bytes are already in the snapshot under the real path, and the mirrored
+# format dedups by *relative path*, so an un-excluded link tree stores a second full
+# copy of every sub (measured on a real 186 GB library: +139 GB, near enough to
+# double). Everything else a sandbox holds — archived runs, presets, exports — is
+# hand-work that no refresh regenerates, so it is backed up.
+#
+# Declare `frozenset()` when a workflow links nothing: AstroWizard's input is a
+# single handed-off stack file, not a directory of links. Do **not** express that by
+# leaving the workflow out — the keys *are* `SANDBOX_DIRNAMES`, so an omission
+# silently un-protects the sandbox from all three walks above.
+SANDBOX_LINKED_INPUTS: dict[str, frozenset[str]] = {
+    "siril": frozenset({"lights", "darks", "flats", "biases"}),
+    "astrowizard": frozenset(),
+}
+
+# Derived, so the dirnames and their linked-input policy can never drift apart.
+SANDBOX_DIRNAMES = frozenset(SANDBOX_LINKED_INPUTS)
 
 
 def siril_dir(name: str) -> Path:

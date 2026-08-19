@@ -10,6 +10,45 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **Backups threw away every archived processing run** (done —
+  `feature/backup-sandbox-scope`). `scope.is_excluded` skipped a workflow sandbox
+  **wholesale**, on the reasoning that it is a "regenerable working area". True of
+  the hardlink trees inside it; false of everything else. `siril/archive/<ts>/`
+  holds each past run's `_og`/`_crop`/`_stretch`/`_spcc`/`starless_`/`starmask_`
+  intermediates — hours of hand-work, plus StarNet and third-party tool output —
+  and `apply_import` copies only the *deliverable* to `finished/`/`stacks/`, so the
+  backup was the last copy and never had it. Measured on the developer's library:
+  **32 GB of authored output in 50 archived runs across 32 targets**, silently
+  outside every snapshot since backup shipped.
+
+  The naive fix is worse than the bug. Un-excluding the sandbox adds **178 GB to a
+  186 GB backup** — because 139 GB of it is `siril/lights/`, hardlinks to frames
+  already in the snapshot, and the **mirrored format dedups by relative path**, so
+  `Images/M42/siril/lights/x.fit` and `Images/M42/lights/x.fit` are unrelated keys
+  and both get stored in full. (Pooled is content-addressed and would have absorbed
+  it for free — but mirrored is the default, and the one a user can restore without
+  M110.) So the exclusion narrowed rather than lifted: `config.SANDBOX_LINKED_INPUTS`
+  declares, per workflow, which subdirectories are link trees; backup skips those and
+  keeps the rest. Net **+39 GB (+21%)** instead of +178 GB (+96%).
+
+  The authority is now a mapping whose keys *are* `SANDBOX_DIRNAMES`, so a new
+  workflow cannot be registered without answering the linked-inputs question —
+  the point being that both ways of getting it wrong are silent, and in opposite
+  directions (a doubled backup nobody reads the size of; missing history nobody
+  notices until they want it back). `tests/test_sandbox_dirs.py` asserts both
+  halves and that a sub appears in a snapshot exactly once.
+
+- [ ] **Siril's converted-sequence cube is backed up as authored work.** The
+  narrowed scope above keeps everything in a sandbox that isn't a declared link
+  tree, which sweeps in `lights.fit` — Siril's single-file conversion of the
+  sequence, pure scratch, fully regenerable from frames the backup already has.
+  **5.9 GB of the 39 GB** on the developer's library (45 files, one per archived
+  run). Deliberately not special-cased: it would take a filename rule, and Siril's
+  sequence prefixes vary by version and preset, which is exactly the per-tool
+  filename-convention trap `scan_sessions` already learned to avoid. Worth
+  revisiting only if a cheap structural signal turns up — the file sits *inside*
+  `archive/<ts>/` beside genuine output, so place doesn't distinguish it.
+
 - [x] **A second processing workflow's sandbox would have been claimed, re-imported
   and backed up** (done — `feature/astrowizard-groundwork`). Three walks each
   hardcoded the string `"siril"` as *the* sandbox: `siril._ROOT_SKIP_DIRS`,
@@ -612,7 +651,7 @@ Legend: `[ ]` open · `[~]` partially done
   - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the
     bytes, and plenty of users will want offsite to mean journals + `finished/` + `stacks/`
     for a couple of dollars a month with the raws staying on the NAS. Without it the first
-    sync runs for a week. Layer it on `scope.is_excluded` (the `Images/*/siril/` rule is the
+    sync runs for a week. Layer it on `scope.is_excluded` (the sandbox linked-input rule is the
     shape). One thing to get right: *narrowing* a destination's scope makes the excluded
     objects unreferenced, so the next GC deletes ~400 GB of raws from the offsite store —
     correct, but it must be warned about with an estimate.
