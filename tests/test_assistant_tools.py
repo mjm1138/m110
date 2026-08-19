@@ -4,6 +4,8 @@ test_assistant_registry.py proves the *contract* (schema legality, JSON safety,
 read-only). This file proves the tools return the right answers, against a store
 with a real capture in it.
 """
+from pathlib import Path
+
 import pytest
 
 from m110 import config, pins, prioritize
@@ -647,3 +649,40 @@ def test_proposal_preview_surfaces_top_of_list_moves_first(planned):
     out = rank_delta(before, after)
     assert out["moved"][0]["slug"] == "o4"
     assert out["total_moved"] == 2
+
+
+# ── plan_stack ───────────────────────────────────────────────────────────────
+
+def test_plan_stack_proposes_settings_and_leaks_no_absolute_path(captured):
+    """The whole payload is checked, not just the fields carrying a Path.
+
+    `serialize` relativizes `Path` objects but passes strings through verbatim, so
+    a path formatted into a message or a command string sails past it — which is
+    exactly how a home directory ends up in a model's context. Assert on the
+    serialized blob so any future field is covered by the same test.
+    """
+    import json
+
+    _root, _slug, target = captured
+    out = call("plan_stack", target=target)
+
+    assert out["survey"]["n_frames"] >= 1
+    assert "rejection" in out["settings"]
+    assert out["working_dir"].startswith("Images/")          # store-relative
+    assert target in out["how_to_run"] and "--run" in out["how_to_run"]
+    assert isinstance(out["siril"]["found"], bool)
+
+    blob = json.dumps(out)
+    assert str(config.DATA_ROOT) not in blob
+    assert str(Path.home()) not in blob
+
+
+def test_plan_stack_names_the_known_folders_when_the_target_is_wrong(captured):
+    _root, _slug, target = captured
+    with pytest.raises(registry.ToolError, match="Known capture folders"):
+        call("plan_stack", target="not-a-real-folder")
+    # And the message actually helps: it lists the one that does exist.
+    try:
+        call("plan_stack", target="not-a-real-folder")
+    except registry.ToolError as e:
+        assert target in str(e)

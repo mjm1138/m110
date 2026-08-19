@@ -477,6 +477,62 @@ mounting it as an actual volume if you want the device button):
       (or a restored backup) → files under `Images/<target>/rejected/` are offered as
       **"rejected subs"** routing back to `rejected/`, never into `lights/`.
 
+### G2c. Headless stacking — `m110-stack`  ⚙ *(settings decisions, layout, handoff automated — `test_stacking.py`)*
+> Needs **Siril 1.4 installed** and real subs. The synthetic corpus won't stack —
+> its frames have no stars — so use a real capture folder, and copy it out of your
+> live store first (see §0). What automation *can't* check is a real Siril run.
+
+**Proposal (read-only, safe anywhere)** — nothing is written, so this one may point
+at the corpus or a real folder:
+
+```bash
+m110-stack "M101"                   # by capture-folder name, resolved in the store
+m110-stack ~/some/loose/folder      # or any directory of subs
+```
+
+- [ ] Reports frames, exposures, filters, coverage depth, and MOSAIC vs single target.
+- [ ] Every proposed setting carries a justification; the two phase scripts print at
+      the end, followed by *"Proposal only — nothing written."*
+- [ ] `ls` the folder before and after: **unchanged**. (This is the same code path the
+      assistant's `plan_stack` uses.)
+- [ ] With Siril **not** installed (rename `/Applications/Siril.app` briefly), it exits
+      with a message naming Preferences → Processing tools, not a traceback.
+
+**Running it** — on a **copy**, and something small (a few dozen subs, not a mosaic):
+
+```bash
+m110-stack "<copy>" --run
+```
+
+- [ ] A heartbeat line appears at least once a minute naming the current stage, and
+      after the first repeat it shows *"(N:NN in this step)"*. **This is the point of
+      the whole progress design** — the stack step is silent for long stretches, so
+      without the in-step timer there is no way to tell working from wedged.
+- [ ] `siril_stack.log` in the working dir fills **as it goes**, not at the end.
+- [ ] On success the stack is renamed to the Naztronomy convention and the run reports
+      colour vs MONO. **MONO means the debayer/drizzle pairing broke** — worth stopping for.
+- [ ] `process/` is removed and the freed GB reported. Re-run with `--keep-process`
+      and confirm it survives, then `--restack` reuses it and skips registration.
+- [ ] Ctrl-C mid-run leaves no half-written stack.
+
+**Handing on to AstroWizard**
+
+```bash
+m110-stack "<copy>" --run --handoff
+```
+
+- [ ] `Images/<target>/astrowizard/` now holds the stack plus a `.src.json` sidecar
+      naming its source, frame count and stacked-at date.
+- [ ] It is a **hardlink**, not a copy — the handoff must cost no disk:
+      ```bash
+      ls -li Images/<target>/siril/*.fit Images/<target>/astrowizard/*.fit
+      ```
+      the inode numbers (first column) must match.
+- [ ] Open that stack in AstroWizard, export a finished image **into that folder**,
+      then Refresh M110: Siril's *Import finished work* must **not** offer it. (This is
+      the guard in `config.SANDBOX_DIRNAMES` — before it, Siril claimed the file.)
+- [ ] Back up the store and confirm the snapshot contains no `astrowizard/` directory.
+
 ### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
 > Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
 - [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target

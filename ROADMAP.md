@@ -44,10 +44,18 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
   engine** imported in-process (no API server for the MVP). A native SwiftUI Mac
   wrapper is a *deferred* option the engine boundary keeps open (it would
   reintroduce a FastAPI layer for a separate-process client).
-- **Processing model:** **prepare-and-guide, not control.** The app arranges
-  files into Siril's expected layout and emits Siril-ready configs + guidance;
-  it does **not** drive Siril/StarNet directly (avoids the maintenance tax of
-  wrapping volatile CLIs).
+- **Processing model:** **prepare-and-guide, not control** — *amended for
+  stacking, 2026-08-19.* The app arranges files into Siril's expected layout and
+  emits Siril-ready configs + guidance; it does **not** drive Siril/StarNet for
+  interactive work (avoids the maintenance tax of wrapping volatile CLIs).
+  **The one exception is stacking** (`m110/stacking.py`, the `m110-stack` CLI),
+  which runs `siril-cli` itself. The reason the general rule does not cover it:
+  a multi-hour unattended batch job is precisely what a human should not have to
+  sit through, and the "volatile CLI" cost does not apply — every command emitted
+  is stock Siril 1.4, so only the *choice* of settings is ours. The guide posture
+  survives where it matters: measuring and proposing is read-only and separate,
+  and nothing runs until a human has agreed to the settings. Post-processing
+  stays firmly prepare-and-guide (see item 14).
 - **Data:** the app **owns its own data store** (default `~/Documents/M110`),
   decoupled from any other project; it seeds a starter catalog and generates its
   own derived data and image renders. The data model is documented and canonical
@@ -120,6 +128,12 @@ the client they already have. Revised phasing:
 - **M1** — the in-app transport and the safe-write allowlist.
 - ✅ **MCP Python SDK v2 migration** *(done 2026-08-16, `feature/mcp-v2`)* — the
   assistant server is off the maintenance-only v1 line; see [`DONE.md`](DONE.md).
+- ✅ **Headless stacking + the `siril-stacking` skill** *(done 2026-08-19,
+  `feature/siril-stacking`)* — `m110/stacking.py` ported in from the Astronomy
+  project, shipped as the `m110-stack` console binary (a third executable from
+  the same PyInstaller Analysis, like `m110-mcp`). The assistant gets the pure
+  half only: `plan_stack` measures headers and proposes settings, and cannot
+  stack. See the amended processing-model decision above, and [`DONE.md`](DONE.md).
 - **Processing coach**, deferred: the bundled guidance corpus was withdrawn (see
   [`BUGS.md`](BUGS.md) #45) and replacements need authoring against citable
   sources before the *coaching* leg can ship.
