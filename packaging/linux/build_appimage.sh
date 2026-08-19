@@ -59,19 +59,20 @@ cp "$HERE/m110.desktop" "$APPDIR/usr/share/applications/m110.desktop"
 
 # AppRun: entry the AppImage runtime execs. Resolve our own dir, run the binary.
 #
-# `--mcp` dispatches to the bundled stdio MCP server instead of the GUI. This is
-# the one platform where an argv flag is the right answer: an AppImage is a
-# self-mounting archive with no persistent internal path, so an MCP client's
-# config cannot point at usr/bin/m110-mcp the way it can on macOS and Windows.
-# It points at the .AppImage itself with args ["--mcp"], and this dispatches.
-# (Everywhere else the second binary is addressed directly — see M110.spec.)
+# `--mcp` and `--stack` dispatch to the bundled helper binaries instead of the
+# GUI. This is the one platform where an argv flag is the right answer: an
+# AppImage is a self-mounting archive with no persistent internal path, so
+# nothing outside can point at usr/bin/m110-mcp the way it can on macOS and
+# Windows. Callers point at the .AppImage itself with args ["--mcp"] (or
+# ["--stack"]), and this dispatches. (Everywhere else the helpers are addressed
+# directly — see M110.spec.)
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
-if [ "$1" = "--mcp" ]; then
-    shift
-    exec "${HERE}/usr/bin/m110-mcp" "$@"
-fi
+case "$1" in
+  --mcp)   shift; exec "${HERE}/usr/bin/m110-mcp" "$@" ;;
+  --stack) shift; exec "${HERE}/usr/bin/m110-stack" "$@" ;;
+esac
 exec "${HERE}/usr/bin/M110" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"

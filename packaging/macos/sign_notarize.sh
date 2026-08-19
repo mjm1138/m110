@@ -42,18 +42,21 @@ find "$APP" -type d -name "*.framework" -print0 |
       --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$fw"
   done
 
-# The bundled stdio MCP server (Contents/MacOS/m110-mcp). It is a second
-# executable from the same PyInstaller COLLECT, not a dylib or a framework, so
-# neither find above matches it — and an unsigned Mach-O beside the main binary
-# fails notarization. Sign it before the outer bundle, like everything else.
-MCP_BIN="$APP/Contents/MacOS/m110-mcp"
-if [ -f "$MCP_BIN" ]; then
-  echo "==> signing the bundled MCP server"
-  codesign --force --timestamp --options runtime \
-    --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$MCP_BIN"
-else
-  echo "    WARNING: $MCP_BIN not found — the assistant server is missing from this build"
-fi
+# The bundled helper executables (Contents/MacOS/m110-mcp, m110-stack). Each is
+# a further executable from the same PyInstaller COLLECT — not a dylib and not a
+# framework, so neither find above matches it — and an unsigned Mach-O beside the
+# main binary fails notarization. Sign them before the outer bundle, like
+# everything else. Any EXE added to the spec's COLLECT belongs in this list.
+for helper in m110-mcp m110-stack; do
+  BIN="$APP/Contents/MacOS/$helper"
+  if [ -f "$BIN" ]; then
+    echo "==> signing the bundled $helper"
+    codesign --force --timestamp --options runtime \
+      --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$BIN"
+  else
+    echo "    WARNING: $BIN not found — it is missing from this build"
+  fi
+done
 
 echo "==> signing the app bundle"
 codesign --force --timestamp --options runtime \

@@ -10,6 +10,22 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **M110 can now stack your subs for you, without opening Siril.** A new
+  `m110-stack` command measures a target's frames and tells you what it proposes
+  before doing anything — how many frames, whether exposures or gain are mixed,
+  whether it's a mosaic, how deep the coverage actually is, and the drizzle,
+  rejection and weighting settings that supports, each with the reason. Nothing
+  runs until you say so, because a large mosaic costs hours and over 100 GB. Then
+  `--run` does the whole job and prints its progress as it goes, so a long stack
+  never looks like a hang. It uses Siril underneath — stock commands, nothing
+  reimplemented — so you need Siril installed, and the result lands where
+  **Import finished work** already looks for it.
+- **The AI assistant can plan a stack with you.** If you've connected an
+  assistant, it can now measure a target and talk through the settings, then hand
+  you the command to run. It can't start a stack itself — it reads your frames'
+  headers and proposes, nothing more.
+
 ### Changed
 - **The log now records which data folder M110 opened, and why it picked it.**
   M110 chooses your data folder in a set order — the `M110_DATA_ROOT` environment

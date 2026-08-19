@@ -2,9 +2,11 @@
 
 ← [Back to the guide](README.md)
 
-M110 doesn't process your images for you — it **prepares a clean, self-contained
-workspace** so you can process in [Siril](https://siril.org/) and then imports your
-finished work back into the library. This is the "prepare-and-guide" model.
+M110 **prepares a clean, self-contained workspace** so you can process in
+[Siril](https://siril.org/), then imports your finished work back into the library.
+This is the "prepare-and-guide" model — with one exception: M110 *can* run the
+**stacking** step for you, unattended, because that's the part nobody wants to sit
+through. See [Stacking without opening Siril](#stacking-without-opening-siril) below.
 
 ## What M110 sets up
 
@@ -68,6 +70,47 @@ You can also right-click any image in an object's gallery to **Open in default a
 **Reveal in file manager**.
 
 ---
+
+## Stacking without opening Siril
+
+Stacking is the long, unattended part: load hundreds of subs, calibrate, register,
+reject the bad ones, combine. There's nothing to look at while it happens, and on a
+mosaic it runs for hours. So M110 will do it for you, from the command line:
+
+```
+m110-stack "M101"
+```
+
+That **measures and proposes — it doesn't stack**. You get how many frames you have,
+whether exposures or gain are mixed, whether it's a mosaic, how deep the coverage
+actually is, and the settings that supports (drizzle, rejection, weighting,
+feathering), each with the reason it was picked. Read it, then:
+
+```
+m110-stack "M101" --run
+```
+
+It prints the current stage every minute with how long it's been there, so a quiet
+hour looks like progress rather than a hang, and the full Siril log streams to
+`siril_stack.log` in the working folder. The result lands in the sandbox, where
+**Import finished work** already looks for it.
+
+Useful flags: `--only-exposure 30` (stack one exposure when a set mixes them),
+`--exclude-night 2026-06-10`, `--restack` (retry stack settings without repeating
+registration), `--handoff` (see below). `m110-stack --help` lists the rest.
+
+This needs **Siril installed** — M110 runs Siril's own commands rather than
+reimplementing anything. If you've connected an [AI assistant](assistant.md), it can
+talk the settings through with you and hand you the command; it can't start a stack
+itself.
+
+### Handing a stack to AstroWizard
+
+`m110-stack "M101" --run --handoff` also drops the finished stack into
+`Images/M101/astrowizard/`, ready to open in
+[AstroWizard](https://astrowizard.lukomatico.com/). It's a hardlink, so it costs no
+extra disk, and it's kept apart from the Siril sandbox on purpose: your stack took
+hours and won't change, while a finishing pass is cheap and you'll redo it often.
 
 ## Hardlinks — what they are, and why it matters
 

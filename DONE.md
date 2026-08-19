@@ -1593,3 +1593,62 @@ the handshake *and* asserts backward compatibility with what real clients send.
 Asking for the SDK's own newest (`2026-07-28`) is a different and weaker test —
 the server negotiates it down to `2025-11-25`, so pinning it would assert a
 version we never actually speak.
+
+
+## 4c — Headless stacking + the `siril-stacking` skill *(done 2026-08-19, `feature/siril-stacking`)*
+
+`m110/stacking.py`, ported in from the sibling Astronomy project's
+`scripts/siril_stack.py` (1151 lines, already M110-layout-aware — it preferred the
+`siril/` sandbox and read our Naztronomy preset to warn on filter disagreement).
+Shipped as `m110-stack`, a third console executable from the same PyInstaller
+Analysis as the GUI and `m110-mcp`, so a packaged user gets it without a Python
+install. The engine reproduces the Naztronomy command sequence through `siril-cli`
+plus settings its GUI doesn't expose; every emitted command is stock Siril 1.4.
+
+**Why this amends a foundational decision.** "Prepare-and-guide, not control" was
+chosen to avoid the maintenance tax of wrapping volatile CLIs. Stacking is the one
+job where the rule's *reasoning* doesn't hold: it is an unattended multi-hour batch,
+exactly what a human should not sit through, and nothing here reimplements an
+algorithm — only the *choice* of settings is ours, so there is no volatile surface
+to wrap. Post-processing stays firmly prepare-and-guide (item 14). The decision text
+in ROADMAP was amended rather than left to quietly contradict the code.
+
+**The two-phase split is what makes the assistant safe, not a convention.** The
+assistant layer's read-only guarantee is *proven* — a store-manifest diff, write-
+syscall interception, and an AST denylist over every file the server can reach — so
+a tool that could stack would demolish it. `build_plan(..., deep_measure=False)` is
+pure FITS-header reads and skips even the two enrichments that shell out to Siril
+(the local-Gaia probe and `measure_fwhm_by_exposure`); `plan_stack` calls only that.
+`run_siril` and `apply_handoff` went **onto** `ENGINE_WRITERS`, and the denylist was
+verified to bite by planting a violating module and watching layer 3 fail.
+
+Details worth keeping:
+
+- **"Not checked" is not "not found."** `build_proposal` gained `gaia_checked`,
+  because the read-only path was reporting the local Gaia catalogue as *missing*
+  when nothing had looked for it — a confident wrong answer a user would act on.
+- **The path-leak trap has two halves.** `serialize` relativizes a `Path`, but a
+  path formatted into a *string* passes through verbatim. The first `how_to_run`
+  carried an absolute path for that reason. Fixed at the root: `resolve_input`
+  lets `m110-stack` take a bare capture-folder name, so the command handed to a
+  model needs no path at all. The regression test asserts on the whole serialized
+  blob, not on the fields that happen to hold paths today.
+- **All three Siril spawns pass `launch._child_env()`.** Only `run_siril` had it at
+  first; `gaia_catalogue` and `measure_fwhm_by_exposure` were spawning bare. The
+  two-Qt SIGABRT this prevents only bites a **frozen** build, so a source-scanning
+  test (`test_every_siril_spawn_sanitizes_the_child_environment`) enforces the
+  shape — a dev run cannot reproduce the failure.
+- **Behaviour-equivalence was checked by A/B, not by inspection.** All 29 original
+  tests pass against the ported module, and on a real Dwarf 3 set that cannot plate
+  solve (2–4 stars per frame) the port and the original fail identically, at the
+  same step, with the same timings.
+- **Packaging generalised rather than copy-pasted.** A third `console=True` EXE
+  re-arms the `LSBackgroundOnly` trap, so the explicit `False` in the macOS
+  `info_plist` is now load-bearing for a second reason. `sign_notarize.sh` loops
+  over the helper binaries (an unsigned Mach-O in the bundle fails notarization,
+  which only surfaces at release), the AppImage `AppRun` dispatches `--mcp` and
+  `--stack`, and `test_packaging_deps.py` drives all of it from one `HELPERS` list
+  so a fourth binary is covered by the same checks.
+- **`--handoff`** hardlinks the finished stack into `Images/<target>/astrowizard/`
+  with a provenance sidecar, the sanctioned writer for the item-14 convention. It
+  runs in the CLI the user invoked; the assistant only documents the flag.

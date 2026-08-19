@@ -102,34 +102,58 @@ def test_mcp_server_is_a_console_script_not_a_gui_script():
     assert "m110-mcp" not in data.get("gui-scripts", {})
 
 
-def test_every_spec_builds_the_second_executable():
+# The console helper binaries built alongside the GUI, as
+# (spec variable, output name, entry-shim stem, AppRun flag). Each is a further
+# EXE from the same Analysis/PYZ. Add a row when a new one is added to the specs —
+# the checks below, the notarization signing list and the AppRun dispatch all read
+# from it, so one row is the whole registration.
+HELPERS = [
+    ("mcp_exe", "m110-mcp", "m110_mcp_launch", "--mcp"),
+    ("stack_exe", "m110-stack", "m110_stack_launch", "--stack"),
+]
+
+
+def test_every_spec_builds_the_helper_executables():
     for platform in PLATFORMS:
         text = _spec(platform)
-        assert 'name="m110-mcp"' in text, f"{platform} builds no MCP server binary"
-        assert "MCP_ENTRY" in text and "m110_mcp_launch.py" in text
-        # Both entry scripts must go through ONE Analysis, or the second binary
+        # Every entry script goes through ONE Analysis, or each extra binary
         # duplicates the whole ~200 MB payload.
-        assert "[str(ENTRY), str(MCP_ENTRY)]" in text
-        # And each EXE must take only its own script, or both binaries run
-        # whichever entry point came first.
+        assert "[str(ENTRY), str(MCP_ENTRY), str(STACK_ENTRY)]" in text
         assert '_scripts_for("m110_launch")' in text
-        assert '_scripts_for("m110_mcp_launch")' in text
-        assert "mcp_exe," in text, f"{platform} never collects the MCP binary"
+        for var, name, stem, _flag in HELPERS:
+            assert f'name="{name}"' in text, f"{platform} builds no {name} binary"
+            assert f"{stem}.py" in text
+            # Each EXE must take only its own script, or every binary runs
+            # whichever entry point came first.
+            assert f'_scripts_for("{stem}")' in text
+            assert f"{var}," in text, f"{platform} never collects {name}"
 
 
-def test_mcp_binary_is_built_with_a_console():
+def test_helper_binaries_are_built_with_a_console():
     """console=False links Windows binaries against the GUI subsystem, where
-    sys.stdout is None — no argv flag can rescue that, which is exactly why this
-    is a separate executable."""
+    sys.stdout is None — no argv flag can rescue that, which is exactly why these
+    are separate executables. The MCP server needs stdout for JSON-RPC; the
+    stacker needs it for a heartbeat that is the only sign a multi-hour run is
+    alive rather than wedged."""
     for platform in PLATFORMS:
-        # Close on a newline-anchored paren: the call's own args contain ")".
-        mcp_block = _spec(platform).split("mcp_exe = EXE(")[1].split("\n)")[0]
-        assert "console=True" in mcp_block, f"{platform} MCP binary has no console"
-        assert "argv_emulation=False" in mcp_block
+        for var, name, _stem, _flag in HELPERS:
+            # Close on a newline-anchored paren: the call's own args contain ")".
+            block = _spec(platform).split(f"{var} = EXE(")[1].split("\n)")[0]
+            assert "console=True" in block, f"{platform} {name} has no console"
+            assert "argv_emulation=False" in block
         # The GUI binary must stay windowed — this test would otherwise pass on a
-        # spec that accidentally gave both a console.
+        # spec that accidentally gave everything a console.
         gui_block = _spec(platform).split("exe = EXE(")[1].split("\n)")[0]
         assert "console=False" in gui_block, f"{platform} GUI binary gained a console"
+
+
+def test_macos_signing_covers_every_helper_binary():
+    """A further executable beside the main binary is neither a dylib nor a
+    framework, so the find-based sweeps miss it — and an unsigned Mach-O in the
+    bundle fails notarization outright, which only shows up at release time."""
+    script = (SPEC_DIR / "macos" / "sign_notarize.sh").read_text(encoding="utf-8")
+    for _var, name, _stem, _flag in HELPERS:
+        assert name in script, f"sign_notarize.sh never signs {name}"
 
 
 def test_macos_bundle_is_not_background_only():
@@ -143,12 +167,14 @@ def test_macos_bundle_is_not_background_only():
         "MCP binary makes PyInstaller default it to True")
 
 
-def test_appimage_apprun_dispatches_to_the_server():
-    """An AppImage has no persistent internal path, so a client config points at
-    the .AppImage itself with --mcp and AppRun routes it."""
+def test_appimage_apprun_dispatches_to_every_helper():
+    """An AppImage has no persistent internal path, so nothing outside can point
+    at usr/bin/<helper> the way it can on macOS and Windows. Callers point at the
+    .AppImage itself with a flag, and AppRun routes it."""
     script = (SPEC_DIR / "linux" / "build_appimage.sh").read_text(encoding="utf-8")
-    assert '"$1" = "--mcp"' in script
-    assert "usr/bin/m110-mcp" in script
+    for _var, name, _stem, flag in HELPERS:
+        assert flag in script, f"AppRun never dispatches {flag}"
+        assert f"usr/bin/{name}" in script
 
 
 def test_packaged_skills_are_declared():

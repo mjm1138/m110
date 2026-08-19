@@ -82,6 +82,7 @@ m110 = "m110.ui.main:main"
 # and no usable stdio, which is fatal for a stdio JSON-RPC server.
 [project.scripts]
 m110-mcp = "m110.assistant.mcp_server:main"
+m110-stack = "m110.stacking:main"
 
 [tool.setuptools]
 packages = ["m110", "m110.ui", "m110.ui.theme", "m110.publish", "m110.backup",

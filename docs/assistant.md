@@ -117,7 +117,7 @@ proposals rather than rubber-stamping them, the same as with any AI suggestion.
 
 ## Skills — the procedures it follows
 
-M110 ships three **skills**: written procedures the assistant reads before working,
+M110 ships four **skills**: written procedures the assistant reads before working,
 so it uses the engine properly instead of improvising. Most MCP clients surface
 these as slash-commands or prompts; an assistant can also fetch one itself.
 
@@ -125,7 +125,8 @@ these as slash-commands or prompts; an assistant can also fetch one itself.
 |---|---|
 | **Plan a night** | Build an imaging plan for a night (or a multi-night trip) from M110's own ranking, site profile and astronomy engine. Use when you ask what to shoot tonight, on a given date, or from a different site. Takes an optional date and site. |
 | **Critique an image** | Look at one of your astrophotos and give grounded, actionable feedback — anchored to what you actually captured, and careful not to blame you for M110's preview rendering. Takes the object. |
-| **Explain the numbers** | How to talk about M110's figures without inventing any. This one applies to *every* answer about your library, not just when you invoke it — the other two build on it. |
+| **Stack with Siril** | Measure a target's light frames and propose Siril stacking settings — coverage depth, drizzle, rejection, weighting, feathering — with the reason for each, plus the disk cost and the command to run. It measures; **you** run the stack. Takes the object. |
+| **Explain the numbers** | How to talk about M110's figures without inventing any. This one applies to *every* answer about your library, not just when you invoke it — the others build on it. |
 
 The most useful thing these do is stop the assistant from doing astronomy in its
 head. *Plan a night*, for instance, forbids hand-assembling a schedule — slot
@@ -137,7 +138,7 @@ reports the answer.
 
 ## Tools — what it can look at
 
-Fifteen operations, grouped by what you'd ask for. **Every one is read-only except
+Sixteen operations, grouped by what you'd ask for. **Every one is read-only except
 *Save field guide***, which can only create a new file.
 
 ### Getting oriented
@@ -148,6 +149,7 @@ Fifteen operations, grouped by what you'd ask for. **Every one is read-only exce
 | `list_objects` | Search and filter your library — designations, type, season, captured integration time. |
 | `get_object` | Everything M110 knows about one object: designations, catalogs, coordinates, capture totals and per-session history, images on disk, your journal notes, pin state, and how its integration compares to the deep-stack threshold for its type. |
 | `get_processing_state` | Siril state per capture folder: integration, frame counts, the latest stack, frames arrived since it was made, and whether finished output is waiting to be imported. |
+| `plan_stack` | Measures a capture folder's light frames and proposes Siril stacking settings, each with its reason, plus the projected disk cost and the exact command to run. It reads headers only — it does not stack. |
 | `get_skill` | Fetches one of the procedures above. |
 
 ### Planning a night

@@ -16,4 +16,5 @@ from . import (  # noqa: F401  (imported for side effect: tool registration)
     proposing,
     ranking,
     saving,
+    stacking,
 )

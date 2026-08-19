@@ -18,6 +18,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy
 ROOT = Path(SPECPATH).resolve().parents[1]                       # repo root
 ENTRY = ROOT / "packaging" / "common" / "m110_launch.py"         # shared entry shim
 MCP_ENTRY = ROOT / "packaging" / "common" / "m110_mcp_launch.py"  # stdio MCP server shim
+STACK_ENTRY = ROOT / "packaging" / "common" / "m110_stack_launch.py"  # m110-stack CLI shim
 HOOKS = ROOT / "packaging" / "common" / "pyinstaller-hooks"      # shared hook overrides
 ICON = ROOT / "packaging" / "windows" / "M110.ico"               # from make_ico.py
 
@@ -71,7 +72,7 @@ except Exception as _exc:                       # pragma: no cover - build-time
 block_cipher = None
 
 a = Analysis(
-    [str(ENTRY), str(MCP_ENTRY)],   # both entry points share ONE Analysis
+    [str(ENTRY), str(MCP_ENTRY), str(STACK_ENTRY)],  # every entry point shares ONE Analysis
     pathex=[str(ROOT)],
     binaries=[],
     datas=datas,
@@ -91,7 +92,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 # entry scripts, so each EXE takes the shared prefix and only its own script —
 # otherwise each binary would run whichever entry point happened to come first.
 def _scripts_for(stem):
-    other = {"m110_launch", "m110_mcp_launch"} - {stem}
+    other = {"m110_launch", "m110_mcp_launch", "m110_stack_launch"} - {stem}
     return [e for e in a.scripts if e[0] not in other]
 
 exe = EXE(
@@ -138,9 +139,32 @@ mcp_exe = EXE(
     entitlements_file=None,
 )
 
+# The `m110-stack` CLI: headless Siril stacking. console=True because a
+# multi-hour job's entire progress story is stdout — on Windows a windowed build
+# links against the GUI subsystem, where the standard handles do not exist, so
+# the heartbeat would vanish and a long stack would look like a hang.
+stack_exe = EXE(
+    pyz,
+    _scripts_for("m110_stack_launch"),
+    [],
+    exclude_binaries=True,
+    name="m110-stack",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
 coll = COLLECT(
     exe,
     mcp_exe,
+    stack_exe,
     a.binaries,
     a.zipfiles,
     a.datas,
