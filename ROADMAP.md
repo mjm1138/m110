@@ -219,9 +219,13 @@ artifact every time a cheap one is redone.
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
 - **A sandbox that hardlinks a directory of frames must say so in
-  `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file, so
-  its entry is `frozenset()` and nothing changes. But 14a's "send stack to
-  AstroWizard" is a hardlink, and if the flow ever grows to hand over *frames* —
+  `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file —
+  `stacking.apply_handoff` hardlinks the stack into `astrowizard/` root — so its
+  entry is `frozenset()`. That does put a second copy of one stack in a mirrored
+  snapshot, knowingly: the mapping is directory-based, and the only way to exclude
+  the handoff would be to exclude `astrowizard/`, which is where the exports live.
+  One file per handed-off target is the right side of that trade. But if the flow
+  ever grows to hand over *frames* —
   a directory of subs for a restack, say — that directory's name belongs in the
   mapping. Backup skips exactly the names declared there and keeps everything else,
   and both errors are silent: an undeclared link tree is a second full copy of
