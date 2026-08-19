@@ -488,6 +488,44 @@ def recommend_star_removal_for_folder(slugs: list[str],
     return any(default_star_removal_recommended(catalog.get(s, {})) for s in slugs)
 
 
+def _parse_ts(value: str):
+    """An ISO timestamp from a FITS header → datetime, or None. Tolerates a
+    trailing 'Z' and fractional seconds; both `DATE-OBS` and a stack's `DATE`
+    are UTC, so the two are directly comparable."""
+    v = (value or "").strip().rstrip("Z")
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v)
+    except ValueError:
+        return None
+
+
+def _split_session(s: dict, stacked_at: str) -> tuple[int, int]:
+    """One session's frames as (present when stacked, captured since).
+
+    Prefers the session's real UTC window (`first_obs`/`last_obs`, written by
+    `scan_sessions`) over its `date`, which is the **observing night's label**
+    and not a calendar day of those timestamps: subs shot after local midnight
+    keep the previous evening's label, so a night labelled `2026-08-17` can be
+    made entirely of frames stamped `2026-08-18`. Comparing that label to a
+    stack's calendar date once hid 202 unintegrated frames behind "up to date".
+
+    A segment straddling the stack instant can't be split without per-frame
+    timestamps; it counts as captured-since, so the backlog is surfaced rather
+    than rounded away. Falls back to the day comparison when a session predates
+    these fields or its headers were unreadable.
+    """
+    frames = s.get("frames", 0)
+    cut = _parse_ts(stacked_at)
+    first, last = _parse_ts(s.get("first_obs")), _parse_ts(s.get("last_obs"))
+    if cut and first and last:
+        if last <= cut:
+            return frames, 0                  # wholly before the stack
+        return 0, frames                      # wholly after, or straddling it
+    return (frames, 0) if s.get("date", "") <= stacked_at[:10] else (0, frames)
+
+
 def build_processing(totals: dict, overrides: dict | None,
                      catalog: dict | None = None,
                      sessions: list[dict] | None = None) -> dict:
@@ -516,9 +554,9 @@ def build_processing(totals: dict, overrides: dict | None,
 
     # Per-folder capture (date, frames) from sessions — the basis for splitting
     # frames into "present when stacked" vs. "captured since".
-    sess_by_folder: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    sess_by_folder: dict[str, list[dict]] = defaultdict(list)
     for s in (sessions or []):
-        sess_by_folder[s["object_dir"]].append((s["date"], s["frames"]))
+        sess_by_folder[s["object_dir"]].append(s)
 
     # Resolved once, not per folder: only combined targets need it, and it reads
     # the Library + bundled reference.
@@ -575,7 +613,8 @@ def build_processing(totals: dict, overrides: dict | None,
         # captured after it are the unintegrated ones.
         stack_meta = (read_latest_stack_metadata(folder, t.get("slugs"), cat_slugs)
                       if processed else None)
-        stack_date = (stack_meta.get("stacked_at") or "")[:10] if stack_meta else ""
+        stacked_at = (stack_meta.get("stacked_at") or "") if stack_meta else ""
+        stack_date = stacked_at[:10]
 
         # Split captured frames by the stack's DATE. `frames_before` = frames
         # available when the stack was made (the rejection denominator);
@@ -583,11 +622,10 @@ def build_processing(totals: dict, overrides: dict | None,
         frames_before = frames_after = 0
         have_date_signal = bool(stack_date) and bool(sess_by_folder.get(fname))
         if have_date_signal:
-            for date, fr in sess_by_folder[fname]:
-                if date <= stack_date:
-                    frames_before += fr
-                else:
-                    frames_after += fr
+            for s in sess_by_folder[fname]:
+                frames_before_n, frames_after_n = _split_session(s, stacked_at)
+                frames_before += frames_before_n
+                frames_after += frames_after_n
 
         # Determine status
         ov = overrides.get(fname, {})

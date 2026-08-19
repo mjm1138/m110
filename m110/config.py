@@ -132,13 +132,33 @@ def save_setting(key: str, value) -> None:
     SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
 
 
+# Which tier of `_resolve_data_root` won, in words — logged at startup so a bug
+# report says *why* the app opened the folder it did. A store nobody meant to
+# open (a leftover `data_root` preference pointing at a test corpus, say) is
+# invisible otherwise: the status bar shows the path but never its origin.
+DATA_ROOT_ENV = "M110_DATA_ROOT env var"
+DATA_ROOT_SAVED = "saved preference (~/.m110/settings.json)"
+DATA_ROOT_DEFAULT = "default location"
+DATA_ROOT_RUNTIME = "set at runtime"
+_data_root_source = DATA_ROOT_DEFAULT
+
+
+def data_root_source() -> str:
+    """How the active data root was chosen — one of the `DATA_ROOT_*` strings."""
+    return _data_root_source
+
+
 def _resolve_data_root() -> Path:
+    global _data_root_source
     env = os.environ.get("M110_DATA_ROOT")
     if env:
+        _data_root_source = DATA_ROOT_ENV
         return Path(env).expanduser()
     saved = _read_settings().get("data_root")
     if saved:
+        _data_root_source = DATA_ROOT_SAVED
         return Path(saved).expanduser()
+    _data_root_source = DATA_ROOT_DEFAULT
     return DEFAULT_DATA_ROOT
 
 
@@ -307,6 +327,8 @@ def set_data_root(path) -> None:
     The supported *persistent* change is ``save_data_root()`` + restart, because
     a few ported modules bind their paths at import.
     """
+    global _data_root_source
+    _data_root_source = DATA_ROOT_RUNTIME
     _apply(Path(path).expanduser())
 
 

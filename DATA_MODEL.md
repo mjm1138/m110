@@ -198,7 +198,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57) are hardlinks (no extra space); the preset's calibration toggles follow | Persistent (ready for re-runs) | `archive/<ts>/` accumulates; **never auto-deleted** (see Retention) |
 | Media | `Media/<Category>_photo\|_video/` | images/video | Ingested (`*_photo`/`*_video`) | **Content** | Persistent | Never auto-deleted | Import copies content files **plus** a video's `<stem>_thn.jpg` poster; photo-side `_thn.` duplicates and `.avi.idx`/`.avi.txt` are no longer copied (Tools → Clean up imported sidecars removes ones already on disk — never a live video poster) |
 | Media posters | `.m110_internal_data/renders/media/` | JPG | `media.poster_for` → `build_images.make_thumb`, for photo formats Qt can't decode (FITS) | **Derived** | Regenerable | Safe to delete. A **subdirectory** on purpose: `build_images._cleanup_orphaned_renders` reaps unreferenced `*.jpg` directly in `renders/`, and `images.json` never names Media files — the same protection `hero/` relies on |
-| Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh |
+| Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below |
 | Rollups | `.m110_internal_data/derived/*.json` | JSON | `build_derived` (totals/summary/processing/priorities), `build_images` (images) | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh (`processing.json` stamps `generated_at` and is intentionally not byte-stable) |
 | Renders cache | `.m110_internal_data/renders/` | JPG/PNG | `build_images` (content-hash cached: mtime+size+ver) | **Derived** | Regenerable | Safe to delete; **orphans should be pruned** (open #14) |
 | Store version | `.m110_internal_data/.store_version` | text (`4`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
@@ -220,6 +220,23 @@ capture total (which would miscount later frames as "rejected"). This is robust 
 bulk import flattening file mtimes (e.g. the Astronomy port). When no stack `DATE` is
 available (finished-render-only, or a header lacking `DATE`), it falls back to the
 newest-light-vs-newest-processed mtime comparison.
+
+**A session's `date` is a night label, not a calendar day — compare on
+`first_obs`/`last_obs`.** `scan_sessions` buckets subs by observing night, so
+frames exposed after local midnight keep the *previous* evening's label: a session
+dated `2026-08-17` can consist entirely of frames stamped `2026-08-18T03:41Z`.
+Comparing that label against a stack's calendar date is comparing two different
+kinds of thing, and it reported 202 unintegrated frames as "up to date" (while
+inflating rejection from 5% to 72%, since the backlog landed in the denominator).
+Each row therefore also carries **`first_obs`/`last_obs`** — the segment's earliest
+and latest `DATE-OBS`, in **UTC**, directly comparable with the stack's `DATE`.
+Both come from **headers**, never the filename: device filenames timestamp the same
+moment in *local* time (`…_20260816-221509.fit` is `2026-08-17T04:14Z`), and that
+offset is invisible until the two are compared. `scan_sessions` reads two headers
+per session-segment (the first and last sub by name — names order the frames,
+headers date them), so the cost is per session, not per frame. A segment straddling
+the stack instant counts wholly as backlog; rows predating these fields fall back to
+the day comparison until the next Refresh rewrites them.
 
 ---
 

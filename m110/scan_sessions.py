@@ -74,6 +74,42 @@ def _session_key(path: Path) -> tuple[str, float, str] | None:
         return None
 
 
+def _read_date_obs(path: Path) -> str | None:
+    """One sub's ``DATE-OBS`` — the **UTC** instant it was exposed — or None.
+
+    Deliberately not taken from the filename, which carries the same moment in
+    *local* time (`…_20260816-221509.fit` is `2026-08-17T04:14Z`). That six-hour
+    difference is invisible until you compare a filename-derived time against a
+    header-derived one, which is what the session/stack freshness check does.
+    """
+    try:
+        from astropy.io import fits
+        obs = str(fits.getheader(str(path)).get("DATE-OBS") or "").strip()
+    except Exception:
+        return None
+    return obs or None
+
+
+def _session_bounds(files: list[Path]) -> tuple[str | None, str | None]:
+    """(first_obs, last_obs) for one session-segment, as UTC ISO strings.
+
+    Reads **two** headers, not one per frame: subs within a segment are exposed
+    in sequence and their device filenames are timestamped, so name order is
+    capture order. The names decide *which* files to read — ordering, which is
+    what a filename is trustworthy for — while both timestamps still come from
+    the headers. Falls back to scanning every header only if an end file has no
+    readable ``DATE-OBS``, so an odd file can't silently truncate the window.
+    """
+    if not files:
+        return None, None
+    ordered = sorted(files, key=lambda p: p.name)
+    first, last = _read_date_obs(ordered[0]), _read_date_obs(ordered[-1])
+    if first and last:
+        return first, last
+    stamps = sorted(s for s in (_read_date_obs(f) for f in ordered) if s)
+    return (stamps[0], stamps[-1]) if stamps else (None, None)
+
+
 def _read_eqmode(path: Path) -> bool | None:
     """Reported mount mode from the FITS ``EQMODE`` card: ``True`` (Equatorial) /
     ``False`` (Alt-Az), or ``None`` when unreadable or absent. **Both** the Seestar
@@ -256,6 +292,7 @@ def scan() -> list[dict]:
         # header (device-agnostic fallback — see `_session_key`).
         bucket: dict[tuple[str, float, str], int] = defaultdict(int)
         rep: dict[tuple[str, float, str], Path] = {}   # one sub per bucket → EQMODE read
+        members: dict[tuple[str, float, str], list[Path]] = defaultdict(list)
         for f in lights.iterdir():
             if not f.is_file() or f.suffix.lower() not in config.FIT_EXTS:
                 continue
@@ -264,6 +301,7 @@ def scan() -> list[dict]:
                 continue
             bucket[key] += 1
             rep.setdefault(key, f)
+            members[key].append(f)
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
         for (iso, exp, filt), n in sorted(bucket.items()):
@@ -271,6 +309,12 @@ def scan() -> list[dict]:
             # One header read per session-segment (mount mode is constant within a
             # capture run) — negligible next to the filename fast-path for the subs.
             mount_mode = _mount_mode(rep.get((iso, exp, filt)), session_date)
+            # The segment's real UTC window. `date` is the *observing night's*
+            # label, not a calendar day of these timestamps — subs shot after
+            # local midnight carry the previous evening's label and a DATE-OBS
+            # on the following day — so anything comparing a session to a
+            # timestamped event (a stack's FITS `DATE`) has to use these.
+            first_obs, last_obs = _session_bounds(members[(iso, exp, filt)])
             row = {
                 "date": iso,
                 "object_dir": obj_dir.name,
@@ -281,6 +325,8 @@ def scan() -> list[dict]:
                 "integration_min": round(n * exp / 60.0, 2),
                 "mount_mode": mount_mode,
                 "pre_new_start": session_date < NEW_START,
+                "first_obs": first_obs,      # UTC DATE-OBS of the segment's
+                "last_obs": last_obs,        # earliest / latest sub (None if unreadable)
             }
             rows.append(row)
     rows.sort(key=lambda r: (r["date"], r["object_dir"], r["exposure_s"]))

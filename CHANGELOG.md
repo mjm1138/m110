@@ -10,6 +10,27 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **The log now records which data folder M110 opened, and why it picked it.**
+  M110 chooses your data folder in a set order — the `M110_DATA_ROOT` environment
+  variable, then the folder saved in Preferences, then the default location — and
+  a folder saved in Preferences keeps winning on every launch until you change it
+  again. Until now nothing said which of those had applied, so an app that opened
+  an unexpected folder was a puzzle. The first lines of the log, and the crash
+  report, now name the folder *and* where the choice came from.
+
+### Fixed
+- **An object could say "up to date" while most of its frames weren't in the
+  stack.** If you stacked and then kept shooting the same night, the new frames
+  were counted as though they'd already been in the stack — so Processing showed
+  nothing to do. One object had 285 frames captured, 79 of them in the stack, and
+  still read "up to date". The same mistake inflated the rejection figure, because
+  the frames that were never stacked were counted as rejected: that object showed
+  72% rejected when the true figure was 5%. Both numbers are now worked out from
+  the actual times the frames were exposed, so a night's new frames show up as
+  waiting to be stacked. Your next Refresh corrects existing objects — nothing to
+  reimport, and no images are touched.
+
 ## [0.3.0-beta.5] - 2026-08-18
 
 ### Added

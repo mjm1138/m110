@@ -575,3 +575,86 @@ def test_parse_size_dims():
     assert abs(maj - 49 / 60) < 1e-9 and minr == maj
     assert parse_size_dims("110'") == (110.0, 110.0)      # single dim = circular
     assert parse_size_dims("") is None
+
+
+def _sess_obs(target, date, frames, first_obs, last_obs):
+    """A session carrying its real UTC window, as `scan_sessions` now writes it."""
+    return {**_sess(target, date, frames),
+            "first_obs": first_obs, "last_obs": last_obs}
+
+
+def test_frames_shot_the_same_night_as_the_stack_are_backlog_not_history(
+        tmp_path, monkeypatch):
+    """The M16 case: 285 frames, 79 in the stack, reported "up to date".
+
+    `date` is the *observing night's label*, not a calendar day of the frames'
+    timestamps — subs shot after local midnight keep the previous evening's
+    label. So the night labelled 2026-08-17 is made entirely of frames stamped
+    2026-08-18, and truncating the stack's `DATE` to a day and asking
+    `date <= stack_date` filed all 202 of them as "present when stacked".
+    Two wrong numbers followed: no backlog, and a 72% rejection rate that was
+    really the backlog sitting in the denominator.
+    """
+    images = tmp_path / "Images"
+    tgt = images / "M16"
+    (tgt / "lights").mkdir(parents=True)
+    _write_stack(tgt, stackcnt=79, date="2026-08-17T18:55:10")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [
+        # Labelled the 16th; actually exposed in the small hours of the 17th.
+        _sess_obs("M16", "2026-08-16", 83,
+                  "2026-08-17T04:14:46", "2026-08-17T04:59:21"),
+        # Labelled the 17th — the same *label* as the stack's date — but every
+        # frame is hours later than the stack, on the following calendar day.
+        _sess_obs("M16", "2026-08-17", 202,
+                  "2026-08-18T03:41:13", "2026-08-18T05:19:29"),
+    ]
+    totals = build_derived.build_totals({}, sessions)
+    f = build_derived.build_processing(totals, None, {}, sessions)["folders"]["M16"]
+
+    assert f["status"] == "out_of_date"
+    assert f["new_lights_since_stack"] == 202
+    # Only the 83 frames that existed when the stack was made are the
+    # rejection denominator — 79/83 is 5% rejected, not 72%.
+    assert f["stack_meta"]["frames_at_stack"] == 83
+    assert f["stack_meta"]["stack_rejection_pct"] == 5
+
+
+def test_a_session_straddling_the_stack_counts_as_backlog(tmp_path, monkeypatch):
+    """Stacking mid-session leaves frames on both sides of the instant, and the
+    session row can't say how many. Surfacing the backlog beats rounding it
+    away — a spurious "restack me" is recoverable, a hidden 200-frame gap is the
+    bug being fixed."""
+    images = tmp_path / "Images"
+    tgt = images / "M27"
+    (tgt / "lights").mkdir(parents=True)
+    _write_stack(tgt, stackcnt=50, date="2026-08-17T22:00:00")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess_obs("M27", "2026-08-17", 120,
+                          "2026-08-17T21:00:00", "2026-08-17T23:30:00")]
+    totals = build_derived.build_totals({}, sessions)
+    f = build_derived.build_processing(totals, None, {}, sessions)["folders"]["M27"]
+    assert f["status"] == "out_of_date"
+    assert f["new_lights_since_stack"] == 120
+
+
+def test_sessions_without_a_window_still_use_the_day_comparison(tmp_path, monkeypatch):
+    """`first_obs`/`last_obs` are new, and sessions.jsonl is only rewritten on a
+    refresh — so an existing store's rows lack them until then. The old
+    day-granularity path has to keep working rather than crash or read as
+    up-to-date across the board."""
+    images = tmp_path / "Images"
+    tgt = images / "M13"
+    (tgt / "lights").mkdir(parents=True)
+    _write_stack(tgt, stackcnt=100, date="2026-06-10T12:00:00")
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M13", "2026-05-01", 100),    # no first_obs/last_obs
+                _sess("M13", "2026-07-01", 40)]
+    totals = build_derived.build_totals({}, sessions)
+    f = build_derived.build_processing(totals, None, {}, sessions)["folders"]["M13"]
+    assert f["status"] == "out_of_date"
+    assert f["new_lights_since_stack"] == 40
+    assert f["stack_meta"]["frames_at_stack"] == 100
