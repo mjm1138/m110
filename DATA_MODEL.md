@@ -112,6 +112,19 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     siril/                          contained processing-prep sandbox:
       lights/ (hardlinks) · darks/ flats/ biases/ (hardlinks, shared, if present) ·
       process/ (scratch) · presets/ · next-steps.md · archive/<ts>/ (past runs)
+    astrowizard/                    contained AstroWizard sandbox (ROADMAP item 14):
+      the handed-off stack + its .src provenance sidecar · the user's exports ·
+      archive/<ts>/ (past runs). A **sibling** of siril/, not a subdir: these dirs
+      name *workflows*, and the two artifacts have different lifetimes (a stack
+      costs hours and is stable, a finish is cheap and iterated), so sharing one
+      dir would archive the expensive one on every re-finish. Written by
+      `m110-stack --handoff` / the app's send-stack flow; lazily created,
+      additive → no .store_version bump                          [output]
+    ⚠ Every sandbox dirname above lives in **`config.SANDBOX_DIRNAMES`**, the single
+      authority read by `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS` and
+      `backup.scope.is_excluded`. A new workflow adds its name there and nowhere
+      else — omitting it from any one of the three fails silently (the other
+      workflow claims the output / ingest re-imports it / it lands in every snapshot).
     (darks/ flats/ biases/ — calibration; preserved if present, and **import targets**
                             for frames header-routed by IMAGETYP (ROADMAP item 6b);
                             written by ingest, layout unchanged → no .store_version bump)
@@ -650,6 +663,25 @@ checklist, computed on the fly. Consequences:
   Provide **thumb source ≥960px** (crisp 480px @2×) and **hero source ~1600px**; aspect
   is free (UI letterboxes — a ~square/3:2 crop only matters for grid tiles). Keep 16-bit
   TIFF/FITS **masters** in the user's own archive; bundle/store only the 8-bit JPEGs.
+
+### Two-stage processing pipeline (ROADMAP item 14c)
+
+- Today `build_processing` models **one** relationship: lights → latest stack →
+  frames captured since. That was complete while one tool did the whole job.
+  With stacking and finishing split across tools, a target has **two** independent
+  states: *needs stacking* (frames arrived after the stack's FITS `DATE`) and
+  *needs finishing* (a stack with no finished render derived from it).
+- The derived shape should carry both rather than the current single
+  `ready_for_import` boolean, which is Siril-only and answers neither question
+  directly. Shape it as a per-workflow mapping so a third tool is additive.
+- **Provenance is the hard half, and mtime cannot supply it** (ingest and import
+  both copy bytes, so mtime is copy time — the standing rule). "Which stack did
+  this render come from?" needs a recorded link: the `.src` sidecar written beside
+  a handed-off stack is that link, and it is the same identity-not-mtime pattern
+  that fixed the stale hero (#17).
+- Recorded now so the sandbox layout and derived shape are built toward it; the
+  states are computed from existing on-disk facts, so adopting it is a derived-JSON
+  change with **no `.store_version` bump**.
 
 ### Custom processing workspaces (BUGS #18)
 - A named processing workspace **not bound to a single target** — combining lights

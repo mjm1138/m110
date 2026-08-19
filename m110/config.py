@@ -306,9 +306,33 @@ def biases_dir(name: str) -> Path:
     return IMAGES_DIR / name / "biases"
 
 
+# Per-target tool-workflow sandboxes (``Images/<target>/<name>/``). Each names a
+# *workflow*, not a tool: ``siril/`` holds a complete Siril run (literal lights/,
+# presets, scratch), ``astrowizard/`` holds an AstroWizard run (a stack in, exports
+# out). They stay separate because the artifacts have different **lifetimes** — a
+# stack costs hours and is stable, a finish is cheap and iterated — so sharing one
+# directory would archive the expensive artifact on every re-finish.
+#
+# **This set is the single authority.** Every walk that must not descend into a
+# sandbox reads it: `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS`,
+# `backup.scope.is_excluded`. A new workflow adds its name here and nowhere else.
+# Getting that wrong is silent in three different ways — the other workflow claims
+# the output as its own, ingest re-imports the sandbox, and every backup snapshot
+# carries a regenerable working area.
+SANDBOX_DIRNAMES = frozenset({"siril", "astrowizard"})
+
+
 def siril_dir(name: str) -> Path:
     """Contained Siril sandbox for a capture target (processing-prep)."""
     return IMAGES_DIR / name / "siril"
+
+
+def astrowizard_dir(name: str) -> Path:
+    """Contained AstroWizard sandbox for a capture target — a stack to finish, plus
+    whatever the user exports from it (ROADMAP item 14). A sibling of `siril_dir`,
+    not a subdir of it: AstroWizard's output cannot be recognised by filename (it is
+    typed into a native save dialog), so the *place* is what classifies it."""
+    return IMAGES_DIR / name / "astrowizard"
 
 
 def siril_job_dir(name: str, filt: str | None = None) -> Path:

@@ -30,9 +30,11 @@ def is_excluded(rel: str) -> bool:
     for ex in _EXCLUDE_INTERNAL:
         if rel.startswith(ex + "/"):
             return True
-    # Any Siril sandbox: Images/<target>/siril/…  (working area, regenerable).
+    # Any workflow sandbox: Images/<target>/{siril,astrowizard,…}/… — working
+    # areas, regenerable, and hardlink-heavy: an un-excluded one puts a full copy
+    # of the linked inputs into every snapshot.
     parts = rel.split("/")
-    if len(parts) >= 3 and parts[0] == "Images" and parts[2] == "siril":
+    if len(parts) >= 3 and parts[0] == "Images" and parts[2] in config.SANDBOX_DIRNAMES:
         return True
     return False
 

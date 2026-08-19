@@ -527,7 +527,9 @@ _STORE_PARENT_KIND = {
     "seestar_stacks": "stack", "seestar-stacks": "stack",
 }
 # Working/sandbox dirs that are never content — don't import or recurse into them.
-_SKIP_DIRS = {"process", "siril", "thumbnail"}   # thumbnail/ = per-sub preview sidecars (Dwarf)
+# thumbnail/ = per-sub preview sidecars (Dwarf); the sandboxes come from the one
+# authority so a new workflow can't be silently re-imported from another store.
+_SKIP_DIRS = {"process", "thumbnail"} | set(config.SANDBOX_DIRNAMES)
 
 
 def _has_store_subdir(src_dir: Path) -> bool:

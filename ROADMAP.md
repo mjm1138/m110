@@ -25,6 +25,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 10 | **Library backup** — mirrored + pooled snapshots, verify, selective restore, auto-backup | ✅ shipped (offsite → #93) | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
+| 14 | **AstroWizard support** — a second processing workflow: hand a stack off, launch, import the finish back | ⬜ open [↓](#14--astrowizard-support) | [↓](#14--astrowizard-support) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | 🔶 the `rejected/` exclusion tier shipped (#110); the view is open [↓](#11--lights-table) | [↓](#11--lights-table) |
 | 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
@@ -124,6 +125,93 @@ the client they already have. Revised phasing:
   sources before the *coaching* leg can ship.
 - Cost controls and a model picker belong to whichever client the user brings —
   revisit only if M2 happens.
+
+
+### 14 — AstroWizard support
+
+Treat **[AstroWizard](https://astrowizard.lukomatico.com/)** as a first-class
+processing workflow beside Siril: hand a stack off to it, launch it, and import
+the finish back into `finished/` + `stacks/` — the same round-trip
+`Images/<target>/siril/` already gets. A second workflow is the point; AstroWizard
+is just the one with users asking for it.
+
+**Why it's worth its own slot.** M110's processing story assumes one tool does
+everything, because Siril can. AstroWizard splits the job: Siril (or `m110-stack`)
+produces the stack, AstroWizard does the whole linear→finished pipeline on top,
+orchestrating GraXpert, StarNet2 and RC-Astro through a stepped UI. That is a
+*different workflow*, not a different tool for the same job — and it is the shape
+every future post-processing integration takes. Getting the second one right is
+what makes the third cheap. It also extends the #19 launcher seam
+(`processing.WORKFLOWS` + `launch._TOOLS` + `external_app_paths`) into its first
+real second consumer, which is the only way that seam gets tested.
+
+#### The handoff is a place, not a filename
+
+AstroWizard's output **cannot be recognised by filename.** Its three exports
+(`export_final` / `export_starless` / `export_stars`) go through a native save
+dialog, so the user types the name; only `-starless` and `-stars` are hard-coded
+fragments. Classification therefore has to be directory-first, which
+[`siril._classify`](m110/siril.py) already does (#85, "directory wins").
+
+So the handoff is `Images/<target>/astrowizard/` — a sibling of `siril/`, not a
+subdir. These directories name **workflows, not tools**, and they stay separate
+because the artifacts have different **lifetimes**: a stack costs hours and is
+stable, a finish is cheap and iterated (`--restack` and AstroWizard's "Start over"
+both exist because you iterate). One shared directory would archive the expensive
+artifact every time a cheap one is redone.
+
+#### What this actually costs us
+
+- **Groundwork: done.** `config.SANDBOX_DIRNAMES` is the single authority every
+  sandbox-skipping walk reads (`siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS`,
+  `backup.scope.is_excluded`), `config.astrowizard_dir` exists, and
+  `m110-stack --handoff` populates the sandbox. Lazily created, additive → **no
+  `.store_version` bump**.
+- **Cleanup is small, contrary to first assumptions.** AstroWizard does *not*
+  autosave per step: it tracks its temporaries (`track_temp_file`) and deletes
+  them (`cleanup_temp_files`). Only explicit exports persist — at most three files
+  per run, in FITS/TIFF/PNG/JPG.
+- **`hints` needs no change.** `DEFAULT_INTERMEDIATE` already carries `starless`,
+  so a `…-starless.png` export classifies as intermediate and correctly stays out
+  of `finished/`.
+- **The real work is extraction, not new code.** Roughly 200 lines of `siril.py`
+  are genuinely tool-agnostic round-trip machinery — `_resolve_import_dest`,
+  `_same_bytes`, `_classify`, `_tier_of`, `_finished_outputs`, `scan_finished`,
+  `apply_import`, the archive pattern, `FinishedItem`/`ImportPlan`. Lift those
+  into a shared module (with `tests/test_siril.py` as the safety net) and
+  `astrowizard.py` is thin: no presets, no calibration, no per-filter jobs, no
+  `prune_rejected`, and `working_dirs()` is just `[base]`.
+
+#### Gotchas to design around
+
+- **`processing._store_targets` hardcodes `lights/`.** A target holding only
+  imported stacks — exactly AstroWizard's case — is invisible to
+  `prepare_missing`. Needs a per-workflow target selector (a sixth `Workflow`
+  field defaulting to the current behaviour; the dataclass is frozen with
+  positional construction, so a defaulted field is source-compatible).
+- **`build_derived.ready_for_import` is a single Siril-only boolean.** With two
+  workflows the Processing page must say *which* tool has work waiting.
+- **`ui/import_dialog.py` is entirely Siril-bound** — module-level `from m110
+  import siril`, Siril-worded throughout. It needs a workflow/engine parameter.
+  Largest single UI edit in the item.
+- **A stale handed-off stack has no signal.** Re-stack in Siril and
+  `astrowizard/` silently holds the old copy. `m110-stack --handoff` writes a
+  provenance sidecar for this; the UI flow must too — same shape as the
+  `hero/<slug>.src` identity sidecar that fixed #17.
+- **AstroWizard bundles its own hardened Python** (PyInstaller, `Python.framework`).
+  Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
+  two-Qt and responsible-process failures apply.
+
+#### Phasing
+
+- **14a** — launcher + Preferences tool-path row + "Send stack to AstroWizard"
+  (preview-then-confirm, hardlink + sidecar). Makes the sandbox reachable.
+- **14b** — extract the shared round-trip module; `astrowizard.py`; per-workflow
+  `ready_for_import`; parameterized import dialog.
+- **14c** — the two-stage pipeline model (see
+  [`DATA_MODEL.md`](DATA_MODEL.md) → Future directions): "needs stacking" vs
+  "needs finishing" as separate states in `build_processing`, so Processing tells
+  the user what to do next rather than only what to open.
 
 
 ### 2 — Plan-file generation (device schedules)

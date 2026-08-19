@@ -10,6 +10,34 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **A second processing workflow's sandbox would have been claimed, re-imported
+  and backed up** (done — `feature/astrowizard-groundwork`). Three walks each
+  hardcoded the string `"siril"` as *the* sandbox: `siril._ROOT_SKIP_DIRS`,
+  `ingest._SKIP_DIRS`, and `backup.scope.is_excluded`. The moment any second
+  workflow directory existed under `Images/<target>/`, all three failed **silently
+  and differently** — Siril's object-root fallback walk claimed the other tool's
+  exports as its own finished work (flipping `has_unimported_output` true, so
+  `autoprep` began skipping the target and the Siril import dialog offered to copy
+  files that were never Siril's); ingest re-imported the working area when
+  importing from another store; and backup, which excludes sandboxes precisely
+  because they are regenerable hardlink trees, copied the whole thing into every
+  snapshot. Verified pre-fix: a `my final render.png` dropped in
+  `Images/M51/astrowizard/` was offered as Siril's deliverable. Fix: one authority,
+  **`config.SANDBOX_DIRNAMES`**, read by all three — a new workflow adds its name
+  there and nowhere else. Guarded by `tests/test_sandbox_dirs.py`, which asserts
+  the policy directly (every name honoured by every walk) as well as each
+  consequence, because none of the three failures raises anything.
+
+- [ ] **Processing shows what to open, not what to do next.** `build_processing`
+  models one relationship (lights → stack → frames since), which was complete while
+  one tool did the whole job. Split across a stacker and a finisher, a target has
+  two independent states — *needs stacking* and *needs finishing* — and
+  `ready_for_import` is a single Siril-only boolean that answers neither. Design
+  recorded in [`DATA_MODEL.md`](DATA_MODEL.md) → Future directions; ROADMAP item
+  **14c**. Note mtime can't supply the provenance ("which stack produced this
+  render?") — ingest and import both copy bytes — so it needs the recorded `.src`
+  link, the same identity-not-mtime pattern that fixed #17.
+
 - [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
   If Siril's working directory was set to `Images/<target>/` instead of its `siril/`
   sub-folder, the run's renders/stacks landed loose in the object dir and *Import finished

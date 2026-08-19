@@ -560,16 +560,19 @@ _SKIP_DIRS = {"lights", "process", "presets", "archive"}
 
 # Object-root subdirs skipped when scanning Images/<target>/ for output a run
 # left there directly (the mis-pointed-working-directory case): raw inputs, the
-# device stacks (not user output), per-sub previews, `siril/` — which
-# `_sandbox_outputs` already walks — and Siril's own `process/` scratch. The
-# managed `stacks/`/`finished/` tiers are **not** skipped (#85): a file the user
-# sorted into one is classified by the tier and, if already exactly in place,
-# dropped by the `p == dest` guard in `_finished_outputs` so it can't flood the
-# preview.
+# device stacks (not user output), per-sub previews, Siril's own `process/`
+# scratch, and every workflow sandbox (`config.SANDBOX_DIRNAMES`) — `siril/`
+# because `_sandbox_outputs` already walks it, the others because their output is
+# **not ours to claim**: without that, `has_unimported_output` goes true off
+# another tool's exports, `autoprep` starts skipping the target, and the import
+# dialog offers to copy files Siril never made. The managed `stacks/`/`finished/`
+# tiers are **not** skipped (#85): a file the user sorted into one is classified
+# by the tier and, if already exactly in place, dropped by the `p == dest` guard
+# in `_finished_outputs` so it can't flood the preview.
 _ROOT_SKIP_DIRS = {
     "lights", "seestar-stacks", "previews",
-    "darks", "flats", "biases", "siril", "process",
-}
+    "darks", "flats", "biases", "process",
+} | set(config.SANDBOX_DIRNAMES)
 
 
 def _sandbox_outputs(target: str):
