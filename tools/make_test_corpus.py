@@ -225,6 +225,18 @@ def _prebuilt_sandbox(folder: str, names: list[str]):
         '{"_note": "synthetic preset for testing"}\n')
     (config.siril_dir(folder) / "next-steps.md").write_text(
         "# Next steps\n\nSynthetic sandbox (pre-dates the rejection).\n")
+    # An archived past run. Backups keep this and skip the lights/ links beside it
+    # (config.SANDBOX_LINKED_INPUTS), so the corpus needs one for a tester to see
+    # either half of that rule — an archived run holds intermediates that only the
+    # user's own hand-processing produces, and `apply_import` copies just the
+    # deliverable out to finished/.
+    run = config.siril_dir(folder) / "archive" / "20260701-214500"
+    run.mkdir(parents=True, exist_ok=True)
+    for stage in ("og", "crop", "stretch"):
+        (run / f"{folder}_120x30sec_{stage}.fit").write_text(
+            f"synthetic archived {stage} intermediate\n")
+    (run / f"starless_{folder}_120x30sec_stretch.fit").write_text(
+        "synthetic archived starless intermediate\n")
 
 
 def _video(path: Path):

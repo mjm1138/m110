@@ -19,7 +19,10 @@ def test_snapshot_mirrors_store_and_excludes_derived(tmp_path, monkeypatch):
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
     objects.write_journal(slug, "# notes\nAuthored.\n")   # an authored file
-    seed_sandbox(tid)                                  # a siril sandbox to exclude
+    seed_sandbox(tid)                                  # a siril sandbox: work kept…
+    sub = f"Light_{tid}_30.0s_LP_20260529-010101.fit"   # …its linked inputs are not
+    (config.siril_dir(tid) / "lights").mkdir(parents=True, exist_ok=True)
+    os.link(config.lights_dir(tid) / sub, config.siril_dir(tid) / "lights" / sub)
     dest = tmp_path / "backups"
 
     res = backup.create_snapshot(backup.BackupOptions(destination=dest))
@@ -30,10 +33,13 @@ def test_snapshot_mirrors_store_and_excludes_derived(tmp_path, monkeypatch):
     assert (snap / light_rel).is_file()
     assert (snap / f"{config.INTERNAL_DIRNAME}/library.toml").is_file()
     assert list((snap / "Objects").rglob("journal.md"))
-    # excluded: derived rollups, renders, sessions.jsonl, and the siril sandbox
+    # excluded: derived rollups, renders, sessions.jsonl, and a sandbox's linked
+    # inputs — but not the work in the sandbox, which nothing regenerates
+    # (tests/test_sandbox_dirs.py owns that policy).
     assert not (snap / config.INTERNAL_DIRNAME / "derived").exists()
     assert not (snap / config.INTERNAL_DIRNAME / "sessions.jsonl").exists()
-    assert not (snap / f"Images/{tid}/siril").exists()
+    assert not (snap / f"Images/{tid}/siril/lights").exists()
+    assert (snap / f"Images/{tid}/siril/{tid}_x_processed.png").is_file()
     # manifest present, with a checksum for the light frame
     manifest = json.loads((snap / backup.MANIFEST_NAME).read_text())
     assert manifest["files"][light_rel]["sha256"]

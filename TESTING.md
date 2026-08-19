@@ -657,6 +657,15 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
 - [ ] **`latest/` is browsable and costs nothing.** On the normal folder in pooled mode,
       open `M110-Backups/<store>/latest/` in Finder — real filenames, real folders — and
       confirm the destination's used space didn't roughly double.
+- [ ] **A sandbox's work is backed up; its links are not.** In the first snapshot,
+      open `Images/M101/siril/`: `archive/20260701-214500/` is there with its four
+      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**.
+      Then confirm `Images/M101/lights/` *is* there with all 18 subs. This is the whole
+      rule (`config.SANDBOX_LINKED_INPUTS`): the frames are backed up once, under the
+      path they really live at, while the hand-work beside them is kept. Getting it
+      wrong is silent either way — an un-skipped link tree roughly doubles every
+      mirrored snapshot, and an over-skipped sandbox loses processing history nobody
+      misses until they want it back. Same check on `Images/M106/siril/`.
 - [ ] **Restore an OLDER backup**, in each format, to a scratch folder; spot-check that a
       file you changed between backups comes back with its *old* contents.
 - [ ] **Verify integrity** passes on a snapshot of each format.

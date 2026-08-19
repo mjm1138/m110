@@ -162,11 +162,14 @@ artifact every time a cheap one is redone.
 
 #### What this actually costs us
 
-- **Groundwork: done.** `config.SANDBOX_DIRNAMES` is the single authority every
-  sandbox-skipping walk reads (`siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS`,
-  `backup.scope.is_excluded`), `config.astrowizard_dir` exists, and
-  `m110-stack --handoff` populates the sandbox. Lazily created, additive → **no
-  `.store_version` bump**.
+- **Groundwork: done.** `config.SANDBOX_LINKED_INPUTS` is the single authority every
+  sandbox-skipping walk reads — `SANDBOX_DIRNAMES` derives from its keys, and
+  `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS` and `backup.scope.is_excluded` all
+  consult it. `config.astrowizard_dir` exists and `m110-stack --handoff` populates
+  the sandbox. Lazily created, additive → **no `.store_version` bump**.
+  AstroWizard's entry is already there, declaring `frozenset()`: its input is one
+  handed-off stack file, not a directory of links, so backup keeps everything in
+  `astrowizard/` — the handoff, the exports, and the archived runs alike.
 - **Cleanup is small, contrary to first assumptions.** AstroWizard does *not*
   autosave per step: it tracks its temporaries (`track_temp_file`) and deletes
   them (`cleanup_temp_files`). Only explicit exports persist — at most three files
@@ -201,6 +204,16 @@ artifact every time a cheap one is redone.
 - **AstroWizard bundles its own hardened Python** (PyInstaller, `Python.framework`).
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
+- **A sandbox that hardlinks a directory of frames must say so in
+  `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file, so
+  its entry is `frozenset()` and nothing changes. But 14a's "send stack to
+  AstroWizard" is a hardlink, and if the flow ever grows to hand over *frames* —
+  a directory of subs for a restack, say — that directory's name belongs in the
+  mapping. Backup skips exactly the names declared there and keeps everything else,
+  and both errors are silent: an undeclared link tree is a second full copy of
+  every frame in every mirrored snapshot (measured at +139 GB on a 186 GB library),
+  while over-declaring quietly drops authored work from the backup. Same question
+  applies to any third workflow.
 
 #### Phasing
 
