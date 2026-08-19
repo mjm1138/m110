@@ -113,6 +113,42 @@
   .center { text-align: center; }
   .muted { color: var(--ink-soft); }
 
+  /* Lightbox — click a screenshot to enlarge */
+  .shot img.zoomable { cursor: zoom-in; }
+  .shot img.zoomable:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .lightbox {
+    position: fixed; inset: 0; z-index: 100; display: none;
+    align-items: center; justify-content: center; padding: 32px 16px;
+    background: rgba(8, 10, 14, .93);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  }
+  .lightbox.open { display: flex; }
+  .lightbox figure { margin: 0; max-width: 100%; text-align: center; }
+  .lightbox img {
+    max-width: min(1600px, 94vw); max-height: 80vh; width: auto; height: auto;
+    display: block; margin: 0 auto; border-radius: 10px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+  }
+  .lightbox figcaption { color: #ece3d0; margin-top: 14px; font-size: 1rem; }
+  .lightbox .count { display: block; color: #9a9282; font-size: .85rem; margin-top: 4px; }
+  .lb-btn {
+    position: absolute; width: 44px; height: 44px; padding: 0;
+    display: grid; place-items: center; cursor: pointer;
+    font-size: 1.4rem; line-height: 1; font-family: inherit;
+    color: #fff; background: rgba(255, 255, 255, .10);
+    border: 1px solid rgba(255, 255, 255, .22); border-radius: 999px;
+  }
+  .lb-btn:hover { background: rgba(255, 255, 255, .20); }
+  .lb-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .lb-close { top: 18px; right: 18px; }
+  .lb-prev { left: 18px; top: 50%; transform: translateY(-50%); }
+  .lb-next { right: 18px; top: 50%; transform: translateY(-50%); }
+  body.lb-open { overflow: hidden; }
+  @media (max-width: 640px) {
+    .lb-prev { left: 8px; } .lb-next { right: 8px; }
+    .lightbox img { max-height: 68vh; }
+  }
+
   footer { padding: 48px 0; border-top: 1px solid var(--card-border); color: var(--ink-soft); font-size: .9rem; }
   footer a { color: var(--ink-soft); text-decoration: underline; }
   .disclaimer { font-size: .82rem; margin-top: 12px; }
@@ -138,8 +174,8 @@
 <section class="wrap" style="padding-top: 0;">
   <div class="promise">
     <p style="margin:0;">✨ <strong>M110 is free and open source — and always will be.</strong>
-    No subscription, no licence key, no paid tier waiting down the road. Apache-2.0
-    licensed, built in the open, and yours to keep.</p>
+    No subscription, no licence key. Apache-2.0 licensed, built in the open, and
+    yours to keep.</p>
   </div>
 </section>
 
@@ -207,6 +243,7 @@
 
 <section class="wrap">
   <h2 class="center">A look inside</h2>
+  <p class="center muted" style="margin:-8px auto 28px;">Click any screenshot to enlarge.</p>
   <div class="shots">
     <figure class="shot">
       <img src="assets/shot-library.jpg" width="1240" height="780" loading="lazy"
@@ -291,6 +328,90 @@
     <em>with</em> your telescope; it isn't made by them.
   </p>
 </footer>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <button class="lb-btn lb-close" type="button" aria-label="Close">&#10005;</button>
+  <button class="lb-btn lb-prev" type="button" aria-label="Previous screenshot">&#8249;</button>
+  <button class="lb-btn lb-next" type="button" aria-label="Next screenshot">&#8250;</button>
+  <figure>
+    <img id="lbImg" alt="">
+    <figcaption id="lbCap"></figcaption>
+  </figure>
+</div>
+
+<script>
+// Progressive enhancement: with no JS the screenshots stay plain inline images.
+(function () {
+  var figures = [].slice.call(document.querySelectorAll('.shots .shot'));
+  var box = document.getElementById('lightbox');
+  if (!figures.length || !box) return;
+
+  var img = document.getElementById('lbImg');
+  var cap = document.getElementById('lbCap');
+  var shots = figures.map(function (f) {
+    var i = f.querySelector('img'), c = f.querySelector('figcaption');
+    return { src: i.getAttribute('src'), alt: i.getAttribute('alt') || '',
+             cap: c ? c.textContent : '' };
+  });
+  var idx = 0, opener = null;
+
+  function show(n) {
+    idx = (n + shots.length) % shots.length;
+    var s = shots[idx];
+    img.src = s.src;
+    img.alt = s.alt;
+    cap.textContent = s.cap;
+    var count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = (idx + 1) + ' of ' + shots.length;
+    cap.appendChild(count);
+  }
+  function open(n, from) {
+    opener = from || null;
+    show(n);
+    box.classList.add('open');
+    document.body.classList.add('lb-open');
+    box.querySelector('.lb-close').focus();
+  }
+  function close() {
+    box.classList.remove('open');
+    document.body.classList.remove('lb-open');
+    img.removeAttribute('src');          // don't hold the full-size decode
+    if (opener) opener.focus();
+  }
+
+  figures.forEach(function (f, n) {
+    var i = f.querySelector('img');
+    i.classList.add('zoomable');
+    i.tabIndex = 0;
+    i.setAttribute('role', 'button');
+    i.setAttribute('aria-haspopup', 'dialog');
+    i.title = 'Click to enlarge';
+    i.addEventListener('click', function () { open(n, i); });
+    i.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(n, i); }
+    });
+  });
+
+  box.querySelector('.lb-close').addEventListener('click', close);
+  box.querySelector('.lb-prev').addEventListener('click', function (e) {
+    e.stopPropagation(); show(idx - 1);
+  });
+  box.querySelector('.lb-next').addEventListener('click', function (e) {
+    e.stopPropagation(); show(idx + 1);
+  });
+  // Backdrop (or the letterboxing around the figure) closes; the image itself doesn't.
+  box.addEventListener('click', function (e) {
+    if (e.target === box || e.target.tagName === 'FIGURE') close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!box.classList.contains('open')) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft') show(idx - 1);
+    else if (e.key === 'ArrowRight') show(idx + 1);
+  });
+})();
+</script>
 
 </body>
 </html>
