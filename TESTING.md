@@ -533,6 +533,50 @@ m110-stack "<copy>" --run --handoff
       the guard in `config.SANDBOX_DIRNAMES` — before it, Siril claimed the file.)
 - [ ] Back up the store and confirm the snapshot contains no `astrowizard/` directory.
 
+### G2d. Send a stack to AstroWizard (14a)  ⚙ *(candidate discovery, linear/stretched, the write automated — `test_stacking.py` / `test_ui_handoff.py`)*
+> The corpus ships **M63** with two stacks for exactly this: a linear `_og` and a
+> newer stretched `_processed`. What automation can't check is the launch itself.
+
+**The picker**
+
+- [ ] Open M63 → the detail pane shows **Send to AstroWizard…**. An object with no
+      stacks at all does *not* show it.
+- [ ] The dialog lists both M63 stacks plus the Seestar in-app stack, newest first,
+      with frames and integration filled in.
+- [ ] The **stretched** one is at the top (it is newest) but the **linear** one is
+      what's highlighted. This is the point of the feature — a stretched image is
+      the wrong input for AstroWizard, and the newest file usually is one.
+- [ ] Click the stretched row: the line under the table warns it has already been
+      stretched. Send stays enabled — it's a warning, not a veto.
+- [ ] Sort by any column, then select a row: the name in the confirmation matches
+      the row you highlighted. (Reading the selection back by position used to send
+      a different file.)
+- [ ] Hover a truncated name — the tooltip shows it in full.
+
+**The write**
+
+- [ ] Send. `Images/M63/astrowizard/` now holds the stack plus a `.src.json`
+      sidecar naming its source, frame count, stacked-at date and whether it was
+      stretched.
+- [ ] It is a **hardlink**, not a copy:
+      ```bash
+      ls -li Images/M63/stacks/M63_119x30sec_og.fit Images/M63/astrowizard/*.fit
+      ```
+      the inode numbers (first column) must match.
+- [ ] Send the same stack again: no error, and the dialog now says it is already
+      there.
+
+**Launch and Preferences** — needs AstroWizard actually installed.
+
+- [ ] Preferences → Processing tools shows a row for **Siril** and one for
+      **AstroWizard**, each with its auto-detected path as placeholder. Setting one
+      does not clear the other.
+- [ ] After Send, choose **Open AstroWizard**: it launches *and* the folder is
+      revealed. It cannot be handed the file — no document types — so opening the
+      folder is the point, not a fallback.
+- [ ] With AstroWizard *not* installed (rename the .app briefly), Send still works
+      and the dialog says where to set its location instead of offering Open.
+
 ### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
 > Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
 - [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target

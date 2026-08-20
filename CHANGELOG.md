@@ -11,6 +11,23 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Send a stack straight to AstroWizard.** An object's detail pane now has a
+  **Send to AstroWizard…** button. It lists every stack you have for that object —
+  from `stacks/`, your telescope's own in-app stacks, and anything fresh in the
+  Siril folder — with how many frames and how much integration went into each, and
+  links the one you pick into the object's `astrowizard/` folder. It's a hardlink,
+  so it costs no extra disk, and nothing you already have is moved or changed.
+  M110 records which stack it came from, so a later re-stack doesn't leave you
+  guessing.
+- **It knows which of your stacks is still linear.** AstroWizard starts from an
+  unstretched image, and a `stacks/` folder usually holds your own saved steps
+  alongside the stacker's output — often with the stretched one being the newest.
+  M110 reads each stack's own processing history rather than guessing from the
+  filename, shows you which are linear and which are already stretched, and
+  preselects a linear one. You can still pick a stretched one; it just says so
+  first.
+- **Preferences → Processing tools now has a row per tool**, so you can point
+  M110 at AstroWizard as well as Siril if either is installed somewhere unusual.
 - **M110 can now stack your subs for you, without opening Siril.** A new
   `m110-stack` command measures a target's frames and tells you what it proposes
   before doing anything — how many frames, whether exposures or gain are mixed,

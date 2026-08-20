@@ -1186,6 +1186,30 @@ def handoff_targets() -> list[str]:
     return sorted(_HANDOFF_DIRS)
 
 
+# HISTORY substrings that mean the data is no longer linear. Deliberately only
+# *stretches* — background extraction, plate solving, SPCC, deconvolution and
+# denoise all leave the data linear, and treating them as disqualifying would rule
+# out perfectly good inputs. Matched against Siril's own HISTORY cards and the
+# ones third-party tools write through it (VeraLux, Seti Astro).
+_STRETCH_MARKERS = (
+    "stretch", "histogram transf", "asinh", "midtone", "hyperbolic",
+    "curves", "autostretch",
+)
+
+
+def _is_stretched(history: list[str]) -> bool:
+    """Whether a stack's recorded HISTORY shows a stretch has been applied.
+
+    Read from the header rather than guessed from the filename, because the
+    filename is a convention and this is a fact the pipeline recorded. On a real
+    library `stacks/` holds `_og`, `_denoise` and `_finished` side by side, and
+    only the header separates them reliably: `_denoise` sounds like a linear step
+    and is not, its HISTORY carrying "VeraLux v1.5.2 Stretch" three entries back.
+    """
+    low = " | ".join(history).lower()
+    return any(m in low for m in _STRETCH_MARKERS)
+
+
 def _provenance(stack: Path) -> dict:
     """What this stack *is*, from facts the pipeline recorded in its header.
 
@@ -1201,6 +1225,9 @@ def _provenance(stack: Path) -> dict:
         h = _fits().getheader(stack)
     except (OSError, ValueError):
         return info
+    steps = [str(x).strip() for x in h.get("HISTORY", [])]
+    if steps:
+        info["stretched"] = _is_stretched(steps)
     for card, key in (("DATE", "stacked_at"), ("STACKCNT", "frames"),
                       ("LIVETIME", "integration_sec"), ("OBJECT", "object"),
                       ("FILTER", "filter")):
@@ -1208,6 +1235,105 @@ def _provenance(stack: Path) -> dict:
         if v is not None:
             info[key] = str(v).strip() if isinstance(v, str) else v
     return info
+
+
+@dataclass
+class HandoffCandidate:
+    """One stack that could be handed to a post-processing workflow."""
+    path: Path
+    tier: str                      # "stacks" | "seestar-stacks" | "siril"
+    size_bytes: int
+    frames: int | None = None
+    integration_min: float | None = None
+    stacked_at: str | None = None
+    filter: str | None = None
+    already: bool = False          # a file of this name is already handed over
+    stretched: bool | None = None  # None = no HISTORY to judge from
+
+    @property
+    def name(self) -> str:
+        return self.path.name
+
+
+def _sandbox_stacks(target: str) -> list[Path]:
+    """FITS sitting loose in a Siril job dir — a stack that has been made but not
+    yet imported. Only the job roots: `lights/`, `process/`, `presets/` and
+    `archive/` are inputs, scratch and history, never a fresh deliverable."""
+    from m110 import siril as siril_mod
+
+    out: list[Path] = []
+    for job in siril_mod.working_dirs(target):
+        out += [q for q in job.iterdir()
+                if q.is_file() and config.is_fits_file(q.name)]
+    return out
+
+
+def _candidate_paths(target: str) -> list[tuple[str, Path]]:
+    """`(tier, path)` for every stack that could be handed over. Directory reads
+    only — no headers — so a caller that just needs "are there any?" does not pay
+    for provenance it will throw away. That caller is the object detail pane,
+    which asks on every render.
+
+    Intermediates are excluded here, through the shared `hints` vocabulary rather
+    than a local rule, so a user's edits to it apply. A `starless_` or `starmask_`
+    file carries the same STACKCNT and LIVETIME as the stack it came from, so it
+    sorts to the very top on merit and is exactly wrong: those are derived layers,
+    not the image. Observed on a real NGC 6543 sandbox, where the two most recent
+    files were precisely that pair.
+    """
+    from m110 import hints
+
+    found: list[tuple[str, Path]] = []
+    for tier, d in (("stacks", config.stacks_dir(target)),
+                    ("seestar-stacks", config.seestar_stacks_dir(target))):
+        if d.is_dir():
+            found += [(tier, q) for q in d.iterdir()
+                      if q.is_file() and config.is_fits_file(q.name)]
+    found += [("siril", q) for q in _sandbox_stacks(target)]
+    return [(tier, q) for tier, q in found if not hints.is_intermediate_name(q.name)]
+
+
+def has_handoff_candidates(target: str) -> bool:
+    """Cheap "is there anything to hand over?" — see `_candidate_paths`."""
+    return bool(_candidate_paths(target))
+
+
+def handoff_candidates(target: str,
+                       tool: str = "astrowizard") -> list[HandoffCandidate]:
+    """Stacks that could be handed to `tool`, best first. **Reads only.**
+
+    Three tiers, because a finished stack legitimately lives in any of them: the
+    managed `stacks/` tier, the device's own in-app stacks, and a fresh result
+    still sitting in the Siril sandbox before it has been imported. That last is
+    the common case right after a run, and omitting it would mean the handoff
+    could not be used until the user had done an import they may not want yet.
+
+    Ordered newest-stacked first, since the stack someone wants to finish is
+    almost always the one they just made. Anything whose header cannot be read
+    still appears — it may be perfectly good, and hiding it would be worse than
+    showing it without its facts.
+    """
+    dest_fn = _HANDOFF_DIRS.get(tool)
+    if dest_fn is None:
+        raise StackingError(
+            f"Unknown handoff target {tool!r}. Known: {', '.join(handoff_targets())}.")
+    dest = dest_fn(target)
+    existing = {q.name for q in dest.iterdir()} if dest.is_dir() else set()
+
+    out: list[HandoffCandidate] = []
+    for tier, path in _candidate_paths(target):
+        prov = _provenance(path)
+        live = prov.get("integration_sec")
+        out.append(HandoffCandidate(
+            path=path, tier=tier, size_bytes=prov.get("size_bytes", 0),
+            frames=prov.get("frames"),
+            integration_min=round(float(live) / 60.0, 1) if live else None,
+            stacked_at=prov.get("stacked_at"), filter=prov.get("filter"),
+            already=path.name in existing, stretched=prov.get("stretched"),
+        ))
+    # Newest first; undated stacks sort last rather than being dropped.
+    out.sort(key=lambda c: (c.stacked_at or "", c.size_bytes), reverse=True)
+    return out
 
 
 def apply_handoff(stack: Path, tool: str = "astrowizard") -> Path:

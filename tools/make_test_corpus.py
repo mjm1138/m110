@@ -103,6 +103,25 @@ def _fits(path: Path, obj: str, ra: float, dec: float,
     hdu.writeto(path, overwrite=True)
 
 
+def _stack_fits(path: Path, obj: str, ra: float, dec: float, exp: float, filt: str,
+                when: datetime, seed: int, *, frames: int, history: list[str]):
+    """A stack, with the cards the AstroWizard handoff picker reads.
+
+    Without `STACKCNT`/`LIVETIME`/`DATE` the picker shows a row of dashes, and
+    without `HISTORY` it cannot tell a linear stack from a stretched one — which
+    is the whole distinction the flow exists to get right. So the corpus carries
+    one of each.
+    """
+    _fits(path, obj, ra, dec, exp, filt, when, seed)
+    with fits.open(path, mode="update") as hdul:
+        h = hdul[0].header
+        h["STACKCNT"] = frames
+        h["LIVETIME"] = frames * exp
+        h["DATE"] = when.strftime("%Y-%m-%dT%H:%M:%S")
+        for line in history:
+            h["HISTORY"] = line
+
+
 def _fits_unclassifiable(path: Path, seed: int, obj: str | None = None):
     """A FITS frame with no IMAGETYP and (by default) no OBJECT — the kind of file
     the importer can't place, so it falls into the Inbox/ holding area (6c)."""
@@ -289,8 +308,21 @@ def build(out: Path):
     _lights("M63", "M63", ra, dec, 30, "LP", base + timedelta(days=3), 14, 700)
     _seestar_stack("M63", "M63", ra, dec, 90, 30, "LP", base + timedelta(days=3, hours=1), 750)
     _png(config.finished_dir("M63") / "M63_119x30sec_processed.png", 760)
-    _fits(config.stacks_dir("M63") / "M63_119x30sec_processed.fit",
-          "M63", ra, dec, 30, "LP", base + timedelta(days=3, hours=3), 761)
+    # Two stacks, so the "Send to AstroWizard" picker has something to choose
+    # between: the linear one straight off the stacker, and a newer stretched one.
+    # Newest-first ordering puts the stretched one on top, and the picker must
+    # still preselect the linear one — that is the behaviour to eyeball.
+    _stack_fits(config.stacks_dir("M63") / "M63_119x30sec_og.fit",
+                "M63", ra, dec, 30, "LP", base + timedelta(days=3, hours=2), 762,
+                frames=119,
+                history=["mean stacking with winsorized sigma clipping rejection "
+                         "(low=3.000 high=3.000), additive+scaling normalized input"])
+    _stack_fits(config.stacks_dir("M63") / "M63_119x30sec_processed.fit",
+                "M63", ra, dec, 30, "LP", base + timedelta(days=3, hours=3), 761,
+                frames=119,
+                history=["Background extraction (Correction: Subtraction)",
+                         "Plate Solve", "VeraLux v1.5.2 Stretch",
+                         "GraXpert AI denoise: strength 0.76"])
 
     # M81 M82 — multi-object capture folder
     ra, dec = C("m81")

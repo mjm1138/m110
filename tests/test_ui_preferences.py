@@ -36,17 +36,40 @@ def test_workflow_toggle_persists(tmp_path, monkeypatch, qapp):
         d.deleteLater(); qapp.processEvents()
 
 
-def test_siril_path_override_persists_and_clears(tmp_path, monkeypatch, qapp):
+@pytest.mark.parametrize("tool_id", launch.tool_ids())
+def test_tool_path_override_persists_and_clears(tool_id, tmp_path, monkeypatch, qapp):
+    """Parametrized over the registry, so a newly registered tool is covered
+    without anyone remembering to add a case."""
     seed_root(tmp_path, monkeypatch)
     d = _prefs()
     try:
-        d._siril_edit.setText("/opt/Siril.app")
-        d._siril_edit.editingFinished.emit()
-        assert (config.get_setting(launch.APP_PATHS_SETTING) or {}).get("siril") \
-            == "/opt/Siril.app"
-        d._siril_edit.setText("")            # clearing removes the override
-        d._siril_edit.editingFinished.emit()
-        assert "siril" not in (config.get_setting(launch.APP_PATHS_SETTING) or {})
+        edit = d._tool_edits[tool_id]
+        edit.setText(f"/opt/{tool_id}.app")
+        edit.editingFinished.emit()
+        assert (config.get_setting(launch.APP_PATHS_SETTING) or {}).get(tool_id) \
+            == f"/opt/{tool_id}.app"
+        edit.setText("")                     # clearing removes the override
+        edit.editingFinished.emit()
+        assert tool_id not in (config.get_setting(launch.APP_PATHS_SETTING) or {})
+    finally:
+        d.deleteLater(); qapp.processEvents()
+
+
+def test_one_tools_path_does_not_clobber_anothers(tmp_path, monkeypatch, qapp):
+    """`_save_app_paths` writes every row at once, so a per-row save could drop a
+    sibling's override. And each Browse button must carry its own tool id — a bare
+    closure over the loop variable would give them all the last one."""
+    seed_root(tmp_path, monkeypatch)
+    ids = launch.tool_ids()
+    if len(ids) < 2:
+        pytest.skip("needs two registered tools")
+    d = _prefs()
+    try:
+        for tool_id in ids:
+            d._tool_edits[tool_id].setText(f"/opt/{tool_id}")
+            d._tool_edits[tool_id].editingFinished.emit()
+        saved = config.get_setting(launch.APP_PATHS_SETTING) or {}
+        assert saved == {t: f"/opt/{t}" for t in ids}
     finally:
         d.deleteLater(); qapp.processEvents()
 

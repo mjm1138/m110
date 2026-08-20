@@ -39,11 +39,41 @@ _TOOLS: dict[str, dict] = {
         "windows_subpaths": [r"Siril\bin\siril.exe", r"Siril\siril.exe"],
         "workdir_args": ["-d", "{dir}"],
     },
+    "astrowizard": {
+        "label": "AstroWizard",
+        "macos_app": "AstroWizard.app",
+        "macos_bin": "Contents/MacOS/AstroWizard",     # inside the .app bundle
+        "linux_bins": ["astrowizard", "AstroWizard"],
+        "windows_names": ["AstroWizard.exe"],
+        "windows_subpaths": [r"AstroWizard\AstroWizard.exe"],
+        # Empty, and not an oversight: AstroWizard takes no working-directory
+        # flag, and its bundle registers no CFBundleDocumentTypes or URL types,
+        # so macOS cannot route a file to it either — `open -a AstroWizard <file>`
+        # opens the app and ignores the file. It is opened bare and the user picks
+        # the stack in its own dialog, which is why the handoff flow reveals the
+        # folder rather than treating that as a fallback.
+        "workdir_args": [],
+    },
 }
 
 
 def tool_label(tool_id: str) -> str:
     return _TOOLS.get(tool_id, {}).get("label", tool_id)
+
+
+def tool_ids() -> list[str]:
+    """Every launchable tool id, so callers enumerate rather than hardcode."""
+    return sorted(_TOOLS)
+
+
+def sets_working_dir(tool_id: str) -> bool:
+    """Whether launching this tool can point it at a directory.
+
+    Derived from the spec rather than stored, so it cannot drift. False means the
+    launch is bare and the caller should reveal the folder instead — the user has
+    to open the file from inside the app.
+    """
+    return bool(_TOOLS.get(tool_id, {}).get("workdir_args"))
 
 
 # ── discovery ────────────────────────────────────────────────────────────────

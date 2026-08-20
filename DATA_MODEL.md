@@ -113,7 +113,10 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       lights/ (hardlinks) · darks/ flats/ biases/ (hardlinks, shared, if present) ·
       process/ (scratch) · presets/ · next-steps.md · archive/<ts>/ (past runs)
     astrowizard/                    contained AstroWizard sandbox (ROADMAP item 14):
-      the handed-off stack + its .src provenance sidecar · the user's exports ·
+      the handed-off stack + its `<stack>.src.json` provenance sidecar
+      ({source, size_bytes, stacked_at, frames, integration_sec, object, filter,
+      stretched} — every field read from the stack's own header, never mtime,
+      which is copy time for anything ingest or import placed) · the user's exports ·
       archive/<ts>/ (past runs). A **sibling** of siril/, not a subdir: these dirs
       name *workflows*, and the two artifacts have different lifetimes (a stack
       costs hours and is stable, a finish is cheap and iterated), so sharing one
