@@ -28,6 +28,10 @@ from m110.stacking import (
     coverage_depth,
     drizzle_for,
     find_degenerate,
+    naztronomy_name,
+    apply_handoff,
+    build_plan,
+    handoff_candidates,
     handoff_targets,
     naztronomy_name,
     reconcile,
@@ -518,3 +522,142 @@ def test_every_siril_spawn_sanitizes_the_child_environment():
         assert "env" in kwargs, (
             f"subprocess spawn at line {node.lineno} inherits our environment; "
             "it must pass env=launch._child_env()")
+
+
+# ── choosing a stack to hand off (ROADMAP 14a) ───────────────────────────────
+
+def _stack(path, **cards):
+    cards.setdefault("STACKCNT", 100)
+    cards.setdefault("LIVETIME", 6000.0)
+    return _sub(path, **cards)
+
+
+def test_candidates_span_the_three_tiers_a_stack_can_live_in(tmp_path, monkeypatch):
+    """A finished stack legitimately sits in any of them, and the sandbox one is
+    the common case right after a run — omitting it would mean the handoff could
+    not be used until an import the user may not want yet."""
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "M27"
+    _stack(config.stacks_dir(t) / "imported.fit", DATE="2026-08-01T00:00:00")
+    _stack(config.seestar_stacks_dir(t) / "Stacked_226.fit", DATE="2026-07-01T00:00:00")
+    _stack(config.siril_dir(t) / "lights" / "a.fit")          # an input, never offered
+    _stack(config.siril_dir(t) / "fresh.fit", DATE="2026-08-19T00:00:00")
+
+    got = handoff_candidates(t)
+
+    # Newest stacked first, by the header's own DATE — not by tier and not by
+    # mtime, which is copy time for anything ingest or import put there.
+    assert [c.name for c in got] == ["fresh.fit", "imported.fit", "Stacked_226.fit"]
+    assert {c.tier for c in got} == {"stacks", "seestar-stacks", "siril"}
+    assert "a.fit" not in {c.name for c in got}, "lights/ is an input, not a deliverable"
+    assert got[0].frames == 100 and got[0].integration_min == 100.0
+
+
+def test_intermediates_are_never_offered_as_a_stack(tmp_path, monkeypatch):
+    """They carry the same STACKCNT and LIVETIME as the stack they came from, so
+    they sort to the very top on merit and are exactly wrong — derived layers, not
+    the image. Seen on a real NGC 6543 sandbox, where the two most recent files
+    were precisely that pair. Filtered through the shared `hints` vocabulary, so a
+    user's edits to it apply here too."""
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "NGC 6543"
+    sb = config.siril_dir(t)
+    _stack(sb / "C_6_854x20sec_og.fit", DATE="2026-08-20T15:37:08")
+    _stack(sb / "starless_C_6_854x20sec_og.fit", DATE="2026-08-20T15:40:36")
+    _stack(sb / "starmask_C_6_854x20sec_og.fit", DATE="2026-08-20T15:40:36")
+
+    assert [c.name for c in handoff_candidates(t)] == ["C_6_854x20sec_og.fit"]
+
+
+def test_a_candidate_already_handed_over_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "M27"
+    stack = _stack(config.stacks_dir(t) / "s.fit", DATE="2026-08-01T00:00:00")
+    assert handoff_candidates(t)[0].already is False
+
+    apply_handoff(stack)
+    assert handoff_candidates(t)[0].already is True
+
+
+def test_a_stack_with_an_unreadable_header_is_still_offered(tmp_path, monkeypatch):
+    """It may be perfectly good. Showing it without its facts beats hiding it,
+    and an undated stack sorts last rather than being dropped."""
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "M27"
+    config.stacks_dir(t).mkdir(parents=True)
+    (config.stacks_dir(t) / "not-really-fits.fit").write_text("junk")
+    _stack(config.stacks_dir(t) / "good.fit", DATE="2026-08-01T00:00:00")
+
+    got = handoff_candidates(t)
+    assert [c.name for c in got] == ["good.fit", "not-really-fits.fit"]
+    assert got[-1].frames is None and got[-1].size_bytes > 0
+
+
+def test_candidates_are_read_only_and_reject_an_unknown_tool(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "M27"
+    _stack(config.stacks_dir(t) / "s.fit")
+    before = {p: p.stat().st_mtime_ns for p in (tmp_path / "Images").rglob("*")}
+
+    handoff_candidates(t)
+
+    assert {p: p.stat().st_mtime_ns for p in (tmp_path / "Images").rglob("*")} == before
+    assert not config.astrowizard_dir(t).exists(), "listing must not create the sandbox"
+    with pytest.raises(StackingError, match="Unknown handoff target"):
+        handoff_candidates(t, "pixinsight")
+
+
+@pytest.mark.parametrize("history,stretched", [
+    # Straight off the stacker — Siril's own wording.
+    (["mean stacking with winsorized sigma clipping rejection (low=3.000 high=3",
+      ".000), additive+scaling normalized input, normalized output"], False),
+    # Linear steps. None of these disqualify a stack, and treating them as if
+    # they did would rule out perfectly good inputs.
+    (["Background extraction (Correction: Subtraction)", "Plate Solve",
+      "Photometric CC (algorithm: SPCC)", "GraXpert AI deconvolve: strength 0.50"],
+     False),
+    # The real case: a file named `_denoise` whose history shows a stretch three
+    # entries back. The name says linear step, the header says otherwise.
+    (["Background extraction (Correction: Subtraction)", "Plate Solve",
+      "VeraLux v1.5.2 Stretch", "GraXpert AI denoise: strength 0.76"], True),
+    (["Histogram Transformation"], True),
+    (["VeraLux Curves", "SCNR (type=maximum neutral)"], True),
+    (["Asinh stretch (10.0)"], True),
+])
+def test_a_stretch_is_read_from_history_not_from_the_filename(history, stretched):
+    from m110.stacking import _is_stretched
+    assert _is_stretched(history) is stretched
+
+
+def test_candidates_report_whether_the_stack_is_still_linear(tmp_path, monkeypatch):
+    """AstroWizard starts at background extraction and stretching, so a stretched
+    input is the wrong thing — and `stacks/` accumulates both side by side."""
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "M27"
+    _stack(config.stacks_dir(t) / "og.fit", DATE="2026-08-01T00:00:00",
+           HISTORY="mean stacking with winsorized sigma clipping rejection")
+    _stack(config.stacks_dir(t) / "denoise.fit", DATE="2026-08-19T00:00:00",
+           HISTORY="VeraLux v1.5.2 Stretch")
+    _stack(config.stacks_dir(t) / "nohistory.fit", DATE="2026-07-01T00:00:00")
+
+    by_name = {c.name: c for c in handoff_candidates(t)}
+    assert by_name["og.fit"].stretched is False
+    assert by_name["denoise.fit"].stretched is True
+    # Nothing recorded is not the same as "linear" — say so rather than guess.
+    assert by_name["nohistory.fit"].stretched is None
+
+
+def test_the_sidecar_records_whether_what_was_handed_over_was_linear(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    stack = _stack(config.stacks_dir("M27") / "s.fit", DATE="2026-08-01T00:00:00",
+                   HISTORY="VeraLux v1.5.2 Stretch")
+    dest = apply_handoff(stack)
+    prov = json.loads((dest.parent / (stack.name + ".src.json")).read_text())
+    assert prov["stretched"] is True
+
+
+def test_no_candidates_for_a_target_with_nothing_stacked(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    _sub(config.lights_dir("M27") / "Light_0.fit")
+    assert handoff_candidates("M27") == []

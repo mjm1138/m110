@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from m110 import build_images, config, derived, objects, siril
 from m110.ui import theme
+from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
@@ -175,6 +176,19 @@ class DetailPane(QScrollArea):
                 "No processing working folder exists yet for this object — it's "
                 "created automatically after you import captures.")
 
+    def _send_to_astrowizard(self, slug: str):
+        """Preview-then-confirm handoff of one stack (ROADMAP item 14a).
+
+        Imported lazily: this pulls `m110.stacking`, which is only ever needed
+        when the user actually asks for a handoff.
+        """
+        from m110.ui.handoff_dialog import HandoffDialog
+
+        dlg = HandoffDialog(slug, parent=self)
+        if dlg.exec():
+            # The sandbox is new content on disk — let the shell pick it up.
+            self.saved.emit(slug)
+
     def _clear(self):
         self._gallery = None
         self._galleries = []
@@ -271,6 +285,16 @@ class DetailPane(QScrollArea):
                 rev_btn.clicked.connect(
                     lambda _=False, s=slug: self._reveal_working_folder(s))
                 btn_row.addWidget(rev_btn)
+            # Gated on having a *stack*, not a working folder: a device stack or
+            # an imported one is just as finishable as a fresh Siril result, and
+            # a target can have those with no sandbox at all.
+            if can_hand_off(slug):
+                aw_btn = QPushButton("Send to AstroWizard…")
+                aw_btn.setToolTip("Link one of this object's stacks into its "
+                                  "AstroWizard folder, ready to open")
+                aw_btn.clicked.connect(
+                    lambda _=False, s=slug: self._send_to_astrowizard(s))
+                btn_row.addWidget(aw_btn)
             if btn_row.count():
                 btn_row.addStretch(1)
                 self._lay.addLayout(btn_row)

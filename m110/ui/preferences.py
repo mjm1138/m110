@@ -92,24 +92,35 @@ class PreferencesDialog(QDialog):
         tbox = QGroupBox("Processing tools")
         tl = QVBoxLayout(tbox)
         tool_note = QLabel(
-            "“Process in Siril” launches Siril with the object's working "
-            "folder set as its working directory. M110 finds Siril automatically in "
-            "the usual place — set a path here only if it's installed elsewhere.")
+            "M110 launches these for you and gets out of the way. It finds them "
+            "automatically in the usual place — set a path here only if one is "
+            "installed somewhere else. Siril opens with the object's working folder "
+            "already set as its working directory; AstroWizard can't be pointed at a "
+            "folder, so M110 opens the folder alongside it for you to pick the stack "
+            "from.")
         tool_note.setWordWrap(True)
         tl.addWidget(tool_note)
-        srow = QHBoxLayout()
-        srow.addWidget(QLabel("Siril:"))
-        self._siril_edit = QLineEdit(self._siril_override())
-        detected = launch.find_app("siril")
-        self._siril_edit.setPlaceholderText(
-            f"Auto-detected: {detected}" if detected
-            else "Not found — Browse to your Siril application")
-        sbrowse = QPushButton("Browse…")
-        sbrowse.clicked.connect(self._browse_siril)
-        srow.addWidget(self._siril_edit, 1)
-        srow.addWidget(sbrowse)
-        tl.addLayout(srow)
-        self._siril_edit.editingFinished.connect(self._save_app_paths)
+        # One row per registered tool, so adding a workflow to `launch._TOOLS` gets
+        # a path override here without touching this dialog.
+        self._tool_edits: dict[str, QLineEdit] = {}
+        for tool_id in launch.tool_ids():
+            label = launch.tool_label(tool_id)
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"{label}:"))
+            edit = QLineEdit(self._tool_override(tool_id))
+            detected = launch.find_app(tool_id)
+            edit.setPlaceholderText(
+                f"Auto-detected: {detected}" if detected
+                else f"Not found — Browse to your {label} application")
+            browse = QPushButton("Browse…")
+            # Bind the id per row: a bare closure over the loop variable would give
+            # every button the last tool.
+            browse.clicked.connect(lambda _=False, t=tool_id: self._browse_tool(t))
+            edit.editingFinished.connect(self._save_app_paths)
+            row.addWidget(edit, 1)
+            row.addWidget(browse)
+            tl.addLayout(row)
+            self._tool_edits[tool_id] = edit
         lay.addWidget(tbox)
 
         # ── finished-image hints (persist live on edit) ──────────────────────
@@ -355,30 +366,33 @@ class PreferencesDialog(QDialog):
                   if cb.isEnabled() and cb.isChecked()]
         config.save_setting(processing.SETTING_KEY, chosen)
 
-    def _siril_override(self) -> str:
+    def _tool_override(self, tool_id: str) -> str:
         paths = config.get_setting(launch.APP_PATHS_SETTING, {}) or {}
-        return str(paths.get("siril") or "")
+        return str(paths.get(tool_id) or "")
 
-    def _browse_siril(self):
-        # Siril is an .app bundle on macOS (selectable as a file in the native
-        # dialog) and a plain executable elsewhere.
+    def _browse_tool(self, tool_id: str):
+        # These are .app bundles on macOS (selectable as a file in the native
+        # dialog) and plain executables elsewhere.
         import sys
-        start = self._siril_edit.text() or (
+        label = launch.tool_label(tool_id)
+        start = self._tool_edits[tool_id].text() or (
             "/Applications" if sys.platform == "darwin" else "")
-        f, _ = QFileDialog.getOpenFileName(self, "Choose the Siril application", start)
+        f, _ = QFileDialog.getOpenFileName(
+            self, f"Choose the {label} application", start)
         if f:
-            self._siril_edit.setText(f)
+            self._tool_edits[tool_id].setText(f)
             self._save_app_paths()
 
     def _save_app_paths(self, *_):
-        """Persist the external-app path override (read at launch time — no
-        restart). Empty clears the override → back to auto-detection."""
+        """Persist the external-app path overrides (read at launch time — no
+        restart). An empty field clears that tool's override → auto-detection."""
         paths = dict(config.get_setting(launch.APP_PATHS_SETTING, {}) or {})
-        val = self._siril_edit.text().strip()
-        if val:
-            paths["siril"] = val
-        else:
-            paths.pop("siril", None)
+        for tool_id, edit in self._tool_edits.items():
+            val = edit.text().strip()
+            if val:
+                paths[tool_id] = val
+            else:
+                paths.pop(tool_id, None)
         config.save_setting(launch.APP_PATHS_SETTING, paths)
 
     def _save_hints(self, *_):

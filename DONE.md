@@ -1653,6 +1653,60 @@ Details worth keeping:
   with a provenance sidecar, the sanctioned writer for the item-14 convention. It
   runs in the CLI the user invoked; the assistant only documents the flag.
 
+
+## 14a — AstroWizard launcher + Send stack to AstroWizard *(done 2026-08-20, `feature/astrowizard-launcher`)*
+
+Makes the `astrowizard/` sandbox reachable from the app rather than only from
+`m110-stack --handoff`. A `launch._TOOLS` entry, a Preferences path row per
+registered tool, and a preview-then-confirm picker whose write is
+`stacking.apply_handoff` — the same function the CLI calls, so the two cannot
+drift on what the convention is.
+
+**AstroWizard cannot be handed a file, and that shaped the flow.** Its bundle
+registers no `CFBundleDocumentTypes` *and* no URL types, so `open -a AstroWizard
+<file>` opens the app and ignores the file; there is no working-directory flag
+either. `launch.sets_working_dir` derives that from the spec (empty
+`workdir_args`) rather than storing it, so callers ask instead of special-casing
+an id. Revealing the destination folder is therefore the primary affordance, not
+a fallback — the opposite of the Siril case.
+
+**Linear vs stretched is read from HISTORY, not the filename.** AstroWizard starts
+at background extraction and stretching, so a stretched input is wrong. On the
+developer's library `stacks/` holds the stacker's output beside the user's own
+saved steps, and the newest file is very often one of the latter: rendering the
+picker against the real store preselected `_denoise.fit`, whose HISTORY carries
+"VeraLux v1.5.2 Stretch" three entries back. Two earlier attempts were rejected on
+measurement — `config.is_processing_product` marks *every* stack (the `NxEXPsec`
+signature), and `hints.is_finished_name` misses `_denoise` and `_stretch`. Only
+stretches disqualify: background extraction, plate solve, SPCC, deconvolution and
+denoise all leave the data linear, and treating them as disqualifying would rule
+out good inputs. This is the standing "header truth > filenames" rule, applied
+where a filename convention looked adequate and was not.
+
+Details worth keeping:
+
+- **Rendering found what the tests could not.** Offscreen tests passed on a dialog
+  whose filename column consumed the width and pushed frames, integration and date
+  behind a horizontal scrollbar — the columns the choice is actually made on. The
+  same render exposed the preselection bug. Cured with a stretched name column,
+  left elision (every name in a target shares its prefix; the tail is what
+  distinguishes them, and middle elision produced two rows both reading
+  `M_27_202...ssed.fit`) and a tooltip carrying the full name.
+- **A sortable table cannot be indexed by visual row.** `make_table` enables
+  sorting, so populating it re-sorts live *and* a user clicking a header
+  permanently desyncs position from the underlying list — meaning the confirmed
+  send delivered a **different file than the one highlighted**. The row's index now
+  rides on the item (`Qt.UserRole`); the table is populated with sorting off and
+  the indicator is then pointed at the order the dialog actually computed.
+- **No Size column, deliberately.** The handoff is a hardlink; a size beside "costs
+  no extra disk" invites the opposite conclusion. That space went to State.
+- **The cheap/expensive split is load-bearing.** `can_hand_off` runs on every
+  detail-pane render, so `_candidate_paths` does directory reads only and
+  `handoff_candidates` adds provenance — 2ms against 86ms on a 47-stack target.
+- **The corpus grew two M63 stacks** (a linear `_og` and a newer stretched
+  `_processed`) because without header cards the picker shows a row of dashes and
+  the linear/stretched distinction — the whole point of the flow — is invisible to
+  a manual tester. TESTING.md §G2d.
 ### Tuning pass, 2026-08-19 — four bugs the live tool found
 
 The skill was written before the tool had ever been driven against the real

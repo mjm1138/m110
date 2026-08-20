@@ -25,7 +25,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 10 | **Library backup** — mirrored + pooled snapshots, verify, selective restore, auto-backup | ✅ shipped (offsite → #93) | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
-| 14 | **AstroWizard support** — a second processing workflow: hand a stack off, launch, import the finish back | ⬜ open [↓](#14--astrowizard-support) | [↓](#14--astrowizard-support) |
+| 14 | **AstroWizard support** — a second processing workflow: hand a stack off, launch, import the finish back | 🔶 14a shipped (launcher + send-stack); 14b/14c open [↓](#14--astrowizard-support) | [`DONE.md`](DONE.md), [↓](#14--astrowizard-support) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | 🔶 the `rejected/` exclusion tier shipped (#110); the view is open [↓](#11--lights-table) | [↓](#11--lights-table) |
 | 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
@@ -235,8 +235,16 @@ artifact every time a cheap one is redone.
 
 #### Phasing
 
-- **14a** — launcher + Preferences tool-path row + "Send stack to AstroWizard"
-  (preview-then-confirm, hardlink + sidecar). Makes the sandbox reachable.
+- ✅ **14a** *(done 2026-08-20, `feature/astrowizard-launcher`)* — launcher +
+  per-tool Preferences rows + **Send stack to AstroWizard** (preview-then-confirm,
+  hardlink + sidecar), calling the same `stacking.apply_handoff` the CLI does.
+  Two things the build settled: AstroWizard registers **no** document or URL
+  types, so nothing can hand it a file — `launch.sets_working_dir` reports that
+  and the flow reveals the folder rather than treating it as a fallback; and the
+  picker judges *linear vs stretched* from the stack's **HISTORY cards**, because
+  `stacks/` accumulates the user's own saved steps and the newest file is very
+  often one of them (a file named `_denoise` whose history carries a stretch three
+  entries back). See [`DONE.md`](DONE.md).
 - **14b** — extract the shared round-trip module; `astrowizard.py`; per-workflow
   `ready_for_import`; parameterized import dialog.
 - **14c** — the two-stage pipeline model (see
