@@ -1652,3 +1652,61 @@ Details worth keeping:
 - **`--handoff`** hardlinks the finished stack into `Images/<target>/astrowizard/`
   with a provenance sidecar, the sanctioned writer for the item-14 convention. It
   runs in the CLI the user invoked; the assistant only documents the flag.
+
+### Tuning pass, 2026-08-19 — four bugs the live tool found
+
+The skill was written before the tool had ever been driven against the real
+store. Pointing it at NGC 7000 and `M81 M82` found more in an hour than reading
+the port had:
+
+- **The read-only path recommended the wrong weighting, and justified it with a
+  measurement nobody took.** With mixed exposures and no FWHM pass, the `else`
+  branch fell through to noise weighting and said *"exposures are mixed with
+  comparable sharpness"*. Same class as the Gaia "not checked is not not found"
+  bug but strictly worse, because it changed the recommendation rather than a
+  warning — and on M15 the measured answer is the opposite. Now three branches:
+  measured-soft, measured-comparable (which quotes its numbers), and unmeasured,
+  which picks wFWHM and says it is a default rather than a finding. wFWHM is the
+  safe unmeasured choice because the risk is asymmetric.
+- **One junk pointing header poisoned every geometry number.** A single frame in
+  744 carrying DEC −90 against a target at +69 stretched the sky span from ~1° to
+  ~105°, flipped `is_mosaic` on, projected a 76-gigapixel canvas and an 86 GB
+  scratch, and would have proposed mosaic settings for a single target.
+  `_drop_stray_pointings` cuts them from the geometry (never from the stack) and
+  warns. The threshold is scaled off the bulk's own p90 spread rather than a fixed
+  distance, because a *real* mosaic's tiles are genuinely far apart — what
+  separates a tile from a junk header is company, not distance from centre. A
+  synthetic 3×3 mosaic is in the tests precisely to keep that honest.
+- **Canvas and disk ignored every override.** They were computed once inside
+  `build_proposal`, before overrides applied, so `--no-drizzle` came back with an
+  unchanged 86 GB. That is worse than refusing to answer a what-if. `project()` is
+  now separate and re-run after overrides + reconcile; the disk warning it emits is
+  removed and re-added so an overridden proposal cannot carry two contradictory
+  ones. Real numbers now: 86.2 GB → 34.5 GB with drizzle off.
+- **`plan_stack` could not open a per-filter split target at all** — it resolved to
+  the sandbox root, which has no `lights/` on a mixed-filter target, and died with
+  a `StackingError` **that leaked the absolute path**. The earlier leak test only
+  checked the success payload; error strings are built by the engine and passed
+  through verbatim, which is a second and easily-missed route into a model's
+  context. Fixed both: a `filter` argument plus a chooser error listing the filters
+  and their frame counts, `resolve_input` understanding `<target>/<FILTER>`, and
+  `_scrub` on every engine message the tool re-raises.
+
+Two shaping changes, from the stated long-term direction — the engine decides
+settings deterministically and the skill covers what it cannot see, evolving
+toward a script the agent manipulates rather than prose it reads:
+
+- **The tool became a manipulation surface**, not a one-shot read. Eleven
+  overrides, each recomputing the whole proposal, with `overrides_applied` echoed
+  and `how_to_run` growing the matching flags so the command can never drift from
+  what was agreed. This is the stacking analogue of `propose_weights`' before/after.
+- **The skill stopped duplicating the engine.** Per-setting reasoning already ships
+  in `justifications`, so the skill now defers to it and spends its length on the
+  cases the scorer cannot see: per-filter splits (broadband and narrowband stack
+  separately and are combined afterwards — with the warning to force a common
+  drizzle scale, since stacks at different scales do not register to each other),
+  mosaics, mixed exposures, and when dropping a night is actually justified.
+- **`temps` was dropped from the payload** — one float per frame, ~900 on a mosaic,
+  the single largest thing in it and pure noise beside the min/max it collapses to.
+  13 KB → 5.4 KB. And `script` became `register_script` + `stack_script`, since the
+  old single key held phase 1 only under a name claiming the whole pipeline.

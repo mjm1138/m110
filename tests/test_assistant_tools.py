@@ -677,6 +677,28 @@ def test_plan_stack_proposes_settings_and_leaks_no_absolute_path(captured):
     assert str(Path.home()) not in blob
 
 
+def test_plan_stack_summarises_per_frame_arrays_instead_of_shipping_them(captured):
+    """`temps` carries one float per frame — ~900 numbers on a mosaic, the largest
+    thing in the payload and pure noise beside the range it collapses to."""
+    _root, _slug, target = captured
+    out = call("plan_stack", target=target)
+
+    assert "temps" not in out["survey"]
+    temps = out["survey"].get("sensor_temp_c")
+    if temps is not None:                    # the fixture frames may carry no CCD-TEMP
+        assert set(temps) == {"min", "max"} and temps["min"] <= temps["max"]
+
+
+def test_plan_stack_names_both_script_phases(captured):
+    """A single `script` key was a half-truth — registration is one of two Siril
+    runs, and the stack phase carries the settings a reader most wants to check."""
+    _root, _slug, target = captured
+    out = call("plan_stack", target=target)
+    assert "seqapplyreg" in out["register_script"]
+    assert "stack " in out["stack_script"]
+    assert "script" not in out
+
+
 def test_plan_stack_names_the_known_folders_when_the_target_is_wrong(captured):
     _root, _slug, target = captured
     with pytest.raises(registry.ToolError, match="Known capture folders"):

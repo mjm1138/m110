@@ -19,16 +19,17 @@ from m110.stacking import (
     Proposal,
     StackingError,
     Survey,
+    apply_handoff,
     as_ranges,
+    build_plan,
+    build_proposal,
     build_ssf_register,
     build_ssf_stack,
     coverage_depth,
     drizzle_for,
     find_degenerate,
-    naztronomy_name,
-    apply_handoff,
-    build_plan,
     handoff_targets,
+    naztronomy_name,
     reconcile,
     rejection_for,
     resolve_layout,
@@ -89,6 +90,40 @@ def test_coverage_depth_single_target_counts_every_frame():
     assert coverage_depth(s) == (n, n)
 
 
+def test_one_junk_pointing_does_not_turn_a_single_target_into_a_mosaic():
+    """Found on a real 744-frame LP set: one frame carrying DEC -90 (the south
+    celestial pole, against a target at +69) stretched the sky span from ~1 degree
+    to ~105. That flipped `is_mosaic` on, projected a 76-gigapixel canvas and an
+    86 GB scratch, and would have proposed mosaic settings for a single target."""
+    frames = [Frame(name=f"a{i}.fit", exposure=20.0, ra=150.0 + i * 0.001, dec=69.2)
+              for i in range(40)]
+    frames.append(Frame(name="junk.fit", exposure=20.0, ra=294.19, dec=-90.0))
+    geom = {"naxis1": 1080, "naxis2": 1920, "xpixsz": 2.9, "focal": 250.0,
+            "object": "M 81"}
+
+    s = summarize(frames, geom)
+
+    assert s.stray_pointings == 1
+    assert not s.is_mosaic
+    assert s.span_h < 2.0, "the pole frame must not stretch the span"
+    assert s.n_frames == 41, "geometry only — every frame is still stacked"
+
+
+def test_a_real_mosaics_spread_pointings_are_never_treated_as_strays():
+    """The cut has to survive a genuine mosaic, whose tiles ARE far apart. What
+    separates a tile from a junk header is company, not distance from centre."""
+    frames = []
+    for row in range(3):
+        for col in range(3):
+            for i in range(8):
+                frames.append(Frame(name=f"t{row}{col}_{i}.fit", exposure=20.0,
+                                    ra=300.0 + col * 0.6, dec=44.0 + row * 0.35))
+    s = summarize(frames, {"naxis1": 1080, "naxis2": 1920,
+                           "xpixsz": 2.9, "focal": 250.0})
+    assert s.stray_pointings == 0
+    assert s.is_mosaic
+
+
 def test_coverage_depth_mosaic_is_far_below_frame_count():
     # Two tiles a degree apart — well beyond half the short axis (0.36 deg).
     ra = [300.0] * 20 + [301.0] * 20
@@ -123,6 +158,80 @@ def test_noise_weighting_survives_without_overlap_norm():
     reconcile(p)
     assert p.get("weight") == "noise"
     assert not p.warnings
+
+
+def _mixed_exposure_survey(fwhm=None):
+    s = Survey(n_frames=40, exposures={20.0: 20, 30.0: 20},
+               filters={"LP": 40}, naxis1=1080, naxis2=1920,
+               depth_median=40, depth_min=40)
+    s.fwhm_by_exposure = fwhm or {}
+    return s
+
+
+def test_unmeasured_sharpness_never_claims_comparable_sharpness(tmp_path):
+    """The read-only path skips the Siril pass that compares exposures, so the
+    old `else` branch recommended noise weighting and justified it with a
+    measurement nobody took. Same class as the Gaia "not checked is not not
+    found" bug, but worse: it changed the recommendation, not just a warning.
+
+    wFWHM is the safe unmeasured default because the risk is asymmetric — noise
+    weighting on a set whose longer subs are softer actively drags resolution
+    down, while wFWHM on a comparably-sharp set only leaves SNR on the table.
+    """
+    p = build_proposal(_mixed_exposure_survey(), None, tmp_path, gaia_checked=False)
+
+    assert p.get("weight") == "wfwhm"
+    assert "not measured" in p.settings["weight"].why
+    assert "comparable sharpness" not in p.settings["weight"].why
+    assert any("provisional" in w.lower() for w in p.warnings)
+
+
+def test_measured_comparable_sharpness_picks_noise_and_shows_its_numbers(tmp_path):
+    p = build_proposal(_mixed_exposure_survey({20.0: 3.10, 30.0: 3.20}), None,
+                       tmp_path, gaia_checked=False)
+    assert p.get("weight") == "noise"
+    why = p.settings["weight"].why
+    assert "measured" in why and "3.20" in why and "3.10" in why
+    assert not any("provisional" in w.lower() for w in p.warnings)
+
+
+def test_the_projection_follows_an_overridden_drizzle_scale(tmp_path):
+    """A what-if that returns the pre-override number is worse than refusing to
+    answer one. Cost scales with the square of the drizzle scale, so this is the
+    figure most worth being right — and it was computed once, before overrides,
+    so `--no-drizzle` came back with an unchanged 86 GB."""
+    d = tmp_path / "siril"
+    for i in range(4):
+        _sub(d / "lights" / f"L{i}.fit", OBJECT="M81", **_GEOM)
+
+    proposed = build_plan(d, Overrides(drizzle=2.0), deep_measure=False).proposal
+    off = build_plan(d, Overrides(no_drizzle=True), deep_measure=False).proposal
+
+    assert proposed.canvas[0] == pytest.approx(off.canvas[0] * 2, rel=0.02)
+    assert off.get("drizzle_scale") == 1.0
+    # 2.5x, not 4x: drizzle scales the registered sequence by the square of the
+    # scale, but the CFA link and the pp_/bkg_pp_ copies stay at native size, and
+    # at 1x those fixed intermediates happen to equal the registered sequence.
+    # Pinning the real ratio is worth more than asserting "bigger".
+    assert proposed.disk_gb / off.disk_gb == pytest.approx(2.5, rel=0.05)
+
+
+def test_reprojecting_never_leaves_two_contradictory_disk_warnings(tmp_path):
+    d = tmp_path / "siril"
+    for i in range(4):
+        _sub(d / "lights" / f"L{i}.fit", OBJECT="M81", **_GEOM)
+    p = build_plan(d, Overrides(no_drizzle=True), deep_measure=False).proposal
+    disk_warnings = [w for w in p.warnings if "framing=max projects" in w]
+    assert len(disk_warnings) <= 1
+
+
+def test_measured_softer_long_subs_still_picks_wfwhm(tmp_path):
+    """The decisive case: longer subs blurrier, so noise weighting would reward
+    them for having better per-frame SNR."""
+    p = build_proposal(_mixed_exposure_survey({20.0: 3.09, 30.0: 4.85}), None,
+                       tmp_path, gaia_checked=False)
+    assert p.get("weight") == "wfwhm"
+    assert "softer" in p.settings["weight"].why
 
 
 # --------------------------------------------------------------------------
@@ -258,6 +367,11 @@ def test_naztronomy_name_omits_drizzle_segment_when_off():
 # --------------------------------------------------------------------------
 # M110 integration: layout, the read-only path, the handoff
 # --------------------------------------------------------------------------
+
+
+# Enough header for the surveyor to derive a plate scale and therefore a canvas
+# and a disk projection. Seestar S50 numbers.
+_GEOM = {"XPIXSZ": 2.9, "FOCALLEN": 250.0}
 
 
 def _sub(path, **cards):

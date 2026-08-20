@@ -153,13 +153,21 @@ def resolve_input(spec) -> Path:
     p = Path(spec)
     if p.exists():
         return p
-    if p.parts and len(p.parts) == 1:
-        for candidate in (config.siril_dir(str(spec)), config.target_dir(str(spec))):
+    parts = p.parts
+    if len(parts) == 1:
+        for candidate in (config.siril_dir(parts[0]), config.target_dir(parts[0])):
             if candidate.is_dir():
                 return candidate
+    elif len(parts) == 2:
+        # "<target>/<FILTER>" — a per-filter job in a split sandbox. Mixed-filter
+        # targets stack once per filter, so this is the only way to name one of
+        # them without an absolute path.
+        job = config.siril_job_dir(parts[0], parts[1])
+        if job.is_dir():
+            return job
     raise StackingError(
-        f"{spec!r} is neither a directory nor a capture folder in "
-        f"{config.IMAGES_DIR}."
+        f"{spec!r} is neither a directory nor a capture folder (or "
+        "'<folder>/<FILTER>' job) in the store."
     )
 
 
@@ -199,6 +207,7 @@ class Survey:
     span_h: float = 0.0
     integration_min: float = 0.0
     fwhm_by_exposure: dict = field(default_factory=dict)
+    stray_pointings: int = 0
     _ra: object = None
     _dec: object = None
     _files_by_exp: dict = field(default_factory=dict)
@@ -309,6 +318,7 @@ def summarize(frames: list[Frame], geom: dict) -> Survey:
 
     if ras:
         s._ra, s._dec = np.array(ras), np.array(decs)
+        s.stray_pointings = _drop_stray_pointings(s)
         cosd = math.cos(math.radians(float(np.mean(s._dec))))
         s.span_w = float(s._ra.max() - s._ra.min()) * cosd + s.fov_w
         s.span_h = float(s._dec.max() - s._dec.min()) + s.fov_h
@@ -319,6 +329,43 @@ def summarize(frames: list[Frame], geom: dict) -> Survey:
     else:
         s.depth_median = s.depth_min = s.n_frames
     return s
+
+
+def _drop_stray_pointings(s: Survey) -> int:
+    """Drop pointings too far from the bulk to be real, and report how many.
+
+    One frame with a junk RA/Dec poisons every geometry number downstream. Seen
+    on a real 744-frame LP set: a single frame carrying DEC -90 (the south
+    celestial pole, against a target at +69) stretched the sky span from ~1
+    degree to ~105, which flipped `is_mosaic` on, projected a 76-gigapixel canvas
+    and an 86 GB scratch, and would have proposed mosaic settings — feathering
+    and a giant `-framing=max` canvas — for a single-target stack.
+
+    The cut has to survive a **real** mosaic, whose pointings are genuinely
+    spread out. What separates the two is not distance from centre but company:
+    a mosaic tile is built to overlap its neighbours, so the bulk of pointings
+    sits within a few fields of the median, while a junk header sits alone at an
+    absurd separation. So the threshold is scaled off the bulk's own spread (p90
+    of the separations), with a field-sized floor for the common case where every
+    frame is on the same spot and p90 is ~0.
+
+    Geometry only: the frames themselves are still stacked. Nothing here changes
+    what goes into the result, only what we believe about where they point.
+    """
+    if s._ra is None or len(s._ra) < 4:
+        return 0
+    med_ra, med_dec = float(np.median(s._ra)), float(np.median(s._dec))
+    cosd = math.cos(math.radians(med_dec))
+    sep = np.hypot((s._ra - med_ra) * cosd, s._dec - med_dec)
+
+    field = max(s.fov_w, s.fov_h) or 1.0
+    limit = max(float(np.percentile(sep, 90)) * 3.0, field * 2.0)
+    keep = sep <= limit
+    dropped = int((~keep).sum())
+    if dropped and keep.sum() >= 3:
+        s._ra, s._dec = s._ra[keep], s._dec[keep]
+        return dropped
+    return 0
 
 
 def select_frames(frames: list[Frame], only_exposure: list[float] | None,
@@ -473,6 +520,54 @@ def rejection_for(depth: int) -> tuple[str, str, str]:
             "better, so the extra tier is not worth its complexity")
 
 
+# Lead of the disk warning `project` emits. It is recomputed whenever the
+# projection is, so the stale one has to be identifiable and removed — otherwise
+# an overridden proposal carries two contradictory disk warnings.
+_DISK_WARNING_LEAD = "-framing=max projects every frame"
+
+
+def project(s: Survey, p: Proposal, working: Path) -> None:
+    """Canvas, scratch size and free space for the settings **currently** in `p`.
+
+    Separate from `build_proposal`, and re-run after any override, because the
+    projection is a *function of the settings* rather than of the data alone.
+    Computed once up front it silently reported the proposed drizzle's cost for a
+    run the user had overridden — so "what if we dropped drizzle?" came back with
+    an unchanged 86 GB, which is worse than refusing to answer. Cost scales with
+    the square of the drizzle scale, so this is the number most worth being right.
+
+    Idempotent: safe to call repeatedly on the same proposal.
+    """
+    if not s.plate_scale:
+        return
+    eff = p.get("drizzle_scale") if p.get("drizzle") else 1.0
+    eff = float(eff or 1.0)
+    p.canvas = (int(s.span_w * 3600.0 / s.plate_scale * eff),
+                int(s.span_h * 3600.0 / s.plate_scale * eff))
+    # seqapplyreg -framing=max does NOT write canvas-sized frames: each
+    # registered frame keeps its own footprint scaled by drizzle, and the
+    # canvas is only assembled at stack time. Measured on the NGC 7000
+    # mosaic: 16.9 MB/frame compressed at 1.5x, i.e. 27 GB not 162 GB.
+    per_frame = (s.naxis1 * eff) * (s.naxis2 * eff) * 3 * 4 if s.naxis1 else 0
+    # Plus the intermediates that live alongside it: the linked CFA sequence
+    # and one copy per prefix step (pp_, bkg_pp_), all at native scale.
+    steps = 2 + (1 if p.get("bg_extract") else 0)
+    intermediates = (s.naxis1 * s.naxis2 * 4 * steps) if s.naxis1 else 0
+    p.disk_gb = (per_frame + intermediates) * s.n_frames / 1024**3
+    # Measured ~3x for Rice q16-q64 on Seestar registered sequences.
+    p.disk_gb_compressed = p.disk_gb / 3.0
+    p.free_gb = shutil.disk_usage(working).free / 1024**3
+
+    p.warnings[:] = [w for w in p.warnings if not w.startswith(_DISK_WARNING_LEAD)]
+    need = p.disk_gb_compressed if p.get("compress") else p.disk_gb
+    if need and need > p.free_gb * 0.8:
+        p.warnings.append(
+            f"{_DISK_WARNING_LEAD} onto the full {p.canvas[0]}x{p.canvas[1]} "
+            f"canvas: ~{need:.0f} GB needed against {p.free_gb:.0f} GB free. Lower "
+            "the drizzle scale (cost scales with its square) or stack in parts."
+        )
+
+
 def build_proposal(s: Survey, gaia: Path | None, working: Path,
                    gaia_checked: bool = True) -> Proposal:
     p = Proposal()
@@ -497,10 +592,29 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
         f = s.fwhm_by_exposure
         # If the longer subs are also the softer ones, noise weighting rewards
         # them for the wrong reason and drags the stack's resolution down.
-        soft = (len(f) > 1
+        measured = len(f) > 1
+        soft = (measured
                 and max(f, key=lambda e: e) == max(f, key=lambda e: f[e])
                 and max(f.values()) > min(f.values()) * 1.15)
-        if soft:
+        if not measured:
+            # Nothing was measured — either the read-only path skipped it or the
+            # Siril probe failed. Do NOT fall through to "comparable sharpness":
+            # that asserts a measurement nobody took, and it is the branch that
+            # would pick noise weighting. The asymmetry decides the default —
+            # noise weighting on a set whose longer subs are softer actively
+            # drags resolution down, while wFWHM on a comparably-sharp set merely
+            # leaves some SNR on the table.
+            p.set("weight", "wfwhm",
+                  "exposures are mixed, but their relative sharpness was not "
+                  "measured, so this is the safe default rather than a finding. "
+                  "Noise weighting may well be better here — measuring is what "
+                  "decides it")
+            p.warnings.append(
+                "Weighting is provisional: comparing sharpness across the mixed "
+                "exposures needs a Siril pass that did not run. `m110-stack <dir>` "
+                "with no flags measures it and may recommend noise weighting instead."
+            )
+        elif soft:
             lo, hi = min(f, key=lambda e: f[e]), max(f, key=lambda e: f[e])
             p.set("weight", "wfwhm",
                   f"exposures are mixed AND the longer subs are softer "
@@ -509,9 +623,12 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
                   "more weight for having better per-frame SNR; weight on star "
                   "quality instead")
         else:
+            lo, hi = min(f, key=lambda e: f[e]), max(f, key=lambda e: f[e])
             p.set("weight", "noise",
-                  "exposures are mixed with comparable sharpness, so weight on the "
-                  "real SNR difference between them rather than star quality")
+                  f"exposures are mixed and measured comparably sharp "
+                  f"({fmt_exp(hi)} median FWHM {f[hi]:.2f} vs {fmt_exp(lo)} "
+                  f"{f[lo]:.2f}), so weight on the real SNR difference between "
+                  "them rather than star quality")
     else:
         p.set("weight", "wfwhm",
               "single exposure, so weight on star quality — Naztronomy's default")
@@ -569,23 +686,7 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
     p.set("out", "result", "")
 
     # -- feasibility -------------------------------------------------------
-    if s.plate_scale:
-        eff = scale if driz else 1.0
-        p.canvas = (int(s.span_w * 3600.0 / s.plate_scale * eff),
-                    int(s.span_h * 3600.0 / s.plate_scale * eff))
-        # seqapplyreg -framing=max does NOT write canvas-sized frames: each
-        # registered frame keeps its own footprint scaled by drizzle, and the
-        # canvas is only assembled at stack time. Measured on the NGC 7000
-        # mosaic: 16.9 MB/frame compressed at 1.5x, i.e. 27 GB not 162 GB.
-        per_frame = (s.naxis1 * eff) * (s.naxis2 * eff) * 3 * 4 if s.naxis1 else 0
-        # Plus the intermediates that live alongside it: the linked CFA sequence
-        # and one copy per prefix step (pp_, bkg_pp_), all at native scale.
-        steps = 2 + (1 if p.get("bg_extract") else 0)
-        intermediates = (s.naxis1 * s.naxis2 * 4 * steps) if s.naxis1 else 0
-        p.disk_gb = (per_frame + intermediates) * s.n_frames / 1024**3
-        # Measured ~3x for Rice q16-q64 on Seestar registered sequences.
-        p.disk_gb_compressed = p.disk_gb / 3.0
-        p.free_gb = shutil.disk_usage(working).free / 1024**3
+    project(s, p, working)
 
     # -- warnings ----------------------------------------------------------
     if len(s.exposures) > 1:
@@ -594,6 +695,16 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
             f"Mixed exposures ({parts}). -norm=addscale brings them to a common "
             "level, but rejection still clips across two brightness populations. "
             "If the result looks wrong, stack each exposure separately and combine."
+        )
+    if s.stray_pointings:
+        n = s.stray_pointings
+        p.warnings.append(
+            f"{n} frame{'s' if n > 1 else ''} carr{'y' if n > 1 else 'ies'} a "
+            "pointing far outside the rest of the set — almost certainly a bad "
+            "RA/Dec header rather than a real slew. Ignored when measuring the "
+            "sky coverage, because one junk pointing otherwise inflates the span, "
+            "reads as a mosaic and projects an absurd canvas. The frames are still "
+            "stacked; registration will drop any that genuinely do not overlap."
         )
     if len(s.gains) > 1:
         p.warnings.append(
@@ -613,14 +724,6 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
             "Local Gaia astrometry catalogue not found. seqplatesolve will fail "
             "offline and Siril falls back to star registration — a mosaic will "
             "NOT assemble."
-        )
-    need = p.disk_gb_compressed if p.get("compress") else p.disk_gb
-    if need and need > p.free_gb * 0.8:
-        p.warnings.append(
-            f"-framing=max projects every frame onto the full {p.canvas[0]}x"
-            f"{p.canvas[1]} canvas: ~{need:.0f} GB needed against {p.free_gb:.0f} GB "
-            "free. Lower the drizzle scale (cost scales with its square) or stack "
-            "in parts."
         )
     return p
 
@@ -1074,7 +1177,11 @@ class StackPlan:
             "disk_gb": round(p.disk_gb, 1),
             "disk_gb_compressed": round(p.disk_gb_compressed, 1),
             "free_gb": round(p.free_gb, 1),
-            "script": self.register_ssf,
+            # Both phases, named for what they are. A single "script" key was a
+            # half-truth: registration is only the first of two Siril runs, and
+            # the stack phase carries the settings a reader most wants to check.
+            "register_script": self.register_ssf,
+            "stack_script": self.stack_ssf,
         }
 
 
@@ -1154,6 +1261,9 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
 
     # After overrides, so a hand-picked combination is checked too.
     reconcile(p)
+    # And re-project: canvas and scratch size follow the *final* drizzle scale,
+    # not the one the engine first proposed.
+    project(s, p, working)
 
     ssf = build_ssf_register(lights.name, p, dropped)
     ssf_stack = build_ssf_stack(lights.name, p,
