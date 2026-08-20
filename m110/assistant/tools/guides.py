@@ -16,9 +16,11 @@ from m110.assistant.registry import ToolError, register
     title="Get skill",
     description=(
         "Fetch one of M110's procedures for working with this library — how to plan a "
-        "night, how to critique an image, and how to talk about the numbers without "
-        "inventing any. Omit `id` to list them. Read this before a planning or critique "
-        "task rather than improvising. Instant. Read-only."
+        "night, how to stack a target with Siril, how to critique an image, and how to "
+        "talk about the numbers without inventing any. Omit `id` to list them; the "
+        "listing is generated from what is installed, so it is the authority on which "
+        "procedures exist. Read the relevant one before a planning, stacking or "
+        "critique task rather than improvising. Instant. Read-only."
     ),
     params={
         "type": "object",

@@ -40,7 +40,11 @@ changes a **user** would notice, per release.
   **Import finished work** already looks for it.
 - **The AI assistant can plan a stack with you.** If you've connected an
   assistant, it can now measure a target and talk through the settings, then hand
-  you the command to run. It can't start a stack itself — it reads your frames'
+  you the command to run. Ask it what a different choice would cost — "what if we
+  skipped drizzle?" — and it recomputes the whole proposal, disk space included,
+  rather than guessing. It also knows the awkward cases: mosaics, mixed exposures,
+  and targets shot through more than one filter, which stack separately and are
+  combined afterwards. It can't start a stack itself — it reads your frames'
   headers and proposes, nothing more.
 
 ### Changed
@@ -72,6 +76,13 @@ changes a **user** would notice, per release.
   report, now name the folder *and* where the choice came from.
 
 ### Fixed
+- **A single frame with a bad pointing could wreck a stacking proposal.** If one
+  sub carried a nonsense RA/Dec in its header — one frame in 744 on a real set,
+  claiming the south celestial pole — M110 measured your sky coverage across that
+  whole imaginary span. The target was reported as a mosaic when it wasn't, with a
+  wildly overstated canvas and disk estimate, and mosaic-only settings proposed for
+  it. Stray pointings are now ignored when measuring coverage, and called out so
+  you know the header is wrong. Every frame is still stacked.
 - **An object could say "up to date" while most of its frames weren't in the
   stack.** If you stacked and then kept shooting the same night, the new frames
   were counted as though they'd already been in the stack — so Processing showed
