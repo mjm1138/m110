@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publishing your collection — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/publishing.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html" class="on">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="publishing-your-collection">Publishing your collection</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p><strong>Library → Publish / share…</strong> turns your collection into a static website — either
+into a <strong>local folder</strong> you host however you like, or deployed <strong>straight to GitHub
+Pages</strong> with one click.</p>
+<h2 id="what-goes-on-the-site">What goes on the site</h2>
+<p>The dialog's <strong>Include</strong> checkboxes pick the pages: the full catalog table, the
+Summary dashboard, the session log, the processing queue, journal notes, and image
+galleries. Two privacy controls sit alongside:</p>
+<ul>
+<li><strong>Exclude all journal notes</strong> hides every journal from the site; adding
+  <code>private: true</code> to one object's <code>journal.md</code> frontmatter hides just that one.</li>
+<li>Right-click an object in the Library → <strong>Exclude from publishing</strong> keeps the whole
+  object (page, row, images) off the site.</li>
+</ul>
+<p><strong>Galleries</strong> carry, by your choice:</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>What's published</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Finished images only</strong> <em>(default)</em></td>
+<td>Images in each object's <em>Finished</em> group — your deliberate deliverables.</td>
+</tr>
+<tr>
+<td><strong>Finished + device stacks</strong></td>
+<td>Also the telescope's in-app stacks (Seestar/Dwarf).</td>
+</tr>
+<tr>
+<td><strong>All images</strong></td>
+<td>Everything, including Siril stacks and working files. Expect a much larger site and slower uploads.</td>
+</tr>
+</tbody>
+</table>
+<p>An image you've right-clicked → <em>Mark as finished</em> publishes at every level; one
+marked <em>working</em> only under "All images".</p>
+<p>Re-publishing always mirrors your current choices — images and pages that no longer
+qualify are removed from the output folder (and therefore from the deployed site),
+not left behind.</p>
+<p><strong>Save</strong> stores your choices without publishing anything; <strong>Publish</strong> runs the
+export (and deploy, if selected) behind a cancellable progress dialog.</p>
+<h2 id="deploying-to-github-pages">Deploying to GitHub Pages</h2>
+<p>GitHub Pages is free static hosting attached to a GitHub repository. M110 pushes
+your rendered site to the repo's <code>gh-pages</code> branch using the <code>git</code> already on your
+machine — your existing GitHub authentication is used; M110 never sees a password
+or token.</p>
+<p><strong>One-time setup:</strong></p>
+<ol>
+<li><strong>Have git + a GitHub account with SSH access.</strong> Test with
+   <code>ssh -T git@github.com</code> in a terminal — a greeting means you're set. (If not,
+   GitHub's guide: <em>Settings → SSH and GPG keys → New SSH key</em>.)</li>
+<li><strong>Create a repository</strong> for the site (e.g. <code>you/astro-site</code>). Public repos get
+   Pages on every plan; note the <em>site</em> is always publicly viewable either way.</li>
+<li>In the Publish dialog, check <strong>GitHub Pages</strong>, enter the repository as
+   <code>owner/repo</code> (or paste a full git URL), and pick an upload mode (see below).
+   Click <strong>Publish</strong>.</li>
+<li><strong>First time only:</strong> on GitHub, open the repo's <strong>Settings → Pages</strong> and set the
+   source to <strong>deploy from the <code>gh-pages</code> branch</strong>.</li>
+</ol>
+<p>Your site serves at <strong><code>https://&lt;owner&gt;.github.io/&lt;repo&gt;/</code></strong> (the success dialog
+shows the exact URL with an <strong>Open site</strong> button). The first deploy — and each
+update — can take a minute or two to appear.</p>
+<h3 id="upload-modes">Upload modes</h3>
+<p>Publishing uploads over your home connection, which is usually far slower going up
+than down — a few hundred KB/s is normal, so a large site can take many minutes.
+The <strong>Uploads</strong> setting picks how M110 spends that time:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>What happens</th>
+<th>Best when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Replace the site each time</strong> <em>(default)</em></td>
+<td>Every publish replaces the <code>gh-pages</code> branch with a single fresh commit — the whole site uploads each time. The repo never grows.</td>
+<td>Smaller sites, or infrequent publishing.</td>
+</tr>
+<tr>
+<td><strong>Upload only what changed</strong></td>
+<td>M110 reads what's already deployed and sends only new files. Re-publishing after a small edit takes seconds. The branch keeps a deploy history, so superseded images stay in the repo forever.</td>
+<td>Large galleries you publish often.</td>
+</tr>
+</tbody>
+</table>
+<p>M110 names each web image after a hash of its contents, so in "only what changed"
+mode an image you haven't re-processed is recognized as already-deployed and skipped
+entirely — typically only your edits go up.</p>
+<p>The trade-off is repo size: history mode keeps every version of every image you've
+ever published. If the repo gets unwieldy, publish once in <strong>Replace</strong> mode — that
+collapses it back to a single commit.</p>
+<p><strong>Good to know:</strong></p>
+<ul>
+<li>M110 <strong>owns the <code>gh-pages</code> branch</strong> — don't keep other work on it.</li>
+<li>Deleting or excluding something re-publishes correctly in both modes: the site
+  always mirrors your current selections.</li>
+<li><strong>Cancel</strong> during an upload stops it cleanly and leaves the deployed site as it
+  was.</li>
+<li>If the push is rejected, the error dialog shows git's own message — usually an
+  authentication or repo-name problem.</li>
+</ul>
+<p>Next: <strong><a href="upcoming.html">On the roadmap →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

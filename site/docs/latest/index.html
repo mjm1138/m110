@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M110 — User Guide — M110 docs</title>
+<meta name="description" content="growing pile of Seestar or DwarfLab captures into an organized deep-sky library:">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html" class="on">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="m110-user-guide">M110 — User Guide</h1>
+<p><strong>M110 is a photo library for your smart telescope</strong> — a desktop app that turns a
+growing pile of Seestar or DwarfLab captures into an organized deep-sky library:
+catalog, capture tracking, ingest, Siril processing-prep, session planning,
+publishing, and backup. <em>Lightroom for smart telescopes.</em></p>
+<p>This guide covers what you need to use M110 day to day. It's deliberately short;
+each page links to the next.</p>
+<h2 id="contents">Contents</h2>
+<ol>
+<li><a href="#getting-started">Getting started</a> — install, first launch, your data folder</li>
+<li><a href="#getting-around">Getting around</a> — the navigation rail, menus, and updates</li>
+<li><strong><a href="ingest.html">Ingest &amp; the library layout</a></strong> — how captures come in, and where they land on disk</li>
+<li><strong><a href="library.html">The library &amp; object metadata</a></strong> — the List/Grid/Feed views, adding objects, filling in details, and per-image curation</li>
+<li><strong><a href="processing.html">Processing prep &amp; hardlinks</a></strong> — the Siril sandbox, <strong>Process in Siril</strong> (one-click launch — and why to quit Siril between objects), and <em>what hardlinks mean for your files</em> (important)</li>
+<li><strong><a href="backup.html">Backing up your library</a></strong> — snapshots, retention, and how hardlinked backups behave</li>
+<li><strong><a href="planning.html">Session planning</a></strong> — site profiles, the automatic target ranking, planning a night, and field guides</li>
+<li><strong><a href="publishing.html">Publishing your collection</a></strong> — the static-site export and one-click GitHub Pages deploy</li>
+<li><strong><a href="assistant.html">Using an AI assistant</a></strong> — connect your own assistant to your library, the skills and tools it gets, and why it can't change anything</li>
+<li><strong><a href="upcoming.html">On the roadmap</a></strong> — features you'll see referenced in the UI that aren't finished yet</li>
+</ol>
+<hr />
+<h2 id="getting-started">Getting started</h2>
+<p><strong>Install.</strong> Download the build for your platform (macOS · Linux · Windows) and run
+it. The macOS build is <strong>signed &amp; notarized</strong> and opens with no warning. The Windows
+beta installer is <strong>unsigned</strong>, so SmartScreen will warn on first launch — click
+<strong>More info → Run anyway</strong>. The Linux AppImage just needs to be made executable. See
+the download page for the per-platform details.</p>
+<p><strong>First launch.</strong> M110 asks where to keep your library — its <strong>data folder</strong>. The
+default is <code>~/Documents/M110</code>. You can accept it or pick another location (for
+example an external drive with room for years of subs). M110 creates the folder
+structure and a starter catalog there; it never writes anywhere else.</p>
+<p><strong>Your data is yours.</strong> Everything M110 manages lives inside that one folder as plain
+files (FITS, JP/PNG/TIFF, Markdown, TOML). There's no database to corrupt and no
+lock-in — you can browse it in your file manager any time. Changing the data folder
+later (Library → Preferences) takes effect on restart.</p>
+<blockquote>
+<p>🔒 <strong>M110 never touches your originals.</strong> Ingest is always <em>preview-then-confirm</em>,
+and it <strong>copies</strong> from your telescope rather than moving — your capture files stay
+exactly where they are until you say otherwise.</p>
+</blockquote>
+<hr />
+<h2 id="getting-around">Getting around</h2>
+<p>M110 has a <strong>navigation rail</strong> down the left side with five pages. The <strong>Library</strong> is
+home — it opens there once you have a collection. (A brand-new, empty library opens on
+<strong>Overview</strong> instead, with a welcome card and an <em>Import images…</em> button to get you
+started.)</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What it's for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Library</strong></td>
+<td>Your collection — every object you've shot (and any you're tracking). This is the hub.</td>
+</tr>
+<tr>
+<td><strong>Overview</strong></td>
+<td>A dashboard of collapsible sections: goal progress, priority targets, integration time &amp; recent sessions, progress by category, and goal setup.</td>
+</tr>
+<tr>
+<td><strong>Planning</strong></td>
+<td>What to shoot next, and tonight's plan — site profiles, the automatic target ranking, the night scheduler, and saved field guides. See <strong><a href="planning.html">Session planning</a></strong>.</td>
+</tr>
+<tr>
+<td><strong>Import</strong></td>
+<td>Bring in new captures from your telescope, a mounted card, or any folder.</td>
+</tr>
+<tr>
+<td><strong>Processing</strong></td>
+<td>The Siril processing-prep queue — what needs a first stack, what's out of date, and what has finished work ready to import.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-library">The Library</h3>
+<p>The Library opens as a <strong>thumbnail grid</strong> (a wall of your objects). A control row at the
+top gives you two segmented toggles:</p>
+<ul>
+<li><strong>Deep sky · Media</strong> — switch the whole page between your catalog objects and your
+  non-catalog <strong>Media</strong> (lunar, planetary, scenery, startrails).</li>
+<li><strong>List · Grid · Feed</strong> — view your deep-sky objects as a sortable <strong>table</strong>, the
+  <strong>grid</strong>, or a reverse-chronological <strong>Feed</strong> of object cards (a photo-blog of your
+  imaging). Plus a search box and a catalog filter (Messier, Caldwell, …).</li>
+</ul>
+<p>Click any object to open its <strong>detail pane</strong> — where most per-object work happens:
+hero image, notes, the gallery (split into <em>Finished</em> and <em>Working files</em>), the
+object's capture sessions, and its processing status. Set a hero, mark an image
+finished/working, or import finished Siril work from here.</p>
+<h3 id="overview">Overview</h3>
+<p>Everything that isn't your object collection lives here as <strong>collapsible sections</strong>
+(click a heading's triangle to open/close it; your choices are remembered):</p>
+<ul>
+<li><strong>Goals</strong> — progress toward each catalog you're tracking.</li>
+<li><strong>Priority targets</strong> — objects you've pinned (right-click → <em>Pin as priority</em> in the
+  Library). The <strong>Planning</strong> page adds the automatic ranking on top; pins always win.</li>
+<li><strong>Integration Time and Sessions</strong> — hours per object, your last few sessions, and a
+  <strong>View all sessions…</strong> button for the full log.</li>
+<li><strong>Progress by category</strong> and <strong>Goal checklists</strong> — per-catalog membership with a green
+  check for captured / deep-stacked.</li>
+<li><strong>Manage goals</strong> — pick which catalogs you're working toward, or build a custom list.</li>
+</ul>
+<h3 id="menus-preferences-updates">Menus, preferences &amp; updates</h3>
+<ul>
+<li><strong>Library menu</strong> — Refresh (Ctrl+R), Prepare working folders, <strong>Add object…</strong>, <strong>Fill
+  missing metadata</strong> / <strong>Enrich online…</strong> (see <strong><a href="library.html">the library page</a></strong>),
+  <strong>Publish</strong>, <strong>Back up / Restore</strong>, and <strong>Preferences</strong> (Cmd+, — on macOS it lives under
+  the app menu).</li>
+<li><strong>Help menu</strong> — <strong>User guide</strong> (opens this guide), <strong>Check for updates…</strong>, <strong>Report a
+  problem…</strong> (a pre-filled bug report), and <strong>About M110</strong>.</li>
+<li><strong>Appearance / theme.</strong> M110 follows your system light/dark appearance automatically;
+  Preferences → Appearance lets you force <strong>Light</strong> or <strong>Dark</strong> instead. The choice
+  applies live and is remembered.</li>
+<li><strong>Updates.</strong> Once a day at most, M110 checks GitHub for a newer release and shows a
+  quiet, dismissible banner if one is available (<strong>Download · Skip this version · ✕</strong>). No
+  data is sent; turn the check off in Preferences → Updates.</li>
+<li><strong>Other preferences</strong> worth knowing: your <strong>data folder</strong>, the processing <strong>workflows</strong>
+  to prepare (and your Siril path), the <strong>finished-image hints</strong> that decide what counts as
+  a finished render vs. an intermediate, whether to import per-sub JPG previews, and the
+  <strong>AI assistant</strong> connection (see <strong><a href="assistant.html">Using an AI assistant</a></strong>).</li>
+</ul>
+<p><strong>Slow operations</strong> (refresh, ingest, backup) run in the background with a progress
+dialog you can cancel — the window never freezes.</p>
+<p>Next: <strong><a href="ingest.html">Ingest &amp; the library layout →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

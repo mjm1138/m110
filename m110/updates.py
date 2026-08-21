@@ -31,8 +31,15 @@ REPO = "mjm1138/m110"
 _API = f"https://api.github.com/repos/{REPO}/releases"
 _RELEASES_URL = f"https://github.com/{REPO}/releases"
 # Online home of the user guide (docs/README.md), for Help → User guide + the site.
-#: Fallback only — see `user_guide_url()`. `main` is *ahead* of every shipped
-#: release, so linking a user straight at it documents features they do not have.
+#: Where the rendered, versioned guide lives (built by `tools/build_docs.py`,
+#: published by the `docs` phase of `tools/release.py`).
+DOCS_SITE = "https://m110.space/docs"
+
+#: Fallback only — see `user_guide_url()`. Used for a **source or dev** build,
+#: which has no release tag: its code is ahead of every published version, so the
+#: honest match is `docs/` on `main` rather than the newest release's rendered
+#: copy. `main` is exactly wrong for a *shipped* build, which is the bug this
+#: whole pair exists to fix.
 USER_GUIDE_URL = f"https://github.com/{REPO}/blob/main/docs/README.md"
 
 _PRE_KINDS = {"a": "alpha", "b": "beta", "rc": "rc"}
@@ -71,13 +78,18 @@ def user_guide_url(version: str | None = None) -> str:
 
     Pinned to the release tag, because `docs/` on `main` describes work that has
     not shipped — a user on the current release following it hits features that
-    do not exist yet. A tag is immutable, so the guide a build points at always
-    matches the app the reader is holding. Falls back to `main` only when there is
-    no tag to point at (running from source, or a dev build)."""
+    do not exist yet. Each release publishes its own rendered copy under
+    `/docs/<tag>/`, so the guide a build points at always matches the app the
+    reader is holding, and the URL keeps working after later releases move on.
+
+    Falls back to `main` on GitHub only when there is no tag to point at (running
+    from source, or a dev build) — there is no published copy of unreleased docs,
+    and pointing those users at the newest *release* would be the same mismatch in
+    the other direction."""
     tag = version_tag(version)
     if not tag:
         return USER_GUIDE_URL
-    return f"https://github.com/{REPO}/blob/{tag}/docs/README.md"
+    return f"{DOCS_SITE}/{tag}/"
 _TIMEOUT_S = 6
 _CHECK_INTERVAL_S = 24 * 3600
 

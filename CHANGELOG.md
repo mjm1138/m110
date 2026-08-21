@@ -11,9 +11,12 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
-- **Help → User guide now opens the guide for the version you're running.** It
-  pointed at the latest development copy, which is always ahead of the released
-  app — so it could describe buttons and settings your build doesn't have yet.
+- **The user guide is now published at [m110.space/docs](https://m110.space/docs/).**
+  Every release keeps its own copy, and **Help → User guide** opens the one
+  matching the version you're running. It used to open the latest development
+  copy on GitHub, which is always ahead of the released app — so it could describe
+  buttons and settings your build doesn't have yet. A link you save keeps working
+  after later releases move on, and the changelog is there too.
 
 ### Fixed
 - **A stack no longer fails because some frames wouldn't plate-solve.** If part

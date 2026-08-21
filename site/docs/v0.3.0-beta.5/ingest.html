@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingest & the library layout — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/ingest.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html" class="on">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="ingest-the-library-layout">Ingest &amp; the library layout</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<h2 id="bringing-captures-in">Bringing captures in</h2>
+<p>Open the <strong>Import</strong> page. Pick a source — a mounted Seestar, a DwarfLab Dwarf 3, an
+SD card, or any folder of FITS — and M110 scans it (without changing anything) and
+shows a <strong>grouped preview</strong>: one row per object, with the kind of file (light subs,
+device stack, finished render, media), the file count, size, and where each group
+will land. Device layouts are recognized automatically — a Seestar export, a Dwarf 3
+<code>DWARF_RAW_*</code> / <code>STARTRAILS_*</code> session, an M110 store, or a loose pile of FITS.</p>
+<ul>
+<li>Check or uncheck groups; retarget a group to a different object if the name or
+  pointing looks off.</li>
+<li>Nothing is written until you click <strong>Import</strong>. From a telescope, M110 <strong>copies</strong>
+  (your device is left untouched); from a staging folder it can move.</li>
+<li>Files M110 can't confidently classify go to a <strong>holding area</strong> (the <code>Inbox/</code>
+  folder) where you assign them by hand — it never silently drops or misfiles a
+  frame. The holding panel <strong>suggests</strong> an object and kind from each file's header
+  (double-click a row to inspect the header + a thumbnail), and you can <strong>select many
+  rows and assign them to one object/kind at once</strong>.</li>
+</ul>
+<p>M110 reads the FITS headers to identify each frame (object, date, exposure, filter,
+pointing), so it works across devices regardless of their filename conventions.</p>
+<h2 id="where-things-land-the-library-layout">Where things land — the library layout</h2>
+<p>Your data folder is organized around <strong>two views of the same collection</strong>:</p>
+<pre><code>&lt;data folder&gt;/            (default ~/Documents/M110)
+  Objects/&lt;catalog id&gt;/       one folder per catalog object (M101, C20, …)
+    journal.md                  your notes for that object
+  Images/&lt;target&gt;/            one folder per capture target
+    lights/                     raw light subs — the immutable originals
+    stacks/                     Siril stacks you've imported back
+    seestar-stacks/             the device's own in-app stacks
+    finished/                   your finished, hand-processed renders
+    working_files/              processing by-products (starless, crop, stretch…)
+    previews/                   per-sub JPG previews (only if you opt in)
+    siril/                      the processing sandbox (see Processing)
+    (darks/ flats/ biases/)     calibration frames, if you have them
+  Media/&lt;category&gt;_photo|_video/   lunar / planetary / scenery / startrails
+  Plans/                      saved session field guides (see Session planning)
+  Inbox/                      holding area for files awaiting manual assignment
+  .m110_internal_data/        hidden app state — catalog, sessions, thumbnails
+</code></pre>
+<p><strong>Why two axes?</strong> <code>Objects/</code> is the <em>catalog</em> view (one entry per sky object).
+<code>Images/</code> is the <em>capture</em> view (one folder per thing you pointed at). They're kept
+separate because a single capture can cover several catalog objects — e.g. one
+<code>M81 M82</code> session feeds both M81 and M82 — so objects and capture targets are a
+many-to-many relationship, not a 1:1 mapping.</p>
+<p><strong>The tiers inside <code>Images/&lt;target&gt;/</code> matter.</strong> M110 keeps raw subs, stacks, and
+finished renders in separate folders on purpose:</p>
+<ul>
+<li><code>lights/</code> holds <strong>only</strong> raw light subs. M110 treats these as immutable — it reads
+  them but never writes into this folder. This is what everything else is derived
+  from, so keep it clean.</li>
+<li><code>stacks/</code> and <code>seestar-stacks/</code> hold integrated stacks (yours from Siril, and the
+  device's in-app stacks respectively).</li>
+<li><code>finished/</code> holds your deliverables — the images you've hand-processed and are
+  proud of.</li>
+</ul>
+<p>You can browse all of this in your file manager, but the easiest way to see it is the
+<strong>Library</strong> page and each object's <strong>detail pane</strong>, which groups the gallery into
+"Finished" and "Working files."</p>
+<p>Next: <strong><a href="library.html">The library &amp; object metadata →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

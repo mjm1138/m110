@@ -155,11 +155,13 @@ def test_no_tag_for_a_build_that_was_never_released(version):
 
 
 def test_the_guide_url_is_pinned_to_the_release():
-    """A tag is immutable, so the guide a build links to always matches the app
-    the reader is holding — `main` documents work that has not shipped."""
-    assert updates.user_guide_url("0.3.0b5").endswith(
-        "/blob/v0.3.0-beta.5/docs/README.md")
+    """Each release publishes its own rendered copy, so the guide a build links to
+    always matches the app the reader is holding, and the URL keeps working after
+    later releases move on."""
+    assert updates.user_guide_url("0.3.0b5") == (
+        "https://m110.space/docs/v0.3.0-beta.5/")
     assert "/blob/main/" not in updates.user_guide_url("0.3.0b5")
+    assert "/latest/" not in updates.user_guide_url("0.3.0b5")
 
 
 def test_a_source_build_falls_back_to_main():

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backing up your library — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/backup.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html" class="on">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="backing-up-your-library">Backing up your library</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>M110 has a built-in backup system that makes <strong>dated snapshots</strong> of your library to a
+destination you choose — ideally an external or network drive, separate from your
+working disk. Open it from <strong>Library → Back up / Restore</strong>.</p>
+<p>Whatever the details below, two things are always true:</p>
+<ul>
+<li><strong>Only what changed is stored</strong> each time. Your raw subs never change, so they're
+  stored once and shared by every later backup.</li>
+<li><strong>Every backup restores on its own.</strong> There is no chain to replay: restoring a
+  backup from three months ago is exactly as easy, and as complete, as restoring
+  last night's.</li>
+</ul>
+<h2 id="two-ways-to-store-backups">Two ways to store backups</h2>
+<p>Some destinations can <em>share</em> a file between backups — that is, record "this backup
+also contains that file" without storing a second copy. Most local and external
+drives can; some network shares, appliance NASes and exFAT drives can't. M110 checks
+when you choose a destination and tells you which kind you have.</p>
+<p>That check decides how backups are stored. You'll see the choice under the
+destination, and normally you can leave it alone.</p>
+<h3 id="mirrored-backups-the-default">Mirrored backups (the default)</h3>
+<pre><code>&lt;destination&gt;/M110-Backups/&lt;your-library-name&gt;/
+  2026-07-10_02-00-00/    a full tree — Objects/, Images/, etc.
+  2026-07-09_02-00-00/
+  …
+</code></pre>
+<p>Every backup is a complete, browsable copy of your library — dated folders you can
+open in Finder or Explorer and just <em>use</em>. Files unchanged since the previous backup
+are <strong>hardlinked</strong> to it rather than copied again (see
+<a href="processing.html#hardlinks--what-they-are-and-why-it-matters">Hardlinks</a>), the same
+trick <code>rsync --link-dest</code> and Time Machine use. Ten backups of a 200 GB library cost
+~200 GB plus what changed, not 2 TB.</p>
+<p>Its real advantage is what happens on the worst day: <strong>a mirrored backup needs no
+software at all to restore.</strong> It's your files, in the right folders. Drag them back.</p>
+<p>This is why it stays the default wherever it works.</p>
+<h3 id="pooled-backups">Pooled backups</h3>
+<p>For destinations that <em>can't</em> share files, mirrored backups would quietly store a
+complete copy of your library every single night. So M110 switches to pooling
+instead, and says so:</p>
+<pre><code>&lt;destination&gt;/M110-Backups/&lt;your-library-name&gt;/
+  objects/…               every file, stored once, named by its contents
+  snapshots/…             one small index per backup, listing what it contained
+  latest/                 a browsable copy of the newest backup (where possible)
+  INDEX.tsv  restore.py  README.txt
+</code></pre>
+<p>Each file is stored once under a name derived from its contents, and each backup is a
+small index naming the files it contained. Two backups that contain the same sub
+point at the same stored copy — which is the same saving as hardlinking, done by
+M110 instead of by the disk. That's what makes it work anywhere.</p>
+<p><strong>Getting your files back out.</strong> The trade is that <code>objects/</code> on its own isn't
+browsable — the stored files are named by content, not by path. So a pooled backup
+carries its own way back, right next to the data:</p>
+<ul>
+<li><strong><code>latest/</code></strong> — a browsable copy of the most recent backup with real filenames,
+  costing no extra space. Present whenever the destination can manage it.</li>
+<li><strong><code>INDEX.tsv</code></strong> — every file in the newest backup as plain text: path, name of the
+  stored copy, size. Readable in any text editor.</li>
+<li><strong><code>restore.py</code></strong> — rebuilds files from any backup using nothing but a standard
+  Python install. No M110 required:
+  <code>python3 restore.py                                    # newest backup → ./restored
+  python3 restore.py snapshots/&lt;name&gt;.json.gz ~/out      # a specific backup
+  python3 restore.py latest-manifest.json.gz ~/out Images/M51   # just one target</code></li>
+<li><strong><code>README.txt</code></strong> — the same explanation, in the folder, for future you.</li>
+</ul>
+<p>The indexes themselves are gzipped JSON — <code>gunzip -c</code> reads them anywhere.</p>
+<h3 id="switching-between-them">Switching between them</h3>
+<p>You can change the setting at any time. Backups already at that destination stay
+listable, verifiable and restorable in both formats — switching never strands a
+backup you already have. The only case where M110 decides for you is a destination
+that can't share files, where mirrored isn't a real option.</p>
+<h2 id="what-the-sharing-means-and-how-it-differs-from-the-sandbox">What the sharing means (and how it differs from the sandbox)</h2>
+<p>Worth being clear about, because backups and the processing sandbox both share files
+but the implications are <strong>opposite</strong>:</p>
+<ul>
+<li>The <strong>processing sandbox</strong> shares storage with your <em>live</em> library — so the sandbox
+  is <em>not</em> a backup.</li>
+<li><strong>Backups</strong> share only with each other on the backup disk, and are byte-copied from
+  your live library. So they are a <strong>real, independent copy</strong> — deleting or losing
+  your working library does not touch them.</li>
+</ul>
+<p>Practical consequences:</p>
+<ul>
+<li><strong>Deleting a backup is safe.</strong> Only the data unique to it is freed; everything
+  another backup still needs stays. (Retention, below, does exactly this.)</li>
+<li><strong>Keep it on one volume.</strong> All backups for a library live under one destination.</li>
+<li><strong>Don't edit files inside the backup folder.</strong> In both formats a file may be shared
+  by several backups, so an edit would change all of them. Pooled backups mark stored
+  files read-only for this reason; copy a file out before working on it.</li>
+</ul>
+<h2 id="automation-retention">Automation &amp; retention</h2>
+<ul>
+<li><strong>Automatic backups</strong> run on a schedule (default: at most one every 12 hours), so a
+  fresh capture session gets protected without you thinking about it.</li>
+<li><strong>Retention</strong> lets you keep the <em>N</em> newest backups; older ones are pruned. The
+  default keeps everything — there is deliberately no "delete anything older than <em>X</em>
+  days" rule, so a gap in use can never silently wipe your history.</li>
+<li><strong>A minimum-free-space guard</strong> prunes old backups rather than filling the
+  destination.</li>
+</ul>
+<h2 id="restoring">Restoring</h2>
+<p><strong>Library → Back up / Restore → Restore…</strong> lets you pick a backup by date, choose
+specific files or the whole tree, and either <strong>extract to a folder</strong> (safe default)
+or restore <strong>into your library</strong> (with a conflict preview and confirmation first).
+There's also a <strong>Verify integrity</strong> action that re-checks a backup against its
+recorded checksums.</p>
+<blockquote>
+<p><strong>What's not in a backup:</strong> regenerable app state — thumbnails, derived rollups,
+the session index, and the Siril sandboxes — is skipped, because M110 rebuilds it
+automatically. Your catalog, notes, subs, stacks, and finished renders are all
+included.</p>
+</blockquote>
+<p>Next: <strong><a href="planning.html">Session planning →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>
