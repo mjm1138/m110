@@ -117,19 +117,37 @@ def test_the_release_script_runs_this_builder():
 def test_from_tag_publishes_what_that_release_shipped(tmp_path, monkeypatch):
     """A version's directory built from the working tree would publish unreleased
     prose under a released version number — the exact mismatch the site exists to
-    fix. Backfilling reads the docs out of git instead."""
+    fix. Backfilling reads the docs out of git instead.
+
+    The difference is derived from git rather than naming a known section, so the
+    test doesn't quietly couple itself to whatever happens to be unreleased on the
+    branch it runs from."""
     import subprocess
     tag = "v0.3.0-beta.5"
     if subprocess.run(["git", "rev-parse", "--verify", tag], cwd=ROOT,
                       capture_output=True).returncode:
         pytest.skip(f"{tag} not present in this checkout")
+
+    def headings(text):
+        return set(re.findall(r"^#{2,3}\s+(.+)$", text, re.M))
+
+    added = set()
+    for md in sorted((ROOT / "docs").glob("*.md")):
+        at_tag = subprocess.run(["git", "show", f"{tag}:docs/{md.name}"], cwd=ROOT,
+                                capture_output=True, text=True)
+        shipped_md = at_tag.stdout if at_tag.returncode == 0 else ""
+        new_here = headings(md.read_text()) - headings(shipped_md)
+        if new_here:
+            added.add((md.stem, sorted(new_here)[0]))
+    if not added:
+        pytest.skip("docs unchanged since that release — nothing to distinguish")
+
     monkeypatch.setattr(build_docs, "SITE_DOCS", tmp_path / "docs")
     build_docs.build(tag, quiet=True, from_tag=True)
-    shipped = (tmp_path / "docs" / tag / "processing.html").read_text()
-    current = (ROOT / "docs" / "processing.md").read_text()
-    # a heading added after that release must NOT appear in its directory
-    assert "Keeping working files under control" in current
-    assert "Keeping working files under control" not in shipped
+    for slug, heading in added:
+        page = tmp_path / "docs" / tag / f"{slug}.html"
+        assert heading not in page.read_text(), (
+            f"{heading!r} was added after {tag} but appears in its directory")
 
 
 def test_the_release_phase_uses_the_working_tree_not_the_tag():
