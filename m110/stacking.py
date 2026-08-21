@@ -846,6 +846,32 @@ def find_degenerate(process_dir: Path, reg_seq: str) -> list[int]:
     return [i + 1 for i, s in enumerate(sizes) if s < mid * 0.5]
 
 
+def clear_scratch(process_dir: Path) -> float:
+    """Delete the scratch sequence dir. Returns the GB freed (0.0 if absent).
+
+    Not housekeeping — a correctness fix. Siril will not overwrite a sequence
+    file that already exists ("seqfile 'pp_lights_.seq' already exists, not
+    overwriting"), and `process/` deliberately survives a failed run, so a
+    re-run inherits the *previous* run's derived sequences. `unselect` then
+    applies to `lights_` and nothing else: measured on six frames with
+    `unselect lights_ 4 6`, the run reports "3 images are selected" and then
+    "Sequence found: pp_lights_ 1->6", and every later command sees six.
+
+    So after any failed run, --exclude-night / --only-night / --only-exposure
+    silently do nothing while the proposal prints the frame count they *would*
+    have produced. A silently wrong stack is far worse than a slow one, and the
+    calibrate/background pass this throws away is minutes. `--restack` is the
+    documented way to reuse the scratch on purpose, and is the only thing that
+    skips this.
+    """
+    if not process_dir.is_dir():
+        return 0.0
+    gb = sum(f.stat().st_size for f in process_dir.rglob("*")
+             if f.is_file()) / 1024**3
+    shutil.rmtree(process_dir)
+    return gb
+
+
 def build_ssf_solve(lights_name: str, p: Proposal,
                     unselect: list[int] | None = None) -> str:
     """Phase 1: calibrate, background-extract, plate solve. Stops there.
@@ -853,14 +879,18 @@ def build_ssf_solve(lights_name: str, p: Proposal,
     Registration used to be the tail of this script, and that is what made a
     partial plate solve able to kill the whole run.
 
-    A partial solve does *not* always abort — that was the first guess and it is
-    wrong. M27 (2312 frames, 76 unsolved) reported "Sequence processing partially
-    succeeded" and then ran to "Script execution finished successfully". M81/LP
-    (221 frames, 98 unsolved) died at "Finalizing sequence processing failed".
-    The line present in the second log and absent from the first is **"Reference
-    image was not platesolved, changing reference"**: it is the *reference frame*
-    failing that finalize does not survive, not the failure count. Siril still
-    computes the astrometric registration and writes it into the .seq first — so
+    A partial solve does *not* always abort, and the failure count is not what
+    decides it. Three runs, same Siril 1.4.4:
+
+      M27      2312 frames,  76 unsolved (3.3%)  -> finished successfully
+      M81/LP    221 frames,  98 unsolved (44%)   -> "Finalizing ... failed"
+      M81/LP    114 frames,   1 unsolved (0.9%)  -> "Finalizing ... failed"
+
+    The third is the decisive one: one frame failed out of 114, and it was frame
+    #1, the sequence reference — "Reference image was not platesolved, changing
+    reference". That line is in both failing logs and in neither passing one. It
+    is the *reference frame* failing that finalize does not survive. Siril still
+    computes the astrometric registration and writes it into the .seq first, so
     every later command was skipped while a complete, usable registration sat on
     disk.
 
@@ -1705,7 +1735,11 @@ def main() -> int:
                     help="reuse the registered sequence already in process/ and "
                          "run only the stack — for retrying stack settings without "
                          "repeating registration. Pair with --keep-process to "
-                         "iterate further.")
+                         "iterate further. This is the ONLY way process/ is "
+                         "reused: any other run clears it first, because Siril "
+                         "will not rebuild a sequence file that already exists, "
+                         "so a stale one would silently override the frame "
+                         "selection.")
     ap.add_argument("--min-solved", type=float, default=25.0, metavar="PCT",
                     help="minimum %% of frames that must plate-solve before the "
                          "run carries on with the ones that did (default 25). "
@@ -1808,6 +1842,18 @@ def main() -> int:
         n = len(sorted((working / "process").glob(f"{reg_seq}*.fit*")))
         print(f"  --restack: reusing {n} registered frames in process/\n", flush=True)
     else:
+        # A previous run's sequences would be reused rather than rebuilt, and
+        # would carry that run's frame selection — see `clear_scratch`.
+        freed = clear_scratch(working / "process")
+        if freed:
+            # "0 GB" for a small scratch reads as a lie about a delete, and a
+            # delete is the one thing that has to report itself honestly.
+            size = f"{freed:.0f} GB" if freed >= 1 else f"{freed * 1024:.0f} MB"
+            print(f"  Cleared {size} of scratch from a previous run — its "
+                  "sequences would otherwise have been reused, carrying that "
+                  "run's frame selection (--restack reuses them on purpose).\n",
+                  flush=True)
+
         # ---- phase 1: solve ----------------------------------------------
         rc, errors = run_siril(siril, working, ssf_solve, log_path, a.heartbeat,
                                on_line=_printer)

@@ -127,6 +127,13 @@ them, the run prints the flags to do it:
 m110-stack "M101" --run --exclude-night 2026-06-28 --exclude-night 2026-07-03
 ```
 
+One note if you do re-run: M110 clears the temporary working files at the start of
+every run (it tells you how much it freed). It has to — Siril reuses those files
+rather than rebuilding them, so before this, a re-run after a failure quietly
+ignored `--exclude-night` and stacked the night you'd asked it to drop. `--restack`
+still reuses them deliberately, for retrying stack settings without repeating the
+registration.
+
 If almost nothing solves, it stops instead. At that point the problem is more likely
 your setup than the sky — usually a missing local star catalogue, or a focal length
 or pixel size Siril has wrong — and a spread of failures across *every* night is the

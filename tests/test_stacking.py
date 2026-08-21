@@ -26,6 +26,7 @@ from m110.stacking import (
     build_proposal,
     build_ssf_apply,
     build_ssf_solve,
+    clear_scratch,
     build_ssf_stack,
     coverage_depth,
     drizzle_for,
@@ -659,6 +660,97 @@ def _drive_main(tmp_path, monkeypatch, solve_rc, solve_log, extra_argv=()):
                          "--keep-process", *extra_argv])
     monkeypatch.delenv("SIRIL_CLI", raising=False)
     return st.main(), ran
+
+
+# --------------------------------------------------------------------------
+# the scratch dir must not outlive its frame selection
+# --------------------------------------------------------------------------
+
+
+def test_clear_scratch_removes_the_dir_and_reports_what_it_freed(tmp_path):
+    proc = tmp_path / "process"
+    (proc / "sub").mkdir(parents=True)
+    (proc / "sub" / "pp_lights_00001.fit").write_bytes(b"x" * 2048)
+    assert clear_scratch(proc) > 0
+    assert not proc.exists()
+
+
+def test_clear_scratch_is_a_no_op_when_there_is_no_scratch(tmp_path):
+    assert clear_scratch(tmp_path / "process") == 0.0
+
+
+def test_a_stale_scratch_is_cleared_so_the_frame_selection_actually_applies(
+        tmp_path, monkeypatch, capsys):
+    """Siril will not rebuild a sequence file that already exists, and process/
+    survives a failed run — so a re-run inherited the previous run's sequences
+    and --exclude-night silently did nothing. Measured on six frames: `unselect
+    lights_ 4 6` reports "3 images are selected" and then "Sequence found:
+    pp_lights_ 1->6". The proposal printed 3; Siril stacked 6."""
+    import sys
+    from m110 import stacking as st
+
+    d = tmp_path / "siril"
+    for i in range(3):
+        _sub(d / "lights" / f"Light_a{i}.fit", OBJECT="M81",
+             DATE_OBS="2026-06-05T22:00:00")
+    for i in range(3):
+        _sub(d / "lights" / f"Light_b{i}.fit", OBJECT="M81",
+             DATE_OBS="2026-06-28T22:00:00")
+    # What a previous failed run left behind.
+    stale = d / "process"
+    stale.mkdir(parents=True)
+    (stale / "pp_lights_.seq").write_text("S 'pp_lights_' 1 6 6 5 1 6 0 0 0\n")
+
+    seen: list[bool] = []
+
+    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None):
+        if "seqplatesolve" in ssf:
+            seen.append((working / "process" / "pp_lights_.seq").exists())
+            log_path.write_text("log: 3 images successfully platesolved out of "
+                                "3 included\n")
+        elif "seqapplyreg" not in ssf:
+            _sub(working / "result.fit", OBJECT="M81", STACKCNT=3)
+        return 0, []
+
+    monkeypatch.setattr(st, "run_siril", fake_run)
+    monkeypatch.setattr(st, "require_siril", lambda: "siril")
+    monkeypatch.setattr(st, "find_degenerate", lambda *a, **k: [])
+    monkeypatch.delenv("SIRIL_CLI", raising=False)
+    monkeypatch.setattr(sys, "argv",
+                        ["m110-stack", str(d), "--run", "--plain-name",
+                         "--keep-process", "--exclude-night", "2026-06-28"])
+    assert st.main() == 0
+    # The solve phase must not have found the previous run's sequence.
+    assert seen == [False]
+    assert "Cleared" in capsys.readouterr().out
+
+
+def test_restack_is_the_one_thing_that_keeps_the_scratch(
+        tmp_path, monkeypatch, capsys):
+    """--restack exists precisely to reuse it, so it must be exempt — otherwise
+    the flag would delete the very thing it promises to reuse."""
+    import sys
+    from m110 import stacking as st
+
+    d = tmp_path / "siril"
+    _sub(d / "lights" / "Light_0.fit", OBJECT="M81")
+    proc = d / "process"
+    proc.mkdir(parents=True)
+    (proc / "r_bkg_pp_lights_00001.fit").write_bytes(b"x" * 64)
+
+    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None):
+        _sub(working / "result.fit", OBJECT="M81", STACKCNT=1)
+        return 0, []
+
+    monkeypatch.setattr(st, "run_siril", fake_run)
+    monkeypatch.setattr(st, "require_siril", lambda: "siril")
+    monkeypatch.setattr(st, "find_degenerate", lambda *a, **k: [])
+    monkeypatch.delenv("SIRIL_CLI", raising=False)
+    monkeypatch.setattr(sys, "argv",
+                        ["m110-stack", str(d), "--run", "--restack",
+                         "--plain-name", "--keep-process"])
+    assert st.main() == 0
+    assert (proc / "r_bkg_pp_lights_00001.fit").exists()
 
 
 def test_the_ssf_flag_writes_one_file_per_phase(tmp_path, monkeypatch, capsys):

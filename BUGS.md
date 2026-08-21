@@ -45,18 +45,24 @@ Legend: `[ ]` open · `[~]` partially done
   registration anyway and wrote it into the `.seq`** — and *then* failed the
   script at "Finalizing sequence processing failed". Everything after the solve
   was skipped, so a usable registration sat on disk while the run reported
-  `Registration failed (exit 1)` and stopped. Reproduced twice on M81/LP: 123 of
-  221 frames solved, `bkg_pp_lights_.seq` written with 123 selected and valid
-  homographies, zero registered frames produced.
+  `Registration failed (exit 1)` and stopped. On M81/LP: 123 of 221 frames solved,
+  `bkg_pp_lights_.seq` written with 123 selected and valid homographies, zero
+  registered frames produced.
 
   **It is the reference frame, not the failure count.** "Any partial solve aborts"
-  was the first reading and it is wrong: M27 (2312 frames, 76 unsolved) reported
-  the same "partially succeeded" and finished successfully. The line present in
-  the M81 log and absent from the M27 one is **"Reference image was not
-  platesolved, changing reference"** — finalize does not survive having to swap
-  the reference out. Worth recording, but the fix does not rest on it: phase 1 now
-  ends before registration either way, so whatever trips finalize cannot reach
-  `seqapplyreg`.
+  was the first reading and it is wrong. Three runs on the same Siril 1.4.4:
+
+  | run | frames | unsolved | outcome |
+  |---|---|---|---|
+  | M27 | 2312 | 76 (3.3%) | finished successfully |
+  | M81/LP | 221 | 98 (44%) | `Finalizing sequence processing failed` |
+  | M81/LP | 114 | **1 (0.9%)** | `Finalizing sequence processing failed` |
+
+  The third settles it: one frame failed out of 114, and it was frame #1 — the
+  sequence reference. `Reference image was not platesolved, changing reference`
+  appears in both failing logs and neither passing one. The fix does not rest on
+  the trigger being right, though: phase 1 now ends before registration either
+  way, so whatever trips finalize cannot reach `seqapplyreg`.
 
   Fix: **three phases, three Siril invocations** — solve · apply registration ·
   stack. Phase 1 now ends at `seqplatesolve`, so its abort costs nothing; phase 2
@@ -79,6 +85,28 @@ Legend: `[ ]` open · `[~]` partially done
   solved subset when at least `--min-solved` percent (default 25) came through —
   below that the failures are more likely the setup than the sky, and it says so
   instead of stacking a remnant.
+
+- [x] **Frame-selection flags silently did nothing after a failed run** (done —
+  `feature/partial-platesolve`). `process/` deliberately survives a failed run
+  (it is the only copy of the registered sequence), and Siril **will not rebuild
+  a sequence file that already exists** — `seqfile 'pp_lights_.seq' already
+  exists, not overwriting`. So a re-run inherited the previous run's *derived*
+  sequences: `unselect` applied to `lights_` and to nothing downstream of it.
+  Reproduced on six synthetic frames with `unselect lights_ 4 6` — Siril reports
+  `3 images are selected in the sequence` and then `Sequence found: pp_lights_
+  1->6`, and every later command sees six. Clearing `process/` first gives
+  `pp_lights_ 1->3`.
+
+  The result was a **silently wrong stack**: the proposal printed "stacking 114
+  of 221 frames, excluding 107" while Siril stacked 221. Worse in combination
+  with the partial-solve fix above, whose whole point is to print
+  `--exclude-night <date>` as the suggested next step — advice given immediately
+  after a failed run, which is exactly when it would have done nothing.
+
+  Fix: `clear_scratch` removes `process/` at the start of any run that isn't
+  `--restack`, and says how much it freed. `--restack` is the documented way to
+  reuse the scratch on purpose and is the only exemption; the calibrate and
+  background pass this costs is minutes, against a wrong stack that looks right.
 
 - [ ] **A failed stack's log is destroyed by the next attempt.** `run_siril` writes
   to a fixed path per working dir (`siril_stack.log`, and now

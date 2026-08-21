@@ -534,6 +534,17 @@ the split.
       successful stack.
 - [ ] Re-run the same folder with `--min-solved 99`: it stops instead, having
       registered nothing, and tells you how to lower the bar.
+- [ ] **Then re-run it with `--exclude-night <that night>`** — the run must report
+      *"Cleared N GB of scratch from a previous run"* and the Siril log must show
+      `Sequence found: pp_lights_ 1->
+      <reduced count>`, not the original count. Before this was fixed, `process/`
+      survived the failure, Siril refused to rebuild an existing `.seq`
+      (*"seqfile 'pp_lights_.seq' already exists, not overwriting"*), and the
+      exclusion silently applied to nothing while the proposal printed the reduced
+      number. The stack came out **wrong and looked right** — the failure mode to
+      watch for here.
+- [ ] `--restack` must NOT clear it: run it after a successful `--keep-process`
+      run and confirm the registered frames are reused, not deleted.
 
 **Handing on to AstroWizard**
 
