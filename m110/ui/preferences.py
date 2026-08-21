@@ -75,7 +75,7 @@ class PreferencesDialog(QDialog):
         bl.addWidget(wf_note)
         enabled = set(processing.enabled_workflow_ids())
         self._wf_checks = {}
-        for w in processing.WORKFLOWS:
+        for w in processing.preparing_workflows():
             cb = QCheckBox(w.label if w.available else f"{w.label}  (soon)")
             cb.setChecked(w.available and w.id in enabled)
             cb.setEnabled(w.available)

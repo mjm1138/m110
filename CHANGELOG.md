@@ -10,6 +10,21 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **M110 now picks up work you finish in AstroWizard.** Send a stack over with
+  "Send to AstroWizard", finish it there, and **Import finished work** finds your
+  exports and files them into the object's Finished images — the same round-trip
+  Siril has always had. Until now nothing looked in that folder, so a finish
+  stayed stranded where you saved it. If both Siril and AstroWizard have
+  something waiting, M110 asks which one you mean.
+- **Importing an AstroWizard finish tidies up after it.** AstroWizard saves a
+  separate file for every step you take — one real finish left 26 of them, just
+  over 2 GB — and they were piling up in your library and going into every
+  backup. Importing now sweeps that run into `astrowizard/archive/`, keeping the
+  stack you handed over so you can pick it up again. Nothing is ever deleted, and
+  you can choose to leave the folder untouched instead. Those step files are also
+  no longer offered to you as things to import: only what you actually exported is.
+
 ### Fixed
 - **A stack no longer fails because some frames wouldn't plate-solve.** If part
   of your set failed to solve — usually one rough night — `m110-stack` could give

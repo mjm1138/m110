@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from . import config, siril
+from . import astrowizard, config, siril
 
 SETTING_KEY = "processing_workflows"
 DEFAULT_WORKFLOWS = ["siril"]
@@ -26,14 +26,44 @@ class Workflow:
     available: bool                       # False → shown disabled ("soon")
     autoprep: Callable | None = None      # (targets, should_cancel=None) -> dict
     prune_rejected: Callable | None = None  # (target) -> dict
+    #: The module owning this workflow's *return* leg — `scan_finished`,
+    #: `apply_import`, `has_unimported_output`, `working_dirs`. Separate from
+    #: `autoprep` because the two halves are independent: Siril has both, while
+    #: AstroWizard has no prepare step at all (`m110-stack --handoff` is what
+    #: hands work in) and exists purely to be imported back from.
+    importer: object | None = None
 
 
 WORKFLOWS = [
-    Workflow("siril", "Siril", True, siril.autoprep, siril.prune_rejected),
+    Workflow("siril", "Siril", True, siril.autoprep, siril.prune_rejected,
+             importer=siril),
+    Workflow("astrowizard", "AstroWizard", True, importer=astrowizard),
     Workflow("pixinsight", "PixInsight", False),
     Workflow("dss", "DeepSkyStacker", False),
     Workflow("app", "Astro Pixel Processor", False),
 ]
+
+
+def preparing_workflows() -> list:
+    """Workflows with a prepare step — the ones the Preferences checkboxes are
+    about. AstroWizard is a registered workflow with no prep, so offering to
+    "prepare objects for processing in AstroWizard" would promise something that
+    does not exist."""
+    return [w for w in WORKFLOWS if w.autoprep is not None or not w.available]
+
+
+def importers() -> list:
+    """Registered workflows that can import finished work back."""
+    return [w for w in WORKFLOWS if w.available and w.importer is not None]
+
+
+def workflows_with_output(target: str) -> list:
+    """Which workflows have finished work waiting for this capture target.
+
+    The question the Processing page and the detail pane both need now that there
+    is more than one: a single `ready_for_import` boolean cannot say *which* tool
+    is holding something."""
+    return [w for w in importers() if w.importer.has_unimported_output(target)]
 WORKFLOWS_BY_ID = {w.id: w for w in WORKFLOWS}
 
 

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QMenu, QListView, QSlider, QToolButton, QSizePolicy,
 )
 
-from m110 import config, derived, goals, objects, pins, siril, skymap, catalog as catalog_mod
+from m110 import config, derived, goals, objects, pins, processing, siril, skymap, catalog as catalog_mod
 from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
@@ -936,9 +936,23 @@ class CatalogPage(QWidget):
             sorted(targets), 0, False)
         return target if ok else None
 
+    def _pick_workflow(self, workflows):
+        """Which tool's output to import. Skips the prompt when only one has
+        anything — asking a one-option question is noise."""
+        if len(workflows) == 1:
+            return workflows[0]
+        labels = [w.label for w in workflows]
+        label, ok = QInputDialog.getItem(
+            self, "Choose workflow", "Finished work is waiting in:",
+            labels, 0, False)
+        return workflows[labels.index(label)] if ok else None
+
     def _on_import(self, slug: str):
-        targets = [t for t in targets_for_slug(slug)
-                   if siril.has_unimported_output(t)]
+        # {target: [Workflow, ...]} — with two workflows a target can have work
+        # waiting in either, so the target is no longer enough to identify a run.
+        by_target = {t: processing.workflows_with_output(t)
+                     for t in targets_for_slug(slug)}
+        targets = [t for t, wfs in by_target.items() if wfs]
         if not targets:
             QMessageBox.information(self, "Nothing to import",
                                    "No finished processing output found for this object.")
@@ -946,7 +960,10 @@ class CatalogPage(QWidget):
         target = self._pick_target(targets, "Choose capture target")
         if target is None:
             return
+        wf = self._pick_workflow(by_target[target])
+        if wf is None:
+            return
         from m110.ui.import_dialog import ImportDialog
-        dlg = ImportDialog(target, slug, parent=self)
+        dlg = ImportDialog(target, slug, workflow=wf, parent=self)
         dlg.imported.connect(lambda _t: self.dirty.emit())
         dlg.exec()

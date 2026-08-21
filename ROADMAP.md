@@ -25,7 +25,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 10 | **Library backup** — mirrored + pooled snapshots, verify, selective restore, auto-backup | ✅ shipped (offsite → #93) | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
-| 14 | **AstroWizard support** — a second processing workflow: hand a stack off, launch, import the finish back | 🔶 14a shipped (launcher + send-stack); 14b/14c open [↓](#14--astrowizard-support) | [`DONE.md`](DONE.md), [↓](#14--astrowizard-support) |
+| 14 | **AstroWizard support** — a second processing workflow: hand a stack off, launch, import the finish back | 🔶 14a + 14b shipped (send-stack, and import the finish back); 14c open [↓](#14--astrowizard-support) | [`DONE.md`](DONE.md), [↓](#14--astrowizard-support) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | 🔶 the `rejected/` exclusion tier shipped (#110); the view is open [↓](#11--lights-table) | [↓](#11--lights-table) |
 | 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
@@ -260,8 +260,15 @@ artifact every time a cheap one is redone.
   `stacks/` accumulates the user's own saved steps and the newest file is very
   often one of them (a file named `_denoise` whose history carries a stretch three
   entries back). See [`DONE.md`](DONE.md).
-- **14b** — extract the shared round-trip module; `astrowizard.py`; per-workflow
-  `ready_for_import`; parameterized import dialog.
+- **14b** — ✅ **shipped.** `roundtrip.py` holds the tool-agnostic round-trip and
+  `siril.py` delegates to it with its API unchanged; `astrowizard.py` is the thin
+  second consumer; `Workflow` grew an `importer` field so `build_derived` reports
+  `ready_workflows` alongside the boolean; the import dialog takes a workflow.
+  Two things only the real round-trip exposed: a loose finished FITS is a *stack*
+  for Siril but a *deliverable* for AstroWizard (which is handed a stack and works
+  downstream of it), and AstroWizard's per-action autosave chain emits rasters —
+  which are deliverables by default with no hint required — so a 41 MB working
+  TIFF was offered for import beside the two genuine exports.
 - **14c** — the two-stage pipeline model (see
   [`DATA_MODEL.md`](DATA_MODEL.md) → Future directions): "needs stacking" vs
   "needs finishing" as separate states in `build_processing`, so Processing tells

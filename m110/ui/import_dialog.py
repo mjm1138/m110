@@ -1,11 +1,16 @@
-"""Import-finished-work dialog — bring Siril output back into the Library.
+"""Import-finished-work dialog — bring a workflow's output back into the Library.
 
-After you process in the `siril/` sandbox, M110 detects the finished outputs and
+After you process in a workflow's sandbox, M110 detects the finished outputs and
 this dialog previews them: pick which renders/stacks to import (renders →
 `finished/`, stack → `stacks/`), optionally choose a hero, and choose how to
 clean the sandbox up. Strictly preview-then-confirm; the gated apply runs on a
-worker thread behind modal progress with Cancel. Destructive cleanup is scoped to
-`Images/<target>/siril/` and defaults to the always-safe lights-only removal.
+worker thread behind modal progress with Cancel. Cleanup only ever *moves* files,
+and never outside the workflow's own sandbox.
+
+**Workflow-parameterised, not Siril-bound.** The dialog is handed a
+`processing.Workflow` and talks to its `importer` — `siril` or `astrowizard`
+(ROADMAP 14b) — so the wording, the sandbox it scans and the cleanup it offers
+all follow the workflow rather than being hardcoded to one tool.
 """
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
 )
 
-from m110 import objects, siril
+from m110 import objects, processing, roundtrip
 
 
 def _fmt_size(n: int) -> str:
@@ -32,16 +37,17 @@ class _ScanWorker(QThread):
     cancelled = Signal()
     failed = Signal(str)
 
-    def __init__(self, target, cancel_event, parent=None):
+    def __init__(self, target, importer, cancel_event, parent=None):
         super().__init__(parent)
         self._target = target
+        self._importer = importer
         self._cancel = cancel_event
 
     def run(self):
         try:
-            self.done.emit(siril.scan_finished(self._target,
-                                               should_cancel=self._cancel.is_set))
-        except siril.PrepCancelled:
+            self.done.emit(self._importer.scan_finished(
+                self._target, should_cancel=self._cancel.is_set))
+        except roundtrip.Cancelled:
             self.cancelled.emit()
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -52,15 +58,16 @@ class _ImportWorker(QThread):
     done = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, args, cancel_event, parent=None):
+    def __init__(self, args, importer, cancel_event, parent=None):
         super().__init__(parent)
         self._args = args
+        self._importer = importer
         self._cancel = cancel_event
 
     def run(self):
         target, srcs, hero_src, hero_slug, cleanup = self._args
         try:
-            res = siril.apply_import(
+            res = self._importer.apply_import(
                 target, srcs, hero_src=hero_src, hero_slug=hero_slug,
                 cleanup=cleanup,
                 progress=lambda i, t: self.progressed.emit(i, t),
@@ -73,14 +80,21 @@ class _ImportWorker(QThread):
 class ImportDialog(QDialog):
     imported = Signal(str)   # target (main window refreshes)
 
-    _CLEANUP = [
-        ("Archive this run; keep lights/ + preset ready for another run", "archive"),
-        ("Leave the sandbox as-is", "none"),
-    ]
+    #: What "archive" keeps differs per workflow, because their *inputs* differ:
+    #: Siril keeps the hardlinked lights/ and the preset, AstroWizard keeps the
+    #: handed-off stack. Saying "keep lights/" in the AstroWizard dialog would
+    #: name something that isn't there.
+    _KEEPS = {
+        "siril": "lights/ + preset",
+        "astrowizard": "the handed-off stack",
+    }
 
-    def __init__(self, target: str, slug: str, parent=None):
+    def __init__(self, target: str, slug: str,
+                 workflow=None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Import finished work — {target}")
+        self._wf = workflow or processing.WORKFLOWS_BY_ID["siril"]
+        self._importer = self._wf.importer
+        self.setWindowTitle(f"Import finished work — {target} ({self._wf.label})")
         self.resize(720, 520)
         self._target = target
         self._slug = slug
@@ -88,9 +102,14 @@ class ImportDialog(QDialog):
         self._worker = None
         self._progress = None
         self._cancel_event = None
+        keeps = self._KEEPS.get(self._wf.id, "this workflow's inputs")
+        self._CLEANUP = [
+            (f"Archive this run; keep {keeps} ready for another run", "archive"),
+            ("Leave the sandbox as-is", "none"),
+        ]
 
         lay = QVBoxLayout(self)
-        self._info = QLabel("Scanning the Siril sandbox…")
+        self._info = QLabel(f"Scanning the {self._wf.label} sandbox…")
         self._info.setWordWrap(True)
         lay.addWidget(self._info)
 
@@ -138,7 +157,7 @@ class ImportDialog(QDialog):
     # ---- scan (threaded, read-only) ----
     def _scan(self):
         self._make_progress("Scanning sandbox…", 0, "Scanning")
-        self._worker = _ScanWorker(self._target, self._cancel_event, self)
+        self._worker = _ScanWorker(self._target, self._importer, self._cancel_event, self)
         self._worker.done.connect(self._on_scan_done)
         self._worker.cancelled.connect(lambda: (self._finish_worker(), self._close_progress()))
         self._worker.failed.connect(self._on_scan_failed)
@@ -186,7 +205,8 @@ class ImportDialog(QDialog):
             self._import_btn.setEnabled(True)
         else:
             self._info.setText(
-                "No finished outputs found in the sandbox yet. Process in Siril "
+                f"No finished outputs found in the sandbox yet. Process in "
+                f"{self._wf.label} "
                 "first (stack + render), then import.")
             self._import_btn.setEnabled(False)
 
@@ -235,10 +255,11 @@ class ImportDialog(QDialog):
             return
         hero_src = self._hero.currentData()
         msg = f"Import {len(srcs)} output(s) into the Library?"
+        keeps_now = self._KEEPS.get(self._wf.id, "this workflow's inputs")
         if cleanup == "archive":
             msg += ("\n\nThis run's output + intermediates will then be moved into "
-                    "siril/archive/; lights/ and the preset stay ready for another "
-                    "run. Nothing is deleted.")
+                    f"{self._wf.id}/archive/; {keeps_now} stay(s) ready for "
+                    "another run. Nothing is deleted.")
         if QMessageBox.question(self, "Confirm import", msg,
                                 QMessageBox.Yes | QMessageBox.Cancel,
                                 QMessageBox.Cancel) != QMessageBox.Yes:
@@ -246,7 +267,7 @@ class ImportDialog(QDialog):
         self._import_btn.setEnabled(False)
         self._make_progress("Importing…", len(srcs), "Importing")
         args = (self._target, srcs, hero_src, self._slug, cleanup)
-        self._worker = _ImportWorker(args, self._cancel_event, self)
+        self._worker = _ImportWorker(args, self._importer, self._cancel_event, self)
         self._worker.progressed.connect(
             lambda i, t: self._progress.setValue(i) if self._progress else None)
         self._worker.done.connect(self._on_import_done)

@@ -5,6 +5,7 @@ the sandbox holds a long `_AW<n>_` chain beside the handful of files the user
 actually exported, plus the handed-off stack that started it all.
 """
 import json
+import pathlib
 
 import pytest
 
@@ -208,3 +209,36 @@ def test_the_autosave_raster_is_excluded_by_pattern_not_by_hints(
     (base / "M27 my export.tif").write_text("mine")
     assert {i.name for i in astrowizard.scan_finished(target).items} == {
         "M27 my export.tif"}
+
+
+# ── registry wiring ──────────────────────────────────────────────────────────
+
+def test_both_workflows_can_import_but_only_siril_prepares():
+    """AstroWizard is a registered workflow with no prepare step — work is handed
+    in by `m110-stack --handoff`. Offering to "prepare objects for processing in
+    AstroWizard" in Preferences would promise something that does not exist."""
+    from m110 import processing
+    assert {w.id for w in processing.importers()} == {"siril", "astrowizard"}
+    prep_ids = {w.id for w in processing.preparing_workflows()}
+    assert "siril" in prep_ids and "astrowizard" not in prep_ids
+
+
+def test_workflows_with_output_names_the_tool_holding_work(tmp_path, monkeypatch):
+    from m110 import processing
+    target, base = _make_sandbox(tmp_path, monkeypatch, exports=False)
+    assert processing.workflows_with_output(target) == []
+    (base / EXPORTS[1]).write_text("a finish")
+    assert [w.id for w in processing.workflows_with_output(target)] == ["astrowizard"]
+
+
+def test_the_import_dialog_defaults_to_siril_but_takes_a_workflow():
+    """The dialog is handed a `processing.Workflow`, so its wording and the
+    sandbox it scans follow the workflow instead of being hardcoded."""
+    pytest.importorskip("PySide6")
+    from m110 import processing
+    from m110.ui import import_dialog
+    src = pathlib.Path(import_dialog.__file__).read_text()
+    assert "siril." not in src, "dialog should not call the siril module directly"
+    aw = processing.WORKFLOWS_BY_ID["astrowizard"]
+    assert aw.importer is astrowizard
+    assert import_dialog.ImportDialog._KEEPS["astrowizard"] == "the handed-off stack"
