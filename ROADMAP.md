@@ -196,11 +196,24 @@ artifact every time a cheap one is redone.
   autosaves **one file per user action**. A single M27 finish (2026-08-20) left
   **26 files / 2.02 GB** in a 2.2 GB sandbox: `_AW1_init` through `_AW24_rescreen`,
   including three separate `_crop` steps and six separate `_adj_curves` steps, plus
-  `.tif` side-outputs. They **survive quitting the app**, and no preference was
-  found that changes it — so whatever `track_temp_file`/`cleanup_temp_files` do,
-  they do not clear this chain. The earlier claim here ("does not autosave per
-  step … at most three files per run") was **wrong**, and it was load-bearing for
-  both the backup trade-off above and the cost estimate below. **The import step
+  `.tif` side-outputs.
+
+  **Diagnosed in AstroWizard's own bytecode, and it is a macOS bug, not a design.**
+  `generate_save_path` builds the `_AW<n>_` names and **27** step operations call
+  `track_temp_file`, so the chain *is* registered; `cleanup_temp_files` deletes
+  every tracked file and then clears `history_stack`/`redo_stack` — these are the
+  undo history's backing store, and they are meant to be temporary. But its only
+  callers are `on_closing`, `load_file` and `start_over`, and `__init__` registers
+  **only** `protocol("WM_DELETE_WINDOW", …)`. It is a customtkinter app, and on
+  macOS **Cmd+Q / the Apple-menu Quit does not fire `WM_DELETE_WINDOW`** — that
+  path is `::tk::mac::Quit`, which appears nowhere in the binary. Quit the normal
+  macOS way and the entire chain is orphaned.
+
+  So the earlier claim ("at most three files per run") described the *intent*
+  correctly and the *outcome* wrongly, and it was load-bearing for both the backup
+  trade-off above and the cost estimate below. **M110 must sweep regardless** — we
+  cannot depend on another app's exit path, and a crash or force-quit orphans the
+  chain even once that bug is fixed. **The import step
   must archive or discard the chain**, the way `siril.apply_import` archives a run:
   what the user keeps is the finish, not the 24 steps that made it.
 - **`hints` needs no change.** `DEFAULT_INTERMEDIATE` already carries `starless`,

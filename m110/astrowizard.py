@@ -26,8 +26,10 @@ contents of the descriptor below:
 
 **Why the sweep matters more here than for Siril.** AstroWizard autosaves one file
 per user action: a measured M27 finish left 26 files / 2.02 GB of `_AW1_init` …
-`_AW24_rescreen` beside the two exports, and they survive quitting the app. Nothing
-under `astrowizard/` is excluded from backup (`config.SANDBOX_LINKED_INPUTS` gives
+`_AW24_rescreen` beside the two exports. AstroWizard means to delete them — they
+back its undo stack — but only does so from its `WM_DELETE_WINDOW` handler, which
+macOS's Cmd+Q never fires, so in practice they are left behind (and a crash would
+leave them regardless). Nothing under `astrowizard/` is excluded from backup (`config.SANDBOX_LINKED_INPUTS` gives
 it `frozenset()`, correctly — none of it is a hardlink duplicate), and the mirrored
 backup format dedups by *path*, so an un-swept chain lands in full in every future
 snapshot. Importing the finish is what triggers the sweep, so the round-trip being

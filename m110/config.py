@@ -338,8 +338,9 @@ def biases_dir(name: str) -> Path:
 # `frozenset()` answers "what is a hardlink duplicate", which is **not** the same
 # question as "what is worth backing up", and AstroWizard is where the two come
 # apart. It autosaves one file per user action: a single measured finish left 26
-# files / 2.02 GB of `_AW<n>_` steps that survive quitting the app. None of it is a
-# link, so none of it is excluded — and mirrored dedups by *path*, so each re-finish
+# files / 2.02 GB of `_AW<n>_` steps. AstroWizard does try to clean those up, but
+# only from its `WM_DELETE_WINDOW` handler — so on macOS a Cmd+Q orphans the lot,
+# and a crash would anyway. None of it is a link, so none of it is excluded — and mirrored dedups by *path*, so each re-finish
 # adds another full copy to every snapshot. The fix belongs in the workflow's import
 # step, which must archive the chain the way `siril.apply_import` archives a run;
 # this mapping stays honest only while something does. If a workflow ever leaves a
