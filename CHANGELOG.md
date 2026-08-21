@@ -11,6 +11,12 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **The user guide is now published at [m110.space/docs](https://m110.space/docs/).**
+  Every release keeps its own copy, and **Help → User guide** opens the one
+  matching the version you're running. It used to open the latest development
+  copy on GitHub, which is always ahead of the released app — so it could describe
+  buttons and settings your build doesn't have yet. A link you save keeps working
+  after later releases move on, and the changelog is there too.
 - **M110 can now keep a limited number of past processing sessions.** Every time
   you import finished work, the run that produced it is archived inside the
   object's working folder — and until now those built up forever. On a real

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Processing prep & hardlinks — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/processing.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html" class="on">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="processing-prep-hardlinks">Processing prep &amp; hardlinks</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>M110 doesn't process your images for you — it <strong>prepares a clean, self-contained
+workspace</strong> so you can process in <a href="https://siril.org/">Siril</a> and then imports your
+finished work back into the library. This is the "prepare-and-guide" model.</p>
+<h2 id="what-m110-sets-up">What M110 sets up</h2>
+<p>After an ingest (and again whenever it notices a target missing one), M110 builds a
+<strong>Siril sandbox</strong> at <code>Images/&lt;target&gt;/siril/</code>:</p>
+<pre><code>Images/&lt;target&gt;/siril/
+  lights/            your light subs, ready for Siril (see &quot;Hardlinks&quot; below)
+  presets/           a Siril preset tuned to your frame count
+  process/           scratch space for Siril's intermediate files
+  next-steps.md      a short, per-target guide to what to do in Siril
+  archive/&lt;ts&gt;/      past runs, kept so you can re-process later
+</code></pre>
+<p>Open <code>next-steps.md</code>, follow it in Siril, and when you have a result, use <strong>Import
+finished work</strong> (from the object's detail pane) to pull the render into <code>finished/</code>
+and the stack into <code>stacks/</code>. M110 then archives the run so the sandbox is ready for
+next time — it never deletes your lights or your work.</p>
+<p>You don't trigger any of this by hand: prep is automatic and idempotent. If you edit
+a preset, M110 preserves your edits and won't overwrite them.</p>
+<h2 id="process-in-siril-one-click">Process in Siril (one click)</h2>
+<p>You don't have to find the working folder yourself. <strong>Right-click an object</strong> — in the
+Library, on the Processing page, or use the <strong>Process in Siril</strong> button on its detail
+page — and M110 launches Siril already pointed at that object's <code>siril/</code> sandbox as its
+<strong>working directory</strong>.</p>
+<p>M110 finds Siril automatically in the usual place. If yours is installed somewhere
+unusual, set its location under <strong>Preferences → Processing tools</strong> (on macOS you can pick
+<code>Siril.app</code> directly; elsewhere, the Siril executable).</p>
+<blockquote>
+<h3 id="quit-siril-when-you-finish-an-object">⚠ Quit Siril when you finish an object</h3>
+<p><strong>When you're done processing an object, quit Siril before moving to the next one.</strong></p>
+<p>M110 can only set Siril's working directory <em>as Siril launches</em>. If Siril is <strong>already
+open</strong>, clicking "Process in Siril" for a different object just brings the existing
+window to the front — it <strong>does not</strong> switch the working directory. You'd then be
+processing the new object while Siril is still pointed at the previous object's folder,
+and your results would land in the wrong place.</p>
+<p>Quitting Siril between objects guarantees the next "Process in Siril" opens fresh, at
+the correct folder. (If you'd rather keep Siril open, use <strong>Reveal working folder</strong> and
+set the directory yourself — see below.)</p>
+</blockquote>
+<h3 id="if-you-prefer-to-open-siril-yourself">If you prefer to open Siril yourself</h3>
+<p>The one easy mistake when doing it by hand is pointing Siril's working directory at the
+object folder (<code>Images/&lt;target&gt;/</code>) instead of its <code>siril/</code> sub-folder — Siril then saves
+your results one level too high. To avoid it, use <strong>Reveal working folder</strong> (the button
+beside Process in Siril, and a right-click option): it opens the <code>siril/</code> folder in your
+file manager so you can set <em>that</em> as Siril's working directory.</p>
+<p>(And if you do save outside the sandbox anyway, M110 also scans the object folder as a
+fallback when importing, so your work isn't lost.)</p>
+<p>You can also right-click any image in an object's gallery to <strong>Open in default app</strong> or
+<strong>Reveal in file manager</strong>.</p>
+<hr />
+<h2 id="hardlinks-what-they-are-and-why-it-matters">Hardlinks — what they are, and why it matters</h2>
+<p>This is the one technical detail worth understanding, because M110 uses <strong>hardlinks</strong>
+in two places (processing sandboxes and backups) and their behavior surprises people.</p>
+<p><strong>A hardlink is a second name for the exact same file on disk</strong> — not a copy, and not
+a shortcut/alias. The file's data exists once; two (or more) names point at it. So:</p>
+<ul>
+<li><strong>It costs no extra disk space.</strong> Hardlinking 40 GB of subs into the sandbox adds
+  ~0 bytes — both <code>Images/&lt;target&gt;/lights/</code> and <code>Images/&lt;target&gt;/siril/lights/</code> are
+  names for the same bytes.</li>
+<li><strong>The names are equal peers.</strong> Neither is "the original." The data lives until the
+  <em>last</em> name is removed.</li>
+<li><strong>Deleting one name is safe</strong> for the others. Removing a hardlink just drops that
+  one directory entry; the data stays as long as another name points at it.</li>
+<li><strong>Editing the <em>contents</em> through one name changes it for all of them</strong> — it's the
+  same file. (In practice this rarely bites you, because Siril and M110 write <em>new</em>
+  files for outputs rather than modifying subs in place.)</li>
+<li><strong>Hardlinks only work within one filesystem/volume.</strong> Across drives — or on some
+  network/SMB and exFAT shares — M110 automatically falls back to a real copy.</li>
+</ul>
+<h3 id="what-this-means-for-the-processing-sandbox">What this means for the processing sandbox</h3>
+<p>The subs in <code>Images/&lt;target&gt;/siril/lights/</code> are <strong>the same files</strong> as your real
+<code>Images/&lt;target&gt;/lights/</code> subs — hardlinked so M110 doesn't duplicate gigabytes of
+data for every processing run.</p>
+<ul>
+<li>✅ <strong>Safe:</strong> letting Siril read them, stack them, and write outputs. Siril doesn't
+  modify raw subs.</li>
+<li>✅ <strong>Safe:</strong> deleting the whole <code>siril/</code> sandbox — your <code>lights/</code> originals remain
+  untouched (they're a separate name for the same data).</li>
+<li>⚠️ <strong>Not a backup.</strong> Because the sandbox subs share storage with your originals,
+  the sandbox is <em>not</em> a second copy of your data. If a disk fails, both names are
+  gone. For real redundancy, use <a href="backup.html">Backup</a>.</li>
+<li>⚠️ <strong>Don't hand-edit a sub inside the sandbox</strong> expecting the original to be spared
+  — it's the same file. Treat subs as read-only everywhere.</li>
+</ul>
+<p>Next: <strong><a href="backup.html">Backing up your library →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

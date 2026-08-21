@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>On the roadmap — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/upcoming.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html" class="on">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="on-the-roadmap">On the roadmap</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>M110 is in public beta. A few capabilities are <strong>partially built</strong> — you'll see them
+referenced in the app before they're fully finished. This page explains what works
+today versus what's coming, so nothing feels broken.</p>
+<h2 id="session-planning">Session planning</h2>
+<p><strong>What works now.</strong> The whole planning flow shipped — see
+<strong><a href="planning.html">Session planning</a></strong>: site profiles with horizon and light-dome
+layers, the automatic target ranking with strategy/weight tuning, the night
+scheduler with its altitude timeline, and saved field guides.</p>
+<p><strong>What's coming.</strong> <strong>Device-ready schedule export</strong> — writing a plan straight into a
+format your telescope's automation can run (such as an SSC file for
+<code>seestar_alp</code>-style schedulers) instead of a human-readable guide only. And the
+telescope constraints for the Seestar <strong>S30 / S30 Pro</strong> are currently assumed to
+match the S50 — if your S30 accepts or refuses high starts differently, we'd love
+the report.</p>
+<h2 id="publishing-sharing">Publishing &amp; sharing</h2>
+<p><strong>What works now.</strong> <strong>Library → Publish / share</strong> exports a selective static website
+of your collection to a local folder <strong>or straight to GitHub Pages</strong> — see
+<strong><a href="publishing.html">Publishing your collection</a></strong>.</p>
+<p><strong>What's coming.</strong> More one-click deploy targets (Netlify and similar) — these
+appear in the Publish dialog marked <em>"(soon)"</em>.</p>
+<h2 id="other-processing-tools">Other processing tools</h2>
+<p>M110 prepares for <strong>Siril</strong> today. Other tools (PixInsight and friends) appear in
+Preferences marked <em>"(soon)"</em> — the prepare-and-guide framework is built to add them,
+but only Siril is wired up for now.</p>
+<hr />
+<p><em>This list tracks the user-visible gaps only. The full, living roadmap lives in the
+project's <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.5/ROADMAP.md"><code>ROADMAP.md</code></a>.</em></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

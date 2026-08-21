@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REMOTE = os.environ.get("M110_REMOTE", "github")
 WORKFLOW = "release.yml"
 
-PHASES = ["preflight", "bump", "changelog", "commit", "smoke", "tag",
+PHASES = ["preflight", "bump", "changelog", "docs", "commit", "smoke", "tag",
           "wait", "macos", "upload", "verify"]
 
 
@@ -212,10 +212,32 @@ def changelog(V: dict, args) -> None:
         ok(heading)
 
 
+def docs(V: dict, args) -> None:
+    """Render the versioned docs site.
+
+    After `changelog` so the release's own entries are on the published page, and
+    before `commit` because Cloudflare Pages deploys `site/` straight from the
+    repo — unrendered docs are unpublished docs. `latest/` moves to this release.
+
+    Reads the **working tree**, not `--from-tag`: the tag does not exist yet at
+    this point in the pipeline (`tag` runs three phases later), and the tree is
+    exactly what is about to become it. `--from-tag` is for backfilling a release
+    that already happened, where the tree is no longer that version.
+    """
+    say("Rendering the docs site")
+    if args.dry_run:
+        print(f"  \033[33m[dry-run]\033[0m site/docs/{V['tag']}/ (+ latest/)")
+        return
+    sys.path.insert(0, str(ROOT / "tools"))
+    import build_docs
+    build_docs.build(V["tag"], quiet=True)
+    ok(f"site/docs/{V['tag']}/ + latest/")
+
+
 def commit(V: dict, args) -> None:
     say("Committing the bump")
-    run(["git", "add", "pyproject.toml", "m110/__init__.py", "CHANGELOG.md"],
-        dry=args.dry_run)
+    run(["git", "add", "pyproject.toml", "m110/__init__.py", "CHANGELOG.md",
+         "site/docs"], dry=args.dry_run)
     run(["git", "commit", "-m", f"release {V['pep440']}"], dry=args.dry_run)
     run(["git", "push", REMOTE, "main"], dry=args.dry_run)
     ok(f"pushed to {REMOTE}/main")
@@ -360,8 +382,8 @@ def main() -> None:
     V = versions(args.version)
     start = PHASES.index(args.resume_from) if args.resume_from else 0
     fns = {"preflight": preflight, "bump": bump, "changelog": changelog,
-           "commit": commit, "smoke": smoke, "tag": tag, "wait": wait,
-           "macos": macos, "upload": upload, "verify": verify}
+           "docs": docs, "commit": commit, "smoke": smoke, "tag": tag,
+           "wait": wait, "macos": macos, "upload": upload, "verify": verify}
 
     print(f"\n\033[1mM110 release {V['pep440']}\033[0m — tag {V['tag']}, "
           f"DMG M110-{V['numeric']}.dmg"

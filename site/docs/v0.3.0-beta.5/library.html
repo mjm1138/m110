@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The library & object metadata — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/library.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html" class="on">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="the-library-object-metadata">The library &amp; object metadata</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>The <strong>Library</strong> is the hub of M110 — your captured and tracked collection. This page
+covers the three ways to view it, how to add and describe objects, and how to curate
+each object's images.</p>
+<h2 id="four-views-of-your-collection">Four views of your collection</h2>
+<p>A segmented control at the top of the Library switches how you see your objects — your
+choice is remembered:</p>
+<ul>
+<li><strong>Grid</strong> (the default home view) — a wall of hero thumbnails, one tile per object,
+  each with its designations, status, and integration time. Drag the zoom slider to
+  resize the tiles.</li>
+<li><strong>List</strong> — a sortable table (Object, Name, Type, Season, Mag, Size, Filter, Status,
+  Integration, Sessions). Click a header to sort; the Object column sorts <em>naturally</em>
+  (M1, M2, … M10, M100 — not alphabetically) and by catalog (Messier before NGC).</li>
+<li><strong>Feed</strong> — a reverse-chronological stream of object cards (hero + notes), a photo-blog
+  of your imaging that re-orders as you reprocess.</li>
+<li><strong>Map</strong> — your collection plotted on a star chart, so you can see where in the sky
+  you've been working and what's still empty. See <a href="#the-sky-map">The sky map</a> below.</li>
+</ul>
+<p>The <strong>catalog filter</strong> lists the catalogs you've set as <strong>goals</strong> (turn them on under
+Overview → Manage goals); catalogs you aren't working aren't offered.</p>
+<p>A separate <strong>Deep sky · Media</strong> toggle switches the whole page between your catalog
+objects and your non-catalog <strong>Media</strong> (lunar, planetary, scenery, startrails — photos
+and videos). A search box and a <strong>catalog filter</strong> (All / Messier / Caldwell / …) narrow
+the deep-sky views, and a stat row shows captured / total counts and integration time.</p>
+<p>Media has its own <strong>List</strong> and <strong>Grid</strong> views, in the same place as the deep-sky ones,
+plus a category filter, a <strong>Photos · Videos</strong> switch and a search box. Videos show the
+preview frame your telescope saved next to the clip, marked with a small ▶; opening one
+hands it to your usual video player (M110 doesn't play video itself). Selecting anything
+opens a detail panel with a large preview, its capture date, size and dimensions, and
+buttons to open it, reveal it in your file manager, or export a shareable copy.</p>
+<p>Media is scanned right through, including subfolders — so stacked results you saved
+next to a video, or a whole folder of output from a tool like AutoStakkert, show up
+as photos rather than staying hidden.</p>
+<p>Click any object to open its <strong>detail pane</strong>: the hero, object notes, the gallery, its
+capture sessions, and its processing status.</p>
+<h2 id="the-sky-map">The sky map</h2>
+<p>The <strong>Map</strong> view draws a star atlas of your Library: constellation figures, stars, the
+coordinate grid, and a marker for every object you're tracking, in its real position.</p>
+<p>Markers carry the same colors as the status chips elsewhere in the app — green for a
+<strong>deep stack</strong>, amber for an <strong>initial capture</strong>, muted grey for <strong>uncaptured</strong> — so a few
+months' work shows up as a bright patch of sky, and the gaps show you what's still to come.
+The key lists only the colors actually on the chart, so an unfiltered map of a collection
+you've shot every object in doesn't explain a grey you can't see.</p>
+<ul>
+<li><strong>Click</strong> a marker to open that object, exactly as clicking a row or tile does; <strong>hover</strong>
+  one to see its hero image.</li>
+<li><strong>Filter to a goal</strong> and the rest of that catalog joins the chart in the muted
+  not-yet-shot colour, so the map becomes a picture of your progress against the list —
+  which is what makes the gaps visible.</li>
+<li><strong>Scroll</strong> to zoom (the sky under the pointer stays put), <strong>drag</strong> to pan, and
+  <strong>double-click</strong> to fit the disc again.</li>
+<li>The <strong>search box</strong> and <strong>catalog filter</strong> narrow the map just as they narrow the list,
+  so you can chart one goal list on its own.</li>
+<li>If you've imaged anything far enough south, an <strong>N · S</strong> toggle appears for the second
+  disc; with a northern-only collection there's nothing to toggle, so it stays hidden.</li>
+<li>Objects with no known coordinates are named under the chart rather than silently
+  dropped — usually combined capture targets (<code>M42_mosaic</code>) or something not yet
+  identified.</li>
+<li>If nothing matches your filter you still get the sky, with a line saying why it's
+  empty — handy when you've just added a goal and haven't shot any of it yet.</li>
+</ul>
+<p>The chart is drawn by <a href="https://github.com/devonjones/uranometria">uranometria</a>, an
+optional component. If it isn't installed, the Map view says so and tells you what to
+install; nothing else in the Library is affected.</p>
+<h2 id="adding-objects">Adding objects</h2>
+<p>Most objects appear in your Library automatically — when you ingest a capture, M110
+promotes that target into the Library and pulls its reference details (type, magnitude,
+size, coordinates, season). Known catalog objects fill in fully; off-catalog targets get
+a minimal entry you can enrich.</p>
+<p>To add one by hand — to plan for something you haven't shot yet, or to fix an
+unrecognized target — use <strong>Library → Add object…</strong>:</p>
+<ol>
+<li>Type a name or designation (e.g. <code>NGC 6888</code>, <code>Bode's Galaxy</code>, <code>M13</code>).</li>
+<li>M110 resolves it instantly against its bundled reference into an editable preview.</li>
+<li><strong>Look up online</strong> queries <a href="https://simbad.u-strasbg.fr/">Simbad</a> to fill anything the
+   reference doesn't have (runs on a background thread).</li>
+<li>Confirm — the object joins your Library with a journal stub. Duplicates are refused.</li>
+</ol>
+<h2 id="filling-in-missing-details">Filling in missing details</h2>
+<p>Two right-click actions (also on the Library menu) top up an object's metadata. Neither
+ever overwrites a value you've set yourself:</p>
+<ul>
+<li><strong>Fill in missing metadata</strong> — backfills empty fields from M110's <strong>bundled reference</strong>
+  plus the derived observing season. Offline and instant. Use it on a stub that predates
+  its catalog data (for example an object imported before you activated its catalog).</li>
+<li><strong>Enrich online…</strong> — adds a <strong>Simbad</strong> lookup for gaps the reference can't cover (common
+  for faint, off-catalog targets). It makes a network call, so it's a deliberate action
+  rather than part of the automatic refresh. With no network (or without the optional
+  online support installed) it shows a clear "not available" message instead of failing.</li>
+</ul>
+<blockquote>
+<p>An object that's only missing its <em>filter</em> isn't offered online enrichment — no catalog
+knows which filter you shot with, so there'd be nothing to add.</p>
+</blockquote>
+<h2 id="removing-an-object">Removing an object</h2>
+<p><strong>Right-click → Remove from Library</strong> takes an object out of your collection. This is
+<strong>non-destructive</strong>: it removes the Library entry only — your captures, stacks, finished
+renders, and journal on disk are left untouched. (Re-ingesting or refreshing will
+re-promote a target that still has images.)</p>
+<h2 id="looking-at-an-objects-images">Looking at an object's images</h2>
+<p><strong>Double-click any image to open it full-size</strong> in the viewer — a gallery tile, or the
+big hero image at the top of the detail pane. Either way you land on that picture and
+can page through the object's other images with <strong>Prev/Next</strong> (or ← / →), zoom, toggle
+the capture details, and export. Escape closes it.</p>
+<h2 id="curating-an-objects-images">Curating an object's images</h2>
+<p>The detail-pane gallery is split into two groups — <strong>Finished</strong> (your deliverables) and
+<strong>Working files</strong> (device stacks, Siril stacks, by-products). M110 sorts each image by
+which folder it's in, and you can override any image:</p>
+<ul>
+<li><strong>Right-click a tile → Mark as finished / Mark as working</strong> moves it between the groups
+  (saved per-object, so it sticks).</li>
+<li><strong>Set as hero</strong> makes that image the object's headline thumbnail — even an <em>older</em> image
+  than the current hero (the hero re-renders rather than going stale).</li>
+<li><strong>Open in default app</strong> / <strong>Reveal in file manager</strong> hand the file off to your OS.</li>
+</ul>
+<p>What counts as a "finished" render versus an intermediate by-product is decided by
+filename keywords you control in <strong>Preferences → Finished-image hints</strong> (defaults:
+<code>processed</code>, <code>final</code>, <code>finished</code>, and the intermediates <code>starless</code>, <code>starmask</code>).</p>
+<p>Next: <strong><a href="processing.html">Processing prep &amp; hardlinks →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

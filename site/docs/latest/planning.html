@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session planning — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/planning.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.5</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html" class="on">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="session-planning">Session planning</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>The <strong>Planning</strong> page answers two questions: <em>what should I shoot next?</em> and <em>what
+should I shoot </em><em>tonight</em><em>, in what order?</em> Everything on it is computed from your
+own library — what you've captured, what your goals are, and where you observe from.</p>
+<h2 id="site-profiles">Site profiles</h2>
+<p>Planning starts with <strong>where you are</strong>. A <em>site profile</em> holds a location's
+coordinates, elevation, and timezone; open <strong>Manage site profiles</strong> to create one
+(the online <strong>Look up location…</strong> can fill in coordinates from a place name).</p>
+<p>Two optional layers make the math match <em>your</em> sky:</p>
+<ul>
+<li><strong>Horizon mask.</strong> Import a <code>.hrz</code> skyline of your trees and rooftops — the free
+  <a href="https://theo.rocks">theo.rocks</a> web app builds one by panning your phone around
+  the horizon. Targets behind an obstruction don't count as "up".</li>
+<li><strong>Light dome.</strong> <strong>Compute light-dome…</strong> estimates how high the sky is washed out
+  toward nearby towns in each direction, from a bundled worldwide town dataset
+  (optionally calibrated by your Bortle number). Planning then favors targets away
+  from your brightest horizons — and is gentler about it for narrowband filters,
+  which punch through the glow.</li>
+</ul>
+<p>The <strong>Location</strong> selector at the top picks the active profile; the ranking and the
+planner both use it.</p>
+<h2 id="priority-targets-the-ranking">Priority targets — the ranking</h2>
+<p>The table ranks every target you're pursuing (your active goals plus everything
+you've captured), weighing:</p>
+<ul>
+<li><strong>goal membership</strong> — catalogs you're actually working toward rank above the rest;</li>
+<li><strong>seasonal urgency</strong> — an object about to leave the evening sky outranks one that
+  will keep for months;</li>
+<li><strong>completion</strong> — read through the <strong>Strategy</strong> toggle: <em>capture many</em> favors
+  untouched targets, <em>go deep</em> favors started-but-shallow ones. Thresholds are
+  type-aware (a faint nebula needs far more integration than a cluster);</li>
+<li><strong>tonight</strong> — how high, and for how long, it sits in <em>your</em> dark sky.</li>
+</ul>
+<p>The <strong>tuning weights</strong> re-rank instantly as you adjust them. Right-click
+<strong>Pin as priority</strong> (▲) / <strong>Deprioritize</strong> (▼) always composes on top. The heavy sky
+math runs about once a day in the background; <strong>Recompute</strong> forces it.</p>
+<p>Non-imaging catalog entries (M40 is a double star, M73 an asterism) and very faint,
+diffuse targets are automatically down-ranked so they don't claim your dark-sky time.</p>
+<h2 id="plan-a-night">Plan a night</h2>
+<p>Pick a <strong>Night</strong>, choose how many <strong>Targets</strong> (default 4), and <strong>Generate plan</strong>.
+M110 builds a real schedule: back-to-back slots on 10-minute boundaries, from
+astronomical dusk to dawn.</p>
+<p><strong>How it chooses.</strong> The highest-priority target that's <em>startable</em> right at dark
+goes first; each next target starts when the previous slot ends; near-equal
+priorities go to whichever sets sooner. Durations split the night by your target
+count, but adapt — a target that reaches <em>deep stack</em> status sooner gets a shorter
+slot, and after your requested targets the schedule keeps filling until dawn rather
+than wasting dark hours.</p>
+<p><strong>Reading the schedule:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Start</strong></td>
+<td>The slot's start time — always at or below your telescope's start-altitude ceiling (a Seestar refuses to <em>start</em> near the zenith; the capture may climb past it once running).</td>
+</tr>
+<tr>
+<td><strong>Duration</strong></td>
+<td>Slot length. <strong>⚠</strong> marks a short <em>last-chance</em> slot on a target sinking toward the horizon — expect heavy frame rejection; keep or drop it knowingly.</td>
+</tr>
+<tr>
+<td><strong>Alt</strong></td>
+<td>Altitude at the start. <strong>^</strong> means a start above the ceiling (only on devices where that's a quality guideline, not a hard refusal).</td>
+</tr>
+<tr>
+<td><strong>Moon</strong></td>
+<td>Separation from the moon at that slot, with its impact (phase × proximity, filter-aware — narrowband is largely immune). <strong>—</strong> means the moon is below the horizon then: no impact.</td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>altitude timeline</strong> draws each target's curve across the dark window, the
+moon's track while it's up, the start ceiling, and the scheduled slots as colored
+bands.</p>
+<p>Uncheck a slot to drop that target (the schedule re-chains, and a substitute may
+take its place); <strong>Move up / Move down</strong> reorders and re-chains the start times.
+Changing the night or the location clears the plan — generate again for the new
+conditions.</p>
+<h2 id="field-guides">Field guides</h2>
+<p><strong>Save field guide…</strong> writes the plan as clean Markdown into the <strong><code>Plans/</code></strong> folder
+of your library — dark window, moon summary, the schedule table, and your per-object
+remarks. Each guide records both when it was generated and which night it's for.</p>
+<p>Saved guides are listed on the Planning page under <strong>Saved field guides</strong>.
+<strong>Double-click</strong> one to read it in the app (from there you can copy or print it), or
+<strong>right-click</strong> a row for <strong>View</strong>, <strong>Reveal in file manager</strong> (to open the <code>Plans/</code>
+folder), and <strong>Delete</strong>.</p>
+<p>Next: <strong><a href="publishing.html">Publishing your collection →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.5 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>
