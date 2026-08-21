@@ -103,8 +103,11 @@ registration), `--handoff` (see below). `m110-stack --help` lists the rest.
 
 Before it can register anything, Siril has to work out where each frame is pointing.
 Some frames won't: thin cloud, a bump to the mount, a night that just wasn't good
-enough to show the stars needed. That's normal, and it doesn't stop the run — the
-frames that *did* solve are registered and stacked, and you're told what was left out:
+enough to show the stars needed. That used to be able to kill the whole run — not
+always, which is why it seemed random; it depended on whether the one frame Siril
+measures everything else against was among the failures. Now it doesn't stop the run
+at all: the frames that *did* solve are registered and stacked, and you're told what
+was left out:
 
 ```
   Plate solving solved 123 of 221 frames (56%).

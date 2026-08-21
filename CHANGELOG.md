@@ -12,9 +12,11 @@ changes a **user** would notice, per release.
 
 ### Fixed
 - **A stack no longer fails because some frames wouldn't plate-solve.** If part
-  of your set failed to solve — usually one rough night — `m110-stack` gave up
-  with "Registration failed", even though the frames that *did* solve were
-  perfectly stackable. It now carries on with those and tells you what it left
+  of your set failed to solve — usually one rough night — `m110-stack` could give
+  up with "Registration failed", even though the frames that *did* solve were
+  perfectly stackable. (It depended on whether the frame Siril was measuring
+  everything against was one of the ones that failed, which is why it hit some
+  runs and not others.) It now carries on with those and tells you what it left
   behind, broken down by night, so you can see at a glance that (say) one session
   accounted for almost all of it. If you'd rather drop that night outright, it
   prints the exact `--exclude-night` to re-run with. When barely anything solved

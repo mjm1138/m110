@@ -473,9 +473,10 @@ def _solve_proposal(**over):
 
 
 # The lines Siril 1.4.4 actually emitted for M81/LP: 123 of 221 frames solved,
-# the astrometric registration computed and written to the .seq anyway, and then
-# the script killed at "Finalizing sequence processing failed" — which is what
-# used to take seqapplyreg down with it.
+# the reference frame among the failures, the astrometric registration computed
+# and written to the .seq anyway, and then the script killed at "Finalizing
+# sequence processing failed" — which is what used to take seqapplyreg down with
+# it. Contrast REAL_TOLERATED_LOG: a partial solve does not always abort.
 REAL_PARTIAL_LOG = """\
 log: Running command: seqplatesolve
 log: Image bkg_pp_lights_00001 did not solve
@@ -489,6 +490,19 @@ log: Astrometric registration computed.
 Writing sequence file bkg_pp_lights_.seq
 log: Finalizing sequence processing failed.
 log: Script execution failed.
+"""
+
+
+# M27, same Siril version, same "partially succeeded" — and it ran to completion.
+# 76 of 2312 failed and the reference frame was not one of them, so there is no
+# "Reference image was not platesolved" line and finalize survived.
+REAL_TOLERATED_LOG = """\
+log: Sequence processing partially succeeded, with 76 images that failed.
+log: 2236 images successfully platesolved out of 2312 included
+log: Astrometric registration computed.
+Writing sequence file bkg_pp_lights_.seq
+log: Running command: seqapplyreg
+log: Script execution finished successfully.
 """
 
 
@@ -523,6 +537,16 @@ def test_a_partial_solve_is_read_out_of_a_real_siril_log():
     assert o.failed == [1, 122, 146]
     assert o.known and not o.complete
     assert o.fraction == pytest.approx(6 / 9)
+
+
+def test_a_partial_solve_siril_tolerated_is_still_read_as_partial():
+    """M27 lost 76 of 2312 frames and Siril finished the script anyway. The run
+    must still notice and report it — 76 frames leaving the stack silently is the
+    lesser bug, not a non-bug — and must not treat exit 0 as "nothing to say"."""
+    o = parse_solve_log(REAL_TOLERATED_LOG)
+    assert (o.solved, o.included) == (2236, 2312)
+    assert o.known and not o.complete
+    assert o.fraction > 0.96
 
 
 def test_a_clean_run_reads_as_complete():
@@ -676,6 +700,19 @@ def test_a_partial_solve_no_longer_takes_registration_down_with_it(
     # just reported and chose to continue past; echoing them next to a finished
     # stack would only contradict it.
     assert "Script execution failed" not in out
+
+
+def test_a_partial_solve_siril_did_not_abort_still_runs_and_still_reports(
+        tmp_path, monkeypatch, capsys):
+    """The M27 shape: exit 0 with frames missing. Nothing to rescue, but the run
+    must not stay quiet about the ones that dropped out."""
+    rc, ran = _drive_main(
+        tmp_path, monkeypatch, solve_rc=0,
+        solve_log=("log: 5 images successfully platesolved out of 6 included\n"
+                   "log: Script execution finished successfully.\n"))
+    assert rc == 0
+    assert ran == ["solve", "register", "stack"]
+    assert "solved 5 of 6" in capsys.readouterr().out
 
 
 def test_too_few_solved_frames_stops_before_anything_expensive_runs(

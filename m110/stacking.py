@@ -850,16 +850,24 @@ def build_ssf_solve(lights_name: str, p: Proposal,
                     unselect: list[int] | None = None) -> str:
     """Phase 1: calibrate, background-extract, plate solve. Stops there.
 
-    Registration used to be the tail of this script, and that is exactly what
-    made a partial plate solve fatal. When some frames fail to solve Siril
-    reports "Sequence processing partially succeeded", *finishes* the astrometric
-    registration and writes it into the .seq — and then fails the script at
-    "Finalizing sequence processing failed", so every later command is skipped.
-    The registration was on disk and usable; the run threw it away.
+    Registration used to be the tail of this script, and that is what made a
+    partial plate solve able to kill the whole run.
 
-    Ending the script here means that abort costs nothing: the registration data
-    is committed to the .seq either way, and phase 2 is a separate Siril
-    invocation that reads it back. See `build_ssf_apply`.
+    A partial solve does *not* always abort — that was the first guess and it is
+    wrong. M27 (2312 frames, 76 unsolved) reported "Sequence processing partially
+    succeeded" and then ran to "Script execution finished successfully". M81/LP
+    (221 frames, 98 unsolved) died at "Finalizing sequence processing failed".
+    The line present in the second log and absent from the first is **"Reference
+    image was not platesolved, changing reference"**: it is the *reference frame*
+    failing that finalize does not survive, not the failure count. Siril still
+    computes the astrometric registration and writes it into the .seq first — so
+    every later command was skipped while a complete, usable registration sat on
+    disk.
+
+    Ending the script here means that abort costs nothing, and means this does not
+    depend on having the trigger exactly right: the registration is committed to
+    the .seq either way, and phase 2 is a separate Siril invocation that reads it
+    back. See `build_ssf_apply`.
     """
     seq = f"{lights_name}_"
     L = [
@@ -920,11 +928,15 @@ def build_ssf_apply(lights_name: str, p: Proposal) -> str:
     `-filter-included` is load-bearing and was missing while the two phases were
     one script: after a partial solve the .seq marks the solved frames as the
     selected ones, and without the flag Siril builds its filter from the quality
-    percentiles alone and plans to register frames that have no solution. On the
-    M81 run that was 206 frames rather than 117, with the percentile thresholds
-    themselves computed over the unsolved population. Siril does then notice
-    ("Some images were not registered, excluding them"), but the reference frame
-    is chosen before that and the thresholds are already wrong.
+    percentiles alone and plans to register frames that have no solution. Measured
+    both ways on the M81 sequence: 117 frames with the flag, 206 without. Siril
+    does have a fallback, but it runs too late to help — the M27 log shows the
+    order plainly, "for a total of images processed of 2157" from the four quality
+    filters *first*, then "Some images were not registered, excluding them", then
+    "Using selected images filter (2236/2312)". So the percentile thresholds that
+    decided which frames were good enough were computed over a population that
+    included 76 frames with no solution, and the reference frame is chosen before
+    the fallback fires.
     """
     seq, _ = seq_names(lights_name, p)     # the sequence as it is *before* r_
     L = [
