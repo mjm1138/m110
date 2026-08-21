@@ -38,6 +38,36 @@ Legend: `[ ]` open · `[~]` partially done
   notices until they want it back). `tests/test_sandbox_dirs.py` asserts both
   halves and that a sub appears in a snapshot exactly once.
 
+- [x] **A partial plate solve threw away a whole stack** (done —
+  `feature/partial-platesolve`). `m110-stack` generated one Siril script that ran
+  `seqplatesolve` and then `seqapplyreg`. When some frames fail to solve, Siril
+  reports "Sequence processing partially succeeded", **computes the astrometric
+  registration anyway and writes it into the `.seq`** — and *then* fails the
+  script at "Finalizing sequence processing failed". Everything after the solve
+  was skipped, so a usable registration sat on disk while the run reported
+  `Registration failed (exit 1)` and stopped. Reproduced on M81/LP: 123 of 221
+  frames solved, `bkg_pp_lights_.seq` written with 123 selected and valid
+  homographies, zero registered frames produced.
+
+  Fix: **three phases, three Siril invocations** — solve · apply registration ·
+  stack. Phase 1 now ends at `seqplatesolve`, so its abort costs nothing; phase 2
+  is a separate process that reads the `.seq` back off disk and registers the
+  solved subset. Verified against the real artifacts: a fresh `seqapplyreg` over
+  that abandoned sequence registers 117 frames (123 solved ∩ the quality filters).
+
+  Two things fell out of it. **`seqapplyreg` was never passing `-filter-included`**
+  — that flag was on `stack`, one phase later — so after a partial solve Siril
+  built its filter from the quality percentiles alone and planned to register 206
+  of the 221 frames, thresholds included, computed over a population most of which
+  had no solution. And the error was unactionable: solve failures **cluster by
+  night** (2026-06-28 lost 94 of 104, 2026-07-03 all 3, the other two nights 0 and
+  1), which is the whole diagnosis, so the run now parses the tally and the failed
+  frames out of the log, attributes them to the night each frame came from, and
+  names the culprits as a ready-to-paste `--exclude-night`. It carries on with the
+  solved subset when at least `--min-solved` percent (default 25) came through —
+  below that the failures are more likely the setup than the sky, and it says so
+  instead of stacking a remnant.
+
 - [ ] **Siril's converted-sequence cube is backed up as authored work.** The
   narrowed scope above keeps everything in a sandbox that isn't a declared link
   tree, which sweeps in `lights.fit` — Siril's single-file conversion of the

@@ -17,23 +17,28 @@ from m110.stacking import (
     Frame,
     Overrides,
     Proposal,
+    SolveOutcome,
     StackingError,
     Survey,
     apply_handoff,
     as_ranges,
     build_plan,
     build_proposal,
-    build_ssf_register,
+    build_ssf_apply,
+    build_ssf_solve,
     build_ssf_stack,
     coverage_depth,
     drizzle_for,
+    failures_by_night,
     find_degenerate,
+    format_solve_report,
     naztronomy_name,
     apply_handoff,
     build_plan,
     handoff_candidates,
     handoff_targets,
     naztronomy_name,
+    parse_solve_log,
     reconcile,
     rejection_for,
     resolve_layout,
@@ -354,7 +359,7 @@ def test_excluded_frames_become_unselect_ranges_in_phase_one():
                  ("pixfrac", 0.7), ("debayer", False), ("compress", True),
                  ("compress_quant", 64), ("filters", None)):
         p.set(k, v, "")
-    ssf = build_ssf_register("lights", p, list(range(244, 340)))
+    ssf = build_ssf_solve("lights", p, list(range(244, 340)))
     assert "unselect lights_ 244 339" in ssf
     assert ssf.index("link lights") < ssf.index("unselect lights_")
 
@@ -437,6 +442,7 @@ def test_the_read_only_path_writes_nothing_and_says_what_it_skipped(tmp_path):
     # "not checked" must not be reported as "not found".
     assert not any("catalogue not found" in w for w in plan.proposal.warnings)
     assert "stack" in plan.stack_ssf and "seqapplyreg" in plan.register_ssf
+    assert "seqplatesolve" in plan.solve_ssf
 
 
 def test_as_json_is_serialisable_and_carries_the_proposal(tmp_path):
@@ -446,6 +452,271 @@ def test_as_json_is_serialisable_and_carries_the_proposal(tmp_path):
     json.loads(json.dumps(payload, default=str))          # what the CLI/tool emit
     assert payload["survey"]["n_frames"] == 1
     assert "rejection" in payload["settings"]
+    # All three phases, or a reader cannot see what the run will actually do.
+    assert "seqplatesolve" in payload["solve_script"]
+    assert "seqapplyreg" in payload["register_script"]
+    assert "stack " in payload["stack_script"]
+
+
+# --------------------------------------------------------------------------
+# surviving a partial plate solve
+# --------------------------------------------------------------------------
+
+
+def _solve_proposal(**over):
+    p = Proposal()
+    for k, v in (("bg_extract", True), ("drizzle", True), ("drizzle_scale", 1.5),
+                 ("pixfrac", 0.7), ("debayer", False), ("compress", True),
+                 ("compress_quant", 64), ("filters", None)):
+        p.set(k, over.get(k, v), "")
+    return p
+
+
+# The lines Siril 1.4.4 actually emitted for M81/LP: 123 of 221 frames solved,
+# the astrometric registration computed and written to the .seq anyway, and then
+# the script killed at "Finalizing sequence processing failed" — which is what
+# used to take seqapplyreg down with it.
+REAL_PARTIAL_LOG = """\
+log: Running command: seqplatesolve
+log: Image bkg_pp_lights_00001 did not solve
+log: Image bkg_pp_lights_00122 did not solve
+log: Image bkg_pp_lights_00146 did not solve
+log: Sequence processing partially succeeded, with 3 images that failed.
+log: 6 images successfully platesolved out of 9 included
+log: Computing astrometric registration...
+log: Reference image was not platesolved, changing reference
+log: Astrometric registration computed.
+Writing sequence file bkg_pp_lights_.seq
+log: Finalizing sequence processing failed.
+log: Script execution failed.
+"""
+
+
+def test_the_solve_phase_stops_before_registration():
+    """The split IS the fix: Siril aborts the script when a solve is partial, so
+    anything after seqplatesolve in that script never runs."""
+    ssf = build_ssf_solve("lights", _solve_proposal())
+    assert "seqplatesolve" in ssf
+    assert "seqapplyreg" not in ssf
+
+
+def test_registration_is_its_own_run_over_the_sequence_left_on_disk():
+    ssf = build_ssf_apply("lights", _solve_proposal())
+    assert "seqapplyreg bkg_pp_lights_" in ssf
+    # It must re-enter process/ and re-declare compression: a fresh Siril process
+    # inherits neither, and the registered sequence is the biggest thing written.
+    assert "cd process" in ssf
+    assert ssf.index("setcompress 1") < ssf.index("seqapplyreg")
+
+
+def test_registration_only_touches_frames_that_solved():
+    """Without -filter-included Siril builds its filter from the quality
+    percentiles alone — on the M81 run that planned 206 frames instead of 117,
+    with the thresholds themselves computed over the unsolved population."""
+    ssf = build_ssf_apply("lights", _solve_proposal())
+    assert "-filter-included" in ssf
+
+
+def test_a_partial_solve_is_read_out_of_a_real_siril_log():
+    o = parse_solve_log(REAL_PARTIAL_LOG)
+    assert (o.solved, o.included) == (6, 9)
+    assert o.failed == [1, 122, 146]
+    assert o.known and not o.complete
+    assert o.fraction == pytest.approx(6 / 9)
+
+
+def test_a_clean_run_reads_as_complete():
+    o = parse_solve_log("log: 221 images successfully platesolved out of 221 included")
+    assert o.complete and not o.failed
+
+
+def test_a_failure_before_the_solve_is_not_mistaken_for_a_partial_one():
+    """No tally in the log means the run broke somewhere else, and the exit code
+    is all there is to report — a different situation from a partial solve, and
+    conflating them is what produced 'Registration failed (exit 1)'."""
+    o = parse_solve_log("log: calibrate: not enough memory\nlog: Script execution failed.")
+    assert not o.known and not o.complete
+    assert o.fraction == 0.0
+
+
+def test_a_sequence_name_containing_digits_does_not_confuse_the_frame_index():
+    o = parse_solve_log("log: Image bkg_pp_M81_2026_00146 did not solve")
+    assert o.failed == [146]
+
+
+def _night_frames():
+    # 2 clean nights, 1 bad one — the M81 shape in miniature.
+    return ([Frame(name=f"a{i}.fit", date="2026-06-05") for i in range(4)]
+            + [Frame(name=f"b{i}.fit", date="2026-06-28") for i in range(4)]
+            + [Frame(name=f"c{i}.fit", date="2026-07-03") for i in range(2)])
+
+
+def test_failed_frames_are_attributed_to_the_night_they_came_from():
+    # 1-based positions: 5-8 are the second night, 9-10 the third.
+    by = failures_by_night([5, 6, 7, 8, 9], _night_frames())
+    assert by == {"2026-06-05": (0, 4), "2026-06-28": (4, 4), "2026-07-03": (1, 2)}
+
+
+def test_a_night_the_user_already_excluded_is_not_reported_as_clean():
+    """--exclude-night unselects those frames before the solver sees them, so
+    counting them would show a suspiciously perfect 0-of-4."""
+    by = failures_by_night([5, 6, 7, 8], _night_frames(), excluded=[1, 2, 3, 4])
+    assert "2026-06-05" not in by
+    assert by["2026-06-28"] == (4, 4)
+
+
+def test_the_report_names_the_bad_night_as_an_exclude_night_argument():
+    o = SolveOutcome(solved=5, included=10, failed=[5, 6, 7, 8, 9])
+    text = format_solve_report(o, failures_by_night(o.failed, _night_frames()),
+                               0.25, continuing=True)
+    assert "--exclude-night 2026-06-28" in text
+    # 2026-07-03 lost one frame of two. Half a night is a coin toss, and dropping
+    # it would cost a good frame to remove a single failure — not a culprit.
+    assert "--exclude-night 2026-07-03" not in text
+    assert "--exclude-night 2026-06-05" not in text
+    assert "Continuing with the 5 solved frames" in text
+
+
+def test_scattered_failures_point_at_the_setup_rather_than_a_night():
+    """Whether the failures cluster IS the diagnosis, and the two causes want
+    opposite fixes — so a spread must never be reported as a bad night."""
+    frames = _night_frames()
+    o = SolveOutcome(solved=7, included=10, failed=[1, 5, 9])
+    text = format_solve_report(o, failures_by_night(o.failed, frames), 0.9,
+                               continuing=False)
+    assert "--exclude-night" not in text
+    assert "Gaia" in text and "focal length" in text
+
+
+def test_a_stopped_run_says_how_to_stack_the_frames_that_did_solve():
+    o = SolveOutcome(solved=5, included=10, failed=[5, 6, 7, 8, 9])
+    text = format_solve_report(o, failures_by_night(o.failed, _night_frames()),
+                               0.9, continuing=False)
+    assert "--min-solved 50" in text
+
+
+def _drive_main(tmp_path, monkeypatch, solve_rc, solve_log, extra_argv=()):
+    """Run `main --run` over a tiny two-night set with Siril stubbed out.
+
+    Returns (exit code, [phases actually run], printed text). The orchestration
+    is the whole point of the change and cannot be reached by testing the script
+    builders — the old code aborted *between* them.
+    """
+    import sys
+    from m110 import stacking as st
+
+    d = tmp_path / "siril"
+    for i in range(3):
+        _sub(d / "lights" / f"Light_a{i}.fit", OBJECT="M81",
+             DATE_OBS="2026-06-05T22:00:00")
+    for i in range(3):
+        _sub(d / "lights" / f"Light_b{i}.fit", OBJECT="M81",
+             DATE_OBS="2026-06-28T22:00:00")
+
+    ran: list[str] = []
+
+    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None):
+        if "seqplatesolve" in ssf:
+            ran.append("solve")
+            log_path.write_text(solve_log, encoding="utf-8")
+            return solve_rc, []
+        if "seqapplyreg" in ssf:
+            ran.append("register")
+            return 0, []
+        ran.append("stack")
+        _sub(working / "result.fit", OBJECT="M81", STACKCNT=5, LIVETIME=100.0)
+        return 0, []
+
+    monkeypatch.setattr(st, "run_siril", fake_run)
+    monkeypatch.setattr(st, "require_siril", lambda: "siril")
+    monkeypatch.setattr(st, "find_degenerate", lambda *a, **k: [])
+    monkeypatch.setattr(sys, "argv",
+                        ["m110-stack", str(d), "--run", "--plain-name",
+                         "--keep-process", *extra_argv])
+    monkeypatch.delenv("SIRIL_CLI", raising=False)
+    return st.main(), ran
+
+
+def test_the_ssf_flag_writes_one_file_per_phase(tmp_path, monkeypatch, capsys):
+    """One file is exactly the bug: fed to Siril as a single script, a partial
+    plate solve aborts it before the solved frames are ever registered."""
+    import sys
+    from m110 import stacking as st
+
+    d = tmp_path / "siril"
+    _sub(d / "lights" / "Light_0.fit", OBJECT="M81")
+    monkeypatch.setattr(st, "require_siril", lambda: "siril")
+    monkeypatch.delenv("SIRIL_CLI", raising=False)
+    monkeypatch.setattr(sys, "argv",
+                        ["m110-stack", str(d), "--ssf", str(tmp_path / "p.ssf")])
+    assert st.main() == 0
+
+    written = {f.name: f.read_text() for f in tmp_path.glob("p.*.ssf")}
+    assert set(written) == {"p.solve.ssf", "p.register.ssf", "p.stack.ssf"}
+    assert "seqapplyreg" not in written["p.solve.ssf"]
+    assert "seqapplyreg" in written["p.register.ssf"]
+    assert not (tmp_path / "p.ssf").exists()
+
+
+def test_a_partial_solve_no_longer_takes_registration_down_with_it(
+        tmp_path, monkeypatch, capsys):
+    """The bug: Siril exits non-zero on a partial solve, the run treated that as
+    fatal, and 123 perfectly good registered frames were thrown away."""
+    log = ("log: Image bkg_pp_lights_00004 did not solve\n"
+           "log: 5 images successfully platesolved out of 6 included\n"
+           "log: Astrometric registration computed.\n"
+           "log: Finalizing sequence processing failed.\n"
+           "log: Script execution failed.\n")
+    rc, ran = _drive_main(tmp_path, monkeypatch, solve_rc=1, solve_log=log)
+    assert rc == 0
+    assert ran == ["solve", "register", "stack"]
+    out = capsys.readouterr().out
+    assert "solved 5 of 6" in out
+    # The phase-1 log is full of "...failed" lines describing the situation we
+    # just reported and chose to continue past; echoing them next to a finished
+    # stack would only contradict it.
+    assert "Script execution failed" not in out
+
+
+def test_too_few_solved_frames_stops_before_anything_expensive_runs(
+        tmp_path, monkeypatch, capsys):
+    log = ("log: 1 images successfully platesolved out of 6 included\n"
+           "log: Script execution failed.\n")
+    rc, ran = _drive_main(tmp_path, monkeypatch, solve_rc=1, solve_log=log)
+    assert rc == 1
+    assert ran == ["solve"]
+    assert "below the 25% needed" in capsys.readouterr().out
+
+
+def test_min_solved_lets_the_user_take_the_subset_anyway(
+        tmp_path, monkeypatch, capsys):
+    log = ("log: 1 images successfully platesolved out of 6 included\n"
+           "log: Script execution failed.\n")
+    rc, ran = _drive_main(tmp_path, monkeypatch, solve_rc=1, solve_log=log,
+                          extra_argv=("--min-solved", "10"))
+    assert rc == 0
+    assert ran == ["solve", "register", "stack"]
+
+
+def test_a_failure_that_is_not_a_partial_solve_still_stops_the_run(
+        tmp_path, monkeypatch, capsys):
+    """No tally in the log: the run broke before the solver got that far, and
+    there is nothing on disk for phase 2 to register."""
+    rc, ran = _drive_main(tmp_path, monkeypatch, solve_rc=1,
+                          solve_log="log: calibrate: not enough memory\n")
+    assert rc == 1
+    assert ran == ["solve"]
+    assert "Plate solving failed (exit 1)" in capsys.readouterr().out
+
+
+def test_a_clean_solve_runs_all_three_phases_and_says_nothing_about_failures(
+        tmp_path, monkeypatch, capsys):
+    rc, ran = _drive_main(
+        tmp_path, monkeypatch, solve_rc=0,
+        solve_log="log: 6 images successfully platesolved out of 6 included\n")
+    assert rc == 0
+    assert ran == ["solve", "register", "stack"]
+    assert "Failures by night" not in capsys.readouterr().out
 
 
 # ── the handoff ──────────────────────────────────────────────────────────────

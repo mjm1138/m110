@@ -10,6 +10,19 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **A stack no longer fails because some frames wouldn't plate-solve.** If part
+  of your set failed to solve — usually one rough night — `m110-stack` gave up
+  with "Registration failed", even though the frames that *did* solve were
+  perfectly stackable. It now carries on with those and tells you what it left
+  behind, broken down by night, so you can see at a glance that (say) one session
+  accounted for almost all of it. If you'd rather drop that night outright, it
+  prints the exact `--exclude-night` to re-run with. When barely anything solved
+  it still stops, because at that point it's more likely your setup than the sky —
+  and it says which to check. Use `--min-solved` to set that bar yourself.
+  (`--ssf` now writes one file per phase rather than one combined script, since
+  running them as a single script is what caused this.)
+
 ### Added
 - **Send a stack straight to AstroWizard.** An object's detail pane now has a
   **Send to AstroWizard…** button. It lists every stack you have for that object —

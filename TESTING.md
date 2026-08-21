@@ -491,8 +491,10 @@ m110-stack ~/some/loose/folder      # or any directory of subs
 ```
 
 - [ ] Reports frames, exposures, filters, coverage depth, and MOSAIC vs single target.
-- [ ] Every proposed setting carries a justification; the two phase scripts print at
-      the end, followed by *"Proposal only — nothing written."*
+- [ ] Every proposed setting carries a justification; the **three** phase scripts
+      (solve · register · stack) print at the end, followed by *"Proposal only —
+      nothing written."* Phase 1 must end at `seqplatesolve` and phase 2 must be the
+      one carrying `seqapplyreg ... -filter-included`.
 - [ ] `ls` the folder before and after: **unchanged**. (This is the same code path the
       assistant's `plan_stack` uses.)
 - [ ] With Siril **not** installed (rename `/Applications/Siril.app` briefly), it exits
@@ -514,6 +516,24 @@ m110-stack "<copy>" --run
 - [ ] `process/` is removed and the freed GB reported. Re-run with `--keep-process`
       and confirm it survives, then `--restack` reuses it and skips registration.
 - [ ] Ctrl-C mid-run leaves no half-written stack.
+- [ ] Three Siril runs happen, not two — `siril_stack.log` (solve),
+      `siril_stack_register.log`, `siril_stack_stack.log` all appear in the working dir.
+
+**A partial plate solve** — the case that used to lose the whole run. Hard to force
+on purpose; if a real set doesn't produce one, the orchestration is covered by
+`test_stacking.py` and what's left to check by hand is that a *real* Siril honours
+the split.
+
+- [ ] When the log says *"N images successfully platesolved out of M included"* with
+      N < M, the run **does not stop**. It prints the solved count, a per-night
+      failure table, and — when the failures concentrate on one or two nights — a
+      ready-to-paste `--exclude-night`.
+- [ ] It then registers and stacks anyway, and the finished stack's frame count
+      reflects the solved subset (never the full set).
+- [ ] *"Script execution failed"* from phase 1 is **not** echoed at the end next to a
+      successful stack.
+- [ ] Re-run the same folder with `--min-solved 99`: it stops instead, having
+      registered nothing, and tells you how to lower the bar.
 
 **Handing on to AstroWizard**
 
