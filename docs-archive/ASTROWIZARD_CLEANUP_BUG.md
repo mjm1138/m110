@@ -1,6 +1,7 @@
 # AstroWizard: temp-file cleanup never runs when the app is quit on macOS
 
-**Reported against:** AstroWizard `2026.08.15` (`com.lukomatico.astrowizard`), macOS 27.0 (Apple silicon)
+**Reported against:** AstroWizard `2026.08.21` (`com.lukomatico.astrowizard`), macOS 27.0 (Apple silicon)
+**Also present in:** `2026.08.15` — verified unchanged across both builds
 **Severity:** Low risk, high nuisance — no data loss, but unbounded disk growth
 **Status:** Diagnosed, one-line fix proposed
 
@@ -65,13 +66,13 @@ From the shipped bytecode (`astro_wizard` module in the app's PyInstaller archiv
 
 | Symbol | Line | Role |
 |---|---|---|
-| `AstroWizard.generate_save_path` | 1900 | builds the `_AW{edit_counter}_{tag}` names |
-| `AstroWizard.track_temp_file` | 1916 | appends the path to `self.temp_files_generated` |
-| `AstroWizard.cleanup_temp_files` | 1011 | removes every tracked file, plus `-bxt` / `-nxt` / `-sxt` / `-starless` / `-stars` twins, then clears `history_stack` / `redo_stack` |
-| `AstroWizard.on_closing` | 1032 | `cleanup_temp_files()` then `destroy()` |
-| `AstroWizard.__init__` | 616 | `self.protocol("WM_DELETE_WINDOW", self.on_closing)` |
+| `AstroWizard.generate_save_path` | 2006 | builds the `_AW{edit_counter}_{tag}` names |
+| `AstroWizard.track_temp_file` | 2022 | appends the path to `self.temp_files_generated` |
+| `AstroWizard.cleanup_temp_files` | 1108 | removes every tracked file, plus `-bxt` / `-nxt` / `-sxt` / `-starless` / `-stars` twins, then clears `history_stack` / `redo_stack` |
+| `AstroWizard.on_closing` | 1129 | `cleanup_temp_files()` then `destroy()` |
+| `AstroWizard.__init__` | 712 | `self.protocol("WM_DELETE_WINDOW", self.on_closing)` |
 
-The tracking is thorough: **27** distinct operations call `track_temp_file`
+The tracking is thorough: **26** distinct operations call `track_temp_file`
 (`apply_auto_crop`, `apply_ratio_crop`, `shave_edge`, `flip_rotate`, `apply_binning`,
 `run_bxt`, `run_nxt`, `run_sxt`, `run_starnet`, `_run_graxpert_core`,
 `apply_permanent_stretch`, `apply_curves_full`, `apply_scnr`, `apply_nbn`,
@@ -79,13 +80,13 @@ The tracking is thorough: **27** distinct operations call `track_temp_file`
 `rescreen_stars`, `_finish_star_removal`, `_apply_planetary`, …). So the chain is
 registered correctly, and `cleanup_temp_files` would delete all of it.
 
-`cleanup_temp_files` has only three callers: `on_closing` (1032), `load_file` (2207)
-and `start_over` (5406). That covers "open something else" and "start over", but the
+`cleanup_temp_files` has only three callers: `on_closing` (1129), `load_file` (2336)
+and `start_over` (5562). That covers "open something else" and "start over", but the
 exit path depends entirely on `WM_DELETE_WINDOW`.
 
 **`createcommand` does not appear in `__init__`, and the string `::tk::mac::Quit`
-does not appear anywhere in the binary** (checked across all 401 code objects in the
-module). Since this is a `customtkinter` / `ctk.CTk` app, standard Tk-on-macOS
+does not appear anywhere in the binary** (checked across every code object in the
+module, with the parse verified to consume all 501,890 bytes). Since this is a `customtkinter` / `ctk.CTk` app, standard Tk-on-macOS
 semantics apply: the Apple-menu Quit and Cmd+Q are dispatched to `::tk::mac::Quit`,
 and when that command is not defined Tk tears the interpreter down without invoking
 the window-delete protocol handler.
@@ -97,7 +98,7 @@ temporary, not retained work.
 ## Suggested fix
 
 Register the macOS quit command alongside the existing protocol handler, in
-`__init__` near line 616:
+`__init__` near line 712:
 
 ```python
 self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -119,6 +120,24 @@ exit path is taken. A sweep at **startup** — scan the working folder for
 orphans from a previous session — would make the guarantee hold even after a
 force-quit or a power loss. `generate_save_path` already has the naming convention,
 and the `_AW(\d+)_` regex already used in `_refresh_step_page` would identify them.
+
+## Related: `sys.argv` file-open already proves the pattern
+
+The 18 August changelog adds *"Open with AstroWizard — drag a FITS onto the app, or
+right-click and Open with, and it loads itself."* That is implemented at module
+level by reading `sys.argv[1]`, checking `os.path.isfile`, and matching
+`('.fits', '.fit', '.tiff', '.tif', '.xisf')` — not through `CFBundleDocumentTypes`
+(the `Info.plist` declares none) and not through `::tk::mac::OpenDocument`.
+
+Worth knowing for two reasons. First, dragging onto the **Dock icon** or a Finder
+"Open With" sends an `odoc` Apple Event rather than argv, so on macOS that route
+likely only works when the app is launched fresh with the path appended — the Tk
+hook that would handle the general case is `::tk::mac::OpenDocument`, registered
+via the same `createcommand` call this report is asking for. Adding both together
+would be natural.
+
+Second, it means an external tool *can* hand AstroWizard a file today with
+`open -a AstroWizard.app --args <path>`, which is genuinely useful — thank you.
 
 ## Notes
 
