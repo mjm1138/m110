@@ -11,19 +11,25 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
-- **M110 now keeps only your last few processing sessions.** Every time you
-  import finished work, the run that produced it is archived inside the object's
-  working folder — and until now those built up forever. On a real library that
-  had reached 42 GB. M110 now keeps the **last 3** and deletes older ones, which
-  you can change (or turn off entirely) under **Preferences → Processing
-  workflows you use**. The most recent run is never deleted, nothing is touched
-  unless an import actually archived something, and anything you put in the
-  archive folder yourself is left alone. Set it to "all" for the previous
-  keep-everything behaviour.
+- **M110 can now keep a limited number of past processing sessions.** Every time
+  you import finished work, the run that produced it is archived inside the
+  object's working folder — and until now those built up forever. On a real
+  library that had reached 42 GB. **Preferences → Processing workflows you use →
+  "Keep the last N processing sessions"** now bounds that.
+  **If you already have an M110 library, nothing changes**: existing libraries
+  default to "all", so no run you already have is deleted without you choosing
+  it. New libraries start at 3. Either way the most recent run is never deleted,
+  nothing is touched unless an import actually archived something, and anything
+  you put in that folder yourself is left alone.
 - **AstroWizard now appears alongside Siril in Preferences.** That section is now
   "Processing workflows you use" — ticking Siril means M110 prepares a working
   folder as you ingest; ticking AstroWizard means it offers to send a stack over
   and import your finish back. Both start on, including for existing installs.
+- **Sending a stack to AstroWizard now opens it there.** Previously M110 could
+  only reveal the folder and leave you to find the file — AstroWizard couldn't be
+  handed one. Its 18 August release added that, so M110 now loads the stack
+  directly. (It only works if AstroWizard isn't already running; if it is, quit it
+  first or use Reveal folder.)
 - **M110 now picks up work you finish in AstroWizard.** Send a stack over with
   "Send to AstroWizard", finish it there, and **Import finished work** finds your
   exports and files them into the object's Finished images — the same round-trip

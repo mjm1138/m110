@@ -190,3 +190,49 @@ def test_child_env_keeps_system_bin_when_not_venv(monkeypatch):
     monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", "/bin"]))
     env = launch._child_env()
     assert "/usr/bin" in env["PATH"].split(os.pathsep)
+
+
+# ── handing a tool a file (ROADMAP 14b follow-up) ────────────────────────────
+
+def test_only_astrowizard_declares_it_can_open_a_file():
+    """Derived from the registry, so a tool that gains the ability is covered by
+    declaring it rather than by editing callers."""
+    assert launch.opens_file("astrowizard") is True
+    assert launch.opens_file("siril") is False
+    assert launch.opens_file("nope") is False
+
+
+def test_astrowizard_accepts_the_extensions_it_actually_parses():
+    """From the shipped 2026.08.21 bytecode: sys.argv[1] is checked against this
+    exact tuple. Handing it anything else opens the app and loads nothing."""
+    assert launch.file_exts("astrowizard") == (
+        ".fits", ".fit", ".tiff", ".tif", ".xisf")
+    assert launch.file_exts("siril") == ()
+
+
+def test_launch_with_file_refuses_a_tool_that_cannot_take_one():
+    with pytest.raises(launch.LaunchError):
+        launch.launch_with_file("siril", "/tmp/x.fit")
+
+
+def test_launch_with_file_passes_the_path_through(monkeypatch, tmp_path):
+    stack = tmp_path / "M27_final.fit"
+    stack.write_text("x")
+    seen = {}
+    monkeypatch.setattr(launch, "find_app", lambda t: "/Applications/AstroWizard.app")
+    monkeypatch.setattr(launch, "_launch_macos",
+                        lambda app, args: seen.update(app=app, args=args))
+    monkeypatch.setattr(launch, "_spawn", lambda argv: seen.update(argv=argv))
+    monkeypatch.setattr(launch.sys, "platform", "darwin")
+    launch.launch_with_file("astrowizard", stack)
+    assert seen["args"] == [str(stack)]
+
+
+def test_launch_with_file_still_sanitises_the_environment(monkeypatch, tmp_path):
+    """The file path must not be a way around `_child_env` — the two-Qt crash and
+    the responsible-process kill both come back if a launch skips it."""
+    import inspect
+    src = inspect.getsource(launch.launch_with_file)
+    assert "_launch_macos" in src and "_spawn" in src, (
+        "launch_with_file must go through the same two spawn helpers, which are "
+        "what apply _child_env()")

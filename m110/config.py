@@ -125,8 +125,15 @@ def get_setting(key: str, default=None):
 
 
 def save_setting(key: str, value) -> None:
-    """Persist a single app setting."""
+    """Persist a single app setting.
+
+    Creates `SETTINGS_FILE`'s own parent, not just `APP_CONFIG_DIR`: the two are
+    normally the same place but are separate module-level names, and tests (and
+    the conftest seal) point them at different scratch dirs. Assuming they agree
+    made the first write to a redirected settings path raise FileNotFoundError.
+    """
     APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     s = _read_settings()
     s[key] = value
     SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
@@ -407,6 +414,27 @@ def is_first_run() -> bool:
     return not default_lib.is_file()
 
 
+def _seed_archive_retention(pre_existing: bool) -> None:
+    """Decide the archive-retention default once, on the first launch that sees
+    this store, and write it down.
+
+    Retention deletes processing history, so it must never arrive as a surprise
+    for someone whose library predates it: an existing store defaults to keeping
+    **everything**, exactly the behaviour it has had until now. A brand-new store
+    starts at 3, because a fresh library has no history to lose and unbounded
+    growth is the thing worth preventing.
+
+    Persisted rather than computed, so the answer can't change under the user
+    later — "is this store new?" is only true once, and a setting they can see in
+    Preferences is a decision they can change.
+    """
+    from . import processing
+    if get_setting(processing.SETTING_ARCHIVE_KEEP, None) is not None:
+        return
+    save_setting(processing.SETTING_ARCHIVE_KEEP,
+                 0 if pre_existing else processing.NEW_STORE_ARCHIVE_KEEP)
+
+
 def ensure_data_root(root=None) -> Path:
     """Create the directory skeleton and seed catalog/priorities if missing.
 
@@ -415,9 +443,15 @@ def ensure_data_root(root=None) -> Path:
     """
     r = Path(root).expanduser() if root else DATA_ROOT
 
+    # Whether this store already existed decides one default (below), so read it
+    # before anything here creates the skeleton.
+    pre_existing = (r / INTERNAL_DIRNAME).is_dir() or (r / "Images").is_dir()
+
     # Bring a pre-two-axis store up to the current layout before seeding.
     from . import migrate
     migrate.migrate_store(r)
+
+    _seed_archive_retention(pre_existing)
 
     for sub in _SUBDIRS:
         (r / sub).mkdir(parents=True, exist_ok=True)

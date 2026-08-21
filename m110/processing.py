@@ -28,11 +28,12 @@ DEFAULT_WORKFLOWS = ["siril", "astrowizard"]
 LEGACY_SETTING_IDS = frozenset({"siril", "pixinsight", "dss", "app"})
 
 SETTING_ARCHIVE_KEEP = "processing_archive_keep"
-#: How many archived runs to keep per working folder. 0 = keep everything.
-#: Three is enough to compare against the previous couple of attempts while
-#: bounding growth: measured on a real library, archived runs reached 42 GB, and
-#: they only ever accumulate — nothing regenerates or replaces them.
-DEFAULT_ARCHIVE_KEEP = 3
+#: What a **new** store starts at. Three is enough to compare against the previous
+#: couple of attempts while bounding growth: measured on a real library, archived
+#: runs reached 42 GB, and they only ever accumulate — nothing regenerates them.
+#: An **existing** store is seeded with 0 instead, so retention never arrives as a
+#: surprise for a library that predates it — see `config._seed_archive_retention`.
+NEW_STORE_ARCHIVE_KEEP = 3
 
 
 @dataclass(frozen=True)
@@ -100,12 +101,16 @@ def set_enabled_workflows(ids) -> None:
 
 
 def archive_keep() -> int:
-    """How many archived runs to keep per working folder (0 = keep all)."""
-    val = config.get_setting(SETTING_ARCHIVE_KEEP, DEFAULT_ARCHIVE_KEEP)
+    """How many archived runs to keep per working folder (0 = keep all).
+
+    **Unset reads as 0**, never as the new-store default: this deletes history, so
+    the absence of an answer has to fall on the safe side. The 3 a new store gets
+    is written down explicitly at bootstrap, not implied here."""
+    val = config.get_setting(SETTING_ARCHIVE_KEEP, 0)
     try:
         return max(0, int(val))
     except (TypeError, ValueError):
-        return DEFAULT_ARCHIVE_KEEP
+        return 0
 
 
 def set_archive_keep(n: int) -> None:

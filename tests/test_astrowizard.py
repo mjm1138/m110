@@ -330,3 +330,49 @@ def test_siril_archives_are_pruned_by_the_same_setting(tmp_path, monkeypatch):
                              "20260103-010000"])
     roundtrip.prune_archives("M13", siril.SANDBOX, keep=1)
     assert [p.name for p in arch.iterdir()] == ["20260103-010000"]
+
+
+# ── retention defaults: new store vs existing library ────────────────────────
+
+def _isolated_settings(tmp_path, monkeypatch, name="settings.json"):
+    monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / name)
+    monkeypatch.setattr(config, "APP_CONFIG_DIR", tmp_path / "cfg")
+
+
+def test_a_brand_new_store_starts_at_three(tmp_path, monkeypatch):
+    from m110 import processing
+    _isolated_settings(tmp_path, monkeypatch)
+    config.ensure_data_root(tmp_path / "NewStore")
+    assert processing.archive_keep() == processing.NEW_STORE_ARCHIVE_KEEP == 3
+
+
+def test_an_existing_library_keeps_everything(tmp_path, monkeypatch):
+    """Retention deletes processing history, so it must never arrive as a
+    surprise for a library that predates it."""
+    from m110 import processing
+    _isolated_settings(tmp_path, monkeypatch)
+    old = tmp_path / "OldStore"
+    (old / config.INTERNAL_DIRNAME).mkdir(parents=True)
+    (old / "Images").mkdir(parents=True)
+    config.ensure_data_root(old)
+    assert processing.archive_keep() == 0        # 0 == keep all
+
+
+def test_the_seeded_answer_is_not_recomputed_later(tmp_path, monkeypatch):
+    """Written down once. A store is only 'new' the first time, and the user must
+    be able to change it in Preferences without the next launch overruling them."""
+    from m110 import processing
+    _isolated_settings(tmp_path, monkeypatch)
+    store = tmp_path / "NewStore"
+    config.ensure_data_root(store)
+    processing.set_archive_keep(0)               # user turns it off
+    config.ensure_data_root(store)               # next launch
+    assert processing.archive_keep() == 0
+
+
+def test_an_unset_setting_reads_as_keep_all(tmp_path, monkeypatch):
+    """The absence of an answer falls on the safe side; the 3 a new store gets is
+    written explicitly, never implied by the reader."""
+    from m110 import processing
+    _isolated_settings(tmp_path, monkeypatch, "empty.json")
+    assert processing.archive_keep() == 0

@@ -152,6 +152,57 @@ itself.
 extra disk, and it's kept apart from the Siril sandbox on purpose: your stack took
 hours and won't change, while a finishing pass is cheap and you'll redo it often.
 
+You can also do it from the app: right-click a stack in the object's detail pane and
+choose **Send to AstroWizard**. Afterwards M110 offers to **open it in AstroWizard**,
+which loads the stack straight away — with one catch worth knowing: that only works
+if AstroWizard isn't already running. If it is, quit it first, or use **Reveal
+folder** and open the file yourself.
+
+### Bringing the finish back
+
+When you've finished an image in AstroWizard, save your export into that same
+`astrowizard/` folder. Back in M110, **Import finished work** on the object picks it
+up and files it into the object's finished images, exactly as it does for Siril. If
+both Siril and AstroWizard have something waiting, M110 asks which one you mean.
+
+AstroWizard saves a separate working file for every step you take — crops,
+stretches, each curve tweak — so a single finish can leave a couple of dozen files
+behind. M110 doesn't offer those to you as things to import, and tidies them away
+when you import (see below).
+
+## Keeping working files under control
+
+Every time you import finished work, M110 files the run that produced it into an
+`archive/` folder inside that object's working folder, stamped with the date and
+time. Nothing is deleted — it's moved — so you can always go back to a previous
+attempt.
+
+The catch is that archived runs only ever pile up. Nothing replaces them and nothing
+cleans them out, and they're not small: a mosaic's run can be several GB, and an
+AstroWizard finish can be a couple of GB on its own. They're included in your
+backups too, so the growth shows up twice.
+
+**Preferences → Processing workflows you use → "Keep the last N processing
+sessions"** is the control:
+
+- **A number (default 3 for a new library)** — M110 keeps that many archived runs per
+  working folder and deletes older ones when you import.
+- **"all"** — nothing is ever deleted. This is the default **if you already had an
+  M110 library before this feature existed**, so nothing you already have
+  disappears without you choosing it.
+
+Whatever you set, three things always hold:
+
+- **The most recent run is never deleted.**
+- **Nothing happens unless an import actually archived something.** Choosing "Leave
+  the sandbox as-is" at import time, or just refreshing your library, never deletes
+  anything.
+- **Anything you put in that `archive/` folder yourself is left alone.** M110 only
+  ever removes folders it created, which it recognises by their date-and-time names.
+
+If you're not sure, "all" is the safe setting — you can always lower it later, and
+the space is reclaimed on your next import.
+
 ## Hardlinks — what they are, and why it matters
 
 This is the one technical detail worth understanding, because M110 uses **hardlinks**

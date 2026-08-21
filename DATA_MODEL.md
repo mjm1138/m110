@@ -285,9 +285,13 @@ for integrity verification.
   import the run's intermediates move into `<sandbox>/[<FILTER>/]archive/<ts>/` and
   the sandbox is left ready for the next run.
 
-  **Policy changed (14b): `archive/` is now pruned, keep-N-latest, on by default
-  at N=3.** This supersedes the earlier commitment that pruning would be
-  "user-gated and explicit — never automatic". Two things forced it. Archived runs
+  **Policy changed (14b): `archive/` can now be pruned, keep-N-latest.** This
+  softens the earlier commitment that pruning would be "user-gated and explicit —
+  never automatic" — but only for stores created from here on. **An existing store
+  is seeded with "keep all", preserving the old guarantee exactly for every
+  library that predates the feature**; a new store starts at 3
+  (`config._seed_archive_retention`, decided once at bootstrap and written down,
+  never recomputed). Two things forced it. Archived runs
   only accumulate — nothing regenerates or replaces them — and a real library
   reached **42 GB across 36 archive dirs**, all of it inside the backup scope, so
   "never delete" was not a neutral default but a slow leak. And AstroWizard turns
