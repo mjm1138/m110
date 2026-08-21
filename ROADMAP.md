@@ -184,10 +184,25 @@ artifact every time a cheap one is redone.
   AstroWizard's entry is already there, declaring `frozenset()`: its input is one
   handed-off stack file, not a directory of links, so backup keeps everything in
   `astrowizard/` — the handoff, the exports, and the archived runs alike.
-- **Cleanup is small, contrary to first assumptions.** AstroWizard does *not*
-  autosave per step: it tracks its temporaries (`track_temp_file`) and deletes
-  them (`cleanup_temp_files`). Only explicit exports persist — at most three files
-  per run, in FITS/TIFF/PNG/JPG.
+  **Revisit alongside the cleanup finding below:** that reasoning assumed the
+  sandbox holds a handoff plus at most three exports. Measured, one finished target
+  is ~2.2 GB with **nothing** excluded (`scope.is_excluded` is False for every path
+  under `astrowizard/`), and the mirrored format dedups by *path* — so every
+  re-finish adds another full copy to every future snapshot. That is precisely the
+  failure mode the `siril/lights` exclusion exists to prevent (+139 GB measured on a
+  186 GB library). Archiving the step chain on import is what keeps `frozenset()`
+  honest; leave the chain in place and `astrowizard/` needs a declared skip instead.
+- **Cleanup is the opposite of small — measured, not assumed.** AstroWizard
+  autosaves **one file per user action**. A single M27 finish (2026-08-20) left
+  **26 files / 2.02 GB** in a 2.2 GB sandbox: `_AW1_init` through `_AW24_rescreen`,
+  including three separate `_crop` steps and six separate `_adj_curves` steps, plus
+  `.tif` side-outputs. They **survive quitting the app**, and no preference was
+  found that changes it — so whatever `track_temp_file`/`cleanup_temp_files` do,
+  they do not clear this chain. The earlier claim here ("does not autosave per
+  step … at most three files per run") was **wrong**, and it was load-bearing for
+  both the backup trade-off above and the cost estimate below. **The import step
+  must archive or discard the chain**, the way `siril.apply_import` archives a run:
+  what the user keeps is the finish, not the 24 steps that made it.
 - **`hints` needs no change.** `DEFAULT_INTERMEDIATE` already carries `starless`,
   so a `…-starless.png` export classifies as intermediate and correctly stays out
   of `finished/`.

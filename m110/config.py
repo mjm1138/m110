@@ -334,6 +334,17 @@ def biases_dir(name: str) -> Path:
 # single handed-off stack file, not a directory of links. Do **not** express that by
 # leaving the workflow out — the keys *are* `SANDBOX_DIRNAMES`, so an omission
 # silently un-protects the sandbox from all three walks above.
+#
+# `frozenset()` answers "what is a hardlink duplicate", which is **not** the same
+# question as "what is worth backing up", and AstroWizard is where the two come
+# apart. It autosaves one file per user action: a single measured finish left 26
+# files / 2.02 GB of `_AW<n>_` steps that survive quitting the app. None of it is a
+# link, so none of it is excluded — and mirrored dedups by *path*, so each re-finish
+# adds another full copy to every snapshot. The fix belongs in the workflow's import
+# step, which must archive the chain the way `siril.apply_import` archives a run;
+# this mapping stays honest only while something does. If a workflow ever leaves a
+# large regenerable tree behind with no import step to sweep it, that tree's
+# directory name belongs here.
 SANDBOX_LINKED_INPUTS: dict[str, frozenset[str]] = {
     "siril": frozenset({"lights", "darks", "flats", "biases"}),
     "astrowizard": frozenset(),
