@@ -252,7 +252,13 @@ class HandoffDialog(QDialog):
         box.setWindowTitle(f"Sent to {self._label}")
         box.setText(f"{self._sent.name} is ready for {self._label}.")
         found = launch.find_app(self._tool)
-        if found and not launch.sets_working_dir(self._tool):
+        can_open_file = found and launch.opens_file(self._tool)
+        if can_open_file:
+            box.setInformativeText(
+                f"Opening {self._label} will load this stack straight away — but "
+                f"only if it isn't already running. If it is, quit it first, or "
+                f"use Reveal folder and open the file yourself.")
+        elif found and not launch.sets_working_dir(self._tool):
             box.setInformativeText(
                 f"{self._label} can't be pointed at a folder, so open the file from "
                 f"inside it — Reveal folder opens the right place.")
@@ -261,8 +267,12 @@ class HandoffDialog(QDialog):
                 f"{self._label} wasn't found on this machine. You can set its "
                 f"location in Preferences → Processing tools.")
         reveal = box.addButton("Reveal folder", QMessageBox.AcceptRole)
-        open_btn = box.addButton(f"Open {self._label}",
+        open_label = (f"Open in {self._label}" if can_open_file
+                      else f"Open {self._label}")
+        open_btn = box.addButton(open_label,
                                  QMessageBox.AcceptRole) if found else None
+        if open_btn is not None:
+            box.setDefaultButton(open_btn)
         box.addButton("Done", QMessageBox.RejectRole)
         box.exec()
 
@@ -271,11 +281,18 @@ class HandoffDialog(QDialog):
             reveal_in_manager(folder)
         elif open_btn is not None and clicked is open_btn:
             try:
-                launch.launch_processing(self._tool, folder)
+                if can_open_file:
+                    launch.launch_with_file(self._tool, self._sent)
+                else:
+                    launch.launch_processing(self._tool, folder)
             except launch.LaunchError as exc:
                 QMessageBox.warning(self, f"Open {self._label}", str(exc))
             else:
-                reveal_in_manager(folder)     # it can't open the file itself
+                # Only fall back to showing the folder when the tool cannot take
+                # the file itself; otherwise the stack is already loading and a
+                # Finder window on top of it is just noise.
+                if not can_open_file:
+                    reveal_in_manager(folder)
 
 
 def _within(p: Path) -> bool:

@@ -46,13 +46,18 @@ _TOOLS: dict[str, dict] = {
         "linux_bins": ["astrowizard", "AstroWizard"],
         "windows_names": ["AstroWizard.exe"],
         "windows_subpaths": [r"AstroWizard\AstroWizard.exe"],
-        # Empty, and not an oversight: AstroWizard takes no working-directory
-        # flag, and its bundle registers no CFBundleDocumentTypes or URL types,
-        # so macOS cannot route a file to it either — `open -a AstroWizard <file>`
-        # opens the app and ignores the file. It is opened bare and the user picks
-        # the stack in its own dialog, which is why the handoff flow reveals the
-        # folder rather than treating that as a fallback.
+        # Still empty: AstroWizard takes no working-directory flag.
         "workdir_args": [],
+        # But it does take a FILE. Its 2026-08-18 release added "Open with
+        # AstroWizard", implemented by reading `sys.argv[1]` and accepting
+        # `.fits/.fit/.tiff/.tif/.xisf` — verified in the shipped bytecode of
+        # 2026.08.21. Notably *not* via `CFBundleDocumentTypes` (its Info.plist
+        # declares none) and not via `::tk::mac::OpenDocument`, so Finder's
+        # "Open With" and a Dock drop — both of which send an `odoc` Apple event —
+        # are not the route. Appending the path to a **cold** launch is, which is
+        # exactly what `open -a <bundle> --args <path>` does.
+        "file_args": ["{file}"],
+        "file_exts": (".fits", ".fit", ".tiff", ".tif", ".xisf"),
     },
 }
 
@@ -64,6 +69,49 @@ def tool_label(tool_id: str) -> str:
 def tool_ids() -> list[str]:
     """Every launchable tool id, so callers enumerate rather than hardcode."""
     return sorted(_TOOLS)
+
+
+def opens_file(tool_id: str) -> bool:
+    """Whether launching this tool can hand it a specific file.
+
+    Derived from the spec, like `sets_working_dir`, so the two can't drift from
+    what the registry actually declares. False means the caller should reveal the
+    folder and let the user open the file from inside the app."""
+    return bool(_TOOLS.get(tool_id, {}).get("file_args"))
+
+
+def file_exts(tool_id: str) -> tuple:
+    """Extensions this tool will accept when handed a file."""
+    return tuple(_TOOLS.get(tool_id, {}).get("file_exts", ()))
+
+
+def launch_with_file(tool_id: str, path) -> str:
+    """Open `tool_id` with `path` loaded. Returns the launched executable path.
+
+    Same **cold-start** caveat as `launch_processing`: on macOS LaunchServices
+    only forwards `--args` to a fresh instance, so if the tool is already running
+    it comes to the front and ignores the file. Callers should say so rather than
+    implying the file will appear.
+
+    Raises `LaunchError` when the tool isn't found, can't take a file, or fails to
+    start."""
+    spec = _TOOLS.get(tool_id, {})
+    if not spec.get("file_args"):
+        raise LaunchError(f"{tool_label(tool_id)} can't be handed a file.")
+    app = find_app(tool_id)
+    if not app:
+        raise LaunchError(
+            f"Couldn't find {tool_label(tool_id)}. Set its location in "
+            f"Preferences → Processing tools.")
+    args = [a.format(file=str(path)) for a in spec["file_args"]]
+    try:
+        if sys.platform == "darwin":
+            _launch_macos(app, args)
+        else:
+            _spawn([app, *args])
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LaunchError(f"Couldn't start {tool_label(tool_id)}: {exc}") from exc
+    return app
 
 
 def sets_working_dir(tool_id: str) -> bool:

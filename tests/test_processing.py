@@ -16,11 +16,27 @@ def _target_with_lights(name):
     (d / f"Light_{name}_a.fit").write_text("x")
 
 
-def test_default_is_siril(tmp_path, monkeypatch):
+def test_both_available_workflows_are_on_by_default(tmp_path, monkeypatch):
+    """AstroWizard joined the defaults with 14b. Enabling it by default is what
+    keeps Send-to/Import present for someone upgrading — see
+    `processing.LEGACY_SETTING_IDS` for the matching rule on a saved list."""
     _isolate(tmp_path, monkeypatch)
-    assert processing.enabled_workflow_ids() == ["siril"]
+    assert processing.enabled_workflow_ids() == ["siril", "astrowizard"]
     assert processing.WORKFLOWS_BY_ID["siril"].available is True
+    assert processing.WORKFLOWS_BY_ID["astrowizard"].available is True
     assert processing.WORKFLOWS_BY_ID["pixinsight"].available is False
+
+
+def test_a_saved_list_from_before_astrowizard_does_not_disable_it(
+        tmp_path, monkeypatch):
+    """The upgrade case: `["siril"]` was saved when AstroWizard did not exist, so
+    its absence is not a choice and must not read as one."""
+    _isolate(tmp_path, monkeypatch)
+    config.save_setting(processing.SETTING_KEY, ["siril"])
+    assert processing.enabled_workflow_ids() == ["siril", "astrowizard"]
+    # …but an explicit map is a choice, and is honoured.
+    processing.set_enabled_workflows(["siril"])
+    assert processing.enabled_workflow_ids() == ["siril"]
 
 
 def test_run_autoprep_siril(tmp_path, monkeypatch):

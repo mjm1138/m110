@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QToolButton, QMenu, QMessageBox,
 )
 
-from m110 import build_images, config, derived, objects, siril
+from m110 import build_images, config, derived, objects, processing, siril
 from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
@@ -154,7 +154,10 @@ class DetailPane(QScrollArea):
 
     @staticmethod
     def _has_finished_work(slug: str) -> bool:
-        return any(siril.has_unimported_output(t) for t in targets_for_slug(slug))
+        """Any registered workflow with output waiting — not just Siril, since
+        an AstroWizard finish is the other half of the handoff this pane offers."""
+        return any(processing.workflows_with_output(t)
+                   for t in targets_for_slug(slug))
 
     @staticmethod
     def _has_working_folder(slug: str) -> bool:

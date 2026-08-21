@@ -13,10 +13,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from . import config, siril
+from . import astrowizard, config, siril
 
 SETTING_KEY = "processing_workflows"
-DEFAULT_WORKFLOWS = ["siril"]
+DEFAULT_WORKFLOWS = ["siril", "astrowizard"]
+
+#: Ids the workflow setting could name *before* it became a map. A legacy saved
+#: list enumerated only the enabled ones, so absence meant "off" — but only for a
+#: workflow that was actually on offer at the time. A workflow added later is
+#: **unanswered**, not declined, and must take its default instead of silently
+#: reading as switched off. (AstroWizard is the first case: a user who saved
+#: `["siril"]` before it existed never chose to turn it off, and reading that as
+#: a decision would make Send-to/Import vanish on upgrade.)
+LEGACY_SETTING_IDS = frozenset({"siril", "pixinsight", "dss", "app"})
+
+SETTING_ARCHIVE_KEEP = "processing_archive_keep"
+#: What a **new** store starts at. Three is enough to compare against the previous
+#: couple of attempts while bounding growth: measured on a real library, archived
+#: runs reached 42 GB, and they only ever accumulate — nothing regenerates them.
+#: An **existing** store is seeded with 0 instead, so retention never arrives as a
+#: surprise for a library that predates it — see `config._seed_archive_retention`.
+NEW_STORE_ARCHIVE_KEEP = 3
 
 
 @dataclass(frozen=True)
@@ -26,21 +43,78 @@ class Workflow:
     available: bool                       # False → shown disabled ("soon")
     autoprep: Callable | None = None      # (targets, should_cancel=None) -> dict
     prune_rejected: Callable | None = None  # (target) -> dict
+    #: The module owning this workflow's *return* leg — `scan_finished`,
+    #: `apply_import`, `has_unimported_output`, `working_dirs`. Separate from
+    #: `autoprep` because the two halves are independent: Siril has both, while
+    #: AstroWizard has no prepare step at all (`m110-stack --handoff` is what
+    #: hands work in) and exists purely to be imported back from.
+    importer: object | None = None
 
 
 WORKFLOWS = [
-    Workflow("siril", "Siril", True, siril.autoprep, siril.prune_rejected),
+    Workflow("siril", "Siril", True, siril.autoprep, siril.prune_rejected,
+             importer=siril),
+    Workflow("astrowizard", "AstroWizard", True, importer=astrowizard),
     Workflow("pixinsight", "PixInsight", False),
     Workflow("dss", "DeepSkyStacker", False),
     Workflow("app", "Astro Pixel Processor", False),
 ]
+
+
+def importers() -> list:
+    """Registered workflows that can import finished work back."""
+    return [w for w in WORKFLOWS if w.available and w.importer is not None]
+
+
+def workflows_with_output(target: str) -> list:
+    """Which workflows have finished work waiting for this capture target.
+
+    The question the Processing page and the detail pane both need now that there
+    is more than one: a single `ready_for_import` boolean cannot say *which* tool
+    is holding something."""
+    return [w for w in importers() if w.importer.has_unimported_output(target)]
 WORKFLOWS_BY_ID = {w.id: w for w in WORKFLOWS}
 
 
 def enabled_workflow_ids() -> list[str]:
-    """Workflow ids the user has enabled (default: Siril)."""
+    """Workflow ids the user has enabled.
+
+    Stored as a `{id: bool}` map so an id the user has never been asked about is
+    distinguishable from one they turned off — see `LEGACY_SETTING_IDS`. A legacy
+    list is read forward without being rewritten, so downgrading is harmless."""
     val = config.get_setting(SETTING_KEY, None)
-    return list(val) if isinstance(val, list) else list(DEFAULT_WORKFLOWS)
+    if isinstance(val, dict):
+        return [w.id for w in WORKFLOWS
+                if val.get(w.id, w.id in DEFAULT_WORKFLOWS)]
+    if isinstance(val, list):
+        return [w.id for w in WORKFLOWS
+                if ((w.id in val) if w.id in LEGACY_SETTING_IDS
+                    else (w.id in DEFAULT_WORKFLOWS))]
+    return list(DEFAULT_WORKFLOWS)
+
+
+def set_enabled_workflows(ids) -> None:
+    """Persist the enabled set as an explicit map over every known workflow, so
+    a later-added workflow can tell 'unanswered' from 'declined'."""
+    ids = set(ids)
+    config.save_setting(SETTING_KEY, {w.id: (w.id in ids) for w in WORKFLOWS})
+
+
+def archive_keep() -> int:
+    """How many archived runs to keep per working folder (0 = keep all).
+
+    **Unset reads as 0**, never as the new-store default: this deletes history, so
+    the absence of an answer has to fall on the safe side. The 3 a new store gets
+    is written down explicitly at bootstrap, not implied here."""
+    val = config.get_setting(SETTING_ARCHIVE_KEEP, 0)
+    try:
+        return max(0, int(val))
+    except (TypeError, ValueError):
+        return 0
+
+
+def set_archive_keep(n: int) -> None:
+    config.save_setting(SETTING_ARCHIVE_KEEP, max(0, int(n)))
 
 
 def run_autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
