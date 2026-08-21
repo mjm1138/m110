@@ -99,6 +99,46 @@ Useful flags: `--only-exposure 30` (stack one exposure when a set mixes them),
 `--exclude-night 2026-06-10`, `--restack` (retry stack settings without repeating
 registration), `--handoff` (see below). `m110-stack --help` lists the rest.
 
+### When some frames won't plate-solve
+
+Before it can register anything, Siril has to work out where each frame is pointing.
+Some frames won't: thin cloud, a bump to the mount, a night that just wasn't good
+enough to show the stars needed. That used to be able to kill the whole run — not
+always, which is why it seemed random; it depended on whether the one frame Siril
+measures everything else against was among the failures. Now it doesn't stop the run
+at all: the frames that *did* solve are registered and stacked, and you're told what
+was left out:
+
+```
+  Plate solving solved 123 of 221 frames (56%).
+  Failures by night:
+      2026-06-05      0 of   33    0%
+      2026-06-10      1 of   81    1%
+      2026-06-28     94 of  104   90%  <--
+      2026-07-03      3 of    3  100%  <--
+```
+
+Failures almost always belong to a session rather than being scattered, and that's
+the useful part: here two nights account for nearly all of them, and the other two
+were fine. If you'd rather drop those nights outright than stack a thinned version of
+them, the run prints the flags to do it:
+
+```
+m110-stack "M101" --run --exclude-night 2026-06-28 --exclude-night 2026-07-03
+```
+
+One note if you do re-run: M110 clears the temporary working files at the start of
+every run (it tells you how much it freed). It has to — Siril reuses those files
+rather than rebuilding them, so before this, a re-run after a failure quietly
+ignored `--exclude-night` and stacked the night you'd asked it to drop. `--restack`
+still reuses them deliberately, for retrying stack settings without repeating the
+registration.
+
+If almost nothing solves, it stops instead. At that point the problem is more likely
+your setup than the sky — usually a missing local star catalogue, or a focal length
+or pixel size Siril has wrong — and a spread of failures across *every* night is the
+sign of it. Set your own bar with `--min-solved` (a percentage; 25 by default).
+
 This needs **Siril installed** — M110 runs Siril's own commands rather than
 reimplementing anything. If you've connected an [AI assistant](assistant.md), it can
 talk the settings through with you and hand you the command; it can't start a stack

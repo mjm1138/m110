@@ -10,6 +10,29 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **A stack no longer fails because some frames wouldn't plate-solve.** If part
+  of your set failed to solve — usually one rough night — `m110-stack` could give
+  up with "Registration failed", even though the frames that *did* solve were
+  perfectly stackable. (It depended on whether the frame Siril measures everything
+  else against was one of the ones that failed, which is why it hit some runs and
+  not others — one bad frame out of 114 was enough when it was that one.) It now
+  carries on with those and tells you what it left
+  behind, broken down by night, so you can see at a glance that (say) one session
+  accounted for almost all of it. If you'd rather drop that night outright, it
+  prints the exact `--exclude-night` to re-run with. When barely anything solved
+  it still stops, because at that point it's more likely your setup than the sky —
+  and it says which to check. Use `--min-solved` to set that bar yourself.
+  (`--ssf` now writes one file per phase rather than one combined script, since
+  running them as a single script is what caused this.)
+- **`--exclude-night` and the other frame filters work again after a failed run.**
+  If a stack failed and you re-ran it with `--exclude-night` to drop the bad
+  session, M110 kept the working files from the failed attempt — and Siril reuses
+  those rather than rebuilding them, so your exclusion was applied to nothing. The
+  summary said "stacking 114 of 221 frames" while the stack quietly used all 221.
+  Those working files are now cleared at the start of each run, and M110 says how
+  much it freed. `--restack` still reuses them, which is what it's for.
+
 ### Added
 - **Send a stack straight to AstroWizard.** An object's detail pane now has a
   **Send to AstroWizard…** button. It lists every stack you have for that object —

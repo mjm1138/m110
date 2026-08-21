@@ -131,7 +131,7 @@ _CLI_FLAGS = {
         "frame count and integration, mixed exposures or gain, mosaic geometry, "
         "coverage depth, and the drizzle / rejection / weighting / feathering choices "
         "those support — each with the reason it was chosen — plus the projected disk "
-        "cost and the two Siril scripts the settings produce. Reads every frame's FITS "
+        "cost and the three Siril scripts the settings produce. Reads every frame's FITS "
         "header, so seconds on a large set. "
         "Pass any override to see what the engine proposes INSTEAD: the whole proposal "
         "is recomputed, canvas and disk included, so a what-if is answered with real "

@@ -38,6 +38,108 @@ Legend: `[ ]` open · `[~]` partially done
   notices until they want it back). `tests/test_sandbox_dirs.py` asserts both
   halves and that a sub appears in a snapshot exactly once.
 
+- [x] **A partial plate solve threw away a whole stack** (done —
+  `feature/partial-platesolve`). `m110-stack` generated one Siril script that ran
+  `seqplatesolve` and then `seqapplyreg`. When the solve came back partial, Siril
+  reported "Sequence processing partially succeeded", **computed the astrometric
+  registration anyway and wrote it into the `.seq`** — and *then* failed the
+  script at "Finalizing sequence processing failed". Everything after the solve
+  was skipped, so a usable registration sat on disk while the run reported
+  `Registration failed (exit 1)` and stopped. On M81/LP: 123 of 221 frames solved,
+  `bkg_pp_lights_.seq` written with 123 selected and valid homographies, zero
+  registered frames produced.
+
+  **It is the reference frame, not the failure count.** "Any partial solve aborts"
+  was the first reading and it is wrong. Three runs on the same Siril 1.4.4:
+
+  | run | frames | unsolved | outcome |
+  |---|---|---|---|
+  | M27 | 2312 | 76 (3.3%) | finished successfully |
+  | M81/LP | 221 | 98 (44%) | `Finalizing sequence processing failed` |
+  | M81/LP | 114 | **1 (0.9%)** | `Finalizing sequence processing failed` |
+
+  The third settles it: one frame failed out of 114, and it was frame #1 — the
+  sequence reference. `Reference image was not platesolved, changing reference`
+  appears in both failing logs and neither passing one. The fix does not rest on
+  the trigger being right, though: phase 1 now ends before registration either
+  way, so whatever trips finalize cannot reach `seqapplyreg`.
+
+  Fix: **three phases, three Siril invocations** — solve · apply registration ·
+  stack. Phase 1 now ends at `seqplatesolve`, so its abort costs nothing; phase 2
+  is a separate process that reads the `.seq` back off disk and registers the
+  solved subset. Verified against the real artifacts: a fresh `seqapplyreg` over
+  that abandoned sequence registers 117 frames (123 solved ∩ the quality filters).
+
+  Two things fell out of it. **`seqapplyreg` was never passing `-filter-included`**
+  — that flag was on `stack`, one phase later — so Siril built its filter from the
+  quality percentiles alone: 206 of the 221 M81 frames rather than 117, with the
+  thresholds themselves computed over a population most of which had no solution.
+  Siril's own fallback runs too late to save it, and the M27 log shows the order:
+  the four quality filters resolve to "a total of images processed of 2157", *then*
+  "Some images were not registered, excluding them", *then* "Using selected images
+  filter (2236/2312)". And the error was unactionable: solve failures **cluster by
+  night** (2026-06-28 lost 94 of 104, 2026-07-03 all 3, the other two nights 0 and
+  1), which is the whole diagnosis, so the run now parses the tally and the failed
+  frames out of the log, attributes them to the night each frame came from, and
+  names the culprits as a ready-to-paste `--exclude-night`. It carries on with the
+  solved subset when at least `--min-solved` percent (default 25) came through —
+  below that the failures are more likely the setup than the sky, and it says so
+  instead of stacking a remnant.
+
+- [x] **Frame-selection flags silently did nothing after a failed run** (done —
+  `feature/partial-platesolve`). `process/` deliberately survives a failed run
+  (it is the only copy of the registered sequence), and Siril **will not rebuild
+  a sequence file that already exists** — `seqfile 'pp_lights_.seq' already
+  exists, not overwriting`. So a re-run inherited the previous run's *derived*
+  sequences: `unselect` applied to `lights_` and to nothing downstream of it.
+  Reproduced on six synthetic frames with `unselect lights_ 4 6` — Siril reports
+  `3 images are selected in the sequence` and then `Sequence found: pp_lights_
+  1->6`, and every later command sees six. Clearing `process/` first gives
+  `pp_lights_ 1->3`.
+
+  The result was a **silently wrong stack**: the proposal printed "stacking 114
+  of 221 frames, excluding 107" while Siril stacked 221. Worse in combination
+  with the partial-solve fix above, whose whole point is to print
+  `--exclude-night <date>` as the suggested next step — advice given immediately
+  after a failed run, which is exactly when it would have done nothing.
+
+  Fix: `clear_scratch` removes `process/` at the start of any run that isn't
+  `--restack`, and says how much it freed. `--restack` is the documented way to
+  reuse the scratch on purpose and is the only exemption; the calibrate and
+  background pass this costs is minutes, against a wrong stack that looks right.
+
+- [ ] **No way to resume from a completed registration — only from registered
+  *frames*.** `--restack` reuses `process/` by looking for `r_<seq>*` files, so it
+  only helps once `seqapplyreg` has run. But the state a stopped run actually
+  leaves behind is the *other* one: `seqplatesolve` writes the astrometric
+  registration into the `.seq` and materialises nothing, so a run stopped between
+  the two phases has minutes of solve on disk that no flag can reach. M81/LP is
+  sitting in exactly that state right now — `bkg_pp_lights_.seq` with 113 of 114
+  registered, zero `r_` frames — and `--restack` would find nothing to stack.
+
+  Reachable three ways after the partial-solve work: `--min-solved` stopped the
+  run, phase 2 itself failed, or a scratch predating the three-phase split. The
+  first is the awkward one, because the stop message *tells* the user to re-run
+  with a lower `--min-solved`, and that re-run pays for the solve again. Correct,
+  just wasteful — minutes on a small target, longer on a 2000-frame mosaic where
+  calibrate and background extraction dominate.
+
+  Not fixed with the split because it wants a third resume mode
+  (`--from-registration`?) interacting with `clear_scratch`, and the path is now
+  rare enough that the surface may not earn its keep. Worth revisiting if the
+  `--min-solved` stop turns out to be common in practice.
+
+- [ ] **A failed stack's log is destroyed by the next attempt.** `run_siril` writes
+  to a fixed path per working dir (`siril_stack.log`, and now
+  `siril_stack_register.log` / `siril_stack_stack.log` too) and truncates on each
+  run, so the evidence for *why* a run failed survives only until someone retries —
+  which is the first thing anyone does. Nearly cost the partial-solve diagnosis
+  above: the M81/LP log was overwritten mid-investigation and only survived because
+  the retry happened to reproduce the same failure. The sandbox already has an
+  `archive/<ts>/` convention that could hold a failed run's logs; the open question
+  is retention (keeping every log forever on a target that is re-stacked often is
+  its own mess) and whether a *successful* run's log is worth keeping at all.
+
 - [ ] **Siril's converted-sequence cube is backed up as authored work.** The
   narrowed scope above keeps everything in a sandbox that isn't a declared link
   tree, which sweeps in `lights.fit` — Siril's single-file conversion of the
