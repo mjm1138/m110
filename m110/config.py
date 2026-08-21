@@ -125,8 +125,15 @@ def get_setting(key: str, default=None):
 
 
 def save_setting(key: str, value) -> None:
-    """Persist a single app setting."""
+    """Persist a single app setting.
+
+    Creates `SETTINGS_FILE`'s own parent, not just `APP_CONFIG_DIR`: the two are
+    normally the same place but are separate module-level names, and tests (and
+    the conftest seal) point them at different scratch dirs. Assuming they agree
+    made the first write to a redirected settings path raise FileNotFoundError.
+    """
     APP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     s = _read_settings()
     s[key] = value
     SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
@@ -334,6 +341,18 @@ def biases_dir(name: str) -> Path:
 # single handed-off stack file, not a directory of links. Do **not** express that by
 # leaving the workflow out — the keys *are* `SANDBOX_DIRNAMES`, so an omission
 # silently un-protects the sandbox from all three walks above.
+#
+# `frozenset()` answers "what is a hardlink duplicate", which is **not** the same
+# question as "what is worth backing up", and AstroWizard is where the two come
+# apart. It autosaves one file per user action: a single measured finish left 26
+# files / 2.02 GB of `_AW<n>_` steps. AstroWizard does try to clean those up, but
+# only from its `WM_DELETE_WINDOW` handler — so on macOS a Cmd+Q orphans the lot,
+# and a crash would anyway. None of it is a link, so none of it is excluded — and mirrored dedups by *path*, so each re-finish
+# adds another full copy to every snapshot. The fix belongs in the workflow's import
+# step, which must archive the chain the way `siril.apply_import` archives a run;
+# this mapping stays honest only while something does. If a workflow ever leaves a
+# large regenerable tree behind with no import step to sweep it, that tree's
+# directory name belongs here.
 SANDBOX_LINKED_INPUTS: dict[str, frozenset[str]] = {
     "siril": frozenset({"lights", "darks", "flats", "biases"}),
     "astrowizard": frozenset(),
@@ -395,6 +414,27 @@ def is_first_run() -> bool:
     return not default_lib.is_file()
 
 
+def _seed_archive_retention(pre_existing: bool) -> None:
+    """Decide the archive-retention default once, on the first launch that sees
+    this store, and write it down.
+
+    Retention deletes processing history, so it must never arrive as a surprise
+    for someone whose library predates it: an existing store defaults to keeping
+    **everything**, exactly the behaviour it has had until now. A brand-new store
+    starts at 3, because a fresh library has no history to lose and unbounded
+    growth is the thing worth preventing.
+
+    Persisted rather than computed, so the answer can't change under the user
+    later — "is this store new?" is only true once, and a setting they can see in
+    Preferences is a decision they can change.
+    """
+    from . import processing
+    if get_setting(processing.SETTING_ARCHIVE_KEEP, None) is not None:
+        return
+    save_setting(processing.SETTING_ARCHIVE_KEEP,
+                 0 if pre_existing else processing.NEW_STORE_ARCHIVE_KEEP)
+
+
 def ensure_data_root(root=None) -> Path:
     """Create the directory skeleton and seed catalog/priorities if missing.
 
@@ -403,9 +443,15 @@ def ensure_data_root(root=None) -> Path:
     """
     r = Path(root).expanduser() if root else DATA_ROOT
 
+    # Whether this store already existed decides one default (below), so read it
+    # before anything here creates the skeleton.
+    pre_existing = (r / INTERNAL_DIRNAME).is_dir() or (r / "Images").is_dir()
+
     # Bring a pre-two-axis store up to the current layout before seeding.
     from . import migrate
     migrate.migrate_store(r)
+
+    _seed_archive_retention(pre_existing)
 
     for sub in _SUBDIRS:
         (r / sub).mkdir(parents=True, exist_ok=True)

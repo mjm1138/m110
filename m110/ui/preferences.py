@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox, QScrollArea,
     QWidget,
+    QSpinBox,
 )
 
 from m110 import config, hints, ingest, launch, processing, updates
@@ -67,10 +68,12 @@ class PreferencesDialog(QDialog):
         lay.addWidget(hint)
 
         # ── processing-prep workflows (persist live on toggle) ───────────────
-        box = QGroupBox("Prepare objects for processing in:")
+        box = QGroupBox("Processing workflows you use:")
         bl = QVBoxLayout(box)
-        wf_note = QLabel("M110 sets up a ready-to-go working folder for each object "
-                         "as you ingest it — pick your stacking app(s).")
+        wf_note = QLabel(
+            "Siril: M110 sets up a ready-to-go working folder for each object as "
+            "you ingest it. AstroWizard: M110 offers to send a finished stack "
+            "over, and imports your finish back afterwards.")
         wf_note.setWordWrap(True)
         bl.addWidget(wf_note)
         enabled = set(processing.enabled_workflow_ids())
@@ -86,6 +89,32 @@ class PreferencesDialog(QDialog):
         # Wire after building so the initial setChecked() can't fire a half-built save.
         for cb in self._wf_checks.values():
             cb.toggled.connect(self._save_workflows)
+
+        # Retention. Every import archives the run it just imported, and those
+        # only ever accumulate — measured at 42 GB on a real library — so this is
+        # the bound on that growth. It is the one place M110 deletes processing
+        # history, hence the explicit "keep everything" position at 0.
+        keep_row = QHBoxLayout()
+        keep_row.addWidget(QLabel("Keep the last"))
+        self._keep_spin = QSpinBox()
+        self._keep_spin.setRange(0, 99)
+        self._keep_spin.setSpecialValueText("all")      # 0 reads as "all"
+        self._keep_spin.setValue(processing.archive_keep())
+        self._keep_spin.setFixedWidth(70)
+        keep_row.addWidget(self._keep_spin)
+        keep_row.addWidget(QLabel("processing sessions"))
+        keep_row.addStretch(1)
+        bl.addLayout(keep_row)
+        keep_note = QLabel(
+            "When you import finished work, the run that produced it is archived "
+            "inside the object's working folder. Older archived runs beyond this "
+            "many are deleted; the most recent is always kept. Set to \u201call\u201d "
+            "to keep every run.")
+        keep_note.setWordWrap(True)
+        keep_note.setProperty("caption", True)
+        bl.addWidget(keep_note)
+        self._keep_spin.valueChanged.connect(processing.set_archive_keep)
+
         lay.addWidget(box)
 
         # ── processing tools (external app paths; persist live) ──────────────
@@ -364,7 +393,9 @@ class PreferencesDialog(QDialog):
         time — no restart)."""
         chosen = [wid for wid, cb in self._wf_checks.items()
                   if cb.isEnabled() and cb.isChecked()]
-        config.save_setting(processing.SETTING_KEY, chosen)
+        # Written as an explicit map over every workflow, so one added later can
+        # tell "never asked" from "switched off" — see processing.enabled_workflow_ids.
+        processing.set_enabled_workflows(chosen)
 
     def _tool_override(self, tool_id: str) -> str:
         paths = config.get_setting(launch.APP_PATHS_SETTING, {}) or {}

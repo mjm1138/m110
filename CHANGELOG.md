@@ -17,6 +17,38 @@ changes a **user** would notice, per release.
   copy on GitHub, which is always ahead of the released app — so it could describe
   buttons and settings your build doesn't have yet. A link you save keeps working
   after later releases move on, and the changelog is there too.
+- **M110 can now keep a limited number of past processing sessions.** Every time
+  you import finished work, the run that produced it is archived inside the
+  object's working folder — and until now those built up forever. On a real
+  library that had reached 42 GB. **Preferences → Processing workflows you use →
+  "Keep the last N processing sessions"** now bounds that.
+  **If you already have an M110 library, nothing changes**: existing libraries
+  default to "all", so no run you already have is deleted without you choosing
+  it. New libraries start at 3. Either way the most recent run is never deleted,
+  nothing is touched unless an import actually archived something, and anything
+  you put in that folder yourself is left alone.
+- **AstroWizard now appears alongside Siril in Preferences.** That section is now
+  "Processing workflows you use" — ticking Siril means M110 prepares a working
+  folder as you ingest; ticking AstroWizard means it offers to send a stack over
+  and import your finish back. Both start on, including for existing installs.
+- **Sending a stack to AstroWizard now opens it there.** Previously M110 could
+  only reveal the folder and leave you to find the file — AstroWizard couldn't be
+  handed one. Its 18 August release added that, so M110 now loads the stack
+  directly. (It only works if AstroWizard isn't already running; if it is, quit it
+  first or use Reveal folder.)
+- **M110 now picks up work you finish in AstroWizard.** Send a stack over with
+  "Send to AstroWizard", finish it there, and **Import finished work** finds your
+  exports and files them into the object's Finished images — the same round-trip
+  Siril has always had. Until now nothing looked in that folder, so a finish
+  stayed stranded where you saved it. If both Siril and AstroWizard have
+  something waiting, M110 asks which one you mean.
+- **Importing an AstroWizard finish tidies up after it.** AstroWizard saves a
+  separate file for every step you take — one real finish left 26 of them, just
+  over 2 GB — and they were piling up in your library and going into every
+  backup. Importing now sweeps that run into `astrowizard/archive/`, keeping the
+  stack you handed over so you can pick it up again. Nothing is ever deleted, and
+  you can choose to leave the folder untouched instead. Those step files are also
+  no longer offered to you as things to import: only what you actually exported is.
 
 ### Fixed
 - **A stack no longer fails because some frames wouldn't plate-solve.** If part

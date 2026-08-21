@@ -546,7 +546,7 @@ def build_processing(totals: dict, overrides: dict | None,
     only objects, or a stack whose header lacks DATE) it falls back to the
     newest-light-vs-newest-processed mtime comparison.
     """
-    from . import siril    # Qt-free engine module; used for the ready-for-import flag
+    from . import processing    # Qt-free engine module; the per-workflow ready flag
     overrides = (overrides or {}).get("folder", {}) if isinstance(overrides, dict) else {}
     by_folder = totals["by_folder"]
     now_iso = datetime.now().isoformat(timespec="seconds")
@@ -689,9 +689,14 @@ def build_processing(totals: dict, overrides: dict | None,
             "processed_files": processed[:6],   # cap for display
             "processed_count": len(processed),
             "stack_meta": stack_meta,    # None if no FITS stack found
-            # Finished Siril output sitting in the sandbox, not yet imported (#beta):
-            # drives the Processing page's "Ready to import" group.
-            "ready_for_import": siril.has_unimported_output(fname),
+            # Finished output sitting in a workflow sandbox, not yet imported
+            # (#beta): drives the Processing page's "Ready to import" group.
+            # `ready_for_import` stays a boolean so every existing reader keeps
+            # working; `ready_workflows` is what answers "which tool?", which a
+            # single flag cannot once there is more than one (ROADMAP 14b).
+            "ready_for_import": bool(processing.workflows_with_output(fname)),
+            "ready_workflows": [w.id for w in
+                                processing.workflows_with_output(fname)],
             "star_removal": recommend_star_removal_for_folder(
                 t.get("slugs", []), catalog or {}, ov.get("star_removal")),
             "note": ov.get("note"),

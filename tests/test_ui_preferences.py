@@ -29,9 +29,12 @@ def test_workflow_toggle_persists(tmp_path, monkeypatch, qapp):
         for cb in d._wf_checks.values():
             if cb.isEnabled():
                 cb.setChecked(False)         # fires _save_workflows
-        assert config.get_setting(processing.SETTING_KEY) == []
+        # Asserted through the reader, not the stored shape: the setting is a
+        # {id: bool} map so a workflow added later can tell "never asked" from
+        # "switched off", and the test should not re-pin the storage format.
+        assert processing.enabled_workflow_ids() == []
         d._wf_checks[enabled[0]].setChecked(True)
-        assert enabled[0] in config.get_setting(processing.SETTING_KEY)
+        assert enabled[0] in processing.enabled_workflow_ids()
     finally:
         d.deleteLater(); qapp.processEvents()
 

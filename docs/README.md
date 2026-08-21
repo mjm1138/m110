@@ -14,7 +14,7 @@ each page links to the next.
 2. [Getting around](#getting-around) — the navigation rail, menus, and updates
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
 4. **[The library & object metadata](library.md)** — the List/Grid/Feed views, adding objects, filling in details, and per-image curation
-5. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), and *what hardlinks mean for your files* (important)
+5. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), the **AstroWizard** round-trip, **keeping working files under control** (how many past runs M110 keeps), and *what hardlinks mean for your files* (important)
 6. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
 7. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
 8. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy

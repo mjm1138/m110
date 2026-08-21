@@ -25,10 +25,9 @@ import os
 import re
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
-from . import config, hints, objects
+from . import config, roundtrip
 
 _log = logging.getLogger("m110")
 
@@ -39,23 +38,12 @@ OTHER_FILTER = "OTHER"
 
 PRESET_NAME = "naztronomy_smart_scope_presets.json"
 
-_RASTER_EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
-_FIT_EXTS = (".fit", ".fits")
-# The finished-deliverable / star-layer vocabulary is user-editable and shared —
-# see `hints.py` (finished = "processed/final/finished", intermediate =
-# "starless/starmask" by default). A finished output looks "final"…
-# …and is not a star *layer* (starless/starmask are always intermediates).
-# NB: pipeline-step tokens (_og/_crop/_stretch/_spcc/_graxpert) are NOT a veto on
-# their own — the Naztronomy/Siril deliverable bakes the steps it went through
-# into its name (e.g. "…_spcc_processed.png"). A bare step file is excluded
-# anyway because a .fit must carry a finished hint to count as a stack, and those
-# rasters are rare; over-vetoing them silently dropped real finished output (#).
-# This vocabulary only decides *loose* files — a file sorted into a stacks/ or
-# finished/ tier is classified by its directory instead (see `_classify`, #85).
 
-
-class PrepCancelled(Exception):
-    """Raised inside plan/apply when the caller's should_cancel() turns true."""
+# One cancellation type across prep and import: `roundtrip` raises it from the
+# shared scan, prep raises it directly, and every existing caller catches
+# `siril.PrepCancelled`. Aliasing rather than subclassing keeps those catches
+# working against the shared raise — a subclass would not.
+PrepCancelled = roundtrip.Cancelled
 
 
 def filter_of(filename: str) -> str:
@@ -478,302 +466,86 @@ def prune_rejected(target: str) -> dict:
                   target, pruned, orphans)
     return {"pruned": pruned, "orphans": orphans, "skipped": False}
 
+# ── import: the shared round-trip, wearing Siril's sandbox ───────────────────
+#
+# Detection, classification, collision handling, the import copy and the archive
+# sweep all live in `roundtrip.py` — none of that was ever Siril-specific, and a
+# second workflow (AstroWizard, ROADMAP 14b) needs exactly the same behaviour.
+# What is Siril-specific is the descriptor below, and it is the whole difference:
+# a sandbox holding literal `lights/` hardlinks, a Naztronomy preset and Siril's
+# own `process/` scratch; per-filter job dirs; and a willingness to claim output
+# left loose in the object dir, which is the mis-pointed-working-directory
+# recovery (`-d` set to `Images/<target>/` instead of `Images/<target>/siril/`).
+#
+# The names below are re-exported rather than renamed at the call sites: the UI,
+# `build_derived` and the test-suite all reach for `siril.scan_finished` /
+# `siril.apply_import` / `siril.has_unimported_output`, and an extraction that is
+# behaviour-preserving should not also be an API break.
 
-# ── import: detect + plan (read-only) ────────────────────────────────────────
-
-@dataclass
-class FinishedItem:
-    src: str
-    name: str
-    kind: str            # "render" (→finished/) | "stack" (→stacks/)
-    dest: str            # base destination (finished/<name> | stacks/<name>)
-    size_bytes: int
-    default: bool        # pre-checked in the UI
-    already: bool        # a byte-identical copy is already imported → will skip
-    note: str = ""       # UI hint, e.g. "kept as M42-2.png" for a re-processed name
-
-
-@dataclass
-class ImportPlan:
-    target: str
-    items: list                  # list[FinishedItem]
-    hero_candidates: list        # render src paths (rasters)
-
-
-# Managed content tiers whose *directory* classifies a file outright — a file
-# the user (or Siril) filed under stacks/ is a stack, under finished/ is a
-# deliverable, whatever its filename (#85). `seestar-stacks/` is a device tier
-# (in-app stacks ingested from the scope), never user processing output, so it
-# is never a source.
-_OUTPUT_TIERS = ("stacks", "finished")
-
-
-def _tier_of(dir_parts) -> str | None:
-    """The managed output tier (`stacks`/`finished`) among a file's ancestor
-    directory names, nearest-to-the-file first, or None if it sits loose."""
-    for part in reversed(dir_parts):
-        if part in _OUTPUT_TIERS:
-            return part
-    return None
-
-
-def _classify(path: Path, target: str, tier: str | None = None):
-    """(kind, dest) for a candidate file, or None if it's not a finished output.
-
-    **Directory wins (#85).** When `tier` names the managed tier the file sits
-    under, that tier classifies it outright — no filename hint required, and the
-    star-layer/intermediate veto is *not* applied (the user filed it there on
-    purpose; if they disagree they move the file). Only files that sit *loose*
-    (no tier dir in their path) fall back to the filename vocabulary: a raster is
-    a render; a `.fit` is a stack only if it carries a finished hint, so a bare
-    intermediate stays out."""
-    name = path.name
-    if "_thn." in name or name == "lights.fit":
-        return None
-    ext = path.suffix.lower()
-
-    if tier == "stacks":
-        # A stack is a FITS master; a stray raster in stacks/ isn't one (and the
-        # gallery already surfaces it), so leave it.
-        if ext in _FIT_EXTS:
-            return "stack", config.stacks_dir(target) / name
-        return None
-    if tier == "finished":
-        # A deliverable can be a raster or a FITS master — either belongs here.
-        if ext in _RASTER_EXTS or ext in _FIT_EXTS:
-            return "render", config.finished_dir(target) / name
-        return None
-
-    # Loose: classify by the filename vocabulary (hints.py).
-    if hints.is_intermediate_name(name):
-        return None
-    if ext in _RASTER_EXTS:
-        return "render", config.finished_dir(target) / name
-    if ext in _FIT_EXTS and hints.is_finished_name(name):
-        return "stack", config.stacks_dir(target) / name
-    return None
-
+# Kept in each job dir on cleanup, so the sandbox is ready for another run.
+_ARCHIVE_KEEP = {"lights", "darks", "flats", "biases",
+                 "presets", "archive", "next-steps.md"}
 
 # Sandbox subdirs that never hold fresh, importable output: the hardlinked
 # inputs, Siril's scratch, the preset, and prior archived runs.
 _SKIP_DIRS = {"lights", "process", "presets", "archive"}
 
-# Object-root subdirs skipped when scanning Images/<target>/ for output a run
-# left there directly (the mis-pointed-working-directory case): raw inputs, the
-# device stacks (not user output), per-sub previews, Siril's own `process/`
-# scratch, and every workflow sandbox (`config.SANDBOX_DIRNAMES`) — `siril/`
-# because `_sandbox_outputs` already walks it, the others because their output is
-# **not ours to claim**: without that, `has_unimported_output` goes true off
-# another tool's exports, `autoprep` starts skipping the target, and the import
-# dialog offers to copy files Siril never made. The managed `stacks/`/`finished/`
-# tiers are **not** skipped (#85): a file the user sorted into one is classified
-# by the tier and, if already exactly in place, dropped by the `p == dest` guard
-# in `_finished_outputs` so it can't flood the preview.
-_ROOT_SKIP_DIRS = {
-    "lights", "seestar-stacks", "previews",
-    "darks", "flats", "biases", "process",
-} | set(config.SANDBOX_DIRNAMES)
+SANDBOX = roundtrip.Sandbox(
+    id="siril",
+    skip_dirs=frozenset(_SKIP_DIRS),
+    scan_root=True,
+    split_jobs=True,
+    archive_keep=lambda child: child.name in _ARCHIVE_KEEP,
+)
+
+# Re-exports so `siril.X` keeps working for every existing caller and test.
+FinishedItem = roundtrip.FinishedItem
+ImportPlan = roundtrip.ImportPlan
+_ROOT_SKIP_DIRS = roundtrip.ROOT_SKIP_DIRS
+_OUTPUT_TIERS = roundtrip._OUTPUT_TIERS
+_tier_of = roundtrip.tier_of
+_classify = roundtrip.classify
+_same_bytes = roundtrip.same_bytes
+_resolve_import_dest = roundtrip.resolve_import_dest
 
 
 def _sandbox_outputs(target: str):
-    """Yield (path, kind, dest) for finished outputs in the sandbox, skipping
-    inputs, Siril scratch, presets, and archived prior runs. A tier subdir the
-    user saved into (`siril/stacks/`, `siril/finished/`) classifies its files by
-    that tier (#85)."""
-    base = config.siril_dir(target)
-    if not base.is_dir():
-        return
-    for p in base.rglob("*"):
-        if not p.is_file():
-            continue
-        dir_parts = p.relative_to(base).parts[:-1]
-        if _SKIP_DIRS & set(dir_parts):
-            continue
-        c = _classify(p, target, _tier_of(dir_parts))
-        if c:
-            yield p, c[0], c[1]
+    return roundtrip.sandbox_outputs(target, SANDBOX)
 
 
 def _root_outputs(target: str):
-    """Yield finished outputs a run left directly in the object dir instead of
-    the sandbox — the easy-to-make "I set Siril's working directory to
-    Images/<target>/ rather than Images/<target>/siril/" mistake — plus files
-    the user sorted straight into `stacks/`/`finished/` (classified by tier;
-    already-placed ones are dropped downstream). Skips raw inputs, previews, the
-    device stacks, and the sandbox itself (already walked)."""
-    base = config.target_dir(target)
-    if not base.is_dir():
-        return
-    for p in base.rglob("*"):
-        if not p.is_file():
-            continue
-        dir_parts = p.relative_to(base).parts[:-1]
-        if _ROOT_SKIP_DIRS & set(dir_parts):
-            continue
-        c = _classify(p, target, _tier_of(dir_parts))
-        if c:
-            yield p, c[0], c[1]
+    return roundtrip.root_outputs(target)
 
 
 def _finished_outputs(target: str):
-    """Every importable finished output for a target: the siril/ sandbox plus
-    any a run left in the object dir. A file already sitting *exactly* at its
-    destination (`p == dest`) is dropped — it's imported already and the
-    gallery/derived data read it in place, so it must not reappear in the import
-    preview now that the managed tiers are scanned (#85). No src is yielded twice
-    — the root walk skips siril/, which the sandbox walk owns."""
-    for source in (_sandbox_outputs, _root_outputs):
-        for p, kind, dest in source(target):
-            if p == dest:
-                continue
-            yield p, kind, dest
-
-
-def _same_bytes(a: Path, b: Path, chunk: int = 1 << 16) -> bool:
-    """True if two files have identical content. Size-checks first (a fast reject),
-    then compares chunk-by-chunk with an early exit. Deliberately **not** ``filecmp.cmp``,
-    whose stat-signature cache can return a stale verdict when a same-size file is
-    rewritten within the mtime resolution. Any OS error → ``False`` (treat as different)."""
-    try:
-        if a.stat().st_size != b.stat().st_size:
-            return False
-        with a.open("rb") as fa, b.open("rb") as fb:
-            while True:
-                ca, cb = fa.read(chunk), fb.read(chunk)
-                if ca != cb:
-                    return False
-                if not ca:
-                    return True
-    except OSError:
-        return False
-
-
-def _resolve_import_dest(dest: Path, src: Path) -> tuple[Path, str]:
-    """Where an incoming finished file should land — **keeping both** on a *content*
-    collision rather than clobbering or silently skipping. Returns ``(path, disposition)``:
-
-    * ``(dest, "new")``        — nothing at ``dest`` yet; copy there.
-    * ``(match, "duplicate")`` — ``src`` is byte-identical to ``dest`` (or an existing
-      ``<stem>-N`` sibling); it's already imported → skip (``match`` is the existing copy).
-    * ``(free, "renamed")``    — ``dest`` (and any same-named siblings) exist with
-      **different** bytes → copy to the first free ``<stem>-N<ext>`` so a re-processed
-      render is preserved alongside the old one instead of vanishing into the archive.
-
-    Dedupes against **every** ``<stem>-N`` sibling, so re-running an import doesn't pile
-    up ``-2``/``-3`` copies of an already-imported file. Pure read-only (no writes)."""
-    if not dest.exists():
-        return dest, "new"
-    stem, ext = dest.stem, dest.suffix
-    cand, n = dest, 1
-    while cand.exists():
-        if _same_bytes(src, cand):
-            return cand, "duplicate"
-        n += 1
-        cand = dest.with_name(f"{stem}-{n}{ext}")
-    return cand, "renamed"
+    return roundtrip.finished_outputs(target, SANDBOX)
 
 
 def has_unimported_output(target: str) -> bool:
-    """True if there's a finished output (in the sandbox or loose in the object dir)
-    not yet imported — including a **re-processed file with an existing name but new
-    content** (a plain `dest.exists()` check would miss that, the collision footgun)."""
-    for p, _kind, dest in _finished_outputs(target):
-        if _resolve_import_dest(dest, p)[1] != "duplicate":
-            return True
-    return False
+    """True if Siril left a finished output that isn't imported yet."""
+    return roundtrip.has_unimported_output(target, SANDBOX)
 
 
-def scan_finished(target: str, should_cancel=None) -> ImportPlan:
-    """Read-only: finished outputs in the sandbox (and loose in the object
+def scan_finished(target: str, should_cancel=None) -> roundtrip.ImportPlan:
+    """Read-only: finished outputs in the Siril sandbox (and loose in the object
     dir), classified + routed."""
-    items: list[FinishedItem] = []
-    heroes: list[str] = []
-    for p, kind, dest in sorted(_finished_outputs(target), key=lambda t: str(t[0])):
-        if should_cancel and should_cancel():
-            raise PrepCancelled()
-        resolved, disp = _resolve_import_dest(dest, p)
-        already = disp == "duplicate"          # a byte-identical copy already imported
-        try:
-            size = p.stat().st_size
-        except OSError:
-            size = 0
-        # A re-processed file with an existing name but new content imports under a
-        # `<stem>-N` name (both kept) — surface that in the preview so it's not a surprise.
-        note = f"kept as {resolved.name}" if disp == "renamed" else ""
-        items.append(FinishedItem(
-            src=str(p), name=p.name, kind=kind, dest=str(dest),
-            size_bytes=size, default=not already, already=already, note=note))
-        if kind == "render":
-            heroes.append(str(p))
-    return ImportPlan(target=target, items=items, hero_candidates=heroes)
-
-
-# ── import: apply (writes finished/ + stacks/, gated cleanup) ─────────────────
-
-# Kept in each job dir on cleanup, so the sandbox is ready for another run.
-_ARCHIVE_KEEP = {"lights", "darks", "flats", "biases",
-                 "presets", "archive", "next-steps.md"}
+    return roundtrip.scan_finished(target, SANDBOX, should_cancel)
 
 
 def apply_import(target: str, selected_srcs, hero_src: str | None = None,
                  hero_slug: str | None = None, cleanup: str = "archive",
                  progress=None, should_cancel=None) -> dict:
     """Copy the selected finished outputs into the content tiers, optionally set
-    a hero, and tidy the sandbox. THE WRITER — callers confirm.
-
-    cleanup: "archive" (default) sweeps each job's intermediates/output/scratch
-    into `siril/[<FILTER>/]archive/<timestamp>/`, keeping `lights/` + `presets/`
-    so the sandbox is ready for another run; "none" leaves it. **Never deletes**
-    and never escapes `Images/<target>/siril/`. `hero_src=None` keeps the
-    object's current hero (the dialog's "keep current" choice)."""
-    selected = set(selected_srcs)
-    plan = scan_finished(target)
-    chosen = [it for it in plan.items if it.src in selected]
-    imported = skipped = 0
-    cancelled = False
-    hero_name = None
-    for i, it in enumerate(chosen, 1):
-        if should_cancel and should_cancel():
-            cancelled = True
-            break
-        base_dest = Path(it.dest)
-        base_dest.parent.mkdir(parents=True, exist_ok=True)
-        # Resolve live (the filesystem may have changed since scan; sequential copies
-        # in this loop also update it): identical → skip, different name-collision →
-        # land as `<stem>-N` so both are kept.
-        final, disp = _resolve_import_dest(base_dest, Path(it.src))
-        if disp == "duplicate":
-            skipped += 1
-        else:
-            shutil.copyfile(it.src, final)   # bytes only (mirrors ingest)
-            imported += 1
-        if hero_src and it.src == hero_src:
-            hero_name = final.name           # the name it ACTUALLY landed under (#)
-        if progress:
-            progress(i, len(chosen))
-
-    if cancelled:
-        return {"imported": imported, "skipped": skipped,
-                "cleaned": "none", "cancelled": True}
-
-    # Hero: the chosen render now lives in finished/ — pin it by the filename it
-    # actually landed under (build_images._hero_source matches frontmatter `hero` to
-    # the image name; a re-processed render can land as `<stem>-N`, so we can't just
-    # use the source name). hero_src=None → leave the current hero ("keep current").
-    if hero_src and hero_slug:
-        objects.set_frontmatter_key(
-            hero_slug, "hero", hero_name or Path(hero_src).name)
-
-    cleaned = _archive_run(target) if cleanup == "archive" else "none"
-    return {"imported": imported, "skipped": skipped,
-            "cleaned": cleaned, "cancelled": False}
+    a hero, and tidy the Siril sandbox. THE WRITER — callers confirm."""
+    return roundtrip.apply_import(
+        target, SANDBOX, selected_srcs, hero_src=hero_src, hero_slug=hero_slug,
+        cleanup=cleanup, progress=progress, should_cancel=should_cancel)
 
 
 def _job_dirs(base: Path) -> list[Path]:
     """The working dirs to tidy: per-filter subdirs (each has lights/) if mixed,
     else the sandbox root."""
-    filt = [p for p in base.iterdir() if p.is_dir() and (p / "lights").is_dir()]
-    return filt if filt else [base]
+    return SANDBOX.job_dirs(base)
 
 
 def working_dirs(target: str) -> list[Path]:
@@ -787,24 +559,4 @@ def working_dirs(target: str) -> list[Path]:
 
 
 def _archive_run(target: str) -> str:
-    """Move each job's run output/intermediates/scratch into
-    `<job>/archive/<timestamp>/`, keeping lights/ + presets/ for the next run.
-    Never deletes; only moves within `Images/<target>/siril/`."""
-    base = config.siril_dir(target)
-    if not base.is_dir():
-        return "none"
-    job_dirs = _job_dirs(base)
-    ts0 = datetime.now().strftime("%Y%m%d-%H%M%S")
-    ts, n = ts0, 2
-    while any((jd / "archive" / ts).exists() for jd in job_dirs):
-        ts, n = f"{ts0}-{n}", n + 1
-    moved = 0
-    for jd in job_dirs:
-        dest = jd / "archive" / ts
-        for child in list(jd.iterdir()):
-            if child.name in _ARCHIVE_KEEP:
-                continue
-            dest.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(child), str(dest / child.name))
-            moved += 1
-    return "archive" if moved else "none"
+    return roundtrip.archive_run(target, SANDBOX)
