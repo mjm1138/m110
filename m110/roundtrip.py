@@ -30,6 +30,7 @@ and `has_unimported_output` went true off a different tool's output, which made
 """
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -392,8 +393,59 @@ def apply_import(target: str, sandbox: Sandbox, selected_srcs,
             hero_slug, "hero", hero_name or Path(hero_src).name)
 
     cleaned = archive_run(target, sandbox) if cleanup == "archive" else "none"
-    return {"imported": imported, "skipped": skipped,
-            "cleaned": cleaned, "cancelled": False}
+    # Retention runs only where an archive was just written — it is a bound on
+    # this sandbox's growth, not a sweep of the library, and "Leave the sandbox
+    # as-is" must not delete anything.
+    pruned = {"removed": 0, "freed_bytes": 0}
+    if cleaned == "archive":
+        from . import processing        # local: processing imports us
+        pruned = prune_archives(target, sandbox, processing.archive_keep())
+    return {"imported": imported, "skipped": skipped, "cleaned": cleaned,
+            "pruned": pruned["removed"], "freed_bytes": pruned["freed_bytes"],
+            "cancelled": False}
+
+
+#: The archive dirname `archive_run` writes: `%Y%m%d-%H%M%S`, plus a `-N` suffix
+#: when two runs land in the same second.
+_ARCHIVE_TS_RE = re.compile(r"^\d{8}-\d{6}(-\d+)?$")
+
+
+def prune_archives(target: str, sandbox: Sandbox, keep: int) -> dict:
+    """Delete all but the newest `keep` archived runs in each job dir.
+
+    The one place M110 deletes a user's processing history, so it is deliberately
+    narrow. Three guards, each earning its place:
+
+    * **`keep <= 0` keeps everything.** Off is the setting's own escape hatch, and
+      it must be the safe direction.
+    * **Only directories whose *name* parses as our timestamp are candidates.** The
+      containment check on a recursive delete — `archive/` is ours, but a user who
+      drops a folder of their own in there must not lose it. Same lesson as
+      `stacking.clear_scratch`, which only clears a dir holding a real `.seq`.
+    * **Ordered by that name, never by mtime.** Ingest and import both copy bytes,
+      so mtime is copy time and lies (see the note in `build_processing`); the
+      timestamp in the name is what the pipeline actually recorded, and it sorts
+      lexically because it is zero-padded and big-endian.
+
+    Returns `{"removed": n, "freed_bytes": n}`. Never escapes the sandbox."""
+    if keep <= 0:
+        return {"removed": 0, "freed_bytes": 0}
+    base = sandbox.dir(target)
+    if not base.is_dir():
+        return {"removed": 0, "freed_bytes": 0}
+    removed = freed = 0
+    for jd in sandbox.job_dirs(base):
+        arch = jd / "archive"
+        if not arch.is_dir():
+            continue
+        runs = sorted(d for d in arch.iterdir()
+                      if d.is_dir() and _ARCHIVE_TS_RE.match(d.name))
+        for old in runs[:-keep] if keep < len(runs) else []:
+            size = sum(f.stat().st_size for f in old.rglob("*") if f.is_file())
+            shutil.rmtree(old)
+            removed += 1
+            freed += size
+    return {"removed": removed, "freed_bytes": freed}
 
 
 def archive_run(target: str, sandbox: Sandbox) -> str:

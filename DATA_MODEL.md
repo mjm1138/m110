@@ -217,7 +217,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Finished renders | `Images/<target>/finished/` | PNG/JPG/TIFF/FITS | Imported from the siril sandbox | **Output** — user's deliverables | Persistent | Never auto-deleted |
 | Working files | `Images/<target>/working_files/` | FITS (mostly) | Diverted here on import when a `.fit` in a lights source reads as a processing by-product, not a raw sub (`config.is_light_frame`/`is_processing_product`); `ingest.plan_lights_cleanup` relocates already-mis-filed ones | **Output** — kept, not raw | Persistent | Never auto-deleted | Keeps `lights/` sub-only (raw-integrity + correct filter detection) and `finished/` for final renders only |
 | Sub previews | `Images/<target>/previews/` | JPG | **Opt-in** (#25, `import_sub_previews` pref, default off): the Seestar's per-sub `.jpg` beside every raw sub, routed here by the `_sub` classifier (kind `preview`) instead of being ignored | **Archive** — user's copies, review-only | Persistent | Never auto-deleted | Lazily created (only when the pref is on + previews present); kept out of `lights/` and out of the gallery/hero tiers → **no `.store_version` bump** |
-| Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57) are hardlinks (no extra space); the preset's calibration toggles follow | Persistent (ready for re-runs) | `archive/<ts>/` accumulates; **never auto-deleted** (see Retention) |
+| Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57) are hardlinks (no extra space); the preset's calibration toggles follow | Persistent (ready for re-runs) | `archive/<ts>/` pruned keep-N-latest (default 3, `processing_archive_keep`; "all" = never delete) — see Retention |
 | Media | `Media/<Category>_photo\|_video/` | images/video | Ingested (`*_photo`/`*_video`) | **Content** | Persistent | Never auto-deleted | Import copies content files **plus** a video's `<stem>_thn.jpg` poster; photo-side `_thn.` duplicates and `.avi.idx`/`.avi.txt` are no longer copied (Tools → Clean up imported sidecars removes ones already on disk — never a live video poster) |
 | Media posters | `.m110_internal_data/renders/media/` | JPG | `media.poster_for` → `build_images.make_thumb`, for photo formats Qt can't decode (FITS) | **Derived** | Regenerable | Safe to delete. A **subdirectory** on purpose: `build_images._cleanup_orphaned_renders` reaps unreferenced `*.jpg` directly in `renders/`, and `images.json` never names Media files — the same protection `hero/` relies on |
 | Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below |
@@ -281,11 +281,26 @@ for integrity verification.
 ## Retention / lifecycle
 
 - **Raws, stacks, finished, media** — persistent; **never auto-deleted**.
-- **Siril sandbox** — `lights/` are hardlinks (free); after an import the run's
-  intermediates move into `siril/[<FILTER>/]archive/<ts>/` and the sandbox is left
-  ready for the next run. `archive/` is **retained by default** ("never delete").
-  Any future pruning (keep-N-latest / age-based) must be **user-gated and explicit**
-  — never automatic.
+- **Workflow sandboxes** — `siril/`'s `lights/` are hardlinks (free); after an
+  import the run's intermediates move into `<sandbox>/[<FILTER>/]archive/<ts>/` and
+  the sandbox is left ready for the next run.
+
+  **Policy changed (14b): `archive/` is now pruned, keep-N-latest, on by default
+  at N=3.** This supersedes the earlier commitment that pruning would be
+  "user-gated and explicit — never automatic". Two things forced it. Archived runs
+  only accumulate — nothing regenerates or replaces them — and a real library
+  reached **42 GB across 36 archive dirs**, all of it inside the backup scope, so
+  "never delete" was not a neutral default but a slow leak. And AstroWizard turns
+  a single finish into ~2 GB of per-step autosaves, so the growth rate per run rose
+  sharply with the second workflow.
+
+  The guarantees that remain are the ones that matter: the **most recent run is
+  never deleted**, only directories whose *name* parses as the `%Y%m%d-%H%M%S`
+  stamp are candidates (so a folder the user put in `archive/` is untouchable),
+  ordering is by that name and never by mtime, pruning happens **only** on an
+  import that actually archived (never on refresh, never on "leave the sandbox
+  as-is"), and setting the preference to **"all" restores the old behaviour
+  exactly**. `roundtrip.prune_archives` is the only implementation.
 - **Renders cache** — pure cache; orphaned derivatives (from reprocessed sources
   with new content hashes) are safe to remove. Automatic orphan-pruning is the
   first concrete retention task (open **#14**).

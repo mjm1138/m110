@@ -215,12 +215,14 @@ def test_the_autosave_raster_is_excluded_by_pattern_not_by_hints(
 
 def test_both_workflows_can_import_but_only_siril_prepares():
     """AstroWizard is a registered workflow with no prepare step — work is handed
-    in by `m110-stack --handoff`. Offering to "prepare objects for processing in
-    AstroWizard" in Preferences would promise something that does not exist."""
+    in by `m110-stack --handoff` — which is why the Preferences section is worded
+    per workflow rather than as one "prepare objects in:" list."""
     from m110 import processing
     assert {w.id for w in processing.importers()} == {"siril", "astrowizard"}
-    prep_ids = {w.id for w in processing.preparing_workflows()}
-    assert "siril" in prep_ids and "astrowizard" not in prep_ids
+    by_id = processing.WORKFLOWS_BY_ID
+    assert by_id["siril"].autoprep is not None
+    assert by_id["astrowizard"].autoprep is None
+    assert by_id["astrowizard"].importer is astrowizard
 
 
 def test_workflows_with_output_names_the_tool_holding_work(tmp_path, monkeypatch):
@@ -242,3 +244,89 @@ def test_the_import_dialog_defaults_to_siril_but_takes_a_workflow():
     aw = processing.WORKFLOWS_BY_ID["astrowizard"]
     assert aw.importer is astrowizard
     assert import_dialog.ImportDialog._KEEPS["astrowizard"] == "the handed-off stack"
+
+
+# ── retention: bounding archived runs ────────────────────────────────────────
+
+def _fake_runs(base, names, size=2048):
+    arch = base / "archive"
+    for n in names:
+        d = arch / n
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "run.fit").write_bytes(b"x" * size)
+    return arch
+
+
+def test_prune_keeps_the_newest_n_runs(tmp_path, monkeypatch):
+    target, base = _make_sandbox(tmp_path, monkeypatch, chain=False, exports=False)
+    arch = _fake_runs(base, ["20260101-010000", "20260102-010000",
+                             "20260103-010000", "20260104-010000"])
+    res = roundtrip.prune_archives(target, astrowizard.SANDBOX, keep=2)
+    assert res["removed"] == 2 and res["freed_bytes"] > 0
+    assert sorted(p.name for p in arch.iterdir()) == [
+        "20260103-010000", "20260104-010000"]
+
+
+def test_prune_is_off_when_keep_is_zero(tmp_path, monkeypatch):
+    """0 means keep everything — the setting's own escape hatch, and off has to
+    be the safe direction."""
+    target, base = _make_sandbox(tmp_path, monkeypatch, chain=False, exports=False)
+    arch = _fake_runs(base, ["20260101-010000", "20260102-010000"])
+    assert roundtrip.prune_archives(target, astrowizard.SANDBOX, keep=0) == {
+        "removed": 0, "freed_bytes": 0}
+    assert len(list(arch.iterdir())) == 2
+
+
+def test_prune_never_touches_a_directory_that_is_not_a_run(tmp_path, monkeypatch):
+    """The containment check on a recursive delete: `archive/` is ours, but a
+    folder the user put there is not."""
+    target, base = _make_sandbox(tmp_path, monkeypatch, chain=False, exports=False)
+    arch = _fake_runs(base, ["20260101-010000", "20260102-010000",
+                             "20260103-010000"])
+    mine = arch / "my notes"
+    mine.mkdir()
+    (mine / "keep.txt").write_text("hand-written")
+    roundtrip.prune_archives(target, astrowizard.SANDBOX, keep=1)
+    assert (mine / "keep.txt").is_file()
+    assert [p.name for p in sorted(arch.iterdir()) if p.name != "my notes"] == [
+        "20260103-010000"]
+
+
+def test_prune_orders_by_name_not_mtime(tmp_path, monkeypatch):
+    """mtime lies here — ingest and import copy bytes, so it is copy time. The
+    timestamp in the name is what the pipeline recorded."""
+    import os
+    target, base = _make_sandbox(tmp_path, monkeypatch, chain=False, exports=False)
+    arch = _fake_runs(base, ["20260101-010000", "20260209-010000"])
+    # touch the OLD run so it looks newest by mtime
+    os.utime(arch / "20260101-010000", (2 ** 31 - 1, 2 ** 31 - 1))
+    roundtrip.prune_archives(target, astrowizard.SANDBOX, keep=1)
+    assert [p.name for p in arch.iterdir()] == ["20260209-010000"]
+
+
+def test_import_prunes_only_when_it_archived(tmp_path, monkeypatch):
+    from m110 import processing
+    monkeypatch.setattr(processing, "archive_keep", lambda: 1)
+    target, base = _make_sandbox(tmp_path, monkeypatch)
+    _fake_runs(base, ["20260101-010000", "20260102-010000"])
+
+    res = astrowizard.apply_import(target, [], cleanup="none")
+    assert res["pruned"] == 0
+    assert len(list((base / "archive").iterdir())) == 2
+
+    res = astrowizard.apply_import(target, [], cleanup="archive")
+    assert res["pruned"] == 2          # the two old ones; this run's is kept
+    assert len(list((base / "archive").iterdir())) == 1
+
+
+def test_siril_archives_are_pruned_by_the_same_setting(tmp_path, monkeypatch):
+    """Retention is a property of the shared round-trip, not of one workflow."""
+    from m110 import siril
+    root = tmp_path / "M110"
+    monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
+    base = config.siril_dir("M13")
+    base.mkdir(parents=True)
+    arch = _fake_runs(base, ["20260101-010000", "20260102-010000",
+                             "20260103-010000"])
+    roundtrip.prune_archives("M13", siril.SANDBOX, keep=1)
+    assert [p.name for p in arch.iterdir()] == ["20260103-010000"]

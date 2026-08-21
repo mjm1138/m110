@@ -16,7 +16,23 @@ from typing import Callable
 from . import astrowizard, config, siril
 
 SETTING_KEY = "processing_workflows"
-DEFAULT_WORKFLOWS = ["siril"]
+DEFAULT_WORKFLOWS = ["siril", "astrowizard"]
+
+#: Ids the workflow setting could name *before* it became a map. A legacy saved
+#: list enumerated only the enabled ones, so absence meant "off" — but only for a
+#: workflow that was actually on offer at the time. A workflow added later is
+#: **unanswered**, not declined, and must take its default instead of silently
+#: reading as switched off. (AstroWizard is the first case: a user who saved
+#: `["siril"]` before it existed never chose to turn it off, and reading that as
+#: a decision would make Send-to/Import vanish on upgrade.)
+LEGACY_SETTING_IDS = frozenset({"siril", "pixinsight", "dss", "app"})
+
+SETTING_ARCHIVE_KEEP = "processing_archive_keep"
+#: How many archived runs to keep per working folder. 0 = keep everything.
+#: Three is enough to compare against the previous couple of attempts while
+#: bounding growth: measured on a real library, archived runs reached 42 GB, and
+#: they only ever accumulate — nothing regenerates or replaces them.
+DEFAULT_ARCHIVE_KEEP = 3
 
 
 @dataclass(frozen=True)
@@ -44,14 +60,6 @@ WORKFLOWS = [
 ]
 
 
-def preparing_workflows() -> list:
-    """Workflows with a prepare step — the ones the Preferences checkboxes are
-    about. AstroWizard is a registered workflow with no prep, so offering to
-    "prepare objects for processing in AstroWizard" would promise something that
-    does not exist."""
-    return [w for w in WORKFLOWS if w.autoprep is not None or not w.available]
-
-
 def importers() -> list:
     """Registered workflows that can import finished work back."""
     return [w for w in WORKFLOWS if w.available and w.importer is not None]
@@ -68,9 +76,40 @@ WORKFLOWS_BY_ID = {w.id: w for w in WORKFLOWS}
 
 
 def enabled_workflow_ids() -> list[str]:
-    """Workflow ids the user has enabled (default: Siril)."""
+    """Workflow ids the user has enabled.
+
+    Stored as a `{id: bool}` map so an id the user has never been asked about is
+    distinguishable from one they turned off — see `LEGACY_SETTING_IDS`. A legacy
+    list is read forward without being rewritten, so downgrading is harmless."""
     val = config.get_setting(SETTING_KEY, None)
-    return list(val) if isinstance(val, list) else list(DEFAULT_WORKFLOWS)
+    if isinstance(val, dict):
+        return [w.id for w in WORKFLOWS
+                if val.get(w.id, w.id in DEFAULT_WORKFLOWS)]
+    if isinstance(val, list):
+        return [w.id for w in WORKFLOWS
+                if ((w.id in val) if w.id in LEGACY_SETTING_IDS
+                    else (w.id in DEFAULT_WORKFLOWS))]
+    return list(DEFAULT_WORKFLOWS)
+
+
+def set_enabled_workflows(ids) -> None:
+    """Persist the enabled set as an explicit map over every known workflow, so
+    a later-added workflow can tell 'unanswered' from 'declined'."""
+    ids = set(ids)
+    config.save_setting(SETTING_KEY, {w.id: (w.id in ids) for w in WORKFLOWS})
+
+
+def archive_keep() -> int:
+    """How many archived runs to keep per working folder (0 = keep all)."""
+    val = config.get_setting(SETTING_ARCHIVE_KEEP, DEFAULT_ARCHIVE_KEEP)
+    try:
+        return max(0, int(val))
+    except (TypeError, ValueError):
+        return DEFAULT_ARCHIVE_KEEP
+
+
+def set_archive_keep(n: int) -> None:
+    config.save_setting(SETTING_ARCHIVE_KEEP, max(0, int(n)))
 
 
 def run_autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
