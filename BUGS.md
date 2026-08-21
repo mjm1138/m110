@@ -108,6 +108,27 @@ Legend: `[ ]` open · `[~]` partially done
   reuse the scratch on purpose and is the only exemption; the calibrate and
   background pass this costs is minutes, against a wrong stack that looks right.
 
+- [ ] **No way to resume from a completed registration — only from registered
+  *frames*.** `--restack` reuses `process/` by looking for `r_<seq>*` files, so it
+  only helps once `seqapplyreg` has run. But the state a stopped run actually
+  leaves behind is the *other* one: `seqplatesolve` writes the astrometric
+  registration into the `.seq` and materialises nothing, so a run stopped between
+  the two phases has minutes of solve on disk that no flag can reach. M81/LP is
+  sitting in exactly that state right now — `bkg_pp_lights_.seq` with 113 of 114
+  registered, zero `r_` frames — and `--restack` would find nothing to stack.
+
+  Reachable three ways after the partial-solve work: `--min-solved` stopped the
+  run, phase 2 itself failed, or a scratch predating the three-phase split. The
+  first is the awkward one, because the stop message *tells* the user to re-run
+  with a lower `--min-solved`, and that re-run pays for the solve again. Correct,
+  just wasteful — minutes on a small target, longer on a 2000-frame mosaic where
+  calibrate and background extraction dominate.
+
+  Not fixed with the split because it wants a third resume mode
+  (`--from-registration`?) interacting with `clear_scratch`, and the path is now
+  rare enough that the surface may not earn its keep. Worth revisiting if the
+  `--min-solved` stop turns out to be common in practice.
+
 - [ ] **A failed stack's log is destroyed by the next attempt.** `run_siril` writes
   to a fixed path per working dir (`siril_stack.log`, and now
   `siril_stack_register.log` / `siril_stack_stack.log` too) and truncates on each

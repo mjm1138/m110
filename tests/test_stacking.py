@@ -670,9 +670,22 @@ def _drive_main(tmp_path, monkeypatch, solve_rc, solve_log, extra_argv=()):
 def test_clear_scratch_removes_the_dir_and_reports_what_it_freed(tmp_path):
     proc = tmp_path / "process"
     (proc / "sub").mkdir(parents=True)
+    (proc / "pp_lights_.seq").write_text("S 'pp_lights_' 1 1 1 5 1 6 0 0 0\n")
     (proc / "sub" / "pp_lights_00001.fit").write_bytes(b"x" * 2048)
     assert clear_scratch(proc) > 0
     assert not proc.exists()
+
+
+def test_clear_scratch_will_not_delete_a_directory_that_is_not_a_siril_scratch(
+        tmp_path):
+    """The containment check on a recursive delete. `resolve_layout` accepts a
+    bare folder of subs, where a `process/` sibling may be the user's own work —
+    and with no sequence file there is no stale sequence to clear anyway."""
+    proc = tmp_path / "process"
+    proc.mkdir()
+    (proc / "my_own_work.fit").write_bytes(b"x" * 2048)
+    assert clear_scratch(proc) == 0.0
+    assert (proc / "my_own_work.fit").exists()
 
 
 def test_clear_scratch_is_a_no_op_when_there_is_no_scratch(tmp_path):

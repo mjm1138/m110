@@ -863,8 +863,15 @@ def clear_scratch(process_dir: Path) -> float:
     calibrate/background pass this throws away is minutes. `--restack` is the
     documented way to reuse the scratch on purpose, and is the only thing that
     skips this.
+
+    Only ever removes a directory that holds at least one Siril `.seq`. That is
+    the containment check on a recursive delete — `<working>/process` is our own
+    scratch in a sandbox, but `resolve_layout` also accepts a bare folder of subs,
+    where a `process/` sibling could be someone's own work. It is also exactly the
+    right *semantic* condition: with no sequence file there is no stale sequence,
+    which is the only thing this function exists to clear.
     """
-    if not process_dir.is_dir():
+    if not process_dir.is_dir() or not any(process_dir.glob("*.seq")):
         return 0.0
     gb = sum(f.stat().st_size for f in process_dir.rglob("*")
              if f.is_file()) / 1024**3
