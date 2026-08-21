@@ -133,3 +133,43 @@ def test_current_version_prefers_dunder_when_frozen(monkeypatch):
     assert updates.current_version() == "9.9.9-frozen-test"
     monkeypatch.setattr(sys, "frozen", False, raising=False)
     assert updates.current_version() != "9.9.9-frozen-test"   # source → metadata
+
+
+# ── the user guide points at the build you are running ───────────────────────
+
+@pytest.mark.parametrize("version,tag", [
+    ("0.3.0b5", "v0.3.0-beta.5"),
+    ("0.3.0", "v0.3.0"),
+    ("0.4.0a1", "v0.4.0-alpha.1"),
+    ("1.0.0rc2", "v1.0.0-rc.2"),
+])
+def test_version_tag_matches_the_release_script(version, tag):
+    """`tools/release.py` derives the PEP 440 version and this SemVer tag from one
+    argument so they cannot disagree; this pins the copy in `updates` to it."""
+    assert updates.version_tag(version) == tag
+
+
+@pytest.mark.parametrize("version", ["dev", "0.3.0.dev3", "not-a-version", None])
+def test_no_tag_for_a_build_that_was_never_released(version):
+    assert updates.version_tag(version) is None or version is None
+
+
+def test_the_guide_url_is_pinned_to_the_release():
+    """A tag is immutable, so the guide a build links to always matches the app
+    the reader is holding — `main` documents work that has not shipped."""
+    assert updates.user_guide_url("0.3.0b5").endswith(
+        "/blob/v0.3.0-beta.5/docs/README.md")
+    assert "/blob/main/" not in updates.user_guide_url("0.3.0b5")
+
+
+def test_a_source_build_falls_back_to_main():
+    assert updates.user_guide_url("dev") == updates.USER_GUIDE_URL
+
+
+def test_the_menu_action_uses_the_pinned_url():
+    """Guards the wiring, not the string: the constant still exists as the
+    fallback, so a caller reverting to it would otherwise go unnoticed."""
+    import pathlib
+    src = pathlib.Path("m110/ui/main.py").read_text()
+    assert "updates.user_guide_url()" in src
+    assert "updates.USER_GUIDE_URL" not in src

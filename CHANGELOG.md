@@ -10,6 +10,11 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Help → User guide now opens the guide for the version you're running.** It
+  pointed at the latest development copy, which is always ahead of the released
+  app — so it could describe buttons and settings your build doesn't have yet.
+
 ### Fixed
 - **A stack no longer fails because some frames wouldn't plate-solve.** If part
   of your set failed to solve — usually one rough night — `m110-stack` could give

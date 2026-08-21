@@ -31,7 +31,53 @@ REPO = "mjm1138/m110"
 _API = f"https://api.github.com/repos/{REPO}/releases"
 _RELEASES_URL = f"https://github.com/{REPO}/releases"
 # Online home of the user guide (docs/README.md), for Help → User guide + the site.
+#: Fallback only — see `user_guide_url()`. `main` is *ahead* of every shipped
+#: release, so linking a user straight at it documents features they do not have.
 USER_GUIDE_URL = f"https://github.com/{REPO}/blob/main/docs/README.md"
+
+_PRE_KINDS = {"a": "alpha", "b": "beta", "rc": "rc"}
+
+
+def version_tag(version: str | None = None) -> str | None:
+    """The git tag for a version — `0.3.0b5` → `v0.3.0-beta.5` — or None when the
+    running build isn't a released version.
+
+    Mirrors the derivation in `tools/release.py`, which is the authority: it
+    computes the PEP 440 version and this SemVer tag from one argument precisely
+    so the two can't disagree. Kept in sync by
+    `tests/test_updates.py::test_version_tag_matches_the_release_script`."""
+    raw = version or current_version()
+    if not raw or raw == "dev":
+        return None
+    # Imported lazily like the other packaging uses here — this module is on the
+    # launch path and the import is only needed when a version is actually parsed.
+    from packaging.version import InvalidVersion, Version
+    try:
+        v = Version(raw)
+    except InvalidVersion:
+        return None
+    if v.dev is not None or v.local:      # a dev build has no tag to point at
+        return None
+    if v.pre:
+        kind = _PRE_KINDS.get(v.pre[0])
+        if kind is None:
+            return None
+        return f"v{v.base_version}-{kind}.{v.pre[1]}"
+    return f"v{v.base_version}"
+
+
+def user_guide_url(version: str | None = None) -> str:
+    """The user guide **for the running build**.
+
+    Pinned to the release tag, because `docs/` on `main` describes work that has
+    not shipped — a user on the current release following it hits features that
+    do not exist yet. A tag is immutable, so the guide a build points at always
+    matches the app the reader is holding. Falls back to `main` only when there is
+    no tag to point at (running from source, or a dev build)."""
+    tag = version_tag(version)
+    if not tag:
+        return USER_GUIDE_URL
+    return f"https://github.com/{REPO}/blob/{tag}/docs/README.md"
 _TIMEOUT_S = 6
 _CHECK_INTERVAL_S = 24 * 3600
 

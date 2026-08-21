@@ -439,10 +439,13 @@ class MainWindow(QMainWindow):
         ErrorReportDialog(build_report(), is_crash=False, parent=self).exec()
 
     def _open_user_guide(self):
-        """Help → User guide — open the online user guide in the browser."""
+        """Help → User guide — open the guide **for this build** in the browser.
+
+        Pinned to the release tag, not `main`: `docs/` on main describes unshipped
+        work, so a user following it hits features they do not have."""
         from PySide6.QtGui import QDesktopServices
         from PySide6.QtCore import QUrl
-        QDesktopServices.openUrl(QUrl(updates.USER_GUIDE_URL))
+        QDesktopServices.openUrl(QUrl(updates.user_guide_url()))
 
     # ---- update check ----
     def _maybe_check_updates(self):
