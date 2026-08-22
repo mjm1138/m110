@@ -71,9 +71,11 @@ class PreferencesDialog(QDialog):
         box = QGroupBox("Processing workflows you use:")
         bl = QVBoxLayout(box)
         wf_note = QLabel(
-            "Siril: M110 sets up a ready-to-go working folder for each object as "
-            "you ingest it. AstroWizard: M110 offers to send a finished stack "
-            "over, and imports your finish back afterwards.")
+            "M110 keeps a ready-to-go working folder on each object for every "
+            "workflow you tick. Siril's holds your subs and a preset tuned to the "
+            "frame count. AstroWizard's holds your subs too — so StackingWizard "
+            "can stack them in place — alongside the stack you're finishing and "
+            "your exports on the way back into the library.")
         wf_note.setWordWrap(True)
         bl.addWidget(wf_note)
         enabled = set(processing.enabled_workflow_ids())

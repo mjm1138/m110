@@ -11,6 +11,20 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **StackingWizard can now stack straight from your library.**
+  [StackingWizard](https://astrowizard.lukomatico.com/) stacks a night and hands
+  the result to AstroWizard, and M110 now keeps its frames ready for it: tick
+  AstroWizard under **Preferences → Processing workflows you use** and each object
+  gets an AstroWizard folder containing your subs (as hardlinks, so no extra disk).
+  **Stack in StackingWizard…** on an object opens the app with that folder
+  revealed — point it there, and the stack it writes lands exactly where
+  AstroWizard picks it up and where M110 imports your finish from.
+  If you previously pointed StackingWizard at an object's **Siril** folder, its
+  stack and AstroWizard's working files ended up in there. They're safe — nothing
+  deletes them — but they belong in the AstroWizard folder; move them across and
+  M110 will understand them.
+
+### Added
 - **The user guide is now published at [m110.space/docs](https://m110.space/docs/).**
   Every release keeps its own copy, and **Help → User guide** opens the one
   matching the version you're running. It used to open the latest development

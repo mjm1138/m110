@@ -142,6 +142,34 @@ def process_target_in_siril(parent, target: str) -> None:
     _process_dirs(parent, _labelled_dirs(target))
 
 
+def stack_in_stackingwizard(parent, slug: str) -> None:
+    """Open StackingWizard and reveal the finishing sandbox for it to be pointed at.
+
+    Reveal *and* launch, deliberately. StackingWizard takes no arguments at all —
+    verified in its shipped bytecode, not assumed — so M110 can start it and
+    nothing more; the folder chooser is the only way in, and the point of the
+    reveal is that the right folder is already on screen when it asks. From there
+    its recursive walk finds `astrowizard/lights/` and it writes the master back
+    into that root itself."""
+    prepared = [config.astrowizard_dir(t) for t in targets_for_slug(slug)
+                if (config.astrowizard_dir(t) / "lights").is_dir()]
+    base = prepared[0] if prepared else None
+    if base is None:
+        QMessageBox.information(
+            parent, "Stack in StackingWizard",
+            "This object has no finishing folder with frames in it yet. Tick "
+            "AstroWizard under Preferences → Processing workflows you use, and "
+            "M110 will set one up on the next refresh.")
+        return
+    reveal_in_manager(base)
+    try:
+        launch.launch_processing("stackingwizard", base)
+    except launch.LaunchError as exc:
+        QMessageBox.information(
+            parent, "Stack in StackingWizard",
+            f"{exc}\n\nThe folder is open — point StackingWizard at it yourself.")
+
+
 def _process_dirs(parent, dirs: list[tuple[str, Path]]) -> None:
     """Launch Siril for a set of candidate working dirs. Multiple job folders →
     a chooser; not-found/launch-error → offer to reveal the folder instead."""

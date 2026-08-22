@@ -297,6 +297,12 @@ class DetailPane(QScrollArea):
                                   "AstroWizard folder, ready to open")
                 aw_btn.clicked.connect(
                     lambda _=False, s=slug: self._send_to_astrowizard(s))
+                sw_btn = QPushButton("Stack in StackingWizard…")
+                sw_btn.setToolTip("Open StackingWizard on this object's frames, "
+                                  "ready to stack and hand to AstroWizard")
+                sw_btn.clicked.connect(
+                    lambda _=False, s=slug: widgets.stack_in_stackingwizard(self, s))
+                btn_row.addWidget(sw_btn)
                 btn_row.addWidget(aw_btn)
             if btn_row.count():
                 btn_row.addStretch(1)

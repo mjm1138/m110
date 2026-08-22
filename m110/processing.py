@@ -44,17 +44,19 @@ class Workflow:
     autoprep: Callable | None = None      # (targets, should_cancel=None) -> dict
     prune_rejected: Callable | None = None  # (target) -> dict
     #: The module owning this workflow's *return* leg — `scan_finished`,
-    #: `apply_import`, `has_unimported_output`, `working_dirs`. Separate from
-    #: `autoprep` because the two halves are independent: Siril has both, while
-    #: AstroWizard has no prepare step at all (`m110-stack --handoff` is what
-    #: hands work in) and exists purely to be imported back from.
+    #: `apply_import`, `has_unimported_output`, `working_dirs`. Kept separate from
+    #: `autoprep` because the two halves are genuinely independent — a workflow can
+    #: have either. (AstroWizard had no prep at all until StackingWizard joined its
+    #: sandbox: that tool has no CLI and finds frames by walking the folder it is
+    #: given, so the sandbox had to grow a `lights/` tree for it to walk.)
     importer: object | None = None
 
 
 WORKFLOWS = [
     Workflow("siril", "Siril", True, siril.autoprep, siril.prune_rejected,
              importer=siril),
-    Workflow("astrowizard", "AstroWizard", True, importer=astrowizard),
+    Workflow("astrowizard", "AstroWizard", True, astrowizard.autoprep,
+             importer=astrowizard),
     Workflow("pixinsight", "PixInsight", False),
     Workflow("dss", "DeepSkyStacker", False),
     Workflow("app", "Astro Pixel Processor", False),
