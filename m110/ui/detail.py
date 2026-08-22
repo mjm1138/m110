@@ -23,8 +23,8 @@ from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
-    process_in_siril, open_in_default, reveal_in_manager, defer,
-    connect_context_menu,
+    process_in_siril, stack_in_stackingwizard, open_in_default,
+    reveal_in_manager, defer, connect_context_menu,
 )
 
 
@@ -301,7 +301,7 @@ class DetailPane(QScrollArea):
                 sw_btn.setToolTip("Open StackingWizard on this object's frames, "
                                   "ready to stack and hand to AstroWizard")
                 sw_btn.clicked.connect(
-                    lambda _=False, s=slug: widgets.stack_in_stackingwizard(self, s))
+                    lambda _=False, s=slug: stack_in_stackingwizard(self, s))
                 btn_row.addWidget(sw_btn)
                 btn_row.addWidget(aw_btn)
             if btn_row.count():

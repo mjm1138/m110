@@ -593,6 +593,20 @@ control.
   the **subject's** shape, not the pixmap's — asserting the pixmap is 160x160 *passes*
   on the broken code. `tests/test_thumbnail_aspect.py` measures a synthetic circle's
   roundness and AST-scans `m110/ui` for `QIcon(<path>)`.
+- **A callback body isn't evaluated until it's clicked — so a missing import in one
+  passes every test that only *builds* the page.** `detail.py` imports *names* from
+  `m110.ui.widgets`, never the module, so a lambda calling `widgets.stack_in_stackingwizard(...)`
+  raised `NameError` the first time a user pressed the button; the helper it reached
+  then read `config`, which `widgets.py` binds nowhere, and `launch`, which it imports
+  only inside a *different* function. Three undefined names, zero test failures, and
+  a crash dialog in the user's hands. Constructing a widget proves its constructor
+  runs and nothing more. Two guards, complementary on purpose
+  (`tests/test_ui_button_wiring.py`): an AST pass over `m110/ui/**` flags any name
+  *read* that is bound nowhere in the file (deliberately scope-blind — over-generous,
+  so anything it flags is real), and a test that **actually clicks the button** and
+  asserts what it did, which is the only thing that catches "imported, but in another
+  function". Both were verified to fail against the real bug before being kept — a
+  guard nobody has seen fail is a guess. Whenever you add a button, click it in a test.
 - **A grid/list page can look right offscreen and still be broken — the delegate
   never paints.** `test_ui_pages` constructs pages and asserts model state, so a
   `TileDelegate.paint` that raises (a helper accidentally spliced into the middle of

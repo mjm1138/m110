@@ -151,6 +151,7 @@ def stack_in_stackingwizard(parent, slug: str) -> None:
     reveal is that the right folder is already on screen when it asks. From there
     its recursive walk finds `astrowizard/lights/` and it writes the master back
     into that root itself."""
+    from m110 import config, launch      # local, like the other launch helpers
     prepared = [config.astrowizard_dir(t) for t in targets_for_slug(slug)
                 if (config.astrowizard_dir(t) / "lights").is_dir()]
     base = prepared[0] if prepared else None
