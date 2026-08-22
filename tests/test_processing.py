@@ -49,7 +49,10 @@ def test_run_autoprep_siril(tmp_path, monkeypatch):
 
 def test_run_autoprep_disabled_is_noop(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    config.save_setting(processing.SETTING_KEY, [])
+    # Explicit map, not a legacy list: a bare list only enumerates the workflows
+    # that were on offer when it was saved, so a later-added one reads as
+    # *unanswered* and takes its default — see processing.LEGACY_SETTING_IDS.
+    processing.set_enabled_workflows([])
     _target_with_lights("M101")
     assert processing.run_autoprep(["M101"]) == {}
     assert not config.siril_dir("M101").exists()
@@ -57,7 +60,7 @@ def test_run_autoprep_disabled_is_noop(tmp_path, monkeypatch):
 
 def test_run_autoprep_skips_unavailable_workflow(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    config.save_setting(processing.SETTING_KEY, ["pixinsight"])   # disabled/“soon”
+    processing.set_enabled_workflows(["pixinsight"])   # disabled/“soon”
     _target_with_lights("M101")
     assert processing.run_autoprep(["M101"]) == {}
     assert not config.siril_dir("M101").exists()
@@ -90,7 +93,7 @@ def test_prepare_missing_creates_absent_only(tmp_path, monkeypatch):
 
 def test_prepare_missing_noop_when_disabled(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
-    config.save_setting(processing.SETTING_KEY, [])
+    processing.set_enabled_workflows([])
     _target_with_lights("M5")
     assert processing.prepare_missing() == {}
     assert not config.siril_dir("M5").exists()

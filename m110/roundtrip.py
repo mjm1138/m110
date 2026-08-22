@@ -30,6 +30,7 @@ and `has_unimported_output` went true off a different tool's output, which made
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -56,6 +57,23 @@ _FIT_EXTS = (".fit", ".fits")
 
 class Cancelled(Exception):
     """Raised inside plan/apply when the caller's should_cancel() turns true."""
+
+
+def link_or_copy(src: str, dst: str) -> None:
+    """Hardlink src→dst; byte-copy fallback if linking isn't possible. Idempotent
+    and race-safe: if dst already exists (a concurrent or prior prep linked it),
+    leave it — never copyfile onto the same inode (which raises SameFileError).
+
+    Shared: both sandboxes that hold frames build their tree this way, and a
+    sandbox's linked inputs are exactly what `backup.scope` skips — so the two
+    have to agree on what "linked" means."""
+    try:
+        os.link(src, dst)
+    except FileExistsError:
+        return                       # already linked (prior/concurrent prep) — fine
+    except OSError:
+        if not os.path.exists(dst):  # linking unsupported (cross-device, …) → copy
+            shutil.copyfile(src, dst)
 
 
 # ── the per-workflow descriptor ──────────────────────────────────────────────

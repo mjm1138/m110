@@ -144,6 +144,11 @@ def is_default_preset(preset: dict) -> bool:
                for n in _DEFAULT_PRESET_REPS)
 
 
+#: Moved to `roundtrip` when a second sandbox started holding frames — both build
+#: their link tree the same way, and `backup.scope` skips exactly those trees.
+_link_or_copy = roundtrip.link_or_copy
+
+
 # ── prepare: plan (read-only) ────────────────────────────────────────────────
 
 @dataclass
@@ -270,19 +275,6 @@ def plan_prep(target: str, usable_frames: int | None = None,
 
 
 # ── prepare: apply (writes the sandbox) ──────────────────────────────────────
-
-def _link_or_copy(src: str, dst: str) -> None:
-    """Hardlink src→dst; byte-copy fallback if linking isn't possible. Idempotent
-    and race-safe: if dst already exists (a concurrent or prior prep linked it),
-    leave it — never copyfile onto the same inode (which raises SameFileError)."""
-    try:
-        os.link(src, dst)
-    except FileExistsError:
-        return                       # already linked (prior/concurrent prep) — fine
-    except OSError:
-        if not os.path.exists(dst):  # linking unsupported (cross-device, …) → copy
-            shutil.copyfile(src, dst)
-
 
 def _next_steps_md(plan: PrepPlan) -> str:
     lines = [

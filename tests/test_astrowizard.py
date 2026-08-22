@@ -213,15 +213,16 @@ def test_the_autosave_raster_is_excluded_by_pattern_not_by_hints(
 
 # ── registry wiring ──────────────────────────────────────────────────────────
 
-def test_both_workflows_can_import_but_only_siril_prepares():
-    """AstroWizard is a registered workflow with no prepare step — work is handed
-    in by `m110-stack --handoff` — which is why the Preferences section is worded
-    per workflow rather than as one "prepare objects in:" list."""
+def test_both_workflows_prepare_and_both_import():
+    """AstroWizard gained a prepare step when StackingWizard joined its sandbox:
+    that tool has no CLI and finds frames by walking the folder it is given, so
+    the sandbox has to hold a `lights/` tree. Both halves symmetric again is what
+    lets the Preferences checkbox mean one thing for both workflows."""
     from m110 import processing
     assert {w.id for w in processing.importers()} == {"siril", "astrowizard"}
     by_id = processing.WORKFLOWS_BY_ID
     assert by_id["siril"].autoprep is not None
-    assert by_id["astrowizard"].autoprep is None
+    assert by_id["astrowizard"].autoprep is not None
     assert by_id["astrowizard"].importer is astrowizard
 
 
@@ -376,3 +377,122 @@ def test_an_unset_setting_reads_as_keep_all(tmp_path, monkeypatch):
     from m110 import processing
     _isolated_settings(tmp_path, monkeypatch, "empty.json")
     assert processing.archive_keep() == 0
+
+
+# ── StackingWizard shares the sandbox ────────────────────────────────────────
+
+MASTER = "M_15_wizardstack.fits"
+
+
+def _with_raw_lights(tmp_path, monkeypatch, target="M27", n=3):
+    _, base = _make_sandbox(tmp_path, monkeypatch, target=target,
+                            chain=False, exports=False)
+    raw = config.lights_dir(target)
+    raw.mkdir(parents=True, exist_ok=True)
+    for i in range(n):
+        (raw / f"Light_{target}_20s_LP_20260101-{i:06d}.fit").write_text(f"sub{i}")
+    return target, base, raw
+
+
+def test_prepare_lights_hardlinks_the_subs_into_the_sandbox(tmp_path, monkeypatch):
+    """StackingWizard has no CLI and finds frames by walking the folder it is
+    given, so the frames have to actually be there."""
+    target, base, raw = _with_raw_lights(tmp_path, monkeypatch)
+    assert astrowizard.prepare_lights(target) == 3
+    linked = sorted(p.name for p in astrowizard.lights_dir(target).iterdir())
+    assert linked == sorted(p.name for p in raw.iterdir())
+    # the same inode — a second frame tree must cost no image data
+    a = next(raw.iterdir())
+    assert (astrowizard.lights_dir(target) / a.name).stat().st_ino == a.stat().st_ino
+
+
+def test_prepare_lights_is_add_only_and_idempotent(tmp_path, monkeypatch):
+    target, base, raw = _with_raw_lights(tmp_path, monkeypatch)
+    astrowizard.prepare_lights(target)
+    (raw / "Light_M27_20s_LP_20260102-000009.fit").write_text("new sub")
+    assert astrowizard.prepare_lights(target) == 4
+    assert len(list(astrowizard.lights_dir(target).iterdir())) == 4
+
+
+def test_the_linked_tree_is_declared_so_backup_skips_it(tmp_path, monkeypatch):
+    """The +139 GB trap. `astrowizard` held `frozenset()` while it linked nothing;
+    the moment it grew a tree, its name had to go in — an undeclared link tree is
+    a second full copy of every sub in every mirrored snapshot."""
+    from m110.backup import scope
+    assert "lights" in config.SANDBOX_LINKED_INPUTS["astrowizard"]
+    assert scope.is_excluded("Images/M27/astrowizard/lights/sub.fit")
+    # …and authored work in the same sandbox is still backed up
+    assert not scope.is_excluded("Images/M27/astrowizard/M27_final.fits")
+    assert not scope.is_excluded(f"Images/M27/astrowizard/{MASTER}")
+
+
+def test_the_importer_never_offers_the_linked_subs(tmp_path, monkeypatch):
+    target, base, raw = _with_raw_lights(tmp_path, monkeypatch)
+    astrowizard.prepare_lights(target)
+    assert not astrowizard.scan_finished(target).items
+    assert not astrowizard.has_unimported_output(target)
+
+
+def test_a_stackingwizard_master_is_input_not_output(tmp_path, monkeypatch):
+    """It is what AstroWizard works *from*. Offering it back as a deliverable
+    would file the user's own stack into finished/."""
+    target, base, _ = _with_raw_lights(tmp_path, monkeypatch)
+    (base / MASTER).write_text("the stack")
+    assert astrowizard.is_master(base / MASTER)
+    assert not astrowizard.scan_finished(target).items
+    # combined-nights variant too
+    assert astrowizard.is_master(base / "M_15_combined_wizardstack.fits")
+    # …but a normal export is still a deliverable
+    (base / "M27 final.fits").write_text("a finish")
+    assert {i.name for i in astrowizard.scan_finished(target).items} == {
+        "M27 final.fits"}
+
+
+def test_the_sweep_spares_the_master_and_the_linked_frames(tmp_path, monkeypatch):
+    """The lifetime argument that split siril/ from astrowizard/ said a cheap,
+    iterated finish must not archive an expensive, stable stack. Sharing one
+    directory is only safe because the stack is never treated as output."""
+    target, base, _ = _with_raw_lights(tmp_path, monkeypatch)
+    astrowizard.prepare_lights(target)
+    (base / MASTER).write_text("hours of compute")
+    (base / f"{MASTER[:-5]}_AW1_init.fits").write_text("a step")
+    (base / "M27 final.fits").write_text("a finish")
+
+    plan = astrowizard.scan_finished(target)
+    astrowizard.apply_import(target, [i.src for i in plan.items], cleanup="archive")
+
+    assert (base / MASTER).is_file(), "the master must survive a re-finish"
+    assert astrowizard.lights_dir(target).is_dir(), "the frames must survive"
+    assert len(list(astrowizard.lights_dir(target).iterdir())) == 3
+    swept = {p.name for p in (base / "archive").rglob("*") if p.is_file()}
+    assert f"{MASTER[:-5]}_AW1_init.fits" in swept
+
+
+def test_autoprep_respects_the_guards(tmp_path, monkeypatch):
+    target, base, _ = _with_raw_lights(tmp_path, monkeypatch)
+    # only_missing skips a sandbox that already exists
+    assert astrowizard.autoprep([target], only_missing=True)["prepared"] == []
+    # a target with work waiting is left alone
+    (base / "M27 final.fits").write_text("a finish")
+    assert astrowizard.autoprep([target])["skipped"] == [target]
+
+
+def test_stackingwizard_is_registered_but_cannot_be_pointed(tmp_path, monkeypatch):
+    """Verified against the shipped build, not assumed: `argv` appears in no code
+    object of StackingWizard 2026.08.22. M110 can start it and nothing more."""
+    from m110 import launch
+    assert "stackingwizard" in launch.tool_ids()
+    assert launch.sets_working_dir("stackingwizard") is False
+    assert launch.opens_file("stackingwizard") is False
+
+
+def test_an_autosave_is_not_mistaken_for_the_master(tmp_path, monkeypatch):
+    """AstroWizard names every step after the file it opened, so the whole chain
+    carries the master's stem — `_wizardstack_AW1_init` must not read as a master
+    or the sweep spares the entire working area."""
+    _, base = _make_sandbox(tmp_path, monkeypatch, chain=False, exports=False)
+    assert astrowizard.is_master(base / "M_15_wizardstack.fits")
+    for step in ("M_15_wizardstack_AW1_init.fits",
+                 "M_15_wizardstack_AW12_adj_sat.fits"):
+        assert astrowizard.is_autosave(base / step)
+        assert not astrowizard.is_master(base / step)

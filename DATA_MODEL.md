@@ -117,12 +117,20 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       ({source, size_bytes, stacked_at, frames, integration_sec, object, filter,
       stretched} — every field read from the stack's own header, never mtime,
       which is copy time for anything ingest or import placed) · the user's exports ·
-      archive/<ts>/ (past runs). A **sibling** of siril/, not a subdir: these dirs
-      name *workflows*, and the two artifacts have different lifetimes (a stack
-      costs hours and is stable, a finish is cheap and iterated), so sharing one
-      dir would archive the expensive one on every re-finish. Written by
-      `m110-stack --handoff` / the app's send-stack flow; lazily created,
-      additive → no .store_version bump                          [output]
+      archive/<ts>/ (past runs) · **lights/** (hardlinks, like siril's). A
+      **sibling** of siril/, not a subdir: these dirs name *workflows*, and the two
+      artifacts have different lifetimes (a stack costs hours and is stable, a
+      finish is cheap and iterated), so sharing one dir would archive the expensive
+      one on every re-finish.
+      **This is the *finishing* workflow, and two tools work in it.** A master
+      arrives either from `m110-stack --handoff` / the app's send-stack flow, or
+      from **StackingWizard** stacking in place — that app has no CLI and finds
+      frames by walking the folder it is given, hence `lights/`. It writes
+      `<object>_wizardstack.fits` into the root itself. Either way the master is
+      this sandbox's **input**: `archive_keep` spares it (and `lights/`), which is
+      what lets one dir hold both halves without the lifetime problem above — the
+      stack is never treated as output. Lazily created, additive → no
+      .store_version bump                                        [output]
     ⚠ Every sandbox dirname above is a key of **`config.SANDBOX_LINKED_INPUTS`**, the
       single authority; `SANDBOX_DIRNAMES` is derived from it and read by
       `siril._ROOT_SKIP_DIRS`, `ingest._SKIP_DIRS` and `backup.scope.is_excluded`.
@@ -131,7 +139,8 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       re-imports it / it lands in every snapshot).
       Its **value** is which of the workflow's subdirectories hold hardlinks to
       frames the store already has (`siril` → lights/darks/flats/biases;
-      `astrowizard` → none, its input is a single handed-off file). Backup skips
+      `astrowizard` → `lights/`, added when StackingWizard joined the sandbox; it
+      was `none` while the only input was a single handed-off file). Backup skips
       exactly those and keeps the rest — see *Backup* below for why each direction
       of getting this wrong is costly and silent.
     (darks/ flats/ biases/ — calibration; preserved if present, and **import targets**

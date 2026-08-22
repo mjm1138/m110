@@ -59,6 +59,21 @@ _TOOLS: dict[str, dict] = {
         "file_args": ["{file}"],
         "file_exts": (".fits", ".fit", ".tiff", ".tif", ".xisf"),
     },
+    "stackingwizard": {
+        "label": "StackingWizard",
+        "macos_app": "StackingWizard.app",
+        "macos_bin": "Contents/MacOS/StackingWizard",
+        "linux_bins": ["stackingwizard", "StackingWizard"],
+        "windows_names": ["StackingWizard.exe"],
+        "windows_subpaths": [r"StackingWizard\StackingWizard.exe"],
+        # Both empty, and verified rather than assumed: `argv` appears in no code
+        # object of the shipped 2026.08.22 build. It is GUI-only — the folder comes
+        # from a directory chooser — so M110 can start it and nothing more. The
+        # caller reveals `astrowizard/` so the folder to pick is already open; from
+        # there its recursive walk finds `astrowizard/lights/` and it writes the
+        # master back into that root by itself.
+        "workdir_args": [],
+    },
 }
 
 

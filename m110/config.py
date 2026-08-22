@@ -337,10 +337,16 @@ def biases_dir(name: str) -> Path:
 # double). Everything else a sandbox holds — archived runs, presets, exports — is
 # hand-work that no refresh regenerates, so it is backed up.
 #
-# Declare `frozenset()` when a workflow links nothing: AstroWizard's input is a
-# single handed-off stack file, not a directory of links. Do **not** express that by
-# leaving the workflow out — the keys *are* `SANDBOX_DIRNAMES`, so an omission
-# silently un-protects the sandbox from all three walks above.
+# Declare `frozenset()` only when a workflow genuinely links nothing. Do **not**
+# express that by leaving the workflow out — the keys *are* `SANDBOX_DIRNAMES`, so
+# an omission silently un-protects the sandbox from all three walks above.
+#
+# AstroWizard held `frozenset()` while its only input was a single handed-off
+# stack file. It gained `lights/` when StackingWizard joined the same sandbox —
+# that app has no CLI and finds frames by walking the folder it is pointed at, so
+# the frames have to *be* there. The moment a link tree appears, its name belongs
+# here: an undeclared one is a second full copy of every sub in every mirrored
+# snapshot, which is the +139 GB measured below.
 #
 # `frozenset()` answers "what is a hardlink duplicate", which is **not** the same
 # question as "what is worth backing up", and AstroWizard is where the two come
@@ -355,7 +361,7 @@ def biases_dir(name: str) -> Path:
 # directory name belongs here.
 SANDBOX_LINKED_INPUTS: dict[str, frozenset[str]] = {
     "siril": frozenset({"lights", "darks", "flats", "biases"}),
-    "astrowizard": frozenset(),
+    "astrowizard": frozenset({"lights"}),
 }
 
 # Derived, so the dirnames and their linked-input policy can never drift apart.

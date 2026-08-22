@@ -158,6 +158,36 @@ which loads the stack straight away — with one catch worth knowing: that only 
 if AstroWizard isn't already running. If it is, quit it first, or use **Reveal
 folder** and open the file yourself.
 
+### Stacking with StackingWizard
+
+[StackingWizard](https://astrowizard.lukomatico.com/) is AstroWizard's companion:
+it stacks a night's frames and hands the result straight over. M110 keeps your
+frames ready for it.
+
+Tick **AstroWizard** in **Preferences → Processing workflows you use**, and each
+object gets an `astrowizard/` folder containing your subs as hardlinks — no extra
+disk, and they're skipped by backup because the originals are already in it.
+
+Then use **Stack in StackingWizard…** on the object. M110 opens the app and
+reveals that folder; point StackingWizard at it. It reads the frames, sorts them by
+header, stacks, and writes `<object>_wizardstack.fits` back into the same folder —
+which is exactly where AstroWizard expects to find it, and where **Import finished
+work** looks for your finish afterwards.
+
+M110 treats that stack as the folder's *input*, so tidying up after a finish never
+archives it. Re-finish as often as you like; the stack stays put.
+
+Two things worth knowing:
+
+- **Point it at the `astrowizard/` folder, not `siril/`.** Its scan is recursive,
+  so pointing it at the Siril folder also works — but then its stack and
+  AstroWizard's working files land in Siril's workspace, where M110 reads them as
+  Siril's leftovers. If you've already done that, move those files into
+  `astrowizard/` and everything lines up.
+- **Mono/filter sets aren't supported by StackingWizard yet** (its own beta notes
+  say so). For those targets, stack in Siril or with `m110-stack` and use **Send to
+  AstroWizard** instead.
+
 ### Bringing the finish back
 
 When you've finished an image in AstroWizard, save your export into that same
