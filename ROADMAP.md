@@ -296,6 +296,55 @@ guide, shipped with Checkpoint B): **SSC schedule JSON** (port the existing
 Astronomy generator), **NINA Advanced Sequences** (schema capture pending),
 possibly INDI/Ekos. Validate against a real device before shipping.
 
+**2b — Seestar-native plan QR (ZWO share API)** — *parked; viable, deliberately
+not shipped.* Reverse-engineered 2026-08-24 from a shared-plan QR. The stock
+Seestar app imports a plan from a QR whose entire content is a URL,
+`https://app.zwoastro.com/Seestar/plan?id=<8 chars>` — the plan is fetched from
+ZWO's cloud by id, so **the QR is a pointer, not a payload** (which is also why
+self-hosting a plan file can't work: the app never fetches the URL it scanned,
+its universal links are bound to `app.zwoastro.com`, and it declares no
+`CFBundleDocumentTypes`, so there is no file-import route either). Creating one
+is a single unauthenticated call:
+
+```
+POST https://api.seestar.com/v1/share/plan/qrcode
+{"payload": "<envelope, JSON-encoded as a string>",
+ "metadata": {"planName": str, "targetCount": int, "shootingDurationMinutes": int}}
+-> {"code":200,"msg":"OK","data":{"qrcode":"<base64 PNG>"}}
+```
+
+Two traps worth keeping: the share id is **only** inside the returned PNG, never
+in the JSON — you decode the QR to learn it; and `metadata` must be **nested**, a
+flat body being accepted with a 200 and silently dropped. The `payload` is opaque
+to the server and round-trips byte-identical, because it is the app's own local
+plan row (`seestarPlan.sqlite`, `INSERT INTO … (synced, operationTime, payload)`)
+— so this is the **native** plan format, not an export shape.
+
+Envelope: `operationTime`/`createTime`/`operation`/`id`/`name`, plus `extra` and
+`payload` which are themselves **JSON strings** (triple nesting). Each target
+carries `target_ra_dec` = **[RA decimal *hours*, Dec decimal *degrees*], J2000**
+(checked against `seed/objects.toml` to 0.4′ — precession would have shown ~20′),
+`start_min` (minutes past local midnight, **runs past 1440** into the morning),
+`duration_min`, `camera.exp_ms.stack_l`, `lp_filter`, `camera_mode`.
+
+**Why it's tempting:** per-target exposure and filter — which a field guide can't
+deliver — reaching the **stock app**, with no third-party controller, no
+telescope connection, and no ZWO account. Verified end-to-end: an M110-authored
+single-target plan imported successfully into Seestar 3.3.1.
+
+**Why it's parked:** the write endpoint being unauthenticated is far more likely
+an oversight than an interface. It can acquire auth in any release and break for
+**every** user at once; traffic from a third-party app could read as abuse (IP
+blocklisting); it would be M110's only cloud dependency in an otherwise
+offline-first app; and every share is public, unauthenticated-read and permanent,
+so anyone holding an id reads that user's target list. No ToS review done.
+Revisit on real user demand — and prefer *asking ZWO for a sanctioned interface*
+over quietly consuming this one. If it ever ships, the QR path must degrade to
+the field guide rather than erroring.
+
+The local alternative is closed, not merely unattractive: `seestarPlan.sqlite`
+sits in the app's container, which macOS TCC blocks to other processes.
+
 ### 1 — Session-planning follow-ups (non-blocking refinements)
 
 The arc is release-ready (see the tuning arc in [`DONE.md`](DONE.md)); these are
@@ -824,6 +873,7 @@ when extending an existing subsystem).
 | Native SwiftUI Mac wrapper on the same engine | deferred option |
 | Port `build_site`'s Jinja static-site rendering | **not** ported as the app's UI (the app *is* the UI; only the image pipeline was ported). Its capability **returns, generalized, as the Publishing phase** (item 8) — optional, selective, multi-target export |
 | Cross-platform packaging (notarize / Homebrew cask / Windows / Linux) | future |
+| Seestar-native plan QR via ZWO's share API | ⏸ **parked** (2026-08-24) — verified working end-to-end, but the write endpoint is undocumented and unauthenticated; see item **2b** for the risk case. Revisit on user demand |
 | Rendering HTML in-app (QtWebEngine) | ❌ **no** — the packaging specs exclude `QtWebEngineCore`/`QtWebEngineWidgets` on purpose; a Chromium adds ~150–300 MB per bundle plus a separately-signed helper for notarization. In-app visuals render natively (`QtSvg` / `QPainter`); HTML output belongs in the browser or on a published site (item 12) |
 
 ---
