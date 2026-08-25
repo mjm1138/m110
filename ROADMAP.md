@@ -296,6 +296,26 @@ guide, shipped with Checkpoint B): **SSC schedule JSON** (port the existing
 Astronomy generator), **NINA Advanced Sequences** (schema capture pending),
 possibly INDI/Ekos. Validate against a real device before shipping.
 
+**2b — Seestar-native plan hand-off** — *shelved (2026-08-25).* The use case:
+emit the night plan M110 already computes in a form the stock Seestar app can
+import directly, so a user who plans here can shoot it without retyping targets
+into the app — and, unlike the printable field guide, carry per-target capture
+settings such as exposure and filter through to the device. It is the natural
+end of the planning arc, and the only one of the plan-file targets above that
+reaches the device's own app rather than a third-party controller.
+
+**There is no open method.** ZWO publishes no plan-file format, no file-based
+import route, and no sanctioned interface for third-party tools; the *Seestar
+Software License and Service Agreement* permits use of the software and services
+through ZWO's own client, and reserves anything else to ZWO's express written
+permission.
+
+So this is shelved on **permission, not effort or design** — and deliberately not
+pursued further. Revisit only if ZWO publishes an open plan format or a sanctioned
+integration path, or grants written permission for one. Until then M110's planning
+output stops at the field guide, which is unaffected.
+
+
 ### 1 — Session-planning follow-ups (non-blocking refinements)
 
 The arc is release-ready (see the tuning arc in [`DONE.md`](DONE.md)); these are
@@ -824,6 +844,7 @@ when extending an existing subsystem).
 | Native SwiftUI Mac wrapper on the same engine | deferred option |
 | Port `build_site`'s Jinja static-site rendering | **not** ported as the app's UI (the app *is* the UI; only the image pipeline was ported). Its capability **returns, generalized, as the Publishing phase** (item 8) — optional, selective, multi-target export |
 | Cross-platform packaging (notarize / Homebrew cask / Windows / Linux) | future |
+| Seestar-native plan hand-off | ⏸ **shelved** — no open or sanctioned import method exists, and ZWO's software/services agreement reserves third-party integration to its express written permission. Revisit only if an open method emerges. See item **2b** |
 | Rendering HTML in-app (QtWebEngine) | ❌ **no** — the packaging specs exclude `QtWebEngineCore`/`QtWebEngineWidgets` on purpose; a Chromium adds ~150–300 MB per bundle plus a separately-signed helper for notarization. In-app visuals render natively (`QtSvg` / `QPainter`); HTML output belongs in the browser or on a published site (item 12) |
 
 ---
