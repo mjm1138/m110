@@ -337,7 +337,7 @@ an oversight than an interface. It can acquire auth in any release and break for
 **every** user at once; traffic from a third-party app could read as abuse (IP
 blocklisting); it would be M110's only cloud dependency in an otherwise
 offline-first app; and every share is public, unauthenticated-read and permanent,
-so anyone holding an id reads that user's target list. No ToS review done.
+so anyone holding an id reads that user's target list.
 Revisit on real user demand — and prefer *asking ZWO for a sanctioned interface*
 over quietly consuming this one. If it ever ships, the QR path must degrade to
 the field guide rather than erroring.
@@ -355,6 +355,31 @@ currently not visible."* is about **target visibility at import**, not the link 
 worth knowing on its own, since it means the app validates observability on the
 receiving end. Expiry is not the blocker: a plan QR only needs to outlive the gap
 between planning and shooting.
+
+**The terms address this directly, and adversely (reviewed 2026-08-25).** The
+*Seestar Software License and Service Agreement* (`h5.seestar.com/terms`, last
+updated 2023-12-20) grants a personal, non-transferable, single-device licence for
+**non-commercial** use, and its §4.2.2 prohibitions land squarely on this path.
+**4.2.2.4** forbids using the client–server interactive data and building
+derivative works via unauthorized third-party tools to reach ZWO's systems — which
+is precisely how the format above was derived. **4.2.2.6** forbids using ZWO's
+Services through third-party software not developed or authorized by ZWO, *and*
+forbids producing or disseminating such tools — which is what shipping the feature
+would be, not merely using it. **4.2.2.2** forbids reverse engineering, and
+**4.2.2.8** is a catch-all for anything not expressly authorized. §4.2.3 frames
+data interfaces as something ZWO decides whether to disclose at all, and lists
+grounds for suspension including replicating Seestar's primary functions. There is
+**no developer or API programme** and no permissive API terms anywhere: the
+structure is a closed licence with a catch-all denial, not an interface with
+enumerated authorized uses.
+
+§4.2.2 is prefaced with an exception for what is permitted by law, and several
+jurisdictions protect reverse engineering for interoperability regardless of
+contract terms — but that is a question for a lawyer, not a roadmap. The practical
+position to plan against: **this is not a sanctioned integration, and no reading
+of the published terms makes it one.** That sharpens the item's existing
+conclusion rather than changing it — get written permission from ZWO, or don't
+ship it.
 
 **No machine-readable API description exists.** `/openapi.json`, `/swagger.json`,
 `/v2/api-docs`, `/api-docs`, `/docs`, `/redoc` and `/.well-known/*` all 404 (Go
