@@ -342,6 +342,31 @@ Revisit on real user demand — and prefer *asking ZWO for a sanctioned interfac
 over quietly consuming this one. If it ever ships, the QR path must degrade to
 the field guide rather than erroring.
 
+**Expiry — shares can, but no period is published (checked 2026-08-25).** The app
+carries `share_plan_link_exist_tips` = *"Invalid share link. The shared plan
+doesn't exist or has expired."*, so expiry is a real state; **no** plan-share
+string states a duration, and ZWO publishes no plan-sharing documentation at all
+(the tutorial library documents Guest Mode and Remote Device Sharing only).
+Observed lifetime ≥ 4 d 17 h — the 2026-08-20 share still resolves. Two false
+friends live in the strings: the *"Validity period: 1 hour"* notice
+(`notice_generate_qr_code`) belongs to the **picture-download** QR, a different
+feature; and `share_plan_targets_expired_tips` = *"Some targets in this plan are
+currently not visible."* is about **target visibility at import**, not the link —
+worth knowing on its own, since it means the app validates observability on the
+receiving end. Expiry is not the blocker: a plan QR only needs to outlive the gap
+between planning and shooting.
+
+**No machine-readable API description exists.** `/openapi.json`, `/swagger.json`,
+`/v2/api-docs`, `/api-docs`, `/docs`, `/redoc` and `/.well-known/*` all 404 (Go
+`net/http`'s default page); `OPTIONS` returns a blanket CORS
+`access-control-allow-methods: GET, HEAD, POST, PATCH, PUT, DELETE, OPTIONS`,
+identical on every route and with no `Allow:` header — it describes the CORS
+middleware, not the resource, and must not be read as "DELETE is supported". The
+schema above came from the app binary's ObjC selectors plus the service's own
+validation errors (`{"code":100002,"msg":"… field \"payload\" is not set"}`),
+which is the only introspection on offer. Probing stopped there deliberately:
+guessing endpoint names is indistinguishable from scanning.
+
 The local alternative is closed, not merely unattractive: `seestarPlan.sqlite`
 sits in the app's container, which macOS TCC blocks to other processes.
 
