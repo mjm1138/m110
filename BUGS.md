@@ -179,6 +179,43 @@ Legend: `[ ]` open · `[~]` partially done
   render?") — ingest and import both copy bytes — so it needs the recorded `.src`
   link, the same identity-not-mtime pattern that fixed #17.
 
+- [ ] **StackingWizard's folder picker could open on the right folder — via its
+  config file, since it still takes no arguments.** *Stack in StackingWizard…*
+  launches the app and reveals `Images/<target>/astrowizard/` in the file manager,
+  leaving the user to steer the app's own folder chooser there. Re-verified against
+  the **2026.08.27** build (installed 2026-08-26), because a new release landed with
+  nothing in the changelog about it: still no argument handling of any kind. The
+  bundle's `Info.plist` declares no `CFBundleDocumentTypes` and no `CFBundleURLTypes`,
+  and the app's two code units — `stacking_wizard_app` (the customtkinter GUI entry)
+  and `wizard_stack` (its engine) — contain **zero** occurrences of `argv`,
+  `OpenDocument`, `tk::mac` or any Apple-event handling. So `launch._TOOLS`'
+  `workdir_args=[]` and the reveal-the-folder affordance both remain correct.
+
+  One red herring worth recording so it isn't re-investigated: `wizard_stack` *does*
+  carry an argparse `main()` with `--out` / `--progressive` / `--trim`. It is
+  unreachable in the frozen app — PyInstaller's entry is `stacking_wizard_app`, which
+  imports `wizard_stack` as a module, so its `__main__` block never runs, and the
+  bundle ships only one executable.
+
+  **The seam that does exist is a config file.** `pick_folder` calls
+  `filedialog.askdirectory(initialdir=<last_folder>)`, and `last_folder` is persisted
+  as plain JSON in `~/Library/Application Support/StackingWizard/settings.json`
+  (`last_folder` / `last_save_dir` / `autosave_cleanup`; `APPDATA` on Windows).
+  `_load_cfg` runs from `__init__`, so writing `last_folder` to the sandbox
+  immediately *before* a cold launch would land the picker on the right folder —
+  the whole of the seamless handoff, without the app changing at all.
+
+  **Deliberately not done yet.** It is another app's private config: undocumented,
+  free to change shape between releases, and rewritten by StackingWizard itself on
+  every folder pick and save. It also inherits exactly the cold-start caveat Siril's
+  `-d` has — `_load_cfg` runs once at startup, so if the app is already open our
+  write does nothing *and* is liable to be clobbered on its next save. If we take it,
+  it is best-effort polish wrapped in a `try/except` that can never block or fail the
+  launch, with reveal-the-folder staying the primary affordance. **Waiting on
+  developer outreach first** (`wizard@lukomatico.com`, the address in the app's own
+  "bugs and thoughts" string) — a supported argument or documented hand-off would be
+  strictly better than reaching into a file we don't own, and asking costs one email.
+
 - [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
   If Siril's working directory was set to `Images/<target>/` instead of its `siril/`
   sub-folder, the run's renders/stacks landed loose in the object dir and *Import finished

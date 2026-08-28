@@ -246,6 +246,13 @@ artifact every time a cheap one is redone.
 - **AstroWizard bundles its own hardened Python** (PyInstaller, `Python.framework`).
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
+- **StackingWizard still takes no arguments** — re-verified against the 2026.08.27
+  build; no `argv`, no document types, no URL types, no Apple events. Its folder
+  picker seeds `initialdir` from `last_folder` in
+  `~/Library/Application Support/StackingWizard/settings.json`, read once in
+  `__init__`, which is the only seam for a folder hand-off and is another app's
+  private config. Open item + the trade-off in [`BUGS.md`](BUGS.md) → Processing &
+  curation UX; developer outreach pending before we reach into it.
 - **A sandbox that hardlinks a directory of frames must say so in
   `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file —
   `stacking.apply_handoff` hardlinks the stack into `astrowizard/` root — so its
