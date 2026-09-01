@@ -48,6 +48,9 @@ DELETE_BATCH = 1000             # the API's own cap on one delete_objects call
 # already runs several files at once, and the two multiply.
 PER_FILE_CONCURRENCY = 2
 PARALLEL_PUTS = 8
+CONNECT_TIMEOUT = 10        # seconds; a wrong endpoint should say so quickly
+READ_TIMEOUT = 60           # per socket read, NOT per transfer — safe for big files
+MAX_ATTEMPTS = 3
 
 
 def _boto3():
@@ -83,13 +86,22 @@ def _client_config(custom_endpoint: bool):
         from botocore.config import Config
     except ImportError:
         return None
-    opts = {}
+    opts = {
+        # botocore's defaults retry a dead endpoint for around two minutes. That
+        # is the wrong answer for `probe_destination`, which exists to tell the
+        # user promptly that their endpoint or bucket is wrong — and it's a
+        # worker thread the dialog is waiting on. Read timeout stays generous:
+        # it's per socket read, so it must not cut a slow upload short.
+        "connect_timeout": CONNECT_TIMEOUT,
+        "read_timeout": READ_TIMEOUT,
+        "retries": {"max_attempts": MAX_ATTEMPTS, "mode": "standard"},
+    }
     if custom_endpoint:
         opts["s3"] = {"addressing_style": "path"}
     try:
         return Config(request_checksum_calculation="when_required", **opts)
     except TypeError:
-        return Config(**opts) if opts else None
+        return Config(**opts)
 
 
 def _transfer_config():
