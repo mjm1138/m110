@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import config
-from .destination import store_backup_root, supports_hardlinks
+from .destination import parse_destination, store_backup_root, supports_hardlinks
 from .errors import BackupError, BackupDestinationError
 from .options import BackupOptions, SnapshotInfo, TIMESTAMP_FMT
 from .scope import DEFAULT_SCOPE, iter_source_files
@@ -115,7 +115,11 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
     src_root = config.DATA_ROOT
     if not src_root.is_dir():
         raise BackupError(f"Data store not found: {src_root}")
-    dest = Path(options.destination)
+    # Parse rather than `Path(...)`: mirrored is only ever reached for a local
+    # destination (`resolve_format` forces pooled for object storage), but the
+    # failure if that ever stopped being true is silent — `Path("s3://b/x")`
+    # collapses to `s3:/b/x` and backs the library up to a folder of that name.
+    dest = parse_destination(options.destination).path
     try:
         dest.mkdir(parents=True, exist_ok=True)
     except OSError as e:

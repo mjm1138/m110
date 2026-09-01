@@ -50,6 +50,23 @@ def test_a_bucketless_s3_uri_is_rejected(raw):
         parse_destination(raw)
 
 
+def test_a_path_mangled_uri_is_refused_rather_than_read_as_a_folder():
+    """`Path("s3://bucket/x")` normalises to `s3:/bucket/x` — one slash — which
+    would otherwise parse as an ordinary relative folder and back the library up
+    to a directory literally named `s3:`. Silently.
+
+    This is not hypothetical: `ui.main`'s scheduled-backup path wrapped the saved
+    destination in `Path()`, so every automatic backup to a bucket would have gone
+    to disk instead. The caller is fixed; this makes the next one an error."""
+    from pathlib import Path
+    with pytest.raises(BackupDestinationError) as exc:
+        parse_destination(Path("s3://my-bucket/backups"))
+    assert "two slashes" in str(exc.value)
+
+    with pytest.raises(BackupDestinationError):
+        parse_destination("s3:/my-bucket/backups")
+
+
 def test_parsing_is_idempotent():
     once = parse_destination("s3://b/p")
     assert parse_destination(once) is once

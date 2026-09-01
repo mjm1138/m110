@@ -31,6 +31,15 @@ KIND_S3 = "s3"
 # this is an explicit pattern and not `urlparse().scheme`.
 _S3_URI = re.compile(r"^s3://(?P<rest>.*)$", re.IGNORECASE)
 
+# `Path("s3://bucket/x")` normalises to `s3:/bucket/x` — one slash. That string
+# then matches nothing above and reads as an ordinary relative folder, so a caller
+# who wrapped the destination in `Path()` would silently back up to a directory
+# literally named `s3:`. It bit `ui.main`'s scheduled-backup path. Catching the
+# mangled form here means the next caller to do it gets an error instead of a
+# wrong answer; a real folder called `s3:` is not a thing worth protecting (the
+# character is illegal in Windows filenames anyway).
+_S3_MANGLED = re.compile(r"^s3:/(?!/)", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class Destination:
@@ -77,6 +86,11 @@ def parse_destination(value) -> Destination:
     raw = str(value or "").strip()
     m = _S3_URI.match(raw)
     if not m:
+        if _S3_MANGLED.match(raw):
+            raise BackupDestinationError(
+                f"{raw} isn't a usable destination — a cloud address needs two "
+                "slashes (s3://bucket/prefix). This usually means the address was "
+                "passed through Path(), which collapses them.")
         return Destination(kind=KIND_LOCAL, raw=raw, path=Path(raw))
     # rstrip only. Stripping the *leading* slash too would turn the malformed
     # `s3:///backups` (empty bucket, typo'd extra slash) into a bucket literally

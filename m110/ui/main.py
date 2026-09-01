@@ -521,13 +521,17 @@ class MainWindow(QMainWindow):
         check = (backup.due_for_scheduled_backup if scheduled
                  else backup.due_for_auto_backup)
         try:
-            if not check(Path(dest)):
+            # NOT Path(dest): `Path("s3://bucket/x")` collapses the double slash
+            # to `s3:/bucket/x`, which then parses as a *local* folder — so a
+            # scheduled backup to a bucket would have silently written to a
+            # directory of that name instead. The engine parses the string.
+            if not check(dest):
                 return
         except Exception:
             return
         self._backup_cancel = threading.Event()
         self._update_status(extra="  ·  Backing up…")
-        self._backup_worker = _BackupBgWorker(Path(dest), self._backup_cancel, self)
+        self._backup_worker = _BackupBgWorker(dest, self._backup_cancel, self)
         self._backup_worker.done.connect(self._on_auto_backup_done)
         self._backup_worker.failed.connect(self._on_auto_backup_failed)
         self._backup_worker.start()
