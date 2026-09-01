@@ -5,7 +5,7 @@ regression: engine logic *and* the UI flows) and a **human pass** for what a
 machine can't cheaply judge — look-and-feel, UX, real hardware, and exploratory
 bug-finding. Run the automated layer on every change; do a human pass (using
 [`tests/MANUAL_TEST_TEMPLATE.md`](tests/MANUAL_TEST_TEMPLATE.md)) before a release
-or after touching ingest / rendering / data-root code.
+or after touching a feature area.
 
 > **What's automated now (don't re-do these by hand):** the **ingest dialog**
 > (grouping, canonicalization, the ⚠ pointing-remap, alias-remember, apply-only-
@@ -16,6 +16,36 @@ or after touching ingest / rendering / data-root code.
 > (thumbnail/hero **golden-image** comparison — `tests/test_render_golden.py`).
 > Sections below now covered by automation are marked **⚙**; spot-check them only
 > when something looks off.
+
+---
+
+## How to use this runbook
+
+**§2 is organized by feature area, matching the [user guide](docs/README.md).** A
+full pass before a release means all of §2; a normal change means **one area**.
+
+Find what you touched, run that section, and glance at the "also worth a look"
+column — most regressions here have historically been in a *neighbouring* area
+that shared a seam, not the one that was edited.
+
+| If you changed… | Run | Also worth a look |
+|---|---|---|
+| `ingest.py`, `ui/import_page.py`, `ui/ingest_dialog.py`, `ui/holding_inspect_dialog.py` | **[§2.2 Ingest](#22-ingest--import)** | §2.3 (new objects must appear), §0.3 (corpus fixtures) |
+| `catalog.py`, `objects.py`, `ui/pages/catalog.py`, `ui/detail.py`, `ui/media*.py`, `ui/image_*.py` | **[§2.3 Library](#23-library--object-detail)** | §2.1 (theme), §2.7 (what publishes) |
+| `siril.py`, `roundtrip.py`, `astrowizard.py`, `stacking.py`, `processing.py`, `launch.py`, `hints.py` | **[§2.4 Processing](#24-processing)** | §2.5 (the sandbox backup rule) |
+| `backup/**`, `ui/backup_dialog.py`, `ui/restore_dialog.py` | **[§2.5 Backup](#25-backup--restore)** | §3 (the pooled/format regressions) |
+| `planning.py`, `planning_config.py`, `prioritize.py`, `horizon.py`, `glow.py`, `fieldguide.py`, `ui/pages/planning.py` | **[§2.6 Planning](#26-planning)** | §2.3 (pins are shared) |
+| `publish/**`, `ui/publish_dialog.py` | **[§2.7 Publishing](#27-publishing)** | §2.3 (curation decides what publishes) |
+| `assistant/**` | **[§2.8 Assistant](#28-ai-assistant)** | §2.6 (its planning tools) |
+| `config.py`, `migrate.py`, `refresh.py` | **[§2.1 Getting started](#21-getting-started)** + §0.2 migration | **everything** — these are under all of it |
+| `ui/theme/**`, `ui/widgets.py`, `ui/main.py` | **[§2.1](#21-getting-started)** (theme, auto-sync) | every area's visuals; §3 (the modal/teardown drill) |
+| any `QThread` worker, dialog teardown, or `.exec()` call | **[§3 Regression sweep](#3-regression-sweep-before-a-release)** — the SIGSEGV drill | the area that owns the dialog |
+| `pyproject.toml` deps, `packaging/*.spec` | **[§3](#3-regression-sweep-before-a-release)** — the frozen-app items (needs a real build) | §2.1 (launch) |
+
+**Areas with real-hardware or account requirements** — plan for these, they can't
+be done ad hoc: §2.2 (a mounted telescope), §2.4 (Siril, AstroWizard), §2.5c (a
+cloud provider account), §2.7 (a GitHub repo). §2.5b runs a local S3 server
+instead, and needs no account at all.
 
 ---
 
@@ -39,7 +69,14 @@ rm -rf /tmp/m110-test                     # reset between runs
   folders into the temp root's `Images/<target>/lights/` and
   `Images/<target>/seestar-stacks/`, then Refresh.
 
-### Testing from a git worktree
+> ⚠ **`M110_DATA_ROOT` is not the whole story.** Settings live at
+> **`~/.m110/settings.json`, outside the data root**, and the log lives beside
+> them. Anything that opens a dialog reads them, and any save-shaped action writes
+> them — a scratch script once overwrote a real backup destination this way. The
+> pytest suite seals both (`tests/conftest.py`); a script run by hand does not.
+> See the gotcha in [`CLAUDE.md`](CLAUDE.md) before writing one.
+
+### 0.1 Testing from a git worktree
 
 Feature work often happens in a `git worktree` (an isolated checkout of another
 branch, e.g. under `.claude/worktrees/<name>/`), and there is one thing to get
@@ -99,14 +136,16 @@ question before you debug anything else:
 python -c "import m110; print(m110.__file__)"
 ```
 
-**Migration check (#13).** To exercise the in-place migration, **copy** (never
-move) an old-shaped root — one with `data/`, `Images/FITS/…`, `site/img/` — to a
-temp dir, point `M110_DATA_ROOT` at the copy, and launch. The store should
-reshape into `Objects/ Images/ Media/ Inbox/ .m110_internal_data/`; verify
+### 0.2 Migration check (#13)
+
+To exercise the in-place migration, **copy** (never move) an old-shaped root — one
+with `data/`, `Images/FITS/…`, `site/img/` — to a temp dir, point `M110_DATA_ROOT`
+at the copy, and launch. The store should reshape into
+`Objects/ Images/ Media/ Inbox/ .m110_internal_data/`; verify
 `Objects/<id>/journal.md` populated, renders under `.m110_internal_data/renders/`,
 and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 
-### Synthetic test corpus (recommended starting point)
+### 0.3 Synthetic test corpus (recommended starting point)
 
 Instead of hand-copying folders, generate a ready-made store that exercises the
 whole app. The generator is committed; its **output lives outside the repo**.
@@ -119,22 +158,21 @@ M110_DATA_ROOT=~/Documents/M110-test m110     # then Refresh (Ctrl+R) first
 
 What it contains (and what each fixture exercises):
 
-| Fixture | Tests |
-|---|---|
-| `M51` (lights ×2 nights + Seestar stack + real journal notes) | gallery / hero / sessions / journal feed + detail notes |
-| `M81` (lights + stack + notes) | captured-with-stack vs captured-lights-only (no gallery) |
-| **`M101`** (18 lights, a `siril/` sandbox hardlinking **all 18**, then **2 moved to `rejected/`**) | the **#110 exclusion tier**, shipped mid-rejection: the sandbox pre-dates the rejection, so the first Refresh has real work to do (`processing.reconcile_rejected` prunes exactly those 2 links). Integration/sessions already exclude the pair; the frames are still on disk |
-| **`M42`** (**DwarfLab Dwarf 3**: Duo-Band **`.fits`** lights + an in-app `stacked-16_*.fits` stack + `stacked.jpg`) | the **`.fits`** extension end-to-end (sessions + rendering), a **narrowband** filter, a 2nd device in the store; `stacked.jpg` is force-curated **finished** → the detail **Finished / Working** split (#17) |
-| **`M13`** (globular cluster: lights + Seestar stack) | object-**type** variety (the corpus is otherwise galaxies + nebulae) — the prioritizer type-weights + a non-galaxy hero |
-| `M63` (+ `finished/` render + `stacks/` stack) | "up to date" processing status + an imported deliverable in the gallery |
-| `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) |
-| `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) |
-| `M81 M82` (multi-object folder) | many-to-many target→object rollups |
-| `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Tools → Clean up imported sidecars** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster |
-| `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced |
-| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) |
-
-| **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one |
+| Fixture | Tests | Area |
+|---|---|---|
+| `M51` (lights ×2 nights + Seestar stack + real journal notes) | gallery / hero / sessions / journal feed + detail notes | §2.3 |
+| `M81` (lights + stack + notes) | captured-with-stack vs captured-lights-only (no gallery) | §2.3 |
+| **`M101`** (18 lights, a `siril/` sandbox hardlinking **all 18**, then **2 moved to `rejected/`**) | the **#110 exclusion tier**, shipped mid-rejection: the sandbox pre-dates the rejection, so the first Refresh has real work to do (`processing.reconcile_rejected` prunes exactly those 2 links). Integration/sessions already exclude the pair; the frames are still on disk | §2.4 |
+| **`M42`** (**DwarfLab Dwarf 3**: Duo-Band **`.fits`** lights + an in-app `stacked-16_*.fits` stack + `stacked.jpg`) | the **`.fits`** extension end-to-end (sessions + rendering), a **narrowband** filter, a 2nd device in the store; `stacked.jpg` is force-curated **finished** → the detail **Finished / Working** split (#17) | §2.2, §2.3 |
+| **`M13`** (globular cluster: lights + Seestar stack) | object-**type** variety (the corpus is otherwise galaxies + nebulae) — the prioritizer type-weights + a non-galaxy hero | §2.6 |
+| `M63` (+ `finished/` render + `stacks/` stack, one linear `_og` + one stretched `_processed`) | "up to date" processing status, an imported deliverable in the gallery, and the **AstroWizard picker's** linear-vs-stretched choice | §2.4 |
+| `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) | §2.4 |
+| `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) | §2.3 |
+| `M81 M82` (multi-object folder) | many-to-many target→object rollups | §2.3 |
+| `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Tools → Clean up imported sidecars** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster | §2.3 |
+| `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced | §2.2 |
+| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
+| **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one | §2.2, §2.4 |
 
 The generator is covered by `tests/test_make_test_corpus.py`, which builds and
 self-checks a corpus on every `pytest -q` run (~1s, into a temp dir). Treat a
@@ -147,14 +185,16 @@ the store `M110-test/`, the external `M110-test-import-source/` you Browse to, a
 `M110-test-device-mount/`. The data-root override is the existing `M110_DATA_ROOT`
 env var — no special flag.
 
-**On simulating a mounted telescope.** A device is just a filesystem: USB or SMB,
-Seestar or Dwarf, it appears as a mount and the importer walks it like any other
-directory. So `M110-test-device-mount/` reproduces the real thing for everything
-except the Import page's **device button**, which probes `/Volumes` for a `MyWorks`
-folder (`config.find_seestar_myworks`). Two ways to cover that last inch:
+### 0.4 Simulating a mounted telescope
+
+A device is just a filesystem: USB or SMB, Seestar or Dwarf, it appears as a mount
+and the importer walks it like any other directory. So `M110-test-device-mount/`
+reproduces the real thing for everything except the Import page's **device
+button**, which probes `/Volumes` for a `MyWorks` folder
+(`config.find_seestar_myworks`). Two ways to cover that last inch:
 
 - **Browse… to the mount folder** — same recursive scan, same classification, no
-  privileges needed. This is enough for every check below.
+  privileges needed. This is enough for every check in §2.2.
 - **A real mount**, if you want the device button itself:
   ```bash
   hdiutil create -size 100m -fs APFS -volname "Seestar S50" /tmp/seestar.dmg
@@ -177,28 +217,34 @@ import→reject→re-import round trip for **both** devices in
 ```bash
 cd ~/Documents/Code/m110
 source .venv/bin/activate
-pip install -e ".[dev]"   # pulls pytest + pytest-qt (offscreen Qt driving)
-pytest -q                 # all (~680); must be green before a human pass
+pip install -e ".[dev]"   # pytest + pytest-qt (offscreen Qt driving) + boto3
+pytest -q                 # all; must be green before a human pass
 ```
 
 Engine logic is fixture-based and covers: catalog sort, journal read, derived
 reader, ingest plan/apply (incl. cancel + Seestar copy), config/bootstrap,
 store migration (old → two-axis, idempotent), image rendering (incl. FITS
-thumbnail + hero), and the session-planning math. The **UI is driven offscreen**
-with **pytest-qt** (`qtbot`) — pages/dialogs are constructed, interacted with
-(clicks, checkboxes, dropdowns, keyboard), and asserted on state + emitted
-signals. Shared store/builder fixtures live in `tests/_helpers.py`; the offscreen
-platform is set in `tests/conftest.py`. To regenerate the render goldens after an
-intentional rendering change:
+thumbnail + hero), backup in both formats and against object storage, and the
+session-planning math. The **UI is driven offscreen** with **pytest-qt** (`qtbot`)
+— pages/dialogs are constructed, interacted with (clicks, checkboxes, dropdowns,
+keyboard), and asserted on state + emitted signals. Shared store/builder fixtures
+live in `tests/_helpers.py`; the offscreen platform is set in `tests/conftest.py`.
+To regenerate the render goldens after an intentional rendering change:
 
 ```bash
 M110_UPDATE_GOLDENS=1 pytest -q tests/test_render_golden.py   # refresh tests/goldens/
 QT_QPA_PLATFORM=offscreen python -m m110.ui.main              # still constructs cleanly
 ```
 
+Two checks live outside `pytest` because they can't be faked in-process:
+
+```bash
+python tools/smoke_mcp.py     # starts the assistant server over real pipes (CI runs this)
+```
+
 ---
 
-## 2. Human pass (look-and-feel, UX, real hardware, exploration)
+## 2. Human pass — by feature area
 
 The mechanical pass/fail of most of these is now an automated test (see the
 **⚙** markers and the note at the top). What a human is uniquely good at — and
@@ -212,19 +258,25 @@ pickers, "Open In…"), and **opportunistic bug-finding**. Use
 Mark each pass. A **⚙** section is covered by automation — only spot-check it (or
 re-run when its area changes and you want eyes on the visuals).
 
-### A. First launch / data root
+---
+
+### 2.1 Getting started
+
+*User guide: [Getting started / Getting around](docs/README.md)*
+
+#### First launch / data root
 - [ ] Fresh `M110_DATA_ROOT` (empty/nonexistent) → launches, creates the folder,
       seeds an **empty** Library (5d) + a `profiles/default.toml`; Library shows
       **0 objects** until you ingest/Add. Top level is
       `Objects/ Images/ Media/ Inbox/ .m110_internal_data/` (internals + README
       hidden inside).
-- [ ] **Old-layout root migrates** (see §0 Migration check): a copied pre-#13
-      root reshapes in place on launch; relaunch makes no further change.
+- [ ] **Old-layout root migrates** (see [§0.2](#02-migration-check-13)): a copied
+      pre-#13 root reshapes in place on launch; relaunch makes no further change.
 - [ ] Preferences (Cmd+,) → change data folder → Save → prompts restart →
       relaunch reads the new folder.
 - [ ] `M110_DATA_ROOT` env var overrides the saved preference.
 
-### A2. Appearance / theme (UI Phase 0)  ⚙ *(tokens/qss/manager/restyle automated — `test_theme_*.py`)*
+#### Appearance / theme (UI Phase 0)  ⚙ *(tokens/qss/manager/restyle automated — `test_theme_*.py`)*
 - [ ] **Preferences → Appearance → Theme**: switch **Light / Dark / Follow system** →
       the whole app (tables, nav rail, menus, dialogs, status chips, muted labels,
       scrollbars) restyles **live** (no restart); status colors + muted text stay legible
@@ -236,70 +288,7 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] The journal editor (object **Notes → Edit**) uses the bundled **JetBrains Mono**.
 - [ ] Chosen theme **persists** across relaunch (`ui_theme` in `~/.m110/settings.json`).
 
-### B. Library  ⚙ *(natural sort, status colours, gallery presence automated — `test_ui_*.py` / `test_catalog.py`)*
-- [ ] The Library (5d) is the **captured/annotated collection** — a fresh root
-      starts **empty** and grows by ingest / Add-object; the stat row reads
-      `N captured / N total`. (Uncaptured catalog members live in **Goals**.)
-- [ ] **Object column sorts naturally** (M1, M2, … M10, M100 — *not* lexical),
-      and NGC after Messier; click headers to sort each column. *(eyes-on check.)*
-- [ ] Status colours: deep-stack green, initial amber, uncaptured muted.
-
-### B2. Library — Add object / metadata enrichment (5c/5d)
-- [ ] **Add object…** (Library menu): type a name/designation (e.g. `NGC 6888`) → an
-      editable offline preview resolves instantly; **Look up online** (Simbad) fills gaps
-      on a worker thread; confirm → the object joins the Library with a journal stub. A
-      duplicate is refused.
-- [ ] **Fill in missing metadata** (right-click the corpus `NGC 6992` stub — blank name,
-      `unknown` type): fields backfill from the bundled reference + derived season; real
-      user values are never overwritten.
-- [ ] **Enrich online…** (right-click / Library menu, on a worker): a Simbad tier fills
-      gaps the reference lacks (e.g. the off-catalog `IC 1396`); with astroquery/network
-      absent it degrades to a clear "not available" dialog (no crash). An object missing
-      **only** its filter is **not** offered enrichment (nothing to add — beta.6).
-- [ ] **Remove from Library** (right-click → confirm): the row disappears; the on-disk
-      captures/journal are **not** deleted (non-destructive).
-
-### C. Object detail / gallery
-- [ ] Selecting a row shows metadata, capture stats, journal text.
-- [ ] **Captured object shows gallery thumbnails + a hero** — including an object
-      whose only images are `.fit` Seestar stacks. *(Bug #3 regression.)*
-- [ ] Uncaptured object shows "not captured", no broken images.
-- [ ] **Hero scales to the pane** and rescales when you resize the window / drag
-      the splitter (doesn't overflow on a tall image).
-- [ ] **Season column** sorts Jan→Dec by first month, **Year-round last**.
-- [ ] **Gallery** shows full thumbnails (not clipped to one strip);
-      **double-click** a thumbnail → image viewer opens; **←/→** (and Prev/Next)
-      cycle through the gallery; **Esc** closes. Raster renders show full-res; a
-      `.fit`-only stack shows its thumbnail. (Re-Refresh once so `full` paths
-      populate for data rendered before this change.)
-- [ ] Gallery labels + processing rows show the **actual filenames** (no
-      standardized "display names").
-- [ ] **Journal** renders Markdown with the author's line breaks preserved and no
-      stray `<!-- -->` / `-->`; text wraps to the pane width.
-
-### C2. Inline journal editing (0.1e)
-- [ ] Detail pane shows a **Journal** header with an **Edit** button; an object
-      with no notes shows "No notes yet — click Edit to start."
-- [ ] Edit → raw `journal.md` (frontmatter + Markdown) opens in a monospace
-      editor; **the table and Ingest/Refresh lock** while editing.
-- [ ] **Save** writes the file and re-renders (body Markdown + frontmatter
-      `hero_caption` reflected); the lock releases. Confirm on disk:
-      `Objects/<id>/journal.md` changed.
-- [ ] **Cancel** discards edits, re-renders the prior content, releases the lock.
-- [ ] Editing a frontmatter `hero` / `hero_caption` then Save → after the next
-      sync, the gallery hero / caption updates accordingly.
-
-### C3. Per-image curation — Finished / Working (#17)
-- [ ] The detail gallery splits into **Finished** and **Working files** groups. The corpus
-      `M42` has its device preview (`stacked.jpg`) force-curated **finished**, so it shows
-      in the **Finished** group though it's a device stack.
-- [ ] **Right-click a tile → Mark as finished / Mark as working** regroups it in place and
-      persists to journal frontmatter (`finished_extra`/`working_extra`).
-- [ ] **Right-click → Set as hero** updates the hero — even to an **older** image (the hero
-      re-renders, not left stale, #17); **Open in default app** / **Reveal in file
-      manager** work (#19).
-
-### D. Auto-sync (no manual Refresh needed)
+#### Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.
 - [ ] **On window focus**: change something on disk (e.g. drop a render into
@@ -311,11 +300,84 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
 - [ ] Manual override still works: View menu → Refresh (Ctrl+R).
 
-### E. Ingest — staging  (`Inbox/`)  ⚙ *(grouping/canonicalization/pointing automated — `test_ui_ingest.py`)*
+#### Updates — banner + Preferences  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
+- [ ] **Help → Check for updates…**: an up-to-date build shows "You're up to date"; a
+      newer release shows an **Update available** dialog with **Download** (opens the
+      release page).
+- [ ] **Launch banner:** when a newer release exists and the throttle allows, a quiet
+      dismissible strip appears above the page stack — **Download · Skip this version ·
+      ✕**. **Skip** hides it and never shows that version again; **✕** hides it until next
+      launch.
+- [ ] **Preferences → Updates → "Check for updates on launch"** toggles the launch check;
+      the choice persists (`update_check_enabled`).
+
+---
+
+### 2.2 Ingest & import
+
+*User guide: [Ingest & the library layout](docs/ingest.md)*
+
+#### Import — header classification + layout registry  (6b)  ⚙ *(classification/registry automated — `test_ingest.py`)*
+- [ ] Point Import at a **copy of `~/Astronomy/Images`** (a throwaway slice — never the
+      live dir). The grouped preview sorts `FITS/<obj>/lights` → `Images/<obj>/lights`,
+      `…/stacks` → `stacks`, `Finished Images/<obj>` → `finished`, media → `Media/`; the
+      Kind cell **tooltip** names the detected layout ("M110 store" / "Seestar" / "Raw
+      FITS"). `process/`+`siril/` sandboxes are **not** imported.
+- [ ] A **flat pile of loose `.fit`** (mixed `IMAGETYP`) sorts into separate
+      **lights / darks / flats / biases** rows by header; a frame with no usable
+      `OBJECT`/`IMAGETYP` is left out (no false routing).
+- [ ] **Header wins:** a `DARK`-header frame dropped into an `<obj>_sub/` folder routes
+      to `Images/<obj>/darks/`, not `lights/`.
+- [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
+- [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
+
+#### Import — holding area + manual assign  (6c)  ⚙ *(sweep/assign automated — `test_ingest.py`, `test_ui_ingest.py`)*
+- [ ] Import a messy folder containing a **headerless `.fit`** and a **stray `.jpg`**
+      (not in a recognized folder): they appear in the preview as **"→ holding area"**
+      rows and, after Import, land in the **Holding area panel** (below the preview).
+      A `readme.txt` / `.DS_Store` / `*_thn.jpg` is **not** surfaced.
+- [ ] In the panel, pick an **Object** (type a new one or choose from the list) + a
+      **Kind**, click **Assign** → confirm → files **move** out of `Inbox/` into
+      `Images/<obj>/<kind>` (or `Media/`); the panel row disappears; Library refreshes.
+- [ ] "Remember alias?" after an assign persists `ingest_aliases.toml`.
+
+#### Import — DwarfLab Dwarf 3  (6b)  ⚙ *(classification automated — `test_ingest_dwarf.py`, `test_dwarf_store.py`)*
+- [ ] Browse the corpus import source's **`DWARF_RAW_TELE_M 1_…`** session: the `.fits`
+      raw subs group as **lights → `Images/M1/lights/`**; the in-app `stacked-16_*.fits`
+      + `stacked.jpg` route to the **stack tier**; the `Thumbnail/` sidecar + aux rasters
+      (`stacked_thumbnail`, `img_*`) are **not** surfaced.
+- [ ] The **`STARTRAILS_…`** folder imports only its composite `stacked.jpg` +
+      `startrails_*.mp4` → **`Media/Startrails_{photo,video}`** (raw subs ignored).
+- [ ] The **`DWARF_RAW_WIDE_Unknown_…`** session (OBJECT = the device placeholder
+      `Unknown`) sweeps its subs to the **holding area** for identify-by-pointing — no
+      literal `Unknown` target is created.
+- [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
+      (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
+
+#### Ingest — Seestar device  (mounted, USB or SMB)
+- [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
+- [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown
+      stays usable after; Cancel aborts the scan cleanly. *(Scan-freeze regression.)*
+- [ ] Preview lists stacks + lights + media as **copies**.
+- [ ] Confirm → **"Copying files…" modal with a progress bar** → completes →
+      **modal closes** (does not linger). *(Bug #1 regression.)*
+- [ ] Device files remain intact (copy, not move).
+- [ ] **EPERM regression:** copying from an SMB mount succeeds (no "Operation not
+      permitted").
+
+#### Ingest crash/cancel safety  *(Bug #2 regressions — do these deliberately)*
+- [ ] **Close the Ingest window while a scan is running** → no crash.
+- [ ] **Close the Ingest window right after a copy finishes** → no crash.
+- [ ] **Cancel a copy partway** → stops; summary reads "Ingest cancelled — N
+      ingested…"; re-running Ingest copies only the remainder (skip-if-present,
+      partial-safe).
+
+#### Ingest — staging  (`Inbox/`)  ⚙ *(grouping/canonicalization/pointing automated — `test_ui_ingest.py`)*
 > **Legacy / not in the shipping app:** the modal `IngestDialog` these steps drive is
 > no longer launched (superseded by the **Import** page in 6a; `Inbox/` is the 6c
 > holding area, not a source). Kept for the engine logic it still exercises in tests;
-> for the live GUI flow use **§E2/§E3** with the `M110-test-import-source/` folder.
+> for the live GUI flow use the sections above with the `M110-test-import-source/`
+> folder.
 - [ ] With a `<obj>_sub/` of `.fit` files present, the preview shows **one row per
       object** (Object · Kind · Files · Size · → `Images/<obj>/lights/`) — *not*
       one row per frame — with a running total size in the summary. *(#9)*
@@ -335,65 +397,85 @@ re-run when its area changes and you want eyes on the visuals).
       `.m110_internal_data/ingest_aliases.toml`; a later ingest of that source
       folder auto-routes to the remembered object.
 
-### E2. Import — header classification + layout registry  (6b)  ⚙ *(classification/registry automated — `test_ingest.py`)*
-- [ ] Point Import at a **copy of `~/Astronomy/Images`** (a throwaway slice — never the
-      live dir). The grouped preview sorts `FITS/<obj>/lights` → `Images/<obj>/lights`,
-      `…/stacks` → `stacks`, `Finished Images/<obj>` → `finished`, media → `Media/`; the
-      Kind cell **tooltip** names the detected layout ("M110 store" / "Seestar" / "Raw
-      FITS"). `process/`+`siril/` sandboxes are **not** imported.
-- [ ] A **flat pile of loose `.fit`** (mixed `IMAGETYP`) sorts into separate
-      **lights / darks / flats / biases** rows by header; a frame with no usable
-      `OBJECT`/`IMAGETYP` is left out (no false routing).
-- [ ] **Header wins:** a `DARK`-header frame dropped into an `<obj>_sub/` folder routes
-      to `Images/<obj>/darks/`, not `lights/`.
-- [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
-- [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
+---
 
-### E3. Import — holding area + manual assign  (6c)  ⚙ *(sweep/assign automated — `test_ingest.py`, `test_ui_ingest.py`)*
-- [ ] Import a messy folder containing a **headerless `.fit`** and a **stray `.jpg`**
-      (not in a recognized folder): they appear in the preview as **"→ holding area"**
-      rows and, after Import, land in the **Holding area panel** (below the preview).
-      A `readme.txt` / `.DS_Store` / `*_thn.jpg` is **not** surfaced.
-- [ ] In the panel, pick an **Object** (type a new one or choose from the list) + a
-      **Kind**, click **Assign** → confirm → files **move** out of `Inbox/` into
-      `Images/<obj>/<kind>` (or `Media/`); the panel row disappears; Library refreshes.
-- [ ] "Remember alias?" after an assign persists `ingest_aliases.toml`.
+### 2.3 Library & object detail
 
-### E4. Import — DwarfLab Dwarf 3  (6b)  ⚙ *(classification automated — `test_ingest_dwarf.py`, `test_dwarf_store.py`)*
-- [ ] Browse the corpus import source's **`DWARF_RAW_TELE_M 1_…`** session: the `.fits`
-      raw subs group as **lights → `Images/M1/lights/`**; the in-app `stacked-16_*.fits`
-      + `stacked.jpg` route to the **stack tier**; the `Thumbnail/` sidecar + aux rasters
-      (`stacked_thumbnail`, `img_*`) are **not** surfaced.
-- [ ] The **`STARTRAILS_…`** folder imports only its composite `stacked.jpg` +
-      `startrails_*.mp4` → **`Media/Startrails_{photo,video}`** (raw subs ignored).
-- [ ] The **`DWARF_RAW_WIDE_Unknown_…`** session (OBJECT = the device placeholder
-      `Unknown`) sweeps its subs to the **holding area** for identify-by-pointing — no
-      literal `Unknown` target is created.
-- [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
-      (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
+*User guide: [The library & object metadata](docs/library.md)*
 
-### F. Ingest — Seestar device  (mounted, USB or SMB)
-- [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
-- [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown
-      stays usable after; Cancel aborts the scan cleanly. *(Scan-freeze regression.)*
-- [ ] Preview lists stacks + lights + media as **copies**.
-- [ ] Confirm → **"Copying files…" modal with a progress bar** → completes →
-      **modal closes** (does not linger). *(Bug #1 regression.)*
-- [ ] Device files remain intact (copy, not move).
-- [ ] **EPERM regression:** copying from an SMB mount succeeds (no "Operation not
-      permitted").
+#### Library  ⚙ *(natural sort, status colours, gallery presence automated — `test_ui_*.py` / `test_catalog.py`)*
+- [ ] The Library (5d) is the **captured/annotated collection** — a fresh root
+      starts **empty** and grows by ingest / Add-object; the stat row reads
+      `N captured / N total`. (Uncaptured catalog members live in **Goals**.)
+- [ ] **Object column sorts naturally** (M1, M2, … M10, M100 — *not* lexical),
+      and NGC after Messier; click headers to sort each column. *(eyes-on check.)*
+- [ ] Status colours: deep-stack green, initial amber, uncaptured muted.
 
-### G. Ingest crash/cancel safety  *(Bug #2 regressions — do these deliberately)*
-- [ ] **Close the Ingest window while a scan is running** → no crash.
-- [ ] **Close the Ingest window right after a copy finishes** → no crash.
-- [ ] **Cancel a copy partway** → stops; summary reads "Ingest cancelled — N
-      ingested…"; re-running Ingest copies only the remainder (skip-if-present,
-      partial-safe).
+#### Add object / metadata enrichment (5c/5d)
+- [ ] **Add object…** (Library menu): type a name/designation (e.g. `NGC 6888`) → an
+      editable offline preview resolves instantly; **Look up online** (Simbad) fills gaps
+      on a worker thread; confirm → the object joins the Library with a journal stub. A
+      duplicate is refused.
+- [ ] **Fill in missing metadata** (right-click the corpus `NGC 6992` stub — blank name,
+      `unknown` type): fields backfill from the bundled reference + derived season; real
+      user values are never overwritten.
+- [ ] **Enrich online…** (right-click / Library menu, on a worker): a Simbad tier fills
+      gaps the reference lacks (e.g. the off-catalog `IC 1396`); with astroquery/network
+      absent it degrades to a clear "not available" dialog (no crash). An object missing
+      **only** its filter is **not** offered enrichment (nothing to add — beta.6).
+- [ ] **Remove from Library** (right-click → confirm): the row disappears; the on-disk
+      captures/journal are **not** deleted (non-destructive).
 
-### G2. Processing-prep round-trip (0.1f)  ⚙ *(prep + import round-trip automated — `test_siril.py` / `test_processing.py`)*
+#### Object detail / gallery
+- [ ] Selecting a row shows metadata, capture stats, journal text.
+- [ ] **Captured object shows gallery thumbnails + a hero** — including an object
+      whose only images are `.fit` Seestar stacks. *(Bug #3 regression.)*
+- [ ] Uncaptured object shows "not captured", no broken images.
+- [ ] **Hero scales to the pane** and rescales when you resize the window / drag
+      the splitter (doesn't overflow on a tall image).
+- [ ] **Season column** sorts Jan→Dec by first month, **Year-round last**.
+- [ ] **Gallery** shows full thumbnails (not clipped to one strip);
+      **double-click** a thumbnail → image viewer opens; **←/→** (and Prev/Next)
+      cycle through the gallery; **Esc** closes. Raster renders show full-res; a
+      `.fit`-only stack shows its thumbnail. (Re-Refresh once so `full` paths
+      populate for data rendered before this change.)
+- [ ] Gallery labels + processing rows show the **actual filenames** (no
+      standardized "display names").
+- [ ] **Journal** renders Markdown with the author's line breaks preserved and no
+      stray `<!-- -->` / `-->`; text wraps to the pane width.
+
+#### Inline journal editing (0.1e)
+- [ ] Detail pane shows a **Journal** header with an **Edit** button; an object
+      with no notes shows "No notes yet — click Edit to start."
+- [ ] Edit → raw `journal.md` (frontmatter + Markdown) opens in a monospace
+      editor; **the table and Ingest/Refresh lock** while editing.
+- [ ] **Save** writes the file and re-renders (body Markdown + frontmatter
+      `hero_caption` reflected); the lock releases. Confirm on disk:
+      `Objects/<id>/journal.md` changed.
+- [ ] **Cancel** discards edits, re-renders the prior content, releases the lock.
+- [ ] Editing a frontmatter `hero` / `hero_caption` then Save → after the next
+      sync, the gallery hero / caption updates accordingly.
+
+#### Per-image curation — Finished / Working (#17)
+- [ ] The detail gallery splits into **Finished** and **Working files** groups. The corpus
+      `M42` has its device preview (`stacked.jpg`) force-curated **finished**, so it shows
+      in the **Finished** group though it's a device stack.
+- [ ] **Right-click a tile → Mark as finished / Mark as working** regroups it in place and
+      persists to journal frontmatter (`finished_extra`/`working_extra`).
+- [ ] **Right-click → Set as hero** updates the hero — even to an **older** image (the hero
+      re-renders, not left stale, #17); **Open in default app** / **Reveal in file
+      manager** work (#19).
+
+---
+
+### 2.4 Processing
+
+*User guide: [Processing prep & hardlinks](docs/processing.md)*
+
+#### Processing-prep round-trip (0.1f)  ⚙ *(prep + import round-trip automated — `test_siril.py` / `test_processing.py`)*
 **Preference**
-- [ ] Preferences (Cmd+,) shows **"Prepare objects for processing in:"** with
-      **Siril** checked (default) and PixInsight / DeepSkyStacker / Astro Pixel
+- [ ] Preferences (Cmd+,) shows **"Processing workflows you use:"** with **Siril** and
+      **AstroWizard** checked (default) and PixInsight / DeepSkyStacker / Astro Pixel
       Processor **disabled ("soon")**. Saving persists the choice (no restart).
 
 **Auto-setup on ingest (no manual action — there is no "Prepare" button)**
@@ -410,7 +492,7 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Self-heal on refresh:** delete an object's `siril/` folder, then Refresh
       (Ctrl+R) or refocus the window → the sandbox is recreated automatically;
       objects that already have one are untouched (edited presets preserved). The
-      **M110 → Prepare working folders** menu action does the same on demand and
+      **Tools → Prepare working folders** menu action does the same on demand and
       reports how many were created.
 
 **Import finished work**
@@ -427,11 +509,15 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Re-import keeps the hero:** process again, import again → the hero picker
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
+- [ ] **Archive retention:** with **Preferences → "Keep the last N processing
+      sessions"** set to 2, import a third time → the oldest `archive/<ts>/` is
+      gone and the two newest remain. Set it to 0 ("all") → nothing is pruned.
 
-### G2b. Rejecting subs — the `rejected/` tier (#110)  ⚙ *(prune/import/session rules automated — `test_rejected_lights.py`)*
+#### Rejecting subs — the `rejected/` tier (#110)  ⚙ *(prune/import/session rules automated — `test_rejected_lights.py`)*
 > Driven entirely from a **file manager** for now — there is no UI yet (that's the
 > Lights Table). The whole point is that a rejected sub doesn't come back, so the
 > device half needs a real telescope.
+
 **The corpus ships mid-rejection**, so most of this is *observe*, not *set up*: `M101`
 has 18 subs, a `siril/` sandbox hardlinking **all 18**, and 2 of them already moved to
 `rejected/`. Because the sandbox pre-dates the rejection, the first Refresh has real
@@ -464,8 +550,9 @@ ls siril/lights/ | wc -l            # 18  ← still linking the rejected pair
       pruned. (This is the guard that keeps a mid-flight Siril run intact.)
 
 **No re-sync — the part that makes this worth doing.** Use the shipped
-`M110-test-device-mount/` (see §0 for how it stands in for a real scope, and for
-mounting it as an actual volume if you want the device button):
+`M110-test-device-mount/` (see [§0.4](#04-simulating-a-mounted-telescope) for how it
+stands in for a real scope, and for mounting it as an actual volume if you want the
+device button):
 
 - [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50/MyWorks`. The
       preview offers **2 files** — the two new subs. The two rejected names are
@@ -477,10 +564,11 @@ mounting it as an actual volume if you want the device button):
       (or a restored backup) → files under `Images/<target>/rejected/` are offered as
       **"rejected subs"** routing back to `rejected/`, never into `lights/`.
 
-### G2c. Headless stacking — `m110-stack`  ⚙ *(settings decisions, layout, handoff automated — `test_stacking.py`)*
+#### Headless stacking — `m110-stack`  ⚙ *(settings decisions, layout, handoff automated — `test_stacking.py`)*
 > Needs **Siril 1.4 installed** and real subs. The synthetic corpus won't stack —
 > its frames have no stars — so use a real capture folder, and copy it out of your
-> live store first (see §0). What automation *can't* check is a real Siril run.
+> live store first ([§0](#0-safe-test-environment)). What automation *can't* check
+> is a real Siril run.
 
 **Proposal (read-only, safe anywhere)** — nothing is written, so this one may point
 at the corpus or a real folder:
@@ -536,13 +624,12 @@ the split.
       registered nothing, and tells you how to lower the bar.
 - [ ] **Then re-run it with `--exclude-night <that night>`** — the run must report
       *"Cleared N GB of scratch from a previous run"* and the Siril log must show
-      `Sequence found: pp_lights_ 1->
-      <reduced count>`, not the original count. Before this was fixed, `process/`
-      survived the failure, Siril refused to rebuild an existing `.seq`
-      (*"seqfile 'pp_lights_.seq' already exists, not overwriting"*), and the
-      exclusion silently applied to nothing while the proposal printed the reduced
-      number. The stack came out **wrong and looked right** — the failure mode to
-      watch for here.
+      `Sequence found: pp_lights_ 1-><reduced count>`, not the original count. Before
+      this was fixed, `process/` survived the failure, Siril refused to rebuild an
+      existing `.seq` (*"seqfile 'pp_lights_.seq' already exists, not overwriting"*),
+      and the exclusion silently applied to nothing while the proposal printed the
+      reduced number. The stack came out **wrong and looked right** — the failure
+      mode to watch for here.
 - [ ] `--restack` must NOT clear it: run it after a successful `--keep-process`
       run and confirm the registered frames are reused, not deleted.
 
@@ -562,9 +649,10 @@ m110-stack "<copy>" --run --handoff
 - [ ] Open that stack in AstroWizard, export a finished image **into that folder**,
       then Refresh M110: Siril's *Import finished work* must **not** offer it. (This is
       the guard in `config.SANDBOX_DIRNAMES` — before it, Siril claimed the file.)
-- [ ] Back up the store and confirm the snapshot contains no `astrowizard/` directory.
+- [ ] Back up the store and confirm the snapshot keeps `astrowizard/`'s authored work
+      but **not** its `lights/` link tree (the same rule checked in §2.5a).
 
-### G2d. Send a stack to AstroWizard (14a)  ⚙ *(candidate discovery, linear/stretched, the write automated — `test_stacking.py` / `test_ui_handoff.py`)*
+#### Send a stack to AstroWizard (14a)  ⚙ *(candidate discovery, linear/stretched, the write automated — `test_stacking.py` / `test_ui_handoff.py`)*
 > The corpus ships **M63** with two stacks for exactly this: a linear `_og` and a
 > newer stretched `_processed`. What automation can't check is the launch itself.
 
@@ -607,161 +695,25 @@ m110-stack "<copy>" --run --handoff
       folder is the point, not a fallback.
 - [ ] With AstroWizard *not* installed (rename the .app briefly), Send still works
       and the dialog says where to set its location instead of offering Open.
-
-### G3. Publishing — static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
-> Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
-- [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target
-      list (**Static website** + **GitHub Pages** enabled; Netlify shows **"(soon)"**),
-      the Repository field under GitHub Pages (enabled only while it's checked),
-      site-title field, output-folder chooser.
-- [ ] Pick a **throwaway output folder** (NOT inside the data store), click **Publish**
-      → modal progress (Cancel works) → "Published N pages" → **Open folder**.
-- [ ] Open `index.html`: catalog table, working **filter** box; captured objects link
-      to `objects/<slug>.html` (hero, gallery lightbox ←/→/Esc, sessions, notes). Nav
-      shows only the **selected** sections.
-- [ ] **Per-object exclude:** right-click an object → **Exclude from publishing** →
-      re-publish → that object has **no row and no page**; right-click → **Include** →
-      reappears.
-- [ ] **Journal privacy:** add `private: true` to an object's `journal.md` frontmatter
-      (or tick **Exclude all journal notes**) → its notes are absent from the site.
-- [ ] **Deps-missing path:** with the `publish` extra uninstalled, Publish shows a
-      clear "pip install 'm110[publish]'" message (no crash).
-
-### G3b. Publishing — GitHub Pages deploy (BUGS #27a)  ⚙ *(git deploy automated against a local bare repo — `test_publish_ghpages.py`)*
-> Needs `git` on PATH and a **real GitHub repo you own** with push access via your
-> normal auth (SSH key or credential helper). Use a **scratch repo**, not your live
-> site's, unless you intend to replace it — the deploy **force-pushes** `gh-pages`.
-- [ ] In Publish / share…, check **GitHub Pages**, enter the repo as `owner/repo`
-      (or a full git URL) → Publish → progress → success message shows the
-      `https://<owner>.github.io/<repo>/` URL + an **Open site** button.
-- [ ] In the repo: a `gh-pages` branch with exactly **one commit**
-      ("Publish <date> (M110)"), the site files, and `.nojekyll`. Re-publish →
-      still one commit (force-replaced, not appended).
-- [ ] **Incremental uploads:** set **Uploads → "Upload only what changed"**, publish
-      → the deploy is dramatically faster than the replace-mode publish, and the
-      branch gains a **second** commit (history kept). Change one image, re-publish
-      → only that image uploads (watch the object count in the progress dialog).
-      Switch back to **Replace** → the branch collapses to one commit again.
-      *(The blob-less tip fetch is only exercisable against a real GitHub remote —
-      local bare repos disallow filters by default and take the fallback path.)*
-- [ ] First time only: repo **Settings → Pages → deploy from `gh-pages`** — then
-      the URL serves the site (allow a minute or two).
-- [ ] **Error paths:** unchecked repo field → validation warning; a repo you can't
-      push to → "Publish failed" showing git's actual stderr (auth/not-found), no
-      crash; app works offline as before when GitHub Pages is unchecked.
-- [ ] **Progress + cancel:** during a big deploy the label switches "Rendering
-      site…" → "Uploading to GitHub…" with object-count progress; **Cancel**
-      mid-upload returns to the dialog within a second or two (no beach ball) and
-      `ps | grep "git push"` shows **no leftover push process**; the remote branch
-      is unchanged.
-- [ ] **Gallery level:** the combo under Image galleries picks finished-only
-      (default) / +device stacks / all. Publish at "All", then re-publish at
-      "Finished images only" → the output folder **and** the deployed branch
-      shrink (stale derivatives + unchecked section pages are swept, not left
-      behind).
-- [ ] **Save:** change settings → **Save** → dialog closes, nothing publishes;
-      reopen → choices kept.
-
-### G4. Planning — ranking, plan-a-night, field guides  ⚙ *(engine + sequencer + moon model automated — `test_planning_night.py`, `test_prioritize.py`, `test_fieldguide.py`; UI flows in `test_ui_pages.py`)*
-- [ ] **Priority targets:** open Planning → the ranked table populates (a background
-      recompute runs once/day; **Recompute** forces it). Flip **Strategy**
-      (capture-many ↔ go-deep) and nudge a **weight** → the order changes *instantly*
-      (no worker spin-up). Right-click **Pin** → floats to #1 with ▲.
-- [ ] **Recompute is quick** (`perf/twilight-cache`): with a Messier-sized goal set it
-      finishes in **a few seconds**, not ~half a minute. If it crawls, the twilight
-      memoization has regressed — check that ranking more targets isn't re-deriving
-      each night per target (`planning._twilight_cached.cache_info()` should show far
-      more hits than misses, with misses ≈ the number of distinct nights scanned).
-- [ ] **Site profiles:** create a profile (coordinates via **Look up location…** if
-      online), import a `.hrz`, **Compute light-dome…** → a `<profile>.glow.hrz`
-      appears beside the profile. Switching **Location** re-ranks.
-- [ ] **Date picker (regression, #43):** open the **Night:** calendar popup — every
-      day number and weekday name renders (no "…"), the selected date is a clear
-      accent block, and the **Night:** field itself is readable in **dark mode**.
-- [ ] **Generate plan:** pick a date + **Targets** count → schedule rows are
-      back-to-back (each Start = previous end), starts on 10-minute marks, no
-      **Alt** above ~75° (regression, #37), and the **Moon** column shows "—"
-      whenever the moon is down at that slot (regression, #36). Changing **Targets**
-      re-sequences instantly; changing the date **clears** the plan ("Night
-      changed…" — regression for the #36 desync).
-- [ ] **Reorder/exclude:** Move up/down re-chains start times from dusk; unchecking
-      a row drops it (a substitute may appear).
-- [ ] **Timeline:** target curves + dashed moon track (☾) + dotted **ceiling** line +
-      colored slot bands along the bottom; repaints on theme change.
-- [ ] **Field guide:** Save → appears under Saved field guides + as
-      `Plans/<date>_<slug>.md`; the header describes the whole night's moon
-      ("… · sets HH:MM"), the footer carries **both** the generation date and the
-      plan night; ⚠ appears only on short window-cut descending slots.
-
-### I. Updates — banner + Preferences  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
-- [ ] **Help → Check for updates…**: an up-to-date build shows "You're up to date"; a
-      newer release shows an **Update available** dialog with **Download** (opens the
-      release page).
-- [ ] **Launch banner:** when a newer release exists and the throttle allows, a quiet
-      dismissible strip appears above the page stack — **Download · Skip this version ·
-      ✕**. **Skip** hides it and never shows that version again; **✕** hides it until next
-      launch.
-- [ ] **Preferences → Updates → "Check for updates on launch"** toggles the launch check;
-      the choice persists (`update_check_enabled`).
-
-### H. Cross-check with the source workflow (optional)
-- [ ] Refresh output (sessions/derived) for a shared object matches the reference
-      Astronomy `rebuild.sh` (aside from `processing.json`'s `generated_at`).
-- [ ] An emitted preset matches the schema/shape of the reference
-      `~/Astronomy/Images/FITS/<obj>/presets/naztronomy_smart_scope_presets.json`.
+- [ ] **Stack in StackingWizard…** launches StackingWizard and reveals the
+      `astrowizard/` folder — it takes no arguments at all, so revealing the folder
+      is the whole of the hand-off.
 
 ---
 
-## 2b. Regression sweep (deliberate — run before a release)
+### 2.5 Backup & restore
 
-A single pass over the specific bugs we've fixed, so a regression doesn't slip
-through the general visual pass. Each item's mechanical half is a named automated
-test; these steps confirm the **user-visible** behavior against the corpus (or real
-data / a packaged build where noted).
+*User guide: [Backing up your library](docs/backup.md)*
 
-- [ ] **Dwarf `.fits` recognized everywhere** (the `.fit`-only footgun): the corpus `M42`
-      (Dwarf `.fits`) shows captured status, a session, a gallery, and a hero — not an
-      empty/uncaptured object. *(`test_ingest_dwarf.py`, `test_dwarf_store.py`.)*
-- [ ] **Mount mode from the `EQMODE` header** (not the legacy date heuristic): a session's
-      **Mount** column matches the frames' `EQMODE` card. *(`test_scan_sessions.py`.)*
-- [ ] **Import keep-both on a same-name re-process** (beta.5): re-import a *different* file
-      with a name already in `finished/` → it lands as `…-2.<ext>` and the old one is kept;
-      a byte-identical file is skipped. *(`test_siril.py`.)*
-- [ ] **Set an OLDER image as hero** re-renders the hero (no stale hero — #17).
-      *(`test_build_images.py`.)*
-- [ ] **Planning date-picker readable** (#43): the **Night:** calendar popup renders every
-      day/weekday, the selection is a clear accent block, and the field reads in **dark
-      mode**.
-- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks, no
-      **Alt** above ~75°, **Moon** reads "—" when the moon is down, and changing the date
-      **clears** the stale plan. *(`test_planning_night.py`.)*
-- [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends
-      only changed objects; narrowing the gallery level shrinks the output **and** the
-      deployed branch. *(`test_publish_ghpages.py`.)*
-- [ ] **A sync landing under an open viewer/menu doesn't crash** (the 0.3.0b3 SIGSEGV):
-      open an object, switch to another app, come back (this starts a sync),
-      **double-click a gallery thumbnail** and leave the viewer up until the status bar
-      stops saying "Syncing…" — then close it. The window must survive, and the page
-      refreshes on close. Repeat with a **right-click menu** held open across a sync.
-      Best on a large store, where the sync is slow enough to overlap.
-      *(Policy half: `test_ui_modal_safety.py` — a real nested loop can't be pumped
-      offscreen.)*
-- [ ] **Backup on a destination that can't share files** (#92) — **real hardware**, see
-      the drill below: the format switches to **pooled**, the window says why, and a
-      second backup stores ~no new bytes. *(`test_backup_pooled.py`.)*
-- [ ] **macOS: Process in Siril launches** (its bundled Python isn't SIGKILLed) — **real
-      hardware**; the env-sanitizer half is `test_launch.py`.
-- [ ] **Frozen-app astronomy engine** (#75/#74): in a **packaged build**, Planning + the
-      priority ranking compute (no "astronomy engine unavailable") and **Enrich online**
-      runs. Rebuild required — the PyInstaller-hook tests (`test_packaging_deps.py`) can't
-      reproduce the frozen runtime.
+Always against a **temp root** ([§0](#0-safe-test-environment)), never a live
+library. The interesting cases are about the *destination*, which unit tests can
+only simulate.
 
----
+Three destination kinds, in increasing cost to set up. **§2.5b needs no account
+and is the one to run on every backup change**; §2.5a needs a disk image; §2.5c
+needs a provider account and is a per-release check.
 
-## 2c. Backup & restore (manual — the automated half can't fake a filesystem)
-
-Always against a **temp root** (§0), never a live library. The interesting cases are
-about the *destination*, which unit tests can only simulate.
+#### 2.5a Local destinations
 
 **Setup — a destination with no hardlinks.** FAT32 has none, so a disk image is the
 honest test rig (macOS):
@@ -773,7 +725,7 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
 
 (Linux: `mkfs.vfat` a loop file. Windows: format a small VHD as exFAT.)
 
-- [ ] **Capability line, before the first backup.** Library → Back up…, choose a normal
+- [ ] **Capability line, before the first backup.** Tools → Back up…, choose a normal
       folder: "Unchanged files are shared between backups", plus free space. Choose
       `/Volumes/M110TEST`: it says the destination can't share files. Neither needs an
       existing backup to report this.
@@ -809,53 +761,377 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
       intact. Run it again → it never deletes the last backup.
 - [ ] **Mixed destination.** A destination holding both formats lists both in the restore
       picker, labelled, and restores from either.
+- [ ] **Scope applies here too**, not just in the cloud: set **Back up: Essentials** on a
+      normal folder → the snapshot's file count drops by the light frames, and the
+      restore picker labels it "no light frames". *(Regression: mirrored ignored the
+      scope setting entirely, silently backing everything up anyway.)*
 
 Then: `hdiutil detach /Volumes/M110TEST && rm /tmp/m110test.dmg`.
 
-### 2d. Cloud backup (manual — needs a real bucket)  *(#93)*
+#### 2.5b Cloud, locally — MinIO
 
-`S3Backend` is proved against the storage contract by the conformance suite
-(`tests/test_backup_backends.py` runs it with an injected fake client, so no AWS SDK
-and no network), and `tests/test_backup_cloud.py` drives a whole backup → verify →
-restore cycle. **What no test can cover is a real provider**: the failures worth
-finding here are a service rejecting a header botocore sends, a bucket-subdomain that
-doesn't resolve, or credentials that work in the AWS CLI and not here. Do this against
-**Backblaze B2 or Cloudflare R2** at least once per release — they're the point of
-`endpoint_url`, and cheaper to be wrong on than AWS.
+**Run this one on any backup change.** MinIO is an S3-compatible server you run
+yourself, and it exercises the parts of `S3Backend` that a real AWS bucket would
+*not*: M110 sends **path-style addressing whenever a custom endpoint is set**, which
+is exactly what MinIO-style deployments require and what AWS never sees. It is also
+free and repeatable, so the whole backup → verify → restore cycle can be re-run as
+often as you like.
 
-Use a **throwaway bucket** and a scratch store (§0), never the live library.
+**Setting it up.**
 
-- [ ] **Credentials.** Tools → Back up, destination `s3://<bucket>/m110test`. The
-      **Cloud storage** fields appear as you type. Enter the endpoint URL (B2:
-      `https://s3.<region>.backblazeb2.com`; R2:
-      `https://<account>.r2.cloudflarestorage.com` with region `auto`), key and secret →
-      **Test connection** → the status line says "Connected".
-- [ ] **The secret is not in `settings.json`.** `grep -i <your-secret> ~/.m110/settings.json`
-      must find nothing; the key lives in the OS keyring. Then reopen the dialog: the
-      secret field is empty and reads "Saved — leave blank to keep it".
-- [ ] **Wrong credentials fail clearly.** Change one character of the key → Test
-      connection → an actionable message, not a traceback and not a hang.
-- [ ] **Format and retention are honest before the probe.** With `s3://…` typed, "Backups
-      are stored as" reads **Pooled backups** and is disabled, its note doesn't mention
-      file links or a browsable copy, and **Keep at least … GB free** is greyed out.
-- [ ] **Back up now** on a small store → completes, and the summary names an `s3://…`
-      snapshot with no "Open folder" button.
+*Docker or Podman — identical on macOS, Linux and Windows, and the simplest route:*
+
+```bash
+docker run -d --name m110-minio -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+  quay.io/minio/minio server /data --console-address ":9001"
+```
+
+*Native, if you'd rather not run a container:*
+
+| | Install | Run |
+|---|---|---|
+| **macOS** | `brew install minio/stable/minio` | `minio server ~/minio-data --console-address ":9001"` |
+| **Linux** | `curl -O https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x minio` | `./minio server ~/minio-data --console-address ":9001"` |
+| **Windows** (PowerShell) | download `https://dl.min.io/server/minio/release/windows-amd64/minio.exe` | `.\minio.exe server C:\minio-data --console-address ":9001"` |
+
+Native runs use `minioadmin` / `minioadmin` unless you set `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD` first. On Windows, run the server from a terminal you can
+leave open, or install it as a service.
+
+**Make a bucket.** Open the console at <http://localhost:9001>, sign in with those
+credentials, and create a bucket named `m110test`. (Or, with the `mc` client:
+`mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb local/m110test`.)
+
+**Point M110 at it** — Tools → Back up:
+
+| Field | Value |
+|---|---|
+| Destination | `s3://m110test/backups` |
+| Endpoint URL | `http://localhost:9000` |
+| Region | `us-east-1` |
+| Access key ID | `minioadmin` |
+| Secret key | `minioadmin` |
+
+Then **Test connection**.
+
+**The checks.**
+
+- [ ] **The cloud fields appear as you type** `s3://…`, and **before any probe**:
+      "Backups are stored as" reads **Pooled backups** and is disabled, its note
+      doesn't mention file links or a browsable copy, and **Keep at least … GB free**
+      is greyed out. (None of that waits for Test connection — it's all knowable from
+      the destination string.)
+- [ ] **Test connection** → the status line says "Connected".
+- [ ] **Wrong credentials fail clearly.** Change one character of the secret → Test
+      connection → an actionable message, not a traceback and not a hang. Repeat with
+      a **wrong bucket name**, and with the server stopped (`docker stop m110-minio`) —
+      each must answer within a few seconds, not after botocore's default ~2 minutes
+      of retries.
+- [ ] **The secret is not in `settings.json`.**
+      `grep -i minioadmin ~/.m110/settings.json` finds the *access key id* but never
+      the secret — that lives in the OS keyring. Reopen the dialog: the secret field
+      is empty and reads "Saved — leave blank to keep it".
+- [ ] **A blank secret keeps the saved one.** Change the interval, Save, reopen, Test
+      connection → still connects.
+- [ ] **Back up now** on a small store → completes; the summary names an `s3://…`
+      snapshot and shows **no "Open folder"** button.
+- [ ] **The bucket has the pooled layout and no `latest/`.** In the MinIO console,
+      browse `m110test/backups/M110-Backups/<store>/`: `objects/`, `snapshots/`,
+      `INDEX.tsv`, `restore.py`, `README.txt` — and **no `latest/`** (it's a hardlink
+      tree, which object storage has no concept of).
 - [ ] **Second backup uploads ~nothing.** Run it again unchanged → "0 bytes new".
-- [ ] **Verify** reports success. Note it checks presence and size, not a full re-read —
-      that's deliberate (a deep verify is a full download, with egress billed).
-- [ ] **Restore** a couple of files to a scratch folder; open one and confirm the contents.
-- [ ] **Essentials scope.** Set **Back up: Essentials**, run again → the file count drops
-      by the light frames. Then restore from the **earlier** everything-snapshot and
-      confirm a light frame still comes back — narrowing must not have swept it.
-- [ ] **The restore picker labels it.** The essentials snapshot reads "no light frames".
-- [ ] **Offline behaves.** Turn off the network → Back up now → a clear failure, and the
-      app stays usable.
+- [ ] **Verify** reports success. It checks presence and size rather than re-reading
+      every object — deliberate, since on a real provider that's a full download.
+- [ ] **Restore** a few files to a scratch folder; open one and confirm the contents.
+- [ ] **Restore the whole tree** and diff it against the store — MinIO is free, so
+      this is the place to do the expensive check that §2.5c would bill you for:
+      ```bash
+      diff -r ~/Documents/M110-test /tmp/restored | grep -v '\.m110_internal_data/derived\|renders\|sessions.jsonl'
+      ```
+- [ ] **Essentials scope.** Set **Back up: Essentials**, run again → the file count
+      drops by the light frames. Then restore from the **earlier** everything-snapshot
+      and confirm a light frame still comes back — narrowing must not have swept it.
+- [ ] **The restore picker labels it**: the essentials snapshot reads "no light frames".
+- [ ] **Retention.** Take three snapshots, set keep = 1, back up again → the older
+      manifests are gone from `snapshots/` and unreferenced objects are swept from
+      `objects/`. **Keep at least … GB free must have had no effect** — there is no
+      volume to measure, and honouring it would prune a cloud history to one snapshot
+      per run.
+- [ ] **Recovery without M110.** Download the bucket prefix (`mc mirror
+      local/m110test/backups /tmp/frombucket`) and run
+      `python3 restore.py latest-manifest.json.gz /tmp/recovered` from inside it — the
+      same drill as §2.5a, proving the recovery artifacts travel with a cloud backup too.
+- [ ] **Server disappears mid-run.** Start a backup of a larger store, `docker stop
+      m110-minio` partway → a clear failure, the app stays usable, and no snapshot
+      manifest is left behind (`snapshots/` unchanged). Restart the server and back up
+      again → it resumes, re-uploading only what didn't make it.
+
+**Tear down:** `docker rm -f m110-minio` (or Ctrl-C the server and delete its data
+directory). Delete the keyring entry if you like — it's stored under the service
+`m110-backup-s3`.
+
+> Other local S3 servers work the same way if you prefer them — LocalStack, Garage,
+> SeaweedFS — the only fields that change are the endpoint and credentials.
+
+#### 2.5c Cloud, hosted — B2 or R2
+
+Once §2.5b passes, what's left is what only a **real provider** shows: a service
+rejecting a header botocore sends, a bucket subdomain that doesn't resolve, TLS,
+and credentials that work in the AWS CLI but not here. Do this **at least once per
+release**, against B2 or R2 rather than AWS — they're the point of `endpoint_url`,
+they have usable free tiers, and R2 has no egress charge so a full restore drill is
+free.
+
+AWS itself is the *least* informative target here: it exercises no custom endpoint,
+keeps virtual-host addressing, and never sees the checksum pin. Worth one pass
+eventually to confirm the default path; not the one to reach for first.
+
+Use a **throwaway bucket** and a scratch store ([§0](#0-safe-test-environment)).
+
+| Provider | Endpoint URL | Region |
+|---|---|---|
+| **Backblaze B2** | `https://s3.<region>.backblazeb2.com` | the bucket's region, e.g. `us-west-002` |
+| **Cloudflare R2** | `https://<account-id>.r2.cloudflarestorage.com` | `auto` |
+| Amazon S3 | *(leave blank)* | e.g. `us-east-1` |
+
+- [ ] **Credentials + Test connection** as in §2.5b, with the provider's endpoint. For
+      R2, confirm the **Region** field accepts the literal `auto`.
+- [ ] **Back up now** on a small store → completes over TLS against a real host. This
+      is the check that a provider isn't rejecting the request botocore builds.
+- [ ] **Second backup uploads ~nothing.**
+- [ ] **Verify** succeeds, and remains the shallow presence-and-size check.
+- [ ] **Restore** a few files and confirm the contents.
+- [ ] **Offline behaves.** Turn off the network → Back up now → a clear failure within
+      seconds, and the app stays usable.
+- [ ] **Automatic backup reaches the bucket.** Tick **Back up automatically**, quit and
+      relaunch → the scheduled run uploads to the bucket. *(Regression: the destination
+      was wrapped in `Path()` on this path, which collapses `s3://` to `s3:/` and sent
+      scheduled backups to a local folder named `s3:` while manual ones worked.)*
 - [ ] **Housekeeping.** Delete the test bucket afterwards, and set a lifecycle rule to
       abort incomplete multipart uploads — orphaned parts bill silently.
 
 ---
 
-## 3. Release smoke (2-minute happy path)
+### 2.6 Planning
+
+*User guide: [Session planning](docs/planning.md)*
+
+⚙ *(engine + sequencer + moon model automated — `test_planning_night.py`, `test_prioritize.py`, `test_fieldguide.py`; UI flows in `test_ui_pages.py`)*
+
+- [ ] **Priority targets:** open Planning → the ranked table populates (a background
+      recompute runs once/day; **Recompute** forces it). Flip **Strategy**
+      (capture-many ↔ go-deep) and nudge a **weight** → the order changes *instantly*
+      (no worker spin-up). Right-click **Pin** → floats to #1 with ▲.
+- [ ] **Recompute is quick** (`perf/twilight-cache`): with a Messier-sized goal set it
+      finishes in **a few seconds**, not ~half a minute. If it crawls, the twilight
+      memoization has regressed — check that ranking more targets isn't re-deriving
+      each night per target (`planning._twilight_cached.cache_info()` should show far
+      more hits than misses, with misses ≈ the number of distinct nights scanned).
+- [ ] **Site profiles:** create a profile (coordinates via **Look up location…** if
+      online), import a `.hrz`, **Compute light-dome…** → a `<profile>.glow.hrz`
+      appears beside the profile. Switching **Location** re-ranks.
+- [ ] **Date picker (regression, #43):** open the **Night:** calendar popup — every
+      day number and weekday name renders (no "…"), the selected date is a clear
+      accent block, and the **Night:** field itself is readable in **dark mode**.
+- [ ] **Generate plan:** pick a date + **Targets** count → schedule rows are
+      back-to-back (each Start = previous end), starts on 10-minute marks, no
+      **Alt** above ~75° (regression, #37), and the **Moon** column shows "—"
+      whenever the moon is down at that slot (regression, #36). Changing **Targets**
+      re-sequences instantly; changing the date **clears** the plan ("Night
+      changed…" — regression for the #36 desync).
+- [ ] **Reorder/exclude:** Move up/down re-chains start times from dusk; unchecking
+      a row drops it (a substitute may appear).
+- [ ] **Timeline:** target curves + dashed moon track (☾) + dotted **ceiling** line +
+      colored slot bands along the bottom; repaints on theme change.
+- [ ] **Field guide:** Save → appears under Saved field guides + as
+      `Plans/<date>_<slug>.md`; the header describes the whole night's moon
+      ("… · sets HH:MM"), the footer carries **both** the generation date and the
+      plan night; ⚠ appears only on short window-cut descending slots.
+
+---
+
+### 2.7 Publishing
+
+*User guide: [Publishing your collection](docs/publishing.md)*
+
+#### Static-site export (item 8a)  ⚙ *(select/render/exclusion automated — `test_publish_*.py`)*
+> Needs the optional extra: `pip install -e ".[publish]"` (jinja2 + markdown).
+- [ ] **Library → Publish / share…** opens the dialog: section checkboxes, target
+      list (**Static website** + **GitHub Pages** enabled; Netlify shows **"(soon)"**),
+      the Repository field under GitHub Pages (enabled only while it's checked),
+      site-title field, output-folder chooser.
+- [ ] Pick a **throwaway output folder** (NOT inside the data store), click **Publish**
+      → modal progress (Cancel works) → "Published N pages" → **Open folder**.
+- [ ] Open `index.html`: catalog table, working **filter** box; captured objects link
+      to `objects/<slug>.html` (hero, gallery lightbox ←/→/Esc, sessions, notes). Nav
+      shows only the **selected** sections.
+- [ ] **Per-object exclude:** right-click an object → **Exclude from publishing** →
+      re-publish → that object has **no row and no page**; right-click → **Include** →
+      reappears.
+- [ ] **Journal privacy:** add `private: true` to an object's `journal.md` frontmatter
+      (or tick **Exclude all journal notes**) → its notes are absent from the site.
+- [ ] **Deps-missing path:** with the `publish` extra uninstalled, Publish shows a
+      clear "pip install 'm110[publish]'" message (no crash).
+
+#### GitHub Pages deploy (BUGS #27a)  ⚙ *(git deploy automated against a local bare repo — `test_publish_ghpages.py`)*
+> Needs `git` on PATH and a **real GitHub repo you own** with push access via your
+> normal auth (SSH key or credential helper). Use a **scratch repo**, not your live
+> site's, unless you intend to replace it — the deploy **force-pushes** `gh-pages`.
+- [ ] In Publish / share…, check **GitHub Pages**, enter the repo as `owner/repo`
+      (or a full git URL) → Publish → progress → success message shows the
+      `https://<owner>.github.io/<repo>/` URL + an **Open site** button.
+- [ ] In the repo: a `gh-pages` branch with exactly **one commit**
+      ("Publish <date> (M110)"), the site files, and `.nojekyll`. Re-publish →
+      still one commit (force-replaced, not appended).
+- [ ] **Incremental uploads:** set **Uploads → "Upload only what changed"**, publish
+      → the deploy is dramatically faster than the replace-mode publish, and the
+      branch gains a **second** commit (history kept). Change one image, re-publish
+      → only that image uploads (watch the object count in the progress dialog).
+      Switch back to **Replace** → the branch collapses to one commit again.
+      *(The blob-less tip fetch is only exercisable against a real GitHub remote —
+      local bare repos disallow filters by default and take the fallback path.)*
+- [ ] First time only: repo **Settings → Pages → deploy from `gh-pages`** — then
+      the URL serves the site (allow a minute or two).
+- [ ] **Error paths:** unchecked repo field → validation warning; a repo you can't
+      push to → "Publish failed" showing git's actual stderr (auth/not-found), no
+      crash; app works offline as before when GitHub Pages is unchecked.
+- [ ] **Progress + cancel:** during a big deploy the label switches "Rendering
+      site…" → "Uploading to GitHub…" with object-count progress; **Cancel**
+      mid-upload returns to the dialog within a second or two (no beach ball) and
+      `ps | grep "git push"` shows **no leftover push process**; the remote branch
+      is unchanged.
+- [ ] **Gallery level:** the combo under Image galleries picks finished-only
+      (default) / +device stacks / all. Publish at "All", then re-publish at
+      "Finished images only" → the output folder **and** the deployed branch
+      shrink (stale derivatives + unchecked section pages are swept, not left
+      behind).
+- [ ] **Save:** change settings → **Save** → dialog closes, nothing publishes;
+      reopen → choices kept.
+
+---
+
+### 2.8 AI assistant
+
+*User guide: [Using an AI assistant](docs/assistant.md)*
+
+⚙ *(registry, schemas, serialization, outbox containment and the write-denylist
+automated — `tests/test_assistant_*.py`; the server is smoke-tested over real pipes
+by `tools/smoke_mcp.py`, which CI runs)*
+
+> **The invariant this section exists to protect:** no assistant tool modifies or
+> deletes anything, and a tool may only *create* a file in the outbox, under quota.
+> The automated proof is thorough (byte-identical manifest outside the outbox,
+> write-syscall interception, a static AST denylist). What a human adds is
+> confirming it holds through a **real client**, which the suite never runs.
+
+**The server, without an AI client** — tells "server broken" apart from "client
+can't find it", and needs nothing installed:
+
+```bash
+python tools/smoke_mcp.py
+```
+
+- [ ] Reports the tool count, the skills, and a library summary, ending with
+      *"Server is healthy"*. It **discloses** a stale ranking rather than hiding it.
+- [ ] With the `assistant` extra uninstalled, the failure names the extra rather than
+      raising an ImportError traceback.
+
+**Connecting a real client**
+
+- [ ] **Preferences → AI assistant → Connection details…** offers the same connection
+      in three shapes (an `mcpServers` JSON block · command + env · the
+      `claude mcp add` line), each with a working **Copy**.
+- [ ] **Set up Claude Desktop…** merges M110 into its config *without* disturbing other
+      servers already there (check the file before and after). **Disconnect** removes
+      only M110's entry.
+- [ ] Restart the client → M110's tools are listed, and the skills appear as prompts.
+- [ ] Ask it something that reads the library ("what should I shoot tonight?") → it
+      answers from the real store.
+
+**The write boundary** — the part worth doing by hand:
+
+- [ ] Take a checksum of the store before a session and after
+      (`find ~/Documents/M110-test -type f -not -path '*/.m110_internal_data/derived/*' \
+      -not -path '*/renders/*' | sort | xargs shasum | shasum`), with the derived tiers
+      excluded. Ask the assistant to do everything it offers — rank, plan, propose pins,
+      propose a journal entry, save a field guide. **The checksum must not change**, and
+      anything it produced must be sitting in `.m110_internal_data/assistant/`.
+- [ ] With **"save plans straight to `Plans/`"** ticked in Preferences, a saved field
+      guide lands in `Plans/` instead — the one sanctioned write, and only that one.
+- [ ] Ask it to delete or overwrite something explicitly. It must decline and explain,
+      not fail with a traceback.
+- [ ] Point the client at a **data root that doesn't exist** → a clear
+      "store unavailable" message rather than a bare `FileNotFoundError`.
+
+---
+
+### 2.9 Cross-check with the source workflow (optional)
+
+- [ ] Refresh output (sessions/derived) for a shared object matches the reference
+      Astronomy `rebuild.sh` (aside from `processing.json`'s `generated_at`).
+- [ ] An emitted preset matches the schema/shape of the reference
+      `~/Astronomy/Images/FITS/<obj>/presets/naztronomy_smart_scope_presets.json`.
+
+---
+
+## 3. Regression sweep (before a release)
+
+A single pass over the specific bugs we've fixed, so a regression doesn't slip
+through the general visual pass. Each item's mechanical half is a named automated
+test; these steps confirm the **user-visible** behavior against the corpus (or real
+data / a packaged build where noted).
+
+- [ ] **Dwarf `.fits` recognized everywhere** (the `.fit`-only footgun): the corpus `M42`
+      (Dwarf `.fits`) shows captured status, a session, a gallery, and a hero — not an
+      empty/uncaptured object. *(`test_ingest_dwarf.py`, `test_dwarf_store.py`.)*
+- [ ] **Mount mode from the `EQMODE` header** (not the legacy date heuristic): a session's
+      **Mount** column matches the frames' `EQMODE` card. *(`test_scan_sessions.py`.)*
+- [ ] **Import keep-both on a same-name re-process** (beta.5): re-import a *different* file
+      with a name already in `finished/` → it lands as `…-2.<ext>` and the old one is kept;
+      a byte-identical file is skipped. *(`test_siril.py`.)*
+- [ ] **Set an OLDER image as hero** re-renders the hero (no stale hero — #17).
+      *(`test_build_images.py`.)*
+- [ ] **Planning date-picker readable** (#43): the **Night:** calendar popup renders every
+      day/weekday, the selection is a clear accent block, and the field reads in **dark
+      mode**.
+- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks, no
+      **Alt** above ~75°, **Moon** reads "—" when the moon is down, and changing the date
+      **clears** the stale plan. *(`test_planning_night.py`.)*
+- [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends
+      only changed objects; narrowing the gallery level shrinks the output **and** the
+      deployed branch. *(`test_publish_ghpages.py`.)*
+- [ ] **A sync landing under an open viewer/menu doesn't crash** (the 0.3.0b3 SIGSEGV):
+      open an object, switch to another app, come back (this starts a sync),
+      **double-click a gallery thumbnail** and leave the viewer up until the status bar
+      stops saying "Syncing…" — then close it. The window must survive, and the page
+      refreshes on close. Repeat with a **right-click menu** held open across a sync.
+      Best on a large store, where the sync is slow enough to overlap.
+      *(Policy half: `test_ui_modal_safety.py` — a real nested loop can't be pumped
+      offscreen.)*
+- [ ] **Backup on a destination that can't share files** (#92) — **real hardware**, see
+      [§2.5a](#25a-local-destinations): the format
+      switches to **pooled**, the window says why, and a second backup stores ~no new
+      bytes. *(`test_backup_pooled.py`.)*
+- [ ] **Scheduled backup reaches a cloud destination** (#93): with `s3://…` saved and
+      auto-backup on, a *scheduled* run uploads to the bucket — it must not create a local
+      folder named `s3:`. *(`test_backup_destination.py`; see
+      [§2.5c](#25c-cloud-hosted--b2-or-r2).)*
+- [ ] **Essentials scope applies in both formats** (#93): choosing it for a *local*
+      folder drops the light frames too, not just for a bucket. *(`test_backup_scope.py`.)*
+- [ ] **macOS: Process in Siril launches** (its bundled Python isn't SIGKILLed) — **real
+      hardware**; the env-sanitizer half is `test_launch.py`.
+- [ ] **Frozen-app astronomy engine** (#75/#74): in a **packaged build**, Planning + the
+      priority ranking compute (no "astronomy engine unavailable") and **Enrich online**
+      runs. Rebuild required — the PyInstaller-hook tests (`test_packaging_deps.py`) can't
+      reproduce the frozen runtime.
+- [ ] **Frozen-app cloud backup** (#93): in a **packaged build**, backing up to a bucket
+      works — botocore loads its service model from *data files* at client creation, so a
+      bundle with the modules but not the data fails only here. Same shape as #75.
+
+---
+
+## 4. Release smoke (2-minute happy path)
 
 1. `pytest -q` green.
 2. Launch on a temp root → ingest a couple of objects from the device → Refresh.
@@ -873,3 +1149,6 @@ Use a **throwaway bucket** and a scratch store (§0), never the live library.
   restart is no longer a hard requirement.)
 - **Qt font warning** ("Populating font family aliases…") on offscreen runs is
   harmless.
+- **`m110-backup-s3` entries in your keyring** after cloud-backup testing are
+  expected — one per access key id you tried. Delete them by hand if you want a
+  clean slate.

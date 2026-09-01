@@ -1706,7 +1706,7 @@ Details worth keeping:
 - **The corpus grew two M63 stacks** (a linear `_og` and a newer stretched
   `_processed`) because without header cards the picker shows a row of dashes and
   the linear/stretched distinction — the whole point of the flow — is invisible to
-  a manual tester. TESTING.md §G2d.
+  a manual tester. TESTING.md §2.4.
 ### Tuning pass, 2026-08-19 — four bugs the live tool found
 
 The skill was written before the tool had ever been driven against the real
