@@ -4,17 +4,19 @@ and the settings→options bridge both the dialog and the background worker use.
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 
 from .. import config
+from .destination import parse_destination
 from .options import (
     DEFAULT_DAILY_HOUR, DEFAULT_INTERVAL_HOURS, DEFAULT_MIN_FREE_GB, SETTING_AUTO,
-    SETTING_DAILY_HOUR, SETTING_INTERVAL, SETTING_KEEP, SETTING_MIN_FREE, BackupOptions,
+    SETTING_DAILY_HOUR, SETTING_INTERVAL, SETTING_KEEP, SETTING_MIN_FREE,
+    SETTING_SCOPE, BackupOptions,
 )
 from .retention import list_snapshots
+from .scope import DEFAULT_SCOPE, SCOPES
 
 
-def options_from_settings(destination: Path) -> BackupOptions:
+def options_from_settings(destination) -> BackupOptions:
     """Build BackupOptions with the saved retention policy for a destination."""
     def _int(key):
         v = config.get_setting(key)
@@ -27,20 +29,30 @@ def options_from_settings(destination: Path) -> BackupOptions:
         min_free = float(mf)
     except (TypeError, ValueError):
         min_free = DEFAULT_MIN_FREE_GB
+    scope = config.get_setting(SETTING_SCOPE, DEFAULT_SCOPE)
     return BackupOptions(
-        destination=Path(destination),
+        destination=destination,
         retention_keep=_int(SETTING_KEEP),
         min_free_gb=min_free if min_free > 0 else None,
+        scope=scope if scope in SCOPES else DEFAULT_SCOPE,
     )
 
 
-def _auto_enabled_and_reachable(destination: Path) -> Path | None:
-    """The destination path iff auto-backup is on and the folder is reachable, else
-    None (missing/unreachable → not due, no nag). Shared by both auto triggers."""
+def _auto_enabled_and_reachable(destination):
+    """The destination iff auto-backup is on and it's reachable, else None
+    (missing/unreachable → not due, no nag). Shared by both auto triggers.
+
+    A cloud destination is taken on trust rather than probed: reachability there
+    costs a network round-trip, and this runs at launch and on every hourly tick —
+    on a laptop that is offline it would be a timeout, not an answer. Due-ness is
+    a question about *time*; if the bucket turns out to be unreachable, the run
+    itself reports it through the normal error path."""
     if not config.get_setting(SETTING_AUTO, False):
         return None
-    dest = Path(destination)
-    return dest if dest.is_dir() else None
+    dest = parse_destination(destination)
+    if not dest.is_local:
+        return dest
+    return dest if dest.path.is_dir() else None
 
 
 def _interval_hours() -> float:
@@ -48,7 +60,7 @@ def _interval_hours() -> float:
                  DEFAULT_INTERVAL_HOURS)
 
 
-def due_for_auto_backup(destination: Path) -> bool:
+def due_for_auto_backup(destination) -> bool:
     """True iff auto-backup is enabled, the destination is reachable, and it's been
     at least the configured interval since the newest snapshot (drives the
     launch-time trigger). Missing/unreachable destination → not due (no nag)."""
@@ -62,7 +74,7 @@ def due_for_auto_backup(destination: Path) -> bool:
     return age_hours >= _interval_hours()
 
 
-def due_for_scheduled_backup(destination: Path, now: datetime | None = None) -> bool:
+def due_for_scheduled_backup(destination, now: datetime | None = None) -> bool:
     """True iff auto-backup is enabled, the destination is reachable, the local clock
     has reached the daily backup hour (default 02:00), we haven't already backed up
     since that hour today, and the newest snapshot is at least `interval` hours old.

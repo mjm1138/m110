@@ -31,8 +31,9 @@ import threading
 
 from .backends import BACKEND_KINDS, Backend, Capabilities, backend_for
 from .destination import free_bytes as _free_bytes  # noqa: F401
-from .destination import store_backup_root, supports_hardlinks
-from .errors import BackupDestinationError, BackupError
+from .destination import (KIND_LOCAL, KIND_S3, Destination, backup_root_key,
+                          parse_destination, store_backup_root, supports_hardlinks)
+from .errors import BackupDepsMissing, BackupDestinationError, BackupError
 from .formats import (
     DEFAULT_FORMAT, FORMAT_BLURBS, FORMAT_LABELS, FORMAT_MIRRORED, FORMAT_POOLED,
     FORMATS, detect_format, format_of, preferred_format, preview_restore,
@@ -43,13 +44,15 @@ from .mirrored import INCOMPLETE_SUFFIX, MANIFEST_NAME, STATE_NAME, sweep_incomp
 from .options import (
     BACKUPS_DIRNAME, DEFAULT_DAILY_HOUR, DEFAULT_INTERVAL_HOURS, DEFAULT_MIN_FREE_GB,
     SETTING_AUTO, SETTING_DAILY_HOUR, SETTING_DEST, SETTING_FORMAT, SETTING_INTERVAL,
-    SETTING_KEEP, SETTING_MIN_FREE, TIMESTAMP_FMT, BackupOptions, DestinationInfo,
-    SnapshotInfo,
+    SETTING_KEEP, SETTING_MIN_FREE, SETTING_S3_ACCESS_KEY, SETTING_S3_ENDPOINT,
+    SETTING_S3_REGION, SETTING_SCOPE, TIMESTAMP_FMT, BackupOptions, DestinationInfo,
+    SnapshotInfo, SnapshotRef,
 )
 from .probe import probe_destination
 from .retention import apply_retention, list_snapshots, sweep_objects
 from .schedule import due_for_auto_backup, due_for_scheduled_backup, options_from_settings
-from .scope import is_excluded, iter_source_files
+from .scope import (DEFAULT_SCOPE, SCOPE_BLURBS, SCOPE_ESSENTIALS, SCOPE_EVERYTHING,
+                    SCOPE_LABELS, SCOPES, is_excluded, iter_source_files)
 
 # One backup at a time per process. The dialog's "Back up now" worker and the
 # window's scheduled background worker don't know about each other, and two
@@ -71,18 +74,22 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
 
 
 __all__ = [
-    "BACKEND_KINDS", "BACKUPS_DIRNAME", "Backend", "BackupDestinationError",
-    "BackupError", "BackupOptions", "Capabilities", "DEFAULT_DAILY_HOUR",
-    "DEFAULT_FORMAT", "DEFAULT_INTERVAL_HOURS", "DEFAULT_MIN_FREE_GB",
-    "DestinationInfo", "FORMATS", "FORMAT_BLURBS", "FORMAT_LABELS",
-    "FORMAT_MIRRORED", "FORMAT_POOLED", "INCOMPLETE_SUFFIX", "MANIFEST_NAME",
-    "SETTING_AUTO", "SETTING_DAILY_HOUR", "SETTING_DEST", "SETTING_FORMAT",
-    "SETTING_INTERVAL", "SETTING_KEEP", "SETTING_MIN_FREE", "STATE_NAME",
-    "SnapshotInfo", "TIMESTAMP_FMT", "apply_retention", "backend_for",
-    "create_snapshot", "detect_format", "due_for_auto_backup",
+    "BACKEND_KINDS", "BACKUPS_DIRNAME", "Backend", "BackupDepsMissing",
+    "BackupDestinationError", "BackupError", "BackupOptions", "Capabilities",
+    "DEFAULT_DAILY_HOUR", "DEFAULT_FORMAT", "DEFAULT_INTERVAL_HOURS",
+    "DEFAULT_MIN_FREE_GB", "DEFAULT_SCOPE", "Destination", "DestinationInfo",
+    "FORMATS", "FORMAT_BLURBS", "FORMAT_LABELS", "FORMAT_MIRRORED",
+    "FORMAT_POOLED", "INCOMPLETE_SUFFIX", "KIND_LOCAL", "KIND_S3",
+    "MANIFEST_NAME", "SCOPES", "SCOPE_BLURBS", "SCOPE_ESSENTIALS",
+    "SCOPE_EVERYTHING", "SCOPE_LABELS", "SETTING_AUTO", "SETTING_DAILY_HOUR",
+    "SETTING_DEST", "SETTING_FORMAT", "SETTING_INTERVAL", "SETTING_KEEP",
+    "SETTING_MIN_FREE", "SETTING_S3_ACCESS_KEY", "SETTING_S3_ENDPOINT",
+    "SETTING_S3_REGION", "SETTING_SCOPE", "STATE_NAME", "SnapshotInfo",
+    "SnapshotRef", "TIMESTAMP_FMT", "apply_retention", "backend_for",
+    "backup_root_key", "create_snapshot", "detect_format", "due_for_auto_backup",
     "due_for_scheduled_backup", "format_of", "is_excluded", "iter_source_files",
-    "list_snapshots", "options_from_settings", "preferred_format",
-    "preview_restore", "probe_destination", "resolve_format", "restore",
-    "snapshot_files", "store_backup_root", "supports_hardlinks",
+    "list_snapshots", "options_from_settings", "parse_destination",
+    "preferred_format", "preview_restore", "probe_destination", "resolve_format",
+    "restore", "snapshot_files", "store_backup_root", "supports_hardlinks",
     "sweep_incomplete", "sweep_objects", "verify",
 ]

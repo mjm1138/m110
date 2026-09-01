@@ -34,13 +34,13 @@ from pathlib import Path
 
 from .. import config
 from . import recovery
-from .backends import backend_for
-from .destination import store_backup_root
+from .backends import LocalBackend, backend_for
+from .destination import backup_root_key, parse_destination, store_backup_root
 from .errors import BackupDestinationError, BackupError
 from .hashcache import HashCache, hash_file
 from .mirrored import store_version
-from .options import BackupOptions, SnapshotInfo, TIMESTAMP_FMT
-from .scope import iter_source_files
+from .options import (BackupOptions, SnapshotInfo, SnapshotRef, TIMESTAMP_FMT)
+from .scope import DEFAULT_SCOPE, iter_source_files
 
 FORMAT = "pooled"
 FORMAT_VERSION = 2
@@ -62,13 +62,35 @@ def manifest_key(timestamp: str) -> str:
 
 
 def is_pooled_ref(ref) -> bool:
-    """True for a path that names a pooled snapshot manifest."""
+    """True for a reference that names a pooled snapshot manifest."""
+    if isinstance(ref, (SnapshotInfo, SnapshotRef)):
+        return True
     p = Path(ref)
     return p.name.endswith(SNAPSHOT_SUFFIX) and p.parent.name == "snapshots"
 
 
 def store_root_for_ref(ref) -> Path:
+    """The local store-backup root holding this snapshot. Local references only —
+    a snapshot on object storage has no such path; use `_resolve`."""
     return Path(ref).parent.parent
+
+
+def _resolve(ref):
+    """`(backend, manifest_key)` for a snapshot reference.
+
+    Accepts a `SnapshotInfo`, a `SnapshotRef`, or a filesystem path to a manifest.
+    **The path form is what every existing caller passes**, and it resolves exactly
+    as it always has — a `LocalBackend` rooted two levels above the manifest — which
+    is what let the format become destination-agnostic without an API break.
+    """
+    if isinstance(ref, SnapshotInfo):
+        ref = ref.ref if ref.ref is not None else ref.path
+    if isinstance(ref, SnapshotRef):
+        return backend_for(ref.destination, ref.store_name), ref.key
+    if ref is None:
+        raise BackupError("Snapshot has no reference (no path and no ref).")
+    p = Path(ref)
+    return LocalBackend(p.parent.parent), f"{SNAPSHOT_PREFIX}{p.name}"
 
 
 # ── listing ─────────────────────────────────────────────────────────────────
@@ -86,46 +108,50 @@ def _read_state(backend) -> dict:
 
 
 def read_manifest(ref) -> dict | None:
-    """The manifest for one pooled snapshot (accepts its path)."""
-    p = Path(ref)
+    """The manifest for one pooled snapshot (accepts a path, ref or SnapshotInfo)."""
+    backend, key = _resolve(ref)
     try:
-        return recovery.read_gzip_json(p.read_bytes())
+        return recovery.read_gzip_json(backend.get_bytes(key))
     except Exception:
         return None
 
 
-def list_snapshots(destination: Path, store_name: str | None = None) -> list[SnapshotInfo]:
+def list_snapshots(destination, store_name: str | None = None) -> list[SnapshotInfo]:
     """Pooled snapshots at this destination, newest first.
 
-    Enumerates `snapshots/` and fills the summary fields from `state.json` — a
-    *cache*, never the source of truth, so a half-written state file can't make a
-    real snapshot invisible. A snapshot the cache doesn't know about costs one
-    manifest read."""
-    root = store_backup_root(destination, store_name)
-    snap_dir = root / "snapshots"
-    if not snap_dir.is_dir():
-        return []
-    backend = backend_for(destination, store_name)
+    Enumerates `snapshots/` **through the backend** and fills the summary fields
+    from `state.json` — a *cache*, never the source of truth, so a half-written
+    state file can't make a real snapshot invisible. A snapshot the cache doesn't
+    know about costs one manifest read."""
+    dest = parse_destination(destination)
+    backend = backend_for(dest, store_name)
     cached = (_read_state(backend).get("snapshots") or {})
+    # Only a local destination has a filesystem path to hand back; a snapshot in a
+    # bucket is reachable through its ref alone.
+    local_snap_dir = (store_backup_root(dest, store_name) / "snapshots"
+                      if dest.is_local else None)
     out: list[SnapshotInfo] = []
-    for entry in snap_dir.iterdir():
-        if not entry.is_file() or not entry.name.endswith(SNAPSHOT_SUFFIX):
+    for key, _size, _mtime in backend.list_keys(SNAPSHOT_PREFIX.rstrip("/")):
+        name = key.rsplit("/", 1)[-1]
+        if not name.endswith(SNAPSHOT_SUFFIX):
             continue
-        ts = entry.name[: -len(SNAPSHOT_SUFFIX)]
+        ts = name[: -len(SNAPSHOT_SUFFIX)]
         try:
             created = datetime.strptime(ts, TIMESTAMP_FMT)
         except ValueError:
             continue
+        ref = SnapshotRef(destination=str(dest), key=key, store_name=store_name)
         meta = cached.get(ts)
         if meta is None:
-            meta = read_manifest(entry) or {}
+            meta = read_manifest(ref) or {}
         out.append(SnapshotInfo(
-            path=entry, timestamp=ts, created=created,
+            path=(local_snap_dir / name) if local_snap_dir is not None else None,
+            timestamp=ts, created=created,
             file_count=int(meta.get("file_count", 0)),
             total_bytes=int(meta.get("total_bytes", 0)),
             store_version=meta.get("store_version"),
             hardlinks=bool(meta.get("hardlinks", False)),
-            format=FORMAT,
+            format=FORMAT, ref=ref,
         ))
     out.sort(key=lambda s: s.created, reverse=True)
     return out
@@ -139,8 +165,9 @@ def delete_snapshot(snap: SnapshotInfo) -> None:
     """Drop the manifest. The objects it referenced are freed by the sweep, which
     is where "does anything else still need this?" is answered."""
     try:
-        Path(snap.path).unlink()
-    except OSError:
+        backend, key = _resolve(snap)
+        backend.delete(key)
+    except Exception:
         pass
 
 
@@ -151,26 +178,35 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
     src_root = config.DATA_ROOT
     if not src_root.is_dir():
         raise BackupError(f"Data store not found: {src_root}")
-    dest = Path(options.destination)
-    try:
-        dest.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        raise BackupDestinationError(f"Can't write to destination: {dest} ({e})")
-    if not os.access(dest, os.W_OK):
-        raise BackupDestinationError(f"Destination is not writable: {dest}")
+    dest = parse_destination(options.destination)
+    if dest.is_local:
+        try:
+            dest.path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise BackupDestinationError(
+                f"Can't write to destination: {dest.describe()} ({e})")
+        if not os.access(dest.path, os.W_OK):
+            raise BackupDestinationError(
+                f"Destination is not writable: {dest.describe()}")
 
     backend = backend_for(dest)
-    backend.ensure_root()
+    backend.ensure_root()       # a remote backend's reachability check lives here
     caps = backend.capabilities()
     known = backend.object_sizes()          # one enumeration, not one probe per file
 
     ts = datetime.now().strftime(TIMESTAMP_FMT)
-    rels = iter_source_files(src_root)
+    scope = options.scope or DEFAULT_SCOPE
+    rels = iter_source_files(src_root, scope)
     total = len(rels)
     files_meta: dict[str, dict] = {}
     total_bytes = objects_new = bytes_new = 0
 
     cache = HashCache()
+    # Hashing stays on this thread — it is local-disk-bound and the hash cache is
+    # not thread-safe. Only the *uploads* fan out, and only where the backend says
+    # they may: at parallel_puts == 1 this is byte-for-byte the old serial loop.
+    pool = _upload_pool(caps)
+    futures: list = []
     try:
         for i, rel in enumerate(rels, 1):
             if cancelled():
@@ -193,9 +229,13 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
                 cache.remember(src, st, sha)
                 stored = known.get(sha)
             if stored is None:
-                backend.put_file(object_key(sha), src, size=st.st_size)
-                known[sha] = st.st_size
-                objects_new += 1
+                if pool is None:
+                    backend.put_file(object_key(sha), src, size=st.st_size)
+                else:
+                    futures.append(pool.submit(backend.put_file, object_key(sha),
+                                               src, size=st.st_size))
+                known[sha] = st.st_size     # in flight counts as stored: a second
+                objects_new += 1            # file with these bytes must not re-upload
                 bytes_new += st.st_size
             files_meta[rel] = {"size": st.st_size, "mtime": st.st_mtime, "sha256": sha}
             total_bytes += st.st_size
@@ -203,8 +243,14 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
                 progress(i, total)
         cache.flush()
         cache.sweep()
+        # Every object stored before the manifest is written, in both modes —
+        # this is the line that keeps "a manifest exists ⇒ every object it names
+        # exists" true once uploads run concurrently.
+        _drain(futures)
     finally:
         cache.close()
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
 
     manifest = {
         "format": FORMAT_VERSION,
@@ -215,7 +261,7 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
         "store_version": store_version(src_root),
         "app_version": _app_version(),
         "host": platform.node(),
-        "scope": "everything",
+        "scope": scope,
         "hardlinks": bool(caps.hardlinks),
         "file_count": len(files_meta),
         "total_bytes": total_bytes,
@@ -237,12 +283,45 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
     retention = apply_retention(dest, keep=options.retention_keep,
                                 min_free_gb=options.min_free_gb)
     return {
-        "snapshot": str(store_backup_root(dest) / manifest_key(ts)),
+        "snapshot": _snapshot_location(dest, manifest_key(ts)),
         "timestamp": ts, "file_count": len(files_meta), "total_bytes": total_bytes,
         "bytes_new": bytes_new, "objects_new": objects_new, "linked": linked,
         "hardlinks": bool(caps.hardlinks), "pruned": retention.get("pruned", 0),
-        "swept": retention.get("swept", 0), "format": FORMAT,
+        "swept": retention.get("swept", 0), "format": FORMAT, "scope": scope,
     }
+
+
+def _snapshot_location(dest, key: str) -> str:
+    """Where the snapshot landed, in whatever notation names it — a filesystem
+    path locally, an `s3://` URI in a bucket. Display only."""
+    if dest.is_local:
+        return str(store_backup_root(dest) / key)
+    return f"s3://{dest.bucket}/{backup_root_key(dest)}/{key}"
+
+
+def _upload_pool(caps):
+    """A bounded upload pool, or None when the backend wants serial writes.
+
+    Throughput to object storage is latency-bound rather than bandwidth-bound, so
+    a serial loop leaves most of the link idle; `Capabilities.parallel_puts` is
+    how a backend says how wide it is safe to go."""
+    width = max(1, int(getattr(caps, "parallel_puts", 1) or 1))
+    if width <= 1:
+        return None
+    from concurrent.futures import ThreadPoolExecutor
+    return ThreadPoolExecutor(max_workers=width, thread_name_prefix="m110-backup")
+
+
+def _drain(futures: list) -> None:
+    """Wait for every queued upload, re-raising the first failure."""
+    if not futures:
+        return
+    from concurrent.futures import FIRST_EXCEPTION, wait
+    done, pending = wait(futures, return_when=FIRST_EXCEPTION)
+    for f in done:
+        f.result()          # re-raise the first failure, if there was one
+    for f in pending:
+        f.result()          # otherwise wait the stragglers out
 
 
 def _app_version() -> str | None:
@@ -334,18 +413,30 @@ def forget_snapshots(destination: Path, timestamps, store_name: str | None = Non
 
 # ── verify ──────────────────────────────────────────────────────────────────
 
-def verify(ref, should_cancel=None, progress=None) -> dict:
+def verify(ref, should_cancel=None, progress=None, deep: bool | None = None) -> dict:
     """Check that every object this snapshot names is present and still hashes to
     its own name.
 
     Stronger than the mirrored equivalent by construction: there the manifest's
     sha is inherited across hardlinked generations and only ever re-read here,
-    whereas an object's *name* is its checksum, so the store validates itself."""
+    whereas an object's *name* is its checksum, so the store validates itself.
+
+    **Two depths, because re-hashing has a price on object storage.** A deep
+    verify reads every object back; over the internet that is a full download of
+    the backup, with the egress bill to match, for a button the user may press
+    idly. So `deep` defaults to the destination's `cheap_list` capability — full
+    hashing on a local destination (unchanged behaviour), presence-and-size from
+    one LIST on a bucket. The result says which ran; callers must report it rather
+    than claim a check they didn't make. Pass `deep=True` to force the full read.
+    """
     cancelled = should_cancel or (lambda: False)
     manifest = read_manifest(ref)
     if manifest is None:
         raise BackupError(f"No manifest at: {ref}")
-    root = store_root_for_ref(ref)
+    backend, _key = _resolve(ref)
+    if deep is None:
+        deep = backend.capabilities().cheap_list
+    sizes = None if deep else backend.object_sizes()
     files = manifest.get("files", {})
     total = len(files)
     missing: list[str] = []
@@ -357,12 +448,9 @@ def verify(ref, should_cancel=None, progress=None) -> dict:
         sha = meta.get("sha256", "")
         status = seen.get(sha)
         if status is None:
-            p = root.joinpath(*object_key(sha).split("/"))
-            if not p.is_file():
-                status = "missing"
-            else:
-                status = "ok" if hash_file(p) == sha else "bad"
-            seen[sha] = status      # dedup: shared content is hashed once
+            status = (_verify_deep(backend, sha) if deep
+                      else _verify_shallow(sizes, sha, meta.get("size")))
+            seen[sha] = status      # dedup: shared content is checked once
         if status == "missing":
             missing.append(rel)
         elif status == "bad":
@@ -370,7 +458,28 @@ def verify(ref, should_cancel=None, progress=None) -> dict:
         if progress:
             progress(i, total)
     return {"ok": not mismatched and not missing, "checked": total,
-            "mismatched": mismatched, "missing": missing}
+            "mismatched": mismatched, "missing": missing, "deep": bool(deep)}
+
+
+def _verify_deep(backend, sha: str) -> str:
+    import hashlib
+    try:
+        data = backend.get_bytes(object_key(sha))
+    except Exception:
+        return "missing"
+    return "ok" if hashlib.sha256(data).hexdigest() == sha else "bad"
+
+
+def _verify_shallow(sizes: dict[str, int], sha: str, expected_size) -> str:
+    """Presence and size, from the single enumeration `object_sizes()` already
+    did. A size is a function of the bytes, so a wrong size proves damage — a
+    right one doesn't prove health, which is why the result reports its depth."""
+    stored = sizes.get(sha)
+    if stored is None:
+        return "missing"
+    if expected_size is not None and stored != expected_size:
+        return "bad"
+    return "ok"
 
 
 # ── restore ─────────────────────────────────────────────────────────────────
@@ -401,8 +510,7 @@ def restore(ref, relpaths: list[str], dest_dir: Path, *, overwrite: bool = False
     cancelled = should_cancel or (lambda: False)
     manifest = read_manifest(ref) or {}
     meta_by_rel = manifest.get("files", {})
-    root = store_root_for_ref(ref)
-    backend = _backend_at(root)
+    backend, _key = _resolve(ref)
     dest_dir = Path(dest_dir)
     files = _expand_relpaths(ref, relpaths)
     total = len(files)
@@ -435,8 +543,3 @@ def restore(ref, relpaths: list[str], dest_dir: Path, *, overwrite: bool = False
         if progress:
             progress(i, total)
     return {"written": written, "skipped": skipped, "total": total}
-
-
-def _backend_at(store_root: Path):
-    from .backends.local import LocalBackend
-    return LocalBackend(store_root)
