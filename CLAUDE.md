@@ -780,6 +780,12 @@ tools/                  dev utilities (release.py → one-command release cutter
                         smoke_mcp.py → drive the assistant MCP server over real
                         pipes with no AI client, to tell "server broken" apart
                         from "client can't find it";
+                        drill_backup_s3.py → TESTING §2.5b against a REAL MinIO it
+                        starts itself (57 checks, ~5 s): the one thing the suite's
+                        fake client and the no-network boto3 tests can't prove is a
+                        real S3 implementation — path-style behind a custom endpoint,
+                        real LIST pagination, real error shapes, a server killed
+                        mid-upload. Needs a minio binary, hence a tool not a test;
                         repro_modal_uaf.py → the modal/nested-loop use-after-free,
                         pre- vs post-fix (segfaults by design, so not a pytest case))
 packaging/              native installers: common/ (shared PyInstaller entry shims —

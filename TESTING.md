@@ -791,13 +791,16 @@ docker run -d --name m110-minio -p 9000:9000 -p 9001:9001 \
 
 | | Install | Run |
 |---|---|---|
-| **macOS** | `brew install minio/stable/minio` | `minio server ~/minio-data --console-address ":9001"` |
+| **macOS** | `curl -O https://dl.min.io/server/minio/release/darwin-arm64/minio && chmod +x minio` (Intel: `darwin-amd64`) | `./minio server ~/minio-data --console-address ":9001"` |
 | **Linux** | `curl -O https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x minio` | `./minio server ~/minio-data --console-address ":9001"` |
 | **Windows** (PowerShell) | download `https://dl.min.io/server/minio/release/windows-amd64/minio.exe` | `.\minio.exe server C:\minio-data --console-address ":9001"` |
 
 Native runs use `minioadmin` / `minioadmin` unless you set `MINIO_ROOT_USER` /
 `MINIO_ROOT_PASSWORD` first. On Windows, run the server from a terminal you can
-leave open, or install it as a service.
+leave open, or install it as a service. The direct download is a single static Go
+binary and is the reliable route on macOS: `brew install minio/stable/minio` has no
+bottle for a pre-release macOS and falls back to a source build, which then demands
+a matching Xcode — that is how it failed here on macOS 27.
 
 **Make a bucket.** Open the console at <http://localhost:9001>, sign in with those
 credentials, and create a bucket named `m110test`. (Or, with the `mc` client:
@@ -814,6 +817,21 @@ credentials, and create a bucket named `m110test`. (Or, with the `mc` client:
 | Secret key | `minioadmin` |
 
 Then **Test connection**.
+
+**Or run the whole engine half in one command.** Everything below that isn't about
+the dialog itself — probe, both scopes, verify at both depths, whole-tree restore,
+retention, the sweep, `restore.py` from a bucket mirror, the credential chain, and
+the server-vanishes case — is scripted, the way `tools/smoke_mcp.py` drives the
+assistant server. It starts its own MinIO from a binary you point it at, uses a
+scratch store and scratch settings, never touches your keyring, and stops the
+server when done (~5 s, 57 checks):
+
+```bash
+PYTHONPATH=$PWD python tools/drill_backup_s3.py ./minio     # from the repo root — §0.1
+```
+
+Run that on any backup change; do the dialog checks below by hand when the UI
+changed.
 
 **The checks.**
 
@@ -850,22 +868,34 @@ Then **Test connection**.
       diff -r ~/Documents/M110-test /tmp/restored | grep -v '\.m110_internal_data/derived\|renders\|sessions.jsonl'
       ```
 - [ ] **Essentials scope.** Set **Back up: Essentials**, run again → the file count
-      drops by the light frames. Then restore from the **earlier** everything-snapshot
-      and confirm a light frame still comes back — narrowing must not have swept it.
+      drops by the light frames (on the corpus, 251 → 53 — the synthetic frames are
+      tiny, so the *byte* saving is nothing like the "few percent" a real library sees;
+      it's the file list that matters here). Then restore from the **earlier**
+      everything-snapshot and confirm a light frame still comes back — narrowing must
+      not have swept it.
 - [ ] **The restore picker labels it**: the essentials snapshot reads "no light frames".
 - [ ] **Retention.** Take three snapshots, set keep = 1, back up again → the older
-      manifests are gone from `snapshots/` and unreferenced objects are swept from
-      `objects/`. **Keep at least … GB free must have had no effect** — there is no
-      volume to measure, and honouring it would prune a cloud history to one snapshot
-      per run.
+      manifests are gone from `snapshots/`. **But the objects are still all there** —
+      that is correct, not a bug: the sweep skips anything modified in the last 24h
+      (the grace window that makes GC safe against a concurrent run without a lock),
+      and everything in a same-day test is younger than that. To watch the sweep
+      actually happen, force the clock past the window:
+      ```bash
+      python -c "import time; from m110 import backup; print(backup.sweep_objects('s3://m110test/backups', now=time.time()+2*86400))"
+      ```
+      → `objects/` shrinks to only what the surviving snapshot references, and that
+      snapshot still verifies. **Keep at least … GB free must have had no effect** —
+      there is no volume to measure, and honouring it would prune a cloud history to
+      one snapshot per run.
 - [ ] **Recovery without M110.** Download the bucket prefix (`mc mirror
       local/m110test/backups /tmp/frombucket`) and run
       `python3 restore.py latest-manifest.json.gz /tmp/recovered` from inside it — the
       same drill as §2.5a, proving the recovery artifacts travel with a cloud backup too.
 - [ ] **Server disappears mid-run.** Start a backup of a larger store, `docker stop
-      m110-minio` partway → a clear failure, the app stays usable, and no snapshot
-      manifest is left behind (`snapshots/` unchanged). Restart the server and back up
-      again → it resumes, re-uploading only what didn't make it.
+      m110-minio` partway → a clear failure **within ~10–15 s** (the connect timeout,
+      not botocore's default minutes of retries), the app stays usable, and no
+      snapshot manifest is left behind (`snapshots/` unchanged). Restart the server
+      and back up again → it resumes, re-uploading only what didn't make it.
 
 **Tear down:** `docker rm -f m110-minio` (or Ctrl-C the server and delete its data
 directory). Delete the keyring entry if you like — it's stored under the service
