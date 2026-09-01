@@ -812,6 +812,47 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
 
 Then: `hdiutil detach /Volumes/M110TEST && rm /tmp/m110test.dmg`.
 
+### 2d. Cloud backup (manual — needs a real bucket)  *(#93)*
+
+`S3Backend` is proved against the storage contract by the conformance suite
+(`tests/test_backup_backends.py` runs it with an injected fake client, so no AWS SDK
+and no network), and `tests/test_backup_cloud.py` drives a whole backup → verify →
+restore cycle. **What no test can cover is a real provider**: the failures worth
+finding here are a service rejecting a header botocore sends, a bucket-subdomain that
+doesn't resolve, or credentials that work in the AWS CLI and not here. Do this against
+**Backblaze B2 or Cloudflare R2** at least once per release — they're the point of
+`endpoint_url`, and cheaper to be wrong on than AWS.
+
+Use a **throwaway bucket** and a scratch store (§0), never the live library.
+
+- [ ] **Credentials.** Tools → Back up, destination `s3://<bucket>/m110test`. The
+      **Cloud storage** fields appear as you type. Enter the endpoint URL (B2:
+      `https://s3.<region>.backblazeb2.com`; R2:
+      `https://<account>.r2.cloudflarestorage.com` with region `auto`), key and secret →
+      **Test connection** → the status line says "Connected".
+- [ ] **The secret is not in `settings.json`.** `grep -i <your-secret> ~/.m110/settings.json`
+      must find nothing; the key lives in the OS keyring. Then reopen the dialog: the
+      secret field is empty and reads "Saved — leave blank to keep it".
+- [ ] **Wrong credentials fail clearly.** Change one character of the key → Test
+      connection → an actionable message, not a traceback and not a hang.
+- [ ] **Format and retention are honest before the probe.** With `s3://…` typed, "Backups
+      are stored as" reads **Pooled backups** and is disabled, its note doesn't mention
+      file links or a browsable copy, and **Keep at least … GB free** is greyed out.
+- [ ] **Back up now** on a small store → completes, and the summary names an `s3://…`
+      snapshot with no "Open folder" button.
+- [ ] **Second backup uploads ~nothing.** Run it again unchanged → "0 bytes new".
+- [ ] **Verify** reports success. Note it checks presence and size, not a full re-read —
+      that's deliberate (a deep verify is a full download, with egress billed).
+- [ ] **Restore** a couple of files to a scratch folder; open one and confirm the contents.
+- [ ] **Essentials scope.** Set **Back up: Essentials**, run again → the file count drops
+      by the light frames. Then restore from the **earlier** everything-snapshot and
+      confirm a light frame still comes back — narrowing must not have swept it.
+- [ ] **The restore picker labels it.** The essentials snapshot reads "no light frames".
+- [ ] **Offline behaves.** Turn off the network → Back up now → a clear failure, and the
+      app stays usable.
+- [ ] **Housekeeping.** Delete the test bucket afterwards, and set a lifecycle rule to
+      abort incomplete multipart uploads — orphaned parts bill silently.
+
 ---
 
 ## 3. Release smoke (2-minute happy path)

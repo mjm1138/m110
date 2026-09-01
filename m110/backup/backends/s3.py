@@ -59,6 +59,39 @@ def _boto3():
     return boto3
 
 
+def _client_config(custom_endpoint: bool):
+    """botocore client settings that decide whether the non-AWS providers work.
+
+    Two defensive settings, each a known way an S3-*compatible* service rejects a
+    request Amazon accepts — and the whole point of `endpoint_url` is that those
+    services are the interesting ones:
+
+    * **`request_checksum_calculation="when_required"`.** botocore ≥1.36 attaches
+      `x-amz-checksum-crc32` to every PUT by default; several S3-compatible
+      services reject the header outright, so an unpinned client fails on the
+      first upload against a provider that otherwise works fine.
+    * **path-style addressing when a custom endpoint is set.** Virtual-host style
+      (`bucket.host`) needs the provider to serve bucket subdomains with matching
+      TLS. B2, R2 and Wasabi all accept path-style; MinIO-style deployments often
+      accept nothing else. AWS itself keeps the default, where virtual-host is
+      the supported direction.
+
+    Both are guarded: an older botocore raises `TypeError` on the checksum kwarg,
+    and returning None simply means boto3's own defaults apply.
+    """
+    try:
+        from botocore.config import Config
+    except ImportError:
+        return None
+    opts = {}
+    if custom_endpoint:
+        opts["s3"] = {"addressing_style": "path"}
+    try:
+        return Config(request_checksum_calculation="when_required", **opts)
+    except TypeError:
+        return Config(**opts) if opts else None
+
+
 def _transfer_config():
     """boto3's per-file transfer tuning, or None when boto3 isn't importable.
 
@@ -147,9 +180,10 @@ class S3Backend(Backend):
         conf = dict(self._conf)
         if not any(conf.values()):
             conf = settings_credentials()
+        endpoint = conf.get("endpoint_url")
         kwargs = {}
-        if conf.get("endpoint_url"):
-            kwargs["endpoint_url"] = conf["endpoint_url"]
+        if endpoint:
+            kwargs["endpoint_url"] = endpoint
         if conf.get("region_name"):
             kwargs["region_name"] = conf["region_name"]
         # Only pass explicit keys when we have both; otherwise let boto3 resolve
@@ -157,6 +191,9 @@ class S3Backend(Backend):
         if conf.get("access_key") and conf.get("secret_key"):
             kwargs["aws_access_key_id"] = conf["access_key"]
             kwargs["aws_secret_access_key"] = conf["secret_key"]
+        cfg = _client_config(bool(endpoint))
+        if cfg is not None:
+            kwargs["config"] = cfg
         try:
             return boto3.client("s3", **kwargs)
         except Exception as e:

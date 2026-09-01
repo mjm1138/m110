@@ -3,8 +3,8 @@
 ← [Back to the guide](README.md)
 
 M110 has a built-in backup system that makes **dated snapshots** of your library to a
-destination you choose — ideally an external or network drive, separate from your
-working disk. Open it from **Library → Back up / Restore**.
+destination you choose — an external or network drive separate from your working
+disk, or cloud storage. Open it from **Library → Back up / Restore**.
 
 Whatever the details below, two things are always true:
 
@@ -90,6 +90,71 @@ listable, verifiable and restorable in both formats — switching never strands 
 backup you already have. The only case where M110 decides for you is a destination
 that can't share files, where mirrored isn't a real option.
 
+## Backing up to cloud storage
+
+Instead of choosing a folder, you can type a bucket address as the destination:
+
+```
+s3://your-bucket/m110-backups
+```
+
+That works with **Amazon S3** and with anything that speaks the same protocol —
+**Backblaze B2**, **Cloudflare R2**, **Wasabi**, MinIO and others. The cheaper
+providers are usually the point, which is why the **Endpoint URL** field matters:
+it's the address of your provider's API. Leave it blank for Amazon S3.
+
+A **Cloud storage** section appears as soon as the destination starts with `s3://`:
+
+| Field | What to put in it |
+|---|---|
+| **Endpoint URL** | Your provider's API URL. Blank for Amazon S3. B2: `https://s3.<region>.backblazeb2.com`. R2: `https://<account-id>.r2.cloudflarestorage.com`. |
+| **Region** | Your bucket's region. Cloudflare R2 uses `auto`. |
+| **Access key ID** | The key's identifier. |
+| **Secret key** | The secret half. |
+
+Press **Test connection** to check them before you rely on it. If you already use
+the AWS command line, you can leave all four blank and M110 will use the
+credentials you've already configured.
+
+**Your secret key is stored in your operating system's keyring** — macOS Keychain,
+Windows Credential Manager, or your Linux desktop's secret service — never in
+M110's settings file. Once saved, the field stays empty and says so; leaving it
+blank keeps the key you already have.
+
+Cloud backups are always stored in the pooled format, because a bucket has no
+concept of sharing a file between folders. Everything else works the same: each
+file is stored once, only new files upload after the first backup, and every
+backup restores on its own.
+
+### Choosing how much goes to the cloud
+
+Your light frames are usually around **99% of your library's size**. Backing all of
+them up to metered storage can take days and cost real money, and for many people
+that's not what "offsite" needs to mean.
+
+The **Back up:** setting offers two choices:
+
+- **Everything** — the whole library, light frames included. The right choice for a
+  drive or network share, and the default.
+- **Essentials** — everything *except* your raw light frames and archived
+  processing runs. Your journals, finished images, stacks, plans, presets and
+  settings all still go. This is typically a few percent of the size.
+
+A good pattern is Everything to a local drive, and Essentials to the cloud: the
+frames stay where there's room for them, and the work you can't recapture is
+offsite.
+
+**Changing to Essentials doesn't delete anything.** Backups you already made keep
+their light frames until they're eventually pruned by your retention settings, so
+nothing disappears the moment you switch. When you restore, a backup made without
+light frames is labelled, so you can't mistake it for one that lost them.
+
+> **A note on cost:** on Amazon S3, *downloading* is the expensive direction, so a
+> full restore costs more than the backups did. On B2 and R2 it's cheap or free.
+> It's also worth setting a lifecycle rule on your bucket to abort incomplete
+> multipart uploads — a cancelled upload can otherwise leave fragments that quietly
+> accrue charges.
+
 ## What the sharing means (and how it differs from the sandbox)
 
 Worth being clear about, because backups and the processing sandbox both share files
@@ -118,7 +183,8 @@ Practical consequences:
   default keeps everything — there is deliberately no "delete anything older than *X*
   days" rule, so a gap in use can never silently wipe your history.
 - **A minimum-free-space guard** prunes old backups rather than filling the
-  destination.
+  destination. (Not applicable to cloud storage, which has no volume to fill — the
+  setting is greyed out for a bucket.)
 
 ## Restoring
 
@@ -126,7 +192,9 @@ Practical consequences:
 specific files or the whole tree, and either **extract to a folder** (safe default)
 or restore **into your library** (with a conflict preview and confirmation first).
 There's also a **Verify integrity** action that re-checks a backup against its
-recorded checksums.
+recorded checksums. For a cloud backup, verifying checks that every file is present
+and the right size rather than re-reading all of it — a full re-check would mean
+downloading the entire backup, which you'd be billed for.
 
 > **What's not in a backup:** regenerable app state — thumbnails, derived rollups,
 > the session index, and the Siril sandboxes — is skipped, because M110 rebuilds it

@@ -323,7 +323,11 @@ for integrity verification.
 ## Backup
 
 `m110/backup/` (ROADMAP item 10) writes the store to a user-chosen destination
-**outside** `<data_root>`. Scope is a **denylist** aligned with the lifecycle classes
+**outside** `<data_root>` — a folder (a drive or network share) or, since #93, an
+S3-compatible bucket addressed as `s3://<bucket>/<prefix>`. Which one a
+destination string names is decided once, by `backup.parse_destination`; above the
+storage seam nothing joins paths itself, and only `LocalBackend` knows what a
+filesystem is. Scope is a **denylist** aligned with the lifecycle classes
 above: everything is backed up **except** the regenerable Derived tier (`derived/`,
 `renders/`, `sessions.jsonl`), the assistant outbox, and a workflow sandbox's
 **linked inputs**.
@@ -349,6 +353,34 @@ while adding no recoverable information. Leaving the authored work out is cheap
 and silent in the other direction: **+39 GB (+21%)** on the same library, and the
 user only discovers the gap when they go looking for a run they wanted back.
 
+### Scope tiers
+
+On top of that denylist sits a per-destination **tier** (`backup_scope`), because
+offsite storage is metered where a spare drive isn't:
+
+| Tier | What it stores |
+|---|---|
+| **`everything`** *(default)* | The denylist above, unchanged. |
+| **`essentials`** | Also skips the raw-frame tiers — `Images/<t>/lights/`, `rejected/`, `previews/` — and workflow-sandbox `archive/<ts>/` runs. |
+
+Light frames are ~99% of a library's bytes, so `essentials` is typically a few
+percent of the total; journals, `Plans/`, internal state, `finished/`, `stacks/`,
+`seestar-stacks/`, `Media/` and hand-edited presets all still go. Archived
+processing runs are dropped despite being authored output: they are bounded and
+disposable by the app's own keep-N policy (`roundtrip.prune_archives`), one real
+library reached 42 GB of them, and the deliverable that mattered was imported to
+`finished/`.
+
+The tier is recorded per snapshot (the manifest's `scope`, and `SnapshotInfo.scope`),
+so a restore can say what a backup did and didn't contain rather than presenting a
+narrow backup as a complete one. **`None` means a snapshot written before tiers
+existed** — which is to say `everything`, the behaviour of the day.
+
+**Narrowing a destination's scope deletes nothing at the moment of the change.**
+The object sweep marks from *every surviving manifest*, so frames dropped from the
+new tier stay referenced by the older, wider snapshots until retention prunes
+those. The disappearance is real but deferred.
+
 There are **two snapshot formats**, and both are always listable, verifiable and
 restorable at the same destination. Which one a new backup uses is resolved from
 the destination itself (`backup.resolve_format`): what's already there wins, else
@@ -356,6 +388,11 @@ the `backup_format` preference, unless the filesystem can't hardlink — then po
 necessarily. Their namespaces are provably disjoint (mirrored snapshots are
 directories whose *names* parse as a timestamp; `objects/`, `snapshots/`, `latest/`
 never will), so they coexist with no flag day and no conversion.
+
+Object storage resolves to pooled unconditionally — mirrored is directories and
+hardlinks by definition, so it isn't a choice being declined there. That forcing is
+deliberately **not** persisted to `backup_format`, which is global: a bucket says
+nothing about the user's external drive.
 
 **Mirrored** (default) — `<dest>/M110-Backups/<store-name>/<timestamp>/` mirrors the
 store, with files unchanged since the previous snapshot hardlinked to it (immutable
@@ -365,7 +402,8 @@ A snapshot needs no software to restore — it *is* the files, in the right fold
 
 **Pooled** — for destinations that can't hardlink (a share or filesystem where
 mirrored would silently store a *full copy* every run — issue #92), and the shape
-offsite object storage will use (#93):
+offsite object storage uses (#93), where the tree below is a **key prefix** under
+`s3://<bucket>/<prefix>/` rather than a directory:
 
 ```
 <dest>/M110-Backups/<store-name>/
@@ -390,12 +428,24 @@ concurrent run). **Invariant: a manifest exists ⇒ every object it names exists
 the manifest is written last, which is also why an interrupted first backup resumes
 for free.
 
+On a bucket there is **no `latest/` tree** — it is a hardlink tree, which object
+storage has no concept of — so it is simply absent. `restore.py`, `README.txt`,
+`INDEX.tsv` and `latest-manifest.json.gz` are still written, because `objects/`
+alone is a bag of hash-named blobs and the way back has to travel with the data.
+
 Verify recomputes checksums (mirrored: against the manifest; pooled: against each
-object's own name, so the store is self-validating). Restore extracts selected paths
+object's own name, so the store is self-validating) — **except on a destination
+whose LIST is billed and whose reads cost egress**, where it defaults to
+presence-and-size from the single `object_sizes()` enumeration rather than
+downloading the whole backup. `verify()` reports which depth ran (`deep`), and
+callers must say so rather than claim a check they didn't make; `deep=True` forces
+the full read. Restore extracts selected paths
 to a folder (default) or back into the store behind a conflict preview + confirm.
 Retention prunes whole oldest snapshots across both formats (keep-N / min-free),
 **explicit, never the last one** — consistent with the "user-gated, never automatic"
-rule above. A source hash cache lives at `~/.m110/backup-hashes.sqlite3`, keyed on
+rule above. The min-free rule is skipped where `Capabilities.free_bytes is None`
+(a bucket has no volume to run out of, and a 0 reading would prune a cloud history
+to a single snapshot on every run). A source hash cache lives at `~/.m110/backup-hashes.sqlite3`, keyed on
 `(path, size, mtime_ns, inode, dev)`; losing it costs a rehash, never correctness.
 
 Backup is an **external output** (like the published site): it reads the store and

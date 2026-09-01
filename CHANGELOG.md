@@ -11,6 +11,30 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **You can now back up to cloud storage — S3, Backblaze B2, Cloudflare R2,
+  Wasabi or anything else that speaks the S3 protocol.** In **Tools → Back up**,
+  type `s3://your-bucket/backups` as the destination instead of choosing a
+  folder. A **Cloud storage** section appears for your endpoint URL (leave it
+  blank for Amazon S3; it's what makes the cheaper providers work), region and
+  keys — press **Test connection** to check them before backing up. Your secret
+  key goes into your operating system's keyring, never into M110's settings file;
+  if you already use the AWS command line, leave the fields blank and M110 uses
+  the credentials you have. Backups work exactly as they do on a drive: files are
+  stored once and named by their contents, so after the first backup only new
+  files upload, and every backup restores on its own.
+- **You can now choose how much of your Library goes to a backup destination.**
+  A new **Back up:** setting offers **Everything** (unchanged, and still the
+  default) or **Essentials** — everything except your raw light frames and
+  archived processing runs. Light frames are around 99% of a Library's size, so
+  Essentials is typically a few percent of the total: it's the difference between
+  a cloud backup costing a couple of dollars a month and one that runs for days.
+  Your journals, finished images, stacks, plans, presets and settings all still
+  go. **Switching to Essentials doesn't delete anything you already have** —
+  backups made before the change keep their light frames until they're pruned by
+  your retention settings.
+- **Restoring now tells you when a backup was made without light frames**, so an
+  Essentials backup can't be mistaken for one that lost them.
+
 - **StackingWizard can now stack straight from your library.**
   [StackingWizard](https://astrowizard.lukomatico.com/) stacks a night and hands
   the result to AstroWizard, and M110 now keeps its frames ready for it: tick
