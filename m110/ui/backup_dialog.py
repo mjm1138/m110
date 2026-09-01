@@ -22,6 +22,17 @@ from m110.ui.widgets import drain_worker
 from m110 import backup, config
 
 
+# Written for a bucket rather than assembled from the pooled blurb. Concatenating
+# them said "stored once, named by its contents" twice and then finished with "a
+# browsable copy of the newest backup is kept alongside" — which is exactly what
+# object storage cannot do, since that copy is a hardlink tree.
+CLOUD_FORMAT_NOTE = (
+    "Files are stored once, named by their contents, and each backup is a small "
+    "index of what it contains — so after the first backup only new files upload. "
+    "Every backup can be restored on its own, and M110 keeps a plain-Python "
+    "restore script beside them so you can get your files back without it.")
+
+
 def _fmt_bytes(n: int) -> str:
     f = float(n)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -46,11 +57,11 @@ class _ProbeWorker(QThread):
 
     def run(self):
         try:
-            self.probed.emit(backup.probe_destination(Path(self._dest)))
+            self.probed.emit(backup.probe_destination(self._dest))
         except Exception as exc:  # pragma: no cover - defensive
             self.probed.emit(backup.DestinationInfo(
-                path=Path(self._dest), exists=False, writable=False, hardlinks=False,
-                free_bytes=None, snapshot_count=0,
+                path=None, exists=False, writable=False, hardlinks=False,
+                free_bytes=None, snapshot_count=0, destination=self._dest,
                 error=f"{type(exc).__name__}: {exc}"))
 
 
@@ -94,9 +105,9 @@ class BackupDialog(QDialog):
         layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
         layout.setSpacing(s["md"])
         intro = QLabel(
-            "Back up your Library to another drive or folder. Only what changed "
-            "is stored each time, so repeat backups are fast and small — and every "
-            "backup can be restored on its own, whatever its age.")
+            "Back up your Library to another drive, folder, or cloud storage. Only "
+            "what changed is stored each time, so repeat backups are fast and "
+            "small — and every backup can be restored on its own, whatever its age.")
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -104,8 +115,13 @@ class BackupDialog(QDialog):
         dest_row = QHBoxLayout()
         dest_row.addWidget(QLabel("Destination:"))
         self._dest = QLineEdit(str(config.get_setting(backup.SETTING_DEST, "")))
+        self._dest.setPlaceholderText("A folder, or s3://your-bucket/backups")
         # Probe on commit, not per keystroke — see _ProbeWorker.
         self._dest.editingFinished.connect(self._refresh_status)
+        # The cloud fields appear as soon as the destination *looks* like a bucket,
+        # so the user isn't asked to commit a URI before being shown where the keys
+        # go. Cheap and synchronous — a string prefix test, not the probe.
+        self._dest.textChanged.connect(self._sync_cloud_visibility)
         dest_row.addWidget(self._dest, 1)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse)
@@ -133,6 +149,27 @@ class BackupDialog(QDialog):
         self._format_note.setWordWrap(True)
         layout.addWidget(self._format_note)
         self._on_format_changed()
+
+        # ── cloud credentials ──  (only for an s3:// destination)
+        self._cloud_box = self._build_cloud_box(s)
+        layout.addWidget(self._cloud_box)
+
+        # ── scope ──  (what goes to this destination)
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("Back up:"))
+        self._scope = QComboBox()
+        for sid in backup.SCOPES:
+            self._scope.addItem(backup.SCOPE_LABELS[sid], sid)
+        self._select_scope(config.get_setting(backup.SETTING_SCOPE,
+                                              backup.DEFAULT_SCOPE))
+        self._scope.currentIndexChanged.connect(self._on_scope_changed)
+        scope_row.addWidget(self._scope, 1)
+        layout.addLayout(scope_row)
+
+        self._scope_note = QLabel()
+        self._scope_note.setProperty("caption", True)
+        self._scope_note.setWordWrap(True)
+        layout.addWidget(self._scope_note)
 
         # ── automation + retention ──
         # "&&" renders one literal ampersand: Qt reads a single "&" in a QGroupBox
@@ -216,6 +253,8 @@ class BackupDialog(QDialog):
         self._dirty = False
         self._wire_dirty_tracking()
         self._sync_exit_buttons()
+        self._sync_cloud_visibility()
+        self._on_scope_changed()
         self._refresh_status()
 
         # Size the window LAST, once the layout knows what it needs. This used to be
@@ -233,6 +272,159 @@ class BackupDialog(QDialog):
         self.resize(w, max(self.sizeHint().height(),
                            self.layout().heightForWidth(w)))
 
+    # ---- cloud credentials ----
+    def _build_cloud_box(self, s) -> QGroupBox:
+        """Endpoint, region and keys for an S3-compatible destination.
+
+        The **secret** key is never displayed, not even masked: the field starts
+        empty with a placeholder saying one is already saved, and an empty field
+        means "leave it alone" rather than "clear it". Reading the secret back out
+        of the keyring just to repaint it as dots would put it in the process for
+        no benefit the user can see."""
+        box = QGroupBox("Cloud storage")
+        grid = QGridLayout(box)
+        grid.setHorizontalSpacing(s["sm"])
+        grid.setVerticalSpacing(s["xs"])
+        grid.setColumnStretch(1, 1)
+
+        self._s3_endpoint = QLineEdit(
+            str(config.get_setting(backup.SETTING_S3_ENDPOINT, "") or ""))
+        self._s3_endpoint.setPlaceholderText("Leave blank for Amazon S3")
+        self._s3_endpoint.setToolTip(
+            "The API URL of your provider. This is what makes Backblaze B2, "
+            "Cloudflare R2 and Wasabi work — they speak the same protocol at a "
+            "different address.")
+        self._s3_region = QLineEdit(
+            str(config.get_setting(backup.SETTING_S3_REGION, "") or ""))
+        self._s3_region.setPlaceholderText("e.g. us-east-1")
+        self._s3_access = QLineEdit(
+            str(config.get_setting(backup.SETTING_S3_ACCESS_KEY, "") or ""))
+        self._s3_access.setPlaceholderText("Access key ID")
+        self._s3_secret = QLineEdit()
+        self._s3_secret.setEchoMode(QLineEdit.Password)
+        self._sync_secret_placeholder()
+
+        for row, (label, field) in enumerate((
+                ("Endpoint URL:", self._s3_endpoint),
+                ("Region:", self._s3_region),
+                ("Access key ID:", self._s3_access),
+                ("Secret key:", self._s3_secret))):
+            grid.addWidget(QLabel(label), row, 0)
+            grid.addWidget(field, row, 1)
+
+        # Cloud destinations are checked on request rather than on blur. A probe
+        # has to use the credentials in these boxes, and the only way to give them
+        # to it is to save them — so an automatic probe would write the user's keys
+        # to the keyring as a side effect of clicking out of a field. An explicit
+        # button keeps both the network call and the save where the user put them.
+        self._test_btn = QPushButton("Test connection")
+        self._test_btn.clicked.connect(self._test_cloud)
+        grid.addWidget(self._test_btn, 4, 1, alignment=Qt.AlignLeft)
+
+        note = QLabel("Your secret key is stored in your operating system's "
+                      "keyring, never in M110's settings file. Leave the fields "
+                      "blank to use credentials you've already configured for the "
+                      "AWS command line.")
+        note.setProperty("caption", True)
+        note.setWordWrap(True)
+        grid.addWidget(note, 5, 0, 1, 2)
+        self._s3_access.textChanged.connect(self._sync_secret_placeholder)
+        return box
+
+    def _test_cloud(self):
+        """Save the cloud credentials, then probe with them."""
+        self._persist_cloud_settings()
+        self._sync_secret_placeholder()
+        self._refresh_status(force=True)
+
+    def _sync_secret_placeholder(self, *_):
+        """Say whether a key is already saved for *this* access key id, so
+        switching key ids doesn't imply the old secret came along."""
+        from m110.backup.backends import s3 as s3backend
+        saved = bool(s3backend.get_secret(self._s3_access.text().strip()))
+        self._s3_secret.setPlaceholderText(
+            "Saved — leave blank to keep it" if saved else "Secret access key")
+
+    def _is_cloud(self) -> bool:
+        return self._dest.text().strip().lower().startswith("s3://")
+
+    def _sync_cloud_visibility(self, *_):
+        """Reflect the *kind* of destination as soon as it's typed.
+
+        Everything here is knowable from the string alone, so none of it waits for
+        the probe — which for a bucket doesn't run until Test connection. Before
+        this, an `s3://` destination sat there reading "Mirrored backups … needs a
+        destination that supports file links", beside a min-free box offering to
+        manage free space on a volume that doesn't exist. All three were false,
+        and all three were on screen for as long as the user hadn't pressed a
+        button they had no reason to press yet."""
+        was = self._cloud_box.isVisibleTo(self)
+        now = self._is_cloud()
+        self._cloud_box.setVisible(now)
+
+        if now:
+            self._select_format(backup.FORMAT_POOLED)
+            self._format.setEnabled(False)
+            self._format_note.setText(
+                CLOUD_FORMAT_NOTE)
+        elif not self._format.isEnabled():
+            # Coming back from a bucket: hand the choice back rather than leaving
+            # it stuck on whatever the cloud forced.
+            self._format.setEnabled(True)
+            self._select_format(backup.preferred_format())
+            self._on_format_changed()
+
+        # A bucket has no volume to run out of, so the engine skips this rule —
+        # the control has to say so rather than imply a policy that won't run.
+        self._min_free.setEnabled(not now)
+        self._min_free.setToolTip(
+            "Cloud storage has no free-space limit to manage." if now else
+            "Prune the oldest backups to maintain this much free space on the "
+            "destination. 0 = off.")
+
+        if now != was:
+            self._fit_height()
+
+    def _fit_height(self):
+        """Grow to whatever the layout needs at the current width.
+
+        The dialog is sized once in `__init__`, with the cloud group hidden.
+        Revealing four fields, a button and a wrapped note afterwards adds real
+        height, and a layout that doesn't fit gets *squeezed* rather than
+        scrolled — which is how the retention spin boxes once ended up physically
+        overlapping. `heightForWidth`, not `sizeHint`: word-wrapped labels report
+        short from `sizeHint`."""
+        w = max(self.width(), self.minimumWidth())
+        needed = max(self.sizeHint().height(), self.layout().heightForWidth(w))
+        if needed > self.height():
+            self.resize(w, needed)
+
+    # ---- scope ----
+    def _current_scope(self) -> str:
+        return self._scope.currentData() or backup.DEFAULT_SCOPE
+
+    def _select_scope(self, scope: str):
+        idx = self._scope.findData(scope)
+        if idx >= 0:
+            blocked = self._scope.blockSignals(True)
+            self._scope.setCurrentIndex(idx)
+            self._scope.blockSignals(blocked)
+
+    def _on_scope_changed(self, *_args):
+        """Describe the tier, and — when it's a narrowing — say what that means
+        for backups that already exist.
+
+        Nothing disappears at the moment of narrowing: the object sweep marks from
+        every surviving manifest, so the frames stay referenced until retention
+        prunes the older, wider backups. Saying so is the difference between a user
+        understanding a delayed change and discovering it."""
+        scope = self._current_scope()
+        note = backup.SCOPE_BLURBS[scope]
+        if scope != backup.DEFAULT_SCOPE:
+            note += ("  Backups you already have keep their light frames until "
+                     "they're pruned by the retention settings below.")
+        self._scope_note.setText(note)
+
     # ---- dirty tracking ----
     def _wire_dirty_tracking(self):
         """Every control whose value `_persist_settings` writes.
@@ -249,7 +441,11 @@ class BackupDialog(QDialog):
         # writes `_status`, never `_dest`, so nothing else can arm this.
         self._dest.textChanged.connect(self._mark_dirty)
         self._format.currentIndexChanged.connect(self._mark_dirty)
+        self._scope.currentIndexChanged.connect(self._mark_dirty)
         self._auto.toggled.connect(self._mark_dirty)
+        for field in (self._s3_endpoint, self._s3_region, self._s3_access,
+                      self._s3_secret):
+            field.textChanged.connect(self._mark_dirty)
         for spin in (self._interval, self._keep, self._min_free):
             spin.valueChanged.connect(self._mark_dirty)
 
@@ -273,8 +469,11 @@ class BackupDialog(QDialog):
 
     # ---- helpers ----
     def _browse(self):
+        # Start at the current folder, unless it's a bucket — a file dialog can't
+        # open `s3://…`, and passing it produces an empty panel at an odd place.
+        start = "" if self._is_cloud() else self._dest.text()
         d = QFileDialog.getExistingDirectory(self, "Choose backup destination",
-                                             self._dest.text() or str(Path.home()))
+                                             start or str(Path.home()))
         if d:
             self._dest.setText(d)
             self._refresh_status()
@@ -285,7 +484,12 @@ class BackupDialog(QDialog):
         dest = self._dest.text().strip()
         if not dest:
             self._status.setText("Choose a destination folder (an external drive or "
-                                 "network share).")
+                                 "network share), or enter an s3:// address.")
+            return
+        if self._is_cloud() and not force and dest not in self._probe_cache:
+            # Never reach for the network just because a field lost focus.
+            self._status.setText("Enter your cloud details, then choose "
+                                 "Test connection.")
             return
         if force:
             self._probe_cache.pop(dest, None)
@@ -322,7 +526,14 @@ class BackupDialog(QDialog):
         self._format.setEnabled(not info.format_forced)
         self._select_format(info.format)
         self._on_format_changed()
-        if info.format_forced:
+        if info.kind == backup.KIND_S3:
+            # Not a limitation being worked around — object storage has no notion
+            # of a shared file, so pooled is simply what a bucket is. Said as a
+            # fact rather than as the apology the link-less-share wording is. The
+            # preference is deliberately not persisted here: it's global, and a
+            # bucket says nothing about the user's external drive.
+            self._format_note.setText(CLOUD_FORMAT_NOTE)
+        elif info.format_forced:
             config.save_setting(backup.SETTING_FORMAT, info.format)
             self._format_note.setText(
                 "This destination can't share files between backups, so M110 will "
@@ -334,9 +545,11 @@ class BackupDialog(QDialog):
                 "restorable either way.")
 
     def _on_probed(self, info):
-        self._probe_cache[str(info.path)] = info
+        # Keyed on the destination *string*, not `info.path` — a cloud destination
+        # has no path, and `str(None)` would collapse every bucket to one cache key.
+        self._probe_cache[info.destination] = info
         self._finish_probe()
-        if str(info.path) == self._dest.text().strip():
+        if info.destination == self._dest.text().strip():
             self._show_destination(info)
             if info.exists and info.writable:
                 self._apply_format(info)
@@ -361,6 +574,14 @@ class BackupDialog(QDialog):
             head = "No backups here yet."
         if info.free_bytes is not None:
             head += f" · {_fmt_bytes(info.free_bytes)} free"
+        if info.kind == backup.KIND_S3:
+            # No free-space figure: a bucket doesn't have one, and inventing a
+            # reassuring number would be worse than omitting it. What matters here
+            # instead is that the first upload is metered.
+            note = ("  ·  Connected. Each file is stored once; only new files "
+                    "upload after the first backup.")
+            self._status.setText(head + note)
+            return
         if info.hardlinks:
             note = "  ·  Unchanged files are shared between backups."
         elif info.format == backup.FORMAT_POOLED:
@@ -383,12 +604,42 @@ class BackupDialog(QDialog):
         if dest:
             config.save_setting(backup.SETTING_DEST, dest)
         config.save_setting(backup.SETTING_FORMAT, self._current_format())
+        config.save_setting(backup.SETTING_SCOPE, self._current_scope())
+        self._persist_cloud_settings()
         config.save_setting(backup.SETTING_AUTO, self._auto.isChecked())
         config.save_setting(backup.SETTING_INTERVAL, self._interval.value())
         config.save_setting(backup.SETTING_KEEP, self._keep.value() or None)
         # Store 0 explicitly ("off"); an absent key is what triggers the 100 GB
         # default, so we must persist the user's 0 rather than collapse it to None.
         config.save_setting(backup.SETTING_MIN_FREE, self._min_free.value())
+
+    def _persist_cloud_settings(self):
+        """Endpoint/region/access key to settings, secret to the keyring.
+
+        An **empty** secret field means "keep what's saved", not "clear it" — the
+        field is never populated from the keyring (see `_build_cloud_box`), so
+        treating blank as a deletion would wipe the key every time the user opened
+        the dialog to change the interval. Same instinct as the destination field
+        refusing to let a blank erase a configured path."""
+        config.save_setting(backup.SETTING_S3_ENDPOINT,
+                            self._s3_endpoint.text().strip() or None)
+        config.save_setting(backup.SETTING_S3_REGION,
+                            self._s3_region.text().strip() or None)
+        access = self._s3_access.text().strip()
+        config.save_setting(backup.SETTING_S3_ACCESS_KEY, access or None)
+        secret = self._s3_secret.text()
+        if access and secret:
+            from m110.backup.backends import s3 as s3backend
+            try:
+                s3backend.set_secret(access, secret)
+            except backup.BackupError as exc:
+                QMessageBox.warning(self, "Cloud storage", str(exc))
+                return
+            self._s3_secret.clear()
+            # Re-read the keyring so the placeholder says a key is saved. Without
+            # this, Save cleared the field and left it reading "Secret access
+            # key" — which says the opposite of what just happened.
+            self._sync_secret_placeholder()
 
     def _open_restore(self):
         from m110.ui.restore_dialog import RestoreDialog
@@ -412,8 +663,13 @@ class BackupDialog(QDialog):
         if not dest:
             QMessageBox.warning(self, "Back up", "Choose a destination folder.")
             return
+        try:
+            backup.parse_destination(dest)
+        except backup.BackupError as exc:
+            QMessageBox.warning(self, "Back up", str(exc))
+            return
         self._persist_settings(dest)
-        options = backup.options_from_settings(Path(dest))
+        options = backup.options_from_settings(dest)
 
         self._cancel_event = threading.Event()
         pd = QProgressDialog("Backing up…", "Cancel", 0, 0, self)
@@ -455,10 +711,13 @@ class BackupDialog(QDialog):
         extra = f"\nPruned {pruned} old backup(s)." if pruned else ""
         msg.setText(f"Backed up {result.get('file_count', 0)} files "
                     f"({_fmt_bytes(new)} new) to:\n{result.get('snapshot', '')}{extra}")
-        open_btn = msg.addButton("Open folder", QMessageBox.AcceptRole)
+        # There is no folder to open for a bucket, and a button that silently does
+        # nothing is worse than no button.
+        open_btn = (None if self._is_cloud()
+                    else msg.addButton("Open folder", QMessageBox.AcceptRole))
         msg.addButton("Close", QMessageBox.RejectRole)
         msg.exec()
-        if msg.clickedButton() is open_btn:
+        if open_btn is not None and msg.clickedButton() is open_btn:
             self._open_folder(result.get("snapshot", ""))
 
     def _on_failed(self, message):

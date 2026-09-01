@@ -151,7 +151,7 @@ def list_snapshots(destination, store_name: str | None = None) -> list[SnapshotI
             total_bytes=int(meta.get("total_bytes", 0)),
             store_version=meta.get("store_version"),
             hardlinks=bool(meta.get("hardlinks", False)),
-            format=FORMAT, ref=ref,
+            format=FORMAT, ref=ref, scope=meta.get("scope"),
         ))
     out.sort(key=lambda s: s.created, reverse=True)
     return out

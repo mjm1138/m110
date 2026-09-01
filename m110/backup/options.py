@@ -75,6 +75,11 @@ class SnapshotInfo:
     hardlinks: bool = True
     format: str = "mirrored"
     ref: SnapshotRef | None = None
+    # Which scope tier this snapshot was taken at. None for anything written
+    # before tiers existed — which means "everything", the behaviour of the day.
+    # Surfaced when restoring: a backup that never held the light frames must not
+    # look like one that lost them.
+    scope: str | None = None
 
 
 @dataclass
