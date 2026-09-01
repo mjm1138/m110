@@ -28,7 +28,7 @@ from .. import config
 from .destination import store_backup_root, supports_hardlinks
 from .errors import BackupError, BackupDestinationError
 from .options import BackupOptions, SnapshotInfo, TIMESTAMP_FMT
-from .scope import iter_source_files
+from .scope import DEFAULT_SCOPE, iter_source_files
 
 MANIFEST_NAME = ".m110-backup-manifest.json"
 STATE_NAME = ".m110-backup-state.json"
@@ -99,7 +99,7 @@ def list_snapshots(destination: Path, store_name: str | None = None) -> list[Sna
             total_bytes=int(m.get("total_bytes", 0)),
             store_version=m.get("store_version"),
             hardlinks=bool(m.get("hardlinks", True)),
-            format=FORMAT,
+            format=FORMAT, scope=m.get("scope"),
         ))
     snaps.sort(key=lambda s: s.created, reverse=True)
     return snaps
@@ -138,7 +138,12 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
         shutil.rmtree(incomplete, ignore_errors=True)
     incomplete.mkdir(parents=True)
 
-    rels = iter_source_files(src_root)
+    # Scope applies to both formats. It's a statement about what the user wants
+    # backed up, not about what the destination can do — a small local drive is
+    # as legitimate a reason to skip the frames as a metered bucket is, and the
+    # dialog offers the choice for every destination.
+    scope = options.scope or DEFAULT_SCOPE
+    rels = iter_source_files(src_root, scope)
     total = len(rels)
     files_meta: dict[str, dict] = {}
     total_bytes = 0
@@ -187,6 +192,7 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
             "store_name": src_root.name,
             "store_version": store_version(src_root),
             "hardlinks": hardlinks,
+            "scope": scope,
             "file_count": len(files_meta),
             "total_bytes": total_bytes,
             "bytes_new": bytes_new,
@@ -211,7 +217,7 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
         "snapshot": str(final), "timestamp": ts, "file_count": len(files_meta),
         "total_bytes": total_bytes, "bytes_new": bytes_new, "linked": linked,
         "hardlinks": hardlinks, "pruned": retention.get("pruned", 0),
-        "format": FORMAT,
+        "format": FORMAT, "scope": scope,
     }
 
 

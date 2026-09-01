@@ -91,6 +91,38 @@ def test_iter_source_files_applies_the_tier(tmp_path):
     assert not (set(NEVER) & everything)
 
 
+@pytest.mark.parametrize("fmt", ["mirrored", "pooled"])
+def test_both_formats_honour_the_scope(tmp_path, monkeypatch, fmt):
+    """Scope is a statement about what the user wants backed up, not about what
+    the destination can do — and the dialog offers it for every destination.
+
+    Regression: `mirrored.create_snapshot` called `iter_source_files(src_root)`
+    with the default, so choosing Essentials for a local drive silently backed up
+    everything anyway. Silent, and in the direction that costs money and time.
+    """
+    from m110 import backup, config, objects
+    from tests._helpers import seed_capture, seed_root
+
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    objects.write_journal(slug, "# notes\nAuthored.\n")
+    config.save_setting(backup.SETTING_FORMAT, fmt)
+    dest = tmp_path / "backups"
+
+    everything = backup.create_snapshot(backup.BackupOptions(
+        destination=dest, scope=backup.SCOPE_EVERYTHING))
+    essentials = backup.create_snapshot(backup.BackupOptions(
+        destination=dest, scope=backup.SCOPE_ESSENTIALS))
+
+    assert everything["format"] == fmt
+    assert essentials["file_count"] < everything["file_count"]
+    # …and the snapshot says which tier it was taken at, so a restore can too.
+    assert essentials["scope"] == backup.SCOPE_ESSENTIALS
+    newest = backup.list_snapshots(dest)[0]
+    assert newest.scope == backup.SCOPE_ESSENTIALS
+    assert not any("/lights/" in f for f in backup.snapshot_files(newest))
+
+
 def test_a_target_named_like_a_tier_is_not_confused(tmp_path):
     """The rule matches `Images/<target>/<tier>/`, so the tier name has to be read
     at the right depth — a capture folder called `lights` is a target, not a tier."""
