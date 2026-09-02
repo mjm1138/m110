@@ -57,6 +57,13 @@ publish = ["jinja2>=3", "markdown>=3"]
 # which starts the server and speaks JSON-RPC to it, so a bad bump fails loudly
 # instead of going green (the #115/#121 failure). Keep in sync with `dev`, below.
 assistant = ["mcp>=2,<3"]
+# Optional offsite backup to S3-compatible object storage (issue #93). boto3
+# speaks the API; `endpoint_url` is what makes B2/R2/Wasabi work, so this is not
+# an AWS-only extra. keyring holds the **secret** access key — it is already a
+# transitive dependency of `online` and is collected by all three PyInstaller
+# specs, but backup must not inherit it by luck from an unrelated extra.
+# `m110.backup.backends.s3` degrades via BackupDepsMissing when absent.
+s3 = ["boto3>=1.34", "keyring>=24"]
 # NOTE — the sky map (ROADMAP item 12) needs `uranometria`, which is deliberately
 # NOT declared here. It isn't on PyPI yet, and a direct URL requirement is
 # rejected on upload *anywhere* in the metadata, extras included — so declaring
@@ -66,14 +73,22 @@ assistant = ["mcp>=2,<3"]
 # `m110.skymap` degrades via SkymapDepsMissing when it's absent. Swap this for a
 # real `skymap = ["uranometria>=0.11"]` extra once it's published.
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3",
-       "mcp>=2,<3", "jsonschema>=4"]  # astroquery also build-time (tools/gen_caldwell.py);
-                                        # jsonschema validates the tool schemas in tests;
-                                        # `mcp` bound: see the `assistant` extra above
+       "mcp>=2,<3", "jsonschema>=4", "boto3>=1.34"]
+# astroquery also build-time (tools/gen_caldwell.py); jsonschema validates the tool
+# schemas in tests; `mcp` bound: see the `assistant` extra above.
+# `boto3` is here for ONE test module. The S3 backend's conformance tests run against
+# an injected fake client and need no SDK — that is deliberate, and they stay that way.
+# What the fake can't cover is the wiring *to* boto3: client kwargs, the botocore
+# Config, and the mapping of its exceptions onto ours. That's the #64/#74/#75 shape —
+# code fine, library wiring not, failing where no test was looking — so
+# tests/test_backup_s3_client.py exercises it for real (no network) and CI runs it.
+# Same instinct as smoke_mcp: enforce the claim with a check, not a comment. The module
+# still `importorskip`s, so a lean install without it passes.
 # Packaging the desktop app into native bundles/installers (see packaging/).
 # Pulls in `online` (astroquery) so the packaged app bundles Simbad enrichment — a
 # frozen build has no pip, so an app user can't add the extra themselves (issue #64).
 # Source installs stay lean: `online` remains opt-in for `pip install m110`.
-build = ["pyinstaller>=6.6", "m110[online]", "m110[assistant]"]
+build = ["pyinstaller>=6.6", "m110[online]", "m110[assistant]", "m110[s3]"]
 
 [project.gui-scripts]
 m110 = "m110.ui.main:main"

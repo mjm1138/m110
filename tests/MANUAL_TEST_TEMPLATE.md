@@ -7,6 +7,10 @@
 > opportunistic bug-finding**. Everything mechanical is already covered by
 > `pytest -q` (see `TESTING.md` §1); don't re-do those by hand.
 >
+> **For a change to one area rather than a full release pass,** use the
+> *"What changed → what to test"* table at the top of `TESTING.md` and run just
+> that area's section (§2.1–§2.9). This template is the full-pass shape.
+>
 > File any bug you find in **`BUGS.md`** and reference its id in the Notes column.
 
 - **Build / commit under test:** `__________`  (e.g. `git rev-parse --short HEAD`)
@@ -29,7 +33,8 @@ rm -rf ~/Documents/M110-test
 
 - Ingest from a **Seestar device is copy-only** (device never modified) — safe to repeat.
 - Ingest from **staging *moves*** files — only put throwaway files in a temp `Inbox/`.
-- Corpus contents are listed in `TESTING.md` §0 (fixtures + what each exercises).
+- Corpus contents are listed in `TESTING.md` §0.3 (fixtures + what each exercises,
+  and which area each one is for).
 
 ---
 
@@ -57,6 +62,9 @@ work against real hardware/OS.**
 | 15 | Add / enrich object | Add object… → look up online; Fill missing on the `NGC 6992` stub; Enrich `IC 1396` | Preview resolves; backfill doesn't overwrite; enrich degrades gracefully offline; duplicate refused | | |
 | 16 | Per-image curation | Right-click a gallery tile → Mark finished/working; Set as hero (an older image) | Regroups in place + persists; hero re-renders (not stale) | | |
 | 17 | Update banner | (with a newer release available) launch / Help → Check for updates | Quiet banner: Download · Skip this version · ✕; Skip never re-shows that version | | |
+| 18 | Backup — local | Back up to a folder, then Restore an older snapshot to a scratch dir | Second backup ~0 new bytes; restored file has its *old* contents; `latest/` browsable | | |
+| 19 | Backup — cloud | Run a local MinIO (`TESTING.md` §2.5b) and back up to `s3://…` | Connects; uploads; verify + restore work; secret is in the keyring, not `settings.json` | | |
+| 20 | Assistant boundary | Connect a client, ask it to rank/plan/propose, checksum the store before & after | Store unchanged; anything produced sits in `.m110_internal_data/assistant/` | | |
 
 *(Add rows for anything new in this build. Delete rows that don't apply.)*
 

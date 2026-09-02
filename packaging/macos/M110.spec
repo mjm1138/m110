@@ -95,6 +95,19 @@ try:
 except Exception as _exc:                       # pragma: no cover - build-time
     print(f"WARNING: uranometria not collected ({_exc}) — this build has no sky map")
 
+# Offsite backup to S3-compatible storage (issue #93). botocore carries its whole
+# API surface as DATA — a per-service JSON model tree plus the endpoint/region
+# tables — and loads a service's model at client-creation time, so a bundle with
+# the modules but not the data raises DataNotFoundError the first time a user
+# presses "Back up" against a bucket. Same shape as the astropy parsetab lesson
+# (#75): the code is bundled, the data files it reads at runtime are not, and it
+# only fails in the frozen app. `boto3` also ships its own small data tree.
+for _pkg in ("boto3", "botocore"):
+    try:
+        datas += collect_data_files(_pkg, excludes=["**/tests/**"])
+    except Exception as _exc:                   # pragma: no cover - build-time
+        print(f"WARNING: {_pkg} not collected ({_exc}) — this build has no cloud backup")
+
 block_cipher = None
 
 a = Analysis(

@@ -8,6 +8,18 @@ A workflow sandbox (`Images/<target>/siril/`, `astrowizard/`, …) is **not**
 excluded wholesale. Only its *linked inputs* are — the hardlink trees declared in
 `config.SANDBOX_LINKED_INPUTS` — because those bytes are already in the snapshot
 under their real path. What a sandbox otherwise holds is authored work.
+
+**Tiers** (issue #93) sit on top of that denylist, because offsite storage is
+metered where a spare drive isn't. Light frames are ~99% of a library's bytes, so
+a first sync at full scope is a multi-day, non-trivially-expensive operation that
+plenty of people would start and then cancel. `essentials` is the answer: the
+irreplaceable and the hand-made go offsite for a couple of dollars a month, and
+the raws stay on the drive that can hold them.
+
+**Narrowing a destination's scope deletes nothing immediately.** `sweep_objects`
+marks from *every surviving manifest*, so frames dropped from the new scope stay
+referenced by the older, wider snapshots until retention prunes those. The
+disappearance is real but deferred — which is the window in which to warn.
 """
 from __future__ import annotations
 
@@ -15,6 +27,27 @@ import os
 from pathlib import Path
 
 from .. import config
+
+SCOPE_EVERYTHING = "everything"
+SCOPE_ESSENTIALS = "essentials"
+DEFAULT_SCOPE = SCOPE_EVERYTHING
+SCOPES = (SCOPE_EVERYTHING, SCOPE_ESSENTIALS)
+
+SCOPE_LABELS = {
+    SCOPE_EVERYTHING: "Everything",
+    SCOPE_ESSENTIALS: "Essentials (no light frames)",
+}
+
+SCOPE_BLURBS = {
+    SCOPE_EVERYTHING: (
+        "Backs up your whole Library, light frames included. The complete "
+        "picture, and the right choice for a drive or network share."),
+    SCOPE_ESSENTIALS: (
+        "Backs up everything except your raw light frames and archived "
+        "processing runs — journals, finished images, stacks, plans and settings "
+        "all still go. Typically a few percent of the size, which is what makes "
+        "cloud storage affordable. Your raws stay wherever they are now."),
+}
 
 # Paths (relative to the store root) that are NOT backed up — all regenerable or
 # working-area.
@@ -27,15 +60,46 @@ _EXCLUDE_INTERNAL = {
     f"{config.INTERNAL_DIRNAME}/assistant",
 }
 
+# The per-target tiers `essentials` leaves behind: the frames themselves. Each is
+# bulk raw capture the user can keep locally — as opposed to `finished/`,
+# `stacks/` and `seestar-stacks/`, which are deliverables, and the
+# journals/plans/settings, which are hand-written and irreplaceable.
+_BULK_FRAME_TIERS = frozenset({"lights", "rejected", "previews"})
 
-def is_excluded(rel: str) -> bool:
+# Archived processing runs are also skipped at `essentials`. They are authored
+# output, but they are *bounded and disposable by the app's own policy* —
+# `roundtrip.prune_archives` deletes them on a keep-N rule — and one real library
+# reached 42 GB across 36 of them, which would swamp the tier's whole purpose.
+# The deliverable that mattered was imported to `finished/`, and that is kept.
+_ARCHIVE_DIRNAME = "archive"
+
+
+def is_excluded(rel: str, scope: str = DEFAULT_SCOPE) -> bool:
     """rel is a POSIX-style path relative to the store root."""
     if rel in _EXCLUDE_INTERNAL:
         return True
     for ex in _EXCLUDE_INTERNAL:
         if rel.startswith(ex + "/"):
             return True
-    return _is_sandbox_linked_input(rel.split("/"))
+    parts = rel.split("/")
+    if _is_sandbox_linked_input(parts):
+        return True
+    return scope == SCOPE_ESSENTIALS and _is_bulk(parts)
+
+
+def _is_bulk(parts: list[str]) -> bool:
+    """True for the raw-frame tiers and archived processing runs — what
+    `essentials` leaves at home. See `_BULK_FRAME_TIERS` for the line drawn."""
+    if len(parts) < 3 or parts[0] != "Images":
+        return False
+    if parts[2] in _BULK_FRAME_TIERS:
+        return True
+    # `Images/<target>/<sandbox>/archive/…`, or one per-filter level deeper.
+    if parts[2] in config.SANDBOX_DIRNAMES:
+        tail = parts[3:]
+        return bool(tail) and (tail[0] == _ARCHIVE_DIRNAME or
+                               (len(tail) > 1 and tail[1] == _ARCHIVE_DIRNAME))
+    return False
 
 
 def _is_sandbox_linked_input(parts: list[str]) -> bool:
@@ -64,9 +128,9 @@ def _is_sandbox_linked_input(parts: list[str]) -> bool:
     return tail[0] in linked or (len(tail) > 1 and tail[1] in linked)
 
 
-def iter_source_files(root: Path) -> list[str]:
+def iter_source_files(root: Path, scope: str = DEFAULT_SCOPE) -> list[str]:
     """Relative POSIX paths of every file under `root` that should be backed up
-    (denylist applied). Sorted for deterministic ordering."""
+    (denylist + scope tier applied). Sorted for deterministic ordering."""
     out: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
@@ -75,12 +139,12 @@ def iter_source_files(root: Path) -> list[str]:
         kept = []
         for d in dirnames:
             rd = f"{rel_dir}/{d}" if rel_dir else d
-            if not is_excluded(rd):
+            if not is_excluded(rd, scope):
                 kept.append(d)
         dirnames[:] = kept
         for f in filenames:
             rf = f"{rel_dir}/{f}" if rel_dir else f
-            if not is_excluded(rf):
+            if not is_excluded(rf, scope):
                 out.append(rf)
     out.sort()
     return out

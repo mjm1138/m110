@@ -770,57 +770,86 @@ Legend: `[ ]` open · `[~]` partially done
   read free space inside a loop that deleted nothing until afterwards, so the reading never
   moved and one pass queued every survivor but one.
 
-- [ ] **#93 — offsite backup destinations (S3 / B2 / R2 / Wasabi).** @devonjones wants
-  offsite: a key pair, a bucket, and optionally an API URL so the cheaper S3-compatible
-  services work. The storage format and the backend seam it needs shipped with #92 above —
-  what remains is the adapter and the multi-destination UI.
+- [x] **#93 — offsite backup destinations (S3 / B2 / R2 / Wasabi)** *(adapter + scope
+  done 2026-09-01, `feature/backup-s3`; the multi-destination list remains, below)*.
+  @devonjones wanted offsite: a key pair, a bucket, and optionally an API URL so the
+  cheaper S3-compatible services work.
+
+  **The prerequisite nobody had written down.** #92 shipped the `backends/` seam, but
+  only for *writing objects*: `destination` was a `Path` throughout, and pooled snapshot
+  references were filesystem paths. `pooled.list_snapshots` walked `snapshots/` with
+  `iterdir`, `read_manifest` did `Path.read_bytes`, `verify` stat'd objects directly,
+  `restore` hardcoded `LocalBackend`, and `restore_dialog` carried `snap.path` as its
+  handle. The adapter had nothing to plug into until that was fixed, and no test would
+  have caught it — every pooled test passes a `Path`, and would have kept passing with
+  the destination being stat'd behind the seam. `tests/test_backup_cloud.py` exists to
+  close exactly that gap.
+
+  What landed:
+
+  - **`destination.Destination` + `parse_destination`.** Only a known scheme makes a
+    destination remote, so a Windows drive letter can't parse as one; `__fspath__`
+    *raises* for a bucket rather than inventing `s3:/bucket/prefix`, so a call site still
+    reaching for a filesystem fails loudly. `pooled._resolve(ref)` adapts SnapshotInfo /
+    SnapshotRef / a bare path, and the path form behaves exactly as before — which is how
+    this landed without an API break.
+  - **`S3Backend`** — `endpoint_url` (the point, not a nicety), `object_sizes()` as one
+    paginated LIST, `delete_objects` batching, `parallel_puts` uploads drained before the
+    manifest write so the *manifest ⇒ objects* invariant survives concurrency. Optional
+    `s3` extra, build-aware `BackupDepsMissing`, bundled in packaged builds; the specs
+    also collect **boto3/botocore DATA** — botocore loads a service model at client
+    creation, so modules-without-data fails only in the frozen app (the astropy parsetab
+    shape, #75). Secret in keyring, access key id in settings.
+  - **Provider quirks, pinned:** `request_checksum_calculation="when_required"` (botocore
+    ≥1.36 attaches `x-amz-checksum-crc32` to every PUT and several S3-compatible services
+    reject it) and **path-style addressing whenever a custom endpoint is set** — both
+    guarded so an older botocore degrades rather than raises. R2 users type
+    `region_name=auto` in the Region field.
+  - **Verify has a depth.** `cheap_list=False` sends a bucket down a presence-and-size
+    check from the one enumeration, because a deep verify over the internet is a full
+    download of the backup with the egress bill to match. The result reports which check
+    ran, and callers must say so rather than claim one they didn't make.
+  - **Scope tiers** (`scope.SCOPE_ESSENTIALS`) — drops the frame tiers *and* sandbox
+    `archive/<ts>/` runs. Archives are authored output, but they're bounded and disposable
+    by the app's own keep-N policy and one real library hit 42 GB of them, which would
+    have swamped the tier's whole purpose.
+  - **Narrowing turned out not to need the estimate first.** The write-up below assumed
+    the next GC would delete ~400 GB of raws; it doesn't. `sweep_objects` marks from
+    *every surviving manifest*, so the frames stay referenced until retention prunes the
+    older, wider snapshots. Real but deferred — which is the window the dialog's plain
+    warning uses. The byte estimate is still worth having; it is no longer a gate.
 
   **Don't build full/incremental chains** (the reasoning that shaped #92 and still applies):
   the tape-era model buys restores that need an intact chain, retention that can't drop a
   full until its dependents expire, and a corruption blast radius spanning days.
 
-  Remaining work, in order:
+- [ ] **Destinations become a list** *(the remaining half of #93)*. `backup_destination`
+  is a single setting; offsite implies plurality (local NAS nightly + S3 weekly, different
+  retention each). This — not the storage format — is the real UI change: destination rows
+  with per-row scope, schedule, retention. Format stays *derived from the probed
+  destination*, never a user-facing mode for the cases where there's no real choice; same
+  instinct as `launch.find_app`.
 
-  - **Destinations become a list.** `backup_destination` is a single setting; offsite
-    implies plurality (local NAS nightly + S3 weekly, different retention each). This — not
-    the storage format — is the real UI change: destination rows with per-row scope,
-    schedule, retention. Format stays *derived from the probed destination*, never a
-    user-facing mode for the cases where there's no real choice; same instinct as
-    `launch.find_app`.
-  - **Per-destination scope tier**, because S3 economics demand it: lights are ~99% of the
-    bytes, and plenty of users will want offsite to mean journals + `finished/` + `stacks/`
-    for a couple of dollars a month with the raws staying on the NAS. Without it the first
-    sync runs for a week. Layer it on `scope.is_excluded` (the sandbox linked-input rule is the
-    shape). One thing to get right: *narrowing* a destination's scope makes the excluded
-    objects unreferenced, so the next GC deletes ~400 GB of raws from the offsite store —
-    correct, but it must be warned about with an estimate.
-  - **`S3Backend`** — boto3 with `endpoint_url`, `object_sizes()` as one paginated LIST (not
-    100k HEADs), `delete_objects` in batches for the sweep, `ThreadPoolExecutor` across files
-    (throughput here is latency-bound, not bandwidth-bound), `abort_multipart_upload` on
-    cancel. Follow the `online`-extra pattern — optional `s3` extra, graceful "not installed"
-    error from source (`BackupDepsMissing`, build-aware like
-    `catalog._astroquery_missing_message`), bundled in packaged builds. Credentials in
-    **keyring**, not `settings.json` (the PyInstaller specs already collect keyring for
-    astroquery); the access key id is an identifier, not a secret, so it can stay in settings
-    where the UI can show which key is configured.
-  - **Provider quirks worth pinning now:** R2 wants `region_name="auto"`; several
-    Wasabi/MinIO setups need path-style addressing; and botocore ≥1.36 sends
-    `x-amz-checksum-crc32` on every PUT by default, which some S3-compatible providers
-    reject — pin `request_checksum_calculation="when_required"` defensively. Since the key
-    *is* the sha256, `ChecksumSHA256` on PutObject gets server-side rejection of a corrupted
-    upload for free where supported. Document a lifecycle rule to abort incomplete multipart
-    uploads (orphaned parts bill silently — the classic S3 backup cost leak), and that egress
-    on *restore* is the expensive direction on AWS but cheap or free on B2/R2.
+  Now unblocked, and smaller than it was: `Destination` is a value type, `backup_scope` is
+  a single setting that becomes a per-row field, and `probe_destination` already answers
+  per-destination. Also wanted here:
+
+  - A **byte estimate** on the scope-narrowing warning (see above — deferred, not dropped).
   - `Capabilities.free_bytes is None` on an object store, so `min_free_gb` is meaningless
-    there; its analogue is a per-destination `max_store_gb` budget from `state.json`.
-    Default a new offsite destination to keep-N only — never surprise-delete an offsite copy.
+    there (the engine skips it and the dialog disables it); its analogue is a
+    per-destination `max_store_gb` budget from `state.json`. Default a new offsite
+    destination to keep-N only — never surprise-delete an offsite copy.
+  - Document a lifecycle rule to abort incomplete multipart uploads (orphaned parts bill
+    silently — the classic S3 backup cost leak), and that egress on *restore* is the
+    expensive direction on AWS but cheap or free on B2/R2.
+  - `ChecksumSHA256` on PutObject: since the key *is* the sha256, this buys server-side
+    rejection of a corrupted upload for free where supported.
 
   **Alternative considered — shell out to `restic`.** Precedent exists (`publish/ghpages.py`
   drives the system git), and restic is already CAS + dedup + prune + S3-with-custom-endpoint.
   Costs: bundling/notarizing a ~25 MB Go binary per platform, a hard external dependency on
   the *data-safety* feature, and an opaque repo the user can't browse without restic. Built
-  natively instead — and with #92 landed the remaining delta really is just the adapter.
-  Hold restic in reserve if S3 retry/multipart correctness turns ugly.
+  natively instead — and with #92 landed the remaining delta really was just the adapter.
 
   Note **#40d** (restore has no store-version gate) is orthogonal and still open either way.
 

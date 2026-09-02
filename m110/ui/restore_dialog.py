@@ -48,7 +48,9 @@ class RestoreDialog(QDialog):
     def __init__(self, destination: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Restore from backup")
-        self._destination = Path(destination) if destination else None
+        # Kept as the destination *string* — `Path(...)` would mangle an s3:// URI
+        # into `s3:/bucket/prefix`, and the engine parses it either way.
+        self._destination = destination or None
         self._worker = None
         self._progress = None
         self._cancel_event = None
@@ -75,9 +77,16 @@ class RestoreDialog(QDialog):
                 kind = "  ·  full copy"
             else:
                 kind = ""
+            # A backup that never held the light frames must not look like one
+            # that lost them. `None` is a snapshot written before tiers existed,
+            # which is to say: everything.
+            if snap.scope not in (None, backup.DEFAULT_SCOPE):
+                kind += "  ·  no light frames"
+            # Carry the SnapshotInfo itself, not `snap.path`: a snapshot in a
+            # bucket has no path, and the engine resolves the object either way.
             self._snap_combo.addItem(
                 f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files{kind}",
-                snap.path)
+                snap)
         self._snap_combo.currentIndexChanged.connect(self._reload_tree)
         snap_row.addWidget(self._snap_combo, 1)
         self._verify_btn = QPushButton("Verify integrity")
@@ -129,7 +138,7 @@ class RestoreDialog(QDialog):
             self._reload_tree()
 
     # ---- tree ----
-    def _current_snapshot(self) -> Path | None:
+    def _current_snapshot(self) -> backup.SnapshotInfo | None:
         return self._snap_combo.currentData()
 
     def _reload_tree(self):
