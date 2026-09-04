@@ -53,7 +53,8 @@ sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
 ## How we work
 
 A few conventions keep the project maintainable — they mirror the maintainer
-workflow documented in [`CLAUDE.md`](CLAUDE.md):
+workflow documented in [`CLAUDE.md`](CLAUDE.md) (in full under
+[`DONE.md` → Engineering reference](DONE.md#engineering-reference--archived-from-claudemd-2026-09-04)):
 
 1. **Work on a feature branch.** Branch off `main` (`feature/<short-name>`); never
    commit feature work directly to `main`. `main` is protected — changes land via
@@ -80,8 +81,10 @@ workflow documented in [`CLAUDE.md`](CLAUDE.md):
 
 You can orient without a maintainer walkthrough:
 
-- [`CLAUDE.md`](CLAUDE.md) — the module map (what every engine + UI module does)
-  and the conventions above, in full.
+- [`CLAUDE.md`](CLAUDE.md) — the short orientation: module map (one line per
+  engine + UI module) and the conventions above. The long-form module notes and
+  the gotchas archive are in
+  [`DONE.md` → Engineering reference](DONE.md#engineering-reference--archived-from-claudemd-2026-09-04).
 - [`DATA_MODEL.md`](DATA_MODEL.md) — the authoritative on-disk data model.
 - [`DONE.md`](DONE.md) — how and why each subsystem shipped. Skim the relevant
   entry before extending or fixing an existing subsystem; it's often the missing

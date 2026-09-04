@@ -74,7 +74,8 @@ rm -rf /tmp/m110-test                     # reset between runs
 > them. Anything that opens a dialog reads them, and any save-shaped action writes
 > them — a scratch script once overwrote a real backup destination this way. The
 > pytest suite seals both (`tests/conftest.py`); a script run by hand does not.
-> See the gotcha in [`CLAUDE.md`](CLAUDE.md) before writing one.
+> See the gotcha ("An ad-hoc GUI script must isolate `SETTINGS_FILE`/`APP_CONFIG_DIR`")
+> in [`DONE.md` → Engineering reference](DONE.md#engineering-reference--archived-from-claudemd-2026-09-04) before writing one.
 
 ### 0.1 Testing from a git worktree
 
