@@ -997,6 +997,46 @@ def test_canonical_folds_onto_spaced_folder(tmp_path, monkeypatch):
     assert ingest.scan_staging_plan() == []              # deduped, nothing held
 
 
+def test_canonical_target_folds_a_spaced_mosaic(tmp_path, monkeypatch):
+    """The Seestar appends its framing suffix to the *spaced* designation
+    ("M 31_mosaic_sub"), and the bare fold ("M 13" → "M13") stopped dead at the
+    suffix — so a mosaic was filed as `Images/M 31_mosaic` beside `Images/M31`.
+    The decoration describes the capture; the object underneath is what resolves."""
+    _make_staging(tmp_path, monkeypatch)
+    assert ingest.canonical_target("M 31_mosaic") == "M31_mosaic"
+    assert ingest.canonical_target("m 31_mosaic") == "M31_mosaic"
+    assert ingest.canonical_target("M31_mosaic") == "M31_mosaic"        # unchanged
+    assert ingest.canonical_target("C 34_mosaic") == "NGC 6960_mosaic"  # designation, too
+    assert ingest.canonical_target("Barnard 150_mosaic") == "Barnard 150_mosaic"
+    ingest.add_alias("Bode", "M81")
+    assert ingest.canonical_target("Bode_mosaic") == "M81_mosaic"       # alias underneath
+
+    # An existing folder wins in either spelling: the store that already keeps
+    # the spaced folder keeps it (so a re-sync dedups against it), and a store
+    # keeping the canonical one absorbs the device's spaced name.
+    (config.IMAGES_DIR / "M 31_mosaic").mkdir(parents=True)
+    assert ingest.canonical_target("M 31_mosaic") == "M 31_mosaic"
+    (config.IMAGES_DIR / "M42_mosaic").mkdir(parents=True)
+    assert ingest.canonical_target("M 42_mosaic") == "M42_mosaic"
+
+
+def test_seestar_mosaic_capture_files_under_the_canonical_object(tmp_path, monkeypatch):
+    """The device's own layout, end to end: the `_sub` lights folder and the
+    in-app stack folder of a mosaic both land under `Images/M31_mosaic`."""
+    _root, staging = _make_staging(tmp_path, monkeypatch)
+    sub = staging / "M 31_mosaic_sub"
+    sub.mkdir()
+    (sub / "Light_mosaic_M 31_20.0s_IRCUT_20260912-002159.fit").write_text("x")
+    (sub / "Light_mosaic_M 31_20.0s_IRCUT_20260912-002219.fit").write_text("x")
+    stk = staging / "M 31_mosaic"
+    stk.mkdir()
+    (stk / "Stacked_370_mosaic_M 31_20.0s_IRCUT_20260912-034304.fit").write_text("x")
+    ops = ingest.scan_staging_plan()
+    assert ops and {o.object for o in ops} == {"M31_mosaic"}
+    assert {o.kind for o in ops} == {"light", "stack"}
+    assert all(o.dest_rel.startswith("Images/M31_mosaic/") for o in ops)
+
+
 def test_sub_per_frame_jpg_previews_not_held(tmp_path, monkeypatch):
     """Regression: a Seestar `_sub` folder saves a full-size `.jpg` preview beside
     every `.fit` sub. The `.fit` are lights; the per-sub JPGs are recognized sidecars

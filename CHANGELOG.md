@@ -89,6 +89,16 @@ changes a **user** would notice, per release.
   no longer offered to you as things to import: only what you actually exported is.
 
 ### Fixed
+- **A Seestar mosaic no longer creates a second copy of its object in the
+  Library.** The Seestar names a mosaic with a space in the designation
+  (`M 31_mosaic`), and M110 only recognised the spaced spelling for a plain
+  capture. The mosaic's frames were filed under a separate **"M 31"** object with
+  no coordinates, beside the real M31, and M31's totals left them out. Mosaics
+  now resolve to their object however the scope spells it (a Caldwell-named
+  mosaic such as `C 34_mosaic` files as its NGC object, too); a fresh import lands
+  under `M31_mosaic`, and a store that already has the spaced folder keeps it.
+  On your next sync the frames count toward M31 and the empty duplicate is
+  removed from the Library. Nothing on disk moves.
 - **A stack no longer fails because some frames wouldn't plate-solve.** If part
   of your set failed to solve — usually one rough night — `m110-stack` could give
   up with "Registration failed", even though the frames that *did* solve were

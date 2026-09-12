@@ -224,6 +224,18 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     by_desig = slug_for_designation(folder_name)
     if by_desig in catalog_slugs:
         return [by_desig]
+    # A *spaced* decorated target — "M 31_mosaic", exactly as the Seestar names a
+    # mosaic — slugifies to "m-31-mosaic", whose undecorated form "m-31" is not a
+    # reference key (that's "m31"); only the designation index knows "M 31" is
+    # M31. So strip the decoration from the *name* and ask membership, the same
+    # way a plain "M 31" folder already resolves just above. Without this the
+    # folder fell through to "no catalog object" and was promoted as a second,
+    # coordinate-less "M 31" beside the real M31.
+    base_name = undecorated_name(folder_name)
+    if base_name != folder_name:
+        by_desig = slug_for_designation(base_name)
+        if by_desig in catalog_slugs:
+            return [by_desig]
     # A decorated capture target ("M42_mosaic") is still that object's frames.
     # This runs *before* the whole-folder match on purpose: once a stray
     # "m42-mosaic" entry exists in the Library it would otherwise match itself
