@@ -282,6 +282,19 @@ def canonical_target(name: str) -> str:
     if existing:
         return existing
 
+    # A decorated target ("M 31_mosaic": the framing suffix the Seestar appends to
+    # a mosaic) is a capture *of* the undecorated object, so resolve that and put
+    # the decoration back — the bare-designation fold in `fits_object_name` and
+    # the designation lookup below both stop dead at the suffix, which is how a
+    # mosaic landed in "Images/M 31_mosaic" beside "Images/M31" and was then
+    # promoted as a second "M 31" object. Runs *after* the existing-folder match,
+    # so a store already keeping "Images/M 31_mosaic" keeps that folder.
+    from . import scan_sessions      # local import: scan_sessions imports catalog lazily
+    base = scan_sessions.undecorated_name(norm)
+    if base != norm and norm.startswith(base):
+        folded = canonical_target(base) + norm[len(base):]
+        return _existing_image_dir(folded) or folded
+
     try:
         cat = catalog.load_library()
     except Exception:

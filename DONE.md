@@ -651,6 +651,32 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **A Seestar mosaic forked a second "M 31" object beside M31**
+  *(2026-09-12, `fix/spaced-mosaic-target`)*. Reported from 0.3.0b5 after an M31
+  mosaic import; not a regression — the release build maps the name identically.
+  The Seestar writes a mosaic as `M 31_mosaic_sub/Light_mosaic_M 31_…` (OBJECT
+  header `M 31`), and the Seestar layout classifier keys the target on the
+  **folder** name, so `canonical_target("M 31_mosaic")` ran: `fits_object_name`'s
+  bare `^M (\d+)$` fold stopped at the suffix, `slug_for_designation` saw the
+  suffixed name, and the id/slug match never matches a decorated name → the folder
+  landed as `Images/M 31_mosaic`. On refresh `folder_to_slugs` slugified it to
+  `m-31-mosaic`, `_undecorated` gave `m-31` (not the reference key `m31`), and the
+  designation lookup was again asked only about the full name → no member, so
+  `add_captured_objects` promoted an off-catalog stub `[catalog.m-31]` (`id = "M 31"`,
+  no coordinates) and `sessions.jsonl` credited all 370 frames to it. Two fixes,
+  one blind spot: **strip the decoration before resolving the designation.**
+  `folder_to_slugs` now also asks `slug_for_designation(undecorated_name(folder))`
+  (right after the full-name lookup, before the slug-level strip, so a poisoned
+  Library holding `m-31` can't recapture the folder); `canonical_target` resolves
+  the undecorated base recursively (aliases, existing folders and designations all
+  apply) and re-appends the suffix, *after* the existing-folder match so a store
+  already keeping `Images/M 31_mosaic` keeps it and re-syncs dedup against it.
+  Cleanup is the existing `prune_superseded_stubs`: the stub is orphaned,
+  superseded by `m31` and un-annotated, so the next refresh drops it; nothing on
+  disk moves. Bonus: `C 34_mosaic` now files as `NGC 6960_mosaic`. Corpus gains
+  `M 31_mosaic_sub` in the import source; `verify` asserts it files under
+  `M31_mosaic`.
+
 - [x] **Crash (SIGSEGV) when a sync finished while an image viewer or menu was open**
   *(2026-07-31, `fix/refresh-during-modal`)*. Reported from 0.3.0b3 as "crashed while
   sitting in the background"; the crash report says otherwise — thread 0 died in

@@ -472,6 +472,7 @@ def _build_import_source(src: Path):
     _src_sub(src, "m13", *C("m13"), 10, "LP", 20, 2100)        # lowercase → M13
     _src_sub(src, "M65", *C("m66"), 10, "LP", 18, 2200)        # frames point at M66!
     _src_stack(src, "M57", *C("m57"), 60, 10, "LP", 2300)      # in-app stack
+    _src_mosaic_sub(src, "M 31", *C("m31"), 20, "IRCUT", 12, 2350)  # spaced mosaic → M31_mosaic
     _src_media(src, "Nightscape_photo", 2400)                  # media
     # a mixed dump: one header-bearing light classifies, the strays sweep to holding
     dump = src / "mixed_dump"
@@ -538,6 +539,20 @@ def _src_sub(src, obj, ra, dec, exp, filt, n, seed0):
     for i in range(n):
         when = start + timedelta(seconds=21 * i)
         _fits(d / f"Light_{obj}_{exp}s_{filt}_{when.strftime('%Y%m%d-%H%M%S')}.fit",
+              obj, ra, dec, exp, filt, when, seed0 + i)
+
+
+def _src_mosaic_sub(src, obj, ra, dec, exp, filt, n, seed0):
+    """A Seestar **mosaic** subs folder exactly as the device writes it: the
+    *spaced* designation plus the framing suffix (`M 31_mosaic_sub/`), files
+    `Light_mosaic_M 31_…`, OBJECT header "M 31". Must file under `M31_mosaic`
+    and count toward M31 — not fork a second "M 31" object (v0.3.0b5 regression)."""
+    d = src / f"{obj}_mosaic_sub"
+    d.mkdir(parents=True, exist_ok=True)
+    start = datetime(2026, 9, 12, 0, 21, 0)
+    for i in range(n):
+        when = start + timedelta(seconds=21 * i)
+        _fits(d / f"Light_mosaic_{obj}_{exp}.0s_{filt}_{when.strftime('%Y%m%d-%H%M%S')}.fit",
               obj, ra, dec, exp, filt, when, seed0 + i)
 
 
@@ -680,6 +695,13 @@ def verify(out: Path):
     print(f"  import source: {len(src_ops)} ops, kinds {sorted(src_kinds)}")
     assert "light" in src_kinds and "unassigned" in src_kinds, \
         "import source should both classify and sweep some files to holding"
+
+    # A Seestar mosaic named the device's way ("M 31_mosaic_sub") files under the
+    # canonical object, not a spaced twin of it (the v0.3.0b5 duplicate-M31 bug).
+    mosaic_ops = [o for o in src_ops if o.group == "M 31_mosaic_sub"]
+    assert mosaic_ops and {o.object for o in mosaic_ops} == {"M31_mosaic"}, \
+        "a spaced Seestar mosaic should file under M31_mosaic"
+    assert all(o.dest_rel.startswith("Images/M31_mosaic/lights/") for o in mosaic_ops)
 
     # Dwarf `dwarf`-layout sessions in the import source classify end-to-end.
     dwarf_ops = [o for o in src_ops if o.layout == "dwarf"]

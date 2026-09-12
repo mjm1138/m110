@@ -222,6 +222,53 @@ def test_decorated_capture_folder_resolves_to_its_object():
     assert scan_sessions.folder_to_slugs("M31 panel", ref) == ["m31"]
 
 
+def test_a_spaced_decorated_folder_resolves_through_the_designation_index():
+    """Live regression (v0.3.0b5): the Seestar names a mosaic with the *spaced*
+    designation — "M 31_mosaic", files "Light_mosaic_M 31_…". That slugifies to
+    "m-31-mosaic", whose undecorated form "m-31" is not the reference key "m31",
+    and the designation lookup only saw the full, suffixed name. The folder fell
+    through to "no catalog object" and was promoted as a second, coordinate-less
+    "M 31" beside the real M31 — with all 370 frames credited to the stub."""
+    from m110 import scan_sessions
+    ref = set(catalog.load_reference())
+    assert scan_sessions.folder_to_slugs("M 31_mosaic", ref) == ["m31"]
+    assert scan_sessions.folder_to_slugs("M 31 mosaic", ref) == ["m31"]
+    assert scan_sessions.folder_to_slugs("NGC 7000_mosaic", ref) == ["ngc-7000"]
+    # The same blind spot hid a non-primary designation behind the suffix.
+    assert scan_sessions.folder_to_slugs("C 34_mosaic", ref) == ["ngc-6960"]
+    # Once the stray stub exists it must not capture the folder (self-healing).
+    poisoned = ref | {"m-31", "m-31-mosaic"}
+    assert scan_sessions.folder_to_slugs("M 31_mosaic", poisoned) == ["m31"]
+
+
+def test_a_spaced_mosaic_credits_the_real_object_and_the_stub_is_pruned(tmp_path, monkeypatch):
+    """End to end on a replica of the affected store: `Images/M 31_mosaic` beside
+    a Library holding both the real M31 and the stray "M 31" stub. Refresh must
+    add nothing new, and the stub — now orphaned, superseded and un-annotated —
+    must go. Nothing on disk moves."""
+    from tests._helpers import add_library, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    (config.IMAGES_DIR / "M 31_mosaic" / "lights").mkdir(parents=True)
+    add_library(root, {
+        "m31": {"id": "M31", "name": "Andromeda Galaxy", "type": "galaxy",
+                "ra_deg": "10.6847", "dec_deg": "41.2688"},
+        "m-31": {"id": "M 31", "name": "", "type": "unknown"},
+    })
+    config._ensure_object_stubs(root, config.LIBRARY_TOML.parent)
+    assert catalog.add_captured_objects(resolve_coords=False) == []
+    assert catalog.prune_superseded_stubs() == ["m-31"]
+    lib = catalog.load_library()
+    assert "m31" in lib and "m-31" not in lib
+    assert (config.IMAGES_DIR / "M 31_mosaic" / "lights").is_dir()   # untouched
+
+    # …and a fresh store never creates the stub in the first place.
+    root2 = seed_root(tmp_path / "fresh", monkeypatch)
+    (config.IMAGES_DIR / "M 31_mosaic" / "lights").mkdir(parents=True)
+    add_library(root2, {})
+    assert catalog.add_captured_objects(resolve_coords=False) == ["m31"]
+    assert "m-31" not in catalog.load_library()
+
+
 def test_decoration_strip_beats_a_stale_pseudo_object():
     """The self-sustaining case. Once a stray "m42-mosaic" object exists in the
     Library, the whole-folder match would find it and keep finding it — so the
