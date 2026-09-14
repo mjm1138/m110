@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.6] - 2026-09-13
+
 ### Added
 - **You can now back up to cloud storage — S3, Backblaze B2, Cloudflare R2,
   Wasabi or anything else that speaks the S3 protocol.** In **Tools → Back up**,
