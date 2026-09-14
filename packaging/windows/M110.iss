@@ -1,11 +1,18 @@
 ; Inno Setup script for the M110 Windows installer.
 ; Build (after the PyInstaller onedir build) with:
-;   iscc /DMyAppVersion=0.1.0 packaging\windows\M110.iss
+;   iscc /DMyAppVersion=0.3.0 /DMyArtifactVersion=0.3.0-beta.6 packaging\windows\M110.iss
 ; build_windows.ps1 does this for you. Requires Inno Setup 6.3+.
+;
+; MyAppVersion is the numeric version (AppVersion metadata); MyArtifactVersion is
+; the full release version that names the installer file, so betas of one version
+; don't all ship as M110-0.3.0-setup.exe (see packaging/common/artifact_version.py).
 
 #define MyAppName "M110"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
+#endif
+#ifndef MyArtifactVersion
+  #define MyArtifactVersion MyAppVersion
 #endif
 #define MyAppPublisher "Michael Merideth"
 #define MyAppExeName "M110.exe"
@@ -27,7 +34,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\..\dist
-OutputBaseFilename=M110-{#MyAppVersion}-setup
+OutputBaseFilename=M110-{#MyArtifactVersion}-setup
 SetupIconFile=M110.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2

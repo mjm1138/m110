@@ -6,7 +6,8 @@ Build on a Linux host from the repo root:
     pyinstaller packaging/linux/M110.spec --noconfirm
 
 Produces `dist/M110/` (a self-contained directory: launcher + bundled Python/Qt).
-`build_appimage.sh` wraps that into `M110-<version>-x86_64.AppImage`.
+`build_appimage.sh` wraps that into `M110-<version>-x86_64.AppImage`, `<version>`
+being the full release version (`0.3.0-beta.6`; `packaging/common/artifact_version.py`).
 
 NOTE: PyInstaller is not a cross-compiler — a Linux build must run on Linux
 (ideally the oldest glibc you want to support, e.g. Ubuntu 22.04 LTS, so the

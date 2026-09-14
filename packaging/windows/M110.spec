@@ -6,7 +6,8 @@ Build on a Windows host from the repo root:
     pyinstaller packaging\windows\M110.spec --noconfirm
 
 Produces `dist\M110\` (launcher M110.exe + bundled Python/Qt). `M110.iss`
-(Inno Setup) wraps that into `M110-<version>-setup.exe`.
+(Inno Setup) wraps that into `M110-<version>-setup.exe`, `<version>` being the full
+release version (`0.3.0-beta.6`; `packaging/common/artifact_version.py`).
 
 NOTE: PyInstaller is not a cross-compiler — a Windows build must run on Windows.
 """

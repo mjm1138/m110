@@ -651,6 +651,27 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Every beta of a version shipped under the same download name**
+  *(2026-09-13, `fix/release-asset-names`)*. Found when the freshly cut 0.3.0b6
+  DMG arrived as `M110-0.3.0-4.dmg` — the browser's duplicate suffix, because
+  beta.4, beta.5 and beta.6 were all `M110-0.3.0.dmg` (same for the AppImage and
+  `-setup.exe`). Root cause: each builder named its artifact by the *numeric*
+  version — `make_dmg.sh` from `CFBundleShortVersionString`, `build_appimage.sh`
+  and `build_windows.ps1` from `Version(...).release` — because that is the only
+  form Apple's plist key and Inno's `AppVersion` accept, and the filename simply
+  reused it. Fix: `packaging/common/artifact_version.py` is the one function that
+  spells the artifact version (PEP 440 `0.3.0b6` → `0.3.0-beta.6`, i.e. the tag
+  without its `v`; a final release stays numeric). `make_dmg.sh` derives it from
+  the `.app`'s `CFBundleVersion` (the full PEP 440 string the spec already
+  stamps) so the DMG is named by what is *inside* it; the Linux and Windows
+  builders call the helper against the installed metadata; `M110.iss` gains a
+  `MyArtifactVersion` define for `OutputBaseFilename` while `AppVersion` stays
+  numeric; `tools/release.py` imports the same function (`V["artifact"]`, and the
+  tag is now literally `v` + artifact). `release.yml` needed nothing — its
+  upload globs are `M110-*`. `tests/test_release_naming.py` pins the spelling,
+  the release tool's derived forms, and source-scans every builder for the
+  artifact name so a future edit can't quietly regress one platform.
+
 - [x] **A Seestar mosaic forked a second "M 31" object beside M31**
   *(2026-09-12, `fix/spaced-mosaic-target`)*. Reported from 0.3.0b5 after an M31
   mosaic import; not a regression — the release build maps the name identically.

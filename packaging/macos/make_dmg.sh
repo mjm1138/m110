@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build a drag-to-Applications DMG from dist/M110.app → dist/M110-<version>.dmg.
+# Build a drag-to-Applications DMG from dist/M110.app → dist/M110-<version>.dmg,
+# where <version> is the full release version (0.3.0b6 → M110-0.3.0-beta.6.dmg).
 #
 # Run AFTER sign_notarize.sh so the .app inside carries its stapled ticket. The
 # DMG itself is then signed; for belt-and-suspenders you can also notarize the DMG
@@ -11,10 +12,18 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 APP="$ROOT/dist/M110.app"
 [[ -d "$APP" ]] || { echo "error: $APP not found — run build_app.sh first" >&2; exit 1; }
 
-# Marketing version from the .app's Info.plist (set by the spec).
+# Versions from the .app's Info.plist (set by the spec). The marketing version is
+# numeric only, as Apple requires; CFBundleVersion holds the full PEP 440 string.
+# The DMG is *named* by the full version (see packaging/common/artifact_version.py):
+# every beta of 0.3.0 used to ship as M110-0.3.0.dmg, so a Downloads folder holding
+# several became "M110-0.3.0-4.dmg" and nobody could tell which build was which.
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' \
   "$APP/Contents/Info.plist" 2>/dev/null || echo 0.0.0)"
-DMG="$ROOT/dist/M110-${VERSION}.dmg"
+FULL="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' \
+  "$APP/Contents/Info.plist" 2>/dev/null || echo "$VERSION")"
+ARTIFACT="$(python "$ROOT/packaging/common/artifact_version.py" "$FULL" 2>/dev/null \
+  || echo "$VERSION")"
+DMG="$ROOT/dist/M110-${ARTIFACT}.dmg"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -31,10 +40,10 @@ rm -f "$DMG"
 # the deprecated form still works, and a build machine on an older macOS should not
 # be a broken build. No `-ov` equivalent is needed; the rm above is the overwrite.
 if diskutil image create from --help >/dev/null 2>&1; then
-  diskutil image create from --format UDZO --volumeName "M110 ${VERSION}" \
+  diskutil image create from --format UDZO --volumeName "M110 ${ARTIFACT}" \
     "$STAGE" "$DMG" >/dev/null
 else
-  hdiutil create -volname "M110 ${VERSION}" -srcfolder "$STAGE" \
+  hdiutil create -volname "M110 ${ARTIFACT}" -srcfolder "$STAGE" \
     -ov -format UDZO "$DMG" >/dev/null
 fi
 

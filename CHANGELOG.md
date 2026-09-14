@@ -10,6 +10,15 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **Downloads are now named after the release they came from.** Every beta of
+  0.3.0 shipped as `M110-0.3.0.dmg` (and likewise the AppImage and the Windows
+  installer), so a Downloads folder holding more than one turned into
+  `M110-0.3.0-4.dmg` with no way to tell which build was which. From the next
+  release the files carry the full version — `M110-0.3.0-beta.7.dmg`,
+  `M110-0.3.0-beta.7-x86_64.AppImage`, `M110-0.3.0-beta.7-setup.exe`. A final
+  release keeps the plain `M110-0.3.0.dmg` form.
+
 ## [0.3.0-beta.6] - 2026-09-13
 
 ### Added

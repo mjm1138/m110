@@ -156,15 +156,20 @@ SIGN_IDENTITY="Developer ID Application: MICHAEL JAMES MERIDETH (8N7DP84NGU)" \
 ```
 
 This signs the app inside-out, notarizes + staples it, and produces
-`dist/M110-<version>.dmg`, where `<version>` is the `CFBundleShortVersionString`
-(the numeric marketing version, e.g. **`0.1.0`** → `dist/M110-0.1.0.dmg`).
+`dist/M110-<version>.dmg`, where `<version>` is the **full** release version — the
+tag without its `v` (e.g. **`0.3.0b6`** → `dist/M110-0.3.0-beta.6.dmg`; a final
+`0.3.0` → `dist/M110-0.3.0.dmg`). The `.app`'s `CFBundleShortVersionString` stays
+numeric (Apple requires it); only the download's name carries the full version, so
+several betas of one version don't collide in a Downloads folder
+(`packaging/common/artifact_version.py` is the one place that spelling lives, shared
+by all three platform builders and `tools/release.py`).
 
 **Optional but recommended — notarize + staple the DMG itself** (so the download is
 Gatekeeper-clean, not just the app inside):
 
 ```bash
-xcrun notarytool submit dist/M110-0.1.0.dmg --keychain-profile M110-notary --wait
-xcrun stapler staple dist/M110-0.1.0.dmg
+xcrun notarytool submit dist/M110-0.1.0-beta.1.dmg --keychain-profile M110-notary --wait
+xcrun stapler staple dist/M110-0.1.0-beta.1.dmg
 ```
 
 ### c. Upload the signed DMG to the Release
@@ -172,7 +177,7 @@ xcrun stapler staple dist/M110-0.1.0.dmg
 The Release already exists (CI created it in step **a**), so just attach the DMG:
 
 ```bash
-gh release upload v0.1.0-beta.1 dist/M110-0.1.0.dmg --clobber
+gh release upload v0.1.0-beta.1 dist/M110-0.1.0-beta.1.dmg --clobber
 ```
 
 - `--clobber` overwrites an existing asset of the same name (safe to re-run).
@@ -181,7 +186,7 @@ gh release upload v0.1.0-beta.1 dist/M110-0.1.0.dmg --clobber
 - **Fallback — if the Release doesn't exist yet** (e.g. you tagged macOS-only without
   the CI run), create it *with* the DMG:
   ```bash
-  gh release create v0.1.0-beta.1 dist/M110-0.1.0.dmg \
+  gh release create v0.1.0-beta.1 dist/M110-0.1.0-beta.1.dmg \
     --title "M110 v0.1.0-beta.1" --prerelease --notes "…"
   ```
 
