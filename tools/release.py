@@ -11,9 +11,12 @@ that have actually bitten:
 
 * **Three version spellings from one input.** PEP 440 `0.2.0b2` (pyproject +
   `__init__`), SemVer `v0.2.0-beta.2` (the git tag — what `release.yml` triggers
-  on), and numeric `0.2.0` (the DMG filename / `CFBundleShortVersionString`).
-  Deriving all three from one argument removes the class of typo where the tag and
-  the package disagree.
+  on), and numeric `0.2.0` (`CFBundleShortVersionString`). The download filenames
+  carry the tag form without the `v` — `M110-0.2.0-beta.2.dmg` — so the betas of
+  one version don't all ship as `M110-0.2.0.dmg` and pile up in a Downloads folder
+  as `M110-0.2.0-4.dmg` (`packaging/common/artifact_version.py` is the one place
+  that spelling lives; every platform builder calls it). Deriving them all from one
+  argument removes the class of typo where the tag and the package disagree.
 * **The 0.0.1 trap** — reinstall + assert `importlib.metadata` reports the new
   version *before* anything is built, so a stale editable install can't stamp the
   wrong number into the DMG and the About box.
@@ -46,6 +49,9 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "packaging" / "common"))
+from artifact_version import artifact_version  # noqa: E402  (shared with the builders)
+
 REMOTE = os.environ.get("M110_REMOTE", "github")
 WORKFLOW = "release.yml"
 
@@ -97,13 +103,10 @@ def versions(arg: str) -> dict:
         raise Fail(f"not a valid version: {arg!r} (try 0.2.0b2 or v0.2.0-beta.2)")
 
     pep440 = str(v)                       # canonical: 0.2.0b2
-    numeric = v.base_version              # 0.2.0 — the DMG / CFBundleShortVersionString
-    if v.pre:                             # ('b', 2) → v0.2.0-beta.2 (SemVer, for the tag)
-        kind = {"a": "alpha", "b": "beta", "rc": "rc"}[v.pre[0]]
-        tag = f"v{numeric}-{kind}.{v.pre[1]}"
-    else:
-        tag = f"v{numeric}"
-    return {"pep440": pep440, "numeric": numeric, "tag": tag,
+    numeric = v.base_version              # 0.2.0 — CFBundleShortVersionString / AppVersion
+    artifact = artifact_version(pep440)   # 0.2.0-beta.2 — names the DMG (and every download)
+    tag = f"v{artifact}"                  # v0.2.0-beta.2 (SemVer, for the tag)
+    return {"pep440": pep440, "numeric": numeric, "artifact": artifact, "tag": tag,
             "prerelease": bool(v.pre or v.dev)}
 
 
@@ -165,7 +168,7 @@ def preflight(V: dict, args) -> None:
 
 
 def bump(V: dict, args) -> None:
-    say(f"Bumping to {V['pep440']}  (tag {V['tag']}, DMG M110-{V['numeric']}.dmg)")
+    say(f"Bumping to {V['pep440']}  (tag {V['tag']}, DMG M110-{V['artifact']}.dmg)")
     for path, pattern, repl in (
         (ROOT / "pyproject.toml", r'^version = ".*"',
          f'version = "{V["pep440"]}"'),
@@ -282,7 +285,7 @@ def macos(V: dict, args) -> None:
         say("Skipping the macOS DMG (--skip-macos)")
         return
     say("Building + signing + notarizing the macOS DMG (several minutes)")
-    dmg = ROOT / "dist" / f"M110-{V['numeric']}.dmg"
+    dmg = ROOT / "dist" / f"M110-{V['artifact']}.dmg"
     run(["./packaging/macos/build_release.sh"], dry=args.dry_run)
     if not args.dry_run and not dmg.is_file():
         raise Fail(f"expected {dmg} — build_release.sh did not produce it")
@@ -302,7 +305,7 @@ def upload(V: dict, args) -> None:
     if args.skip_macos:
         say("Skipping the DMG upload (--skip-macos)")
         return
-    dmg = ROOT / "dist" / f"M110-{V['numeric']}.dmg"
+    dmg = ROOT / "dist" / f"M110-{V['artifact']}.dmg"
     say(f"Uploading {dmg.name} to the {V['tag']} Release")
     run(["gh", "release", "upload", V["tag"], str(dmg), "--clobber"], dry=args.dry_run)
     ok("uploaded")
@@ -386,7 +389,7 @@ def main() -> None:
            "wait": wait, "macos": macos, "upload": upload, "verify": verify}
 
     print(f"\n\033[1mM110 release {V['pep440']}\033[0m — tag {V['tag']}, "
-          f"DMG M110-{V['numeric']}.dmg"
+          f"DMG M110-{V['artifact']}.dmg"
           f"{'  [DRY RUN]' if args.dry_run else ''}\n")
     for name in PHASES[start:]:
         fns[name](V, args)

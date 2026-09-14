@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build M110-<version>-<arch>.AppImage on a Linux host.
+# Build M110-<version>-<arch>.AppImage on a Linux host, where <version> is the
+# full release version (0.3.0b6 → M110-0.3.0-beta.6-x86_64.AppImage).
 #
 #   pip install -e ".[build]"
 #   ./packaging/linux/build_appimage.sh
@@ -35,6 +36,9 @@ MSG
 fi
 
 VERSION="$(python -c 'from importlib.metadata import version; from packaging.version import Version; print(".".join(map(str, Version(version("m110")).release)))' 2>/dev/null || echo 0.0.0)"
+# The artifact is named by the *full* version so betas don't collide (see
+# packaging/common/artifact_version.py); the numeric VERSION stays for metadata.
+ARTIFACT="$(python "$ROOT/packaging/common/artifact_version.py" 2>/dev/null || echo "$VERSION")"
 
 echo "==> PyInstaller onedir build"
 rm -rf build/M110 dist/M110
@@ -79,7 +83,7 @@ chmod +x "$APPDIR/AppRun"
 
 echo "==> appimagetool"
 mkdir -p dist
-OUT="$ROOT/dist/M110-${VERSION}-${ARCH}.AppImage"
+OUT="$ROOT/dist/M110-${ARTIFACT}-${ARCH}.AppImage"
 rm -f "$OUT"
 ARCH="$ARCH" "$APPIMAGETOOL" "$APPDIR" "$OUT"
 

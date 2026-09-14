@@ -30,7 +30,7 @@ Artifacts land in `dist/` (git-ignored).
 | `make_icns.sh` | `app-icon@1024.png` → `M110.icns` (via `sips` + `iconutil`). |
 | `build_app.sh` | Runs PyInstaller → `dist/M110.app` (unsigned). |
 | `sign_notarize.sh` | Inside-out Developer-ID signing, `notarytool` submit, staple. |
-| `make_dmg.sh` | `dist/M110.app` → `dist/M110-<version>.dmg`. |
+| `make_dmg.sh` | `dist/M110.app` → `dist/M110-<version>.dmg` (`<version>` = the full release version, `0.3.0-beta.6`; see `packaging/common/artifact_version.py`). |
 | `build_release.sh` | Orchestrates all of the above. |
 
 ## One-time setup on the build Mac

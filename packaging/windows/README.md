@@ -11,7 +11,8 @@ pip install -e ".[build]"
 powershell -ExecutionPolicy Bypass -File packaging\windows\build_windows.ps1
 ```
 
-Produces `dist\M110-<version>-setup.exe`.
+Produces `dist\M110-<version>-setup.exe` (`<version>` = the full release version,
+`0.3.0-beta.6`, so betas don't collide; see `packaging/common/artifact_version.py`).
 
 ## Pieces
 
