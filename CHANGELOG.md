@@ -11,6 +11,12 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Changed
+- **An object's action buttons now sit below the picture and notes, and wrap.**
+  Import finished work, Process in Siril, Reveal working folder, Stack in
+  StackingWizard and Send to AstroWizard used to form one long row above the
+  hero image. With every workflow available the row was wider than the pane, so
+  the whole object view grew a horizontal scrollbar. The buttons now come after
+  the hero and your notes, and flow onto as many lines as the pane's width needs.
 - **Downloads are now named after the release they came from.** Every beta of
   0.3.0 shipped as `M110-0.3.0.dmg` (and likewise the AppImage and the Windows
   installer), so a Downloads folder holding more than one turned into

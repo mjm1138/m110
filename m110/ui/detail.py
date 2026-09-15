@@ -24,7 +24,7 @@ from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
     process_in_siril, stack_in_stackingwizard, open_in_default,
-    reveal_in_manager, defer, connect_context_menu,
+    reveal_in_manager, defer, connect_context_menu, FlowLayout,
 )
 
 
@@ -263,50 +263,6 @@ class DetailPane(QScrollArea):
             stat_row.addWidget(stats)
             stat_row.addStretch(1)
             self._lay.addLayout(stat_row)
-            # Processing-prep happens automatically (per the Preferences workflow
-            # setting), so no manual "Prepare" button — offer import when a
-            # sandbox has finished output to bring back, and a Reveal that opens
-            # the sandbox so Siril's working directory is set to the right place.
-            btn_row = QHBoxLayout()
-            if self._has_finished_work(slug):
-                imp_btn = QPushButton("Import finished work…")
-                imp_btn.setToolTip("Bring your processed renders/stack into the "
-                                   "Library and tidy the working folder")
-                imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
-                btn_row.addWidget(imp_btn)
-            if self._has_working_folder(slug):
-                proc_btn = QPushButton("Process in Siril")
-                proc_btn.setToolTip("Launch Siril with this object's working "
-                                    "folder set as the working directory")
-                proc_btn.clicked.connect(
-                    lambda _=False, s=slug: process_in_siril(self, s))
-                btn_row.addWidget(proc_btn)
-                rev_btn = QPushButton("Reveal working folder")
-                rev_btn.setToolTip("Open this object's Siril working folder "
-                                   "(Images/<target>/siril/). Point Siril's "
-                                   "working directory here — not the folder above it.")
-                rev_btn.clicked.connect(
-                    lambda _=False, s=slug: self._reveal_working_folder(s))
-                btn_row.addWidget(rev_btn)
-            # Gated on having a *stack*, not a working folder: a device stack or
-            # an imported one is just as finishable as a fresh Siril result, and
-            # a target can have those with no sandbox at all.
-            if can_hand_off(slug):
-                aw_btn = QPushButton("Send to AstroWizard…")
-                aw_btn.setToolTip("Link one of this object's stacks into its "
-                                  "AstroWizard folder, ready to open")
-                aw_btn.clicked.connect(
-                    lambda _=False, s=slug: self._send_to_astrowizard(s))
-                sw_btn = QPushButton("Stack in StackingWizard…")
-                sw_btn.setToolTip("Open StackingWizard on this object's frames, "
-                                  "ready to stack and hand to AstroWizard")
-                sw_btn.clicked.connect(
-                    lambda _=False, s=slug: stack_in_stackingwizard(self, s))
-                btn_row.addWidget(sw_btn)
-                btn_row.addWidget(aw_btn)
-            if btn_row.count():
-                btn_row.addStretch(1)
-                self._lay.addLayout(btn_row)
         else:
             self._lay.addWidget(QLabel("<i>not captured</i>"))
 
@@ -347,6 +303,9 @@ class DetailPane(QScrollArea):
             empty.setProperty("muted", True)
             self._lay.addWidget(empty)
 
+        if captured:
+            self._add_action_row(slug)
+
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
             # Per-image state = the tier (finished/ folder → "finished", stacks /
@@ -375,6 +334,64 @@ class DetailPane(QScrollArea):
         self._add_metadata_section(slug, e, t)
 
         self._lay.addStretch(1)
+
+
+    def _add_action_row(self, slug: str):
+        """The object's processing actions, as one wrapping row.
+
+        Sits *below* the hero and notes: the pane opens on the picture and the
+        write-up, and the tool buttons are the next step, not the headline. A
+        `FlowLayout` rather than a `QHBoxLayout` — with every workflow available
+        this is five buttons, and a horizontal box's minimum width is the sum of
+        theirs, which in a `QScrollArea` meant the whole pane grew a horizontal
+        scrollbar in any window narrower than the row. The flow row wraps instead.
+
+        Processing-prep happens automatically (per the Preferences workflow
+        setting), so there is no manual "Prepare" button — offer import when a
+        sandbox has finished output to bring back, and a Reveal that opens the
+        sandbox so Siril's working directory is set to the right place."""
+        btn_row = FlowLayout(hspacing=theme.tokens.SPACE["sm"],
+                             vspacing=theme.tokens.SPACE["sm"])
+        if self._has_finished_work(slug):
+            imp_btn = QPushButton("Import finished work…")
+            imp_btn.setToolTip("Bring your processed renders/stack into the "
+                               "Library and tidy the working folder")
+            imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
+            btn_row.addWidget(imp_btn)
+        if self._has_working_folder(slug):
+            proc_btn = QPushButton("Process in Siril")
+            proc_btn.setToolTip("Launch Siril with this object's working "
+                                "folder set as the working directory")
+            proc_btn.clicked.connect(
+                lambda _=False, s=slug: process_in_siril(self, s))
+            btn_row.addWidget(proc_btn)
+            rev_btn = QPushButton("Reveal working folder")
+            rev_btn.setToolTip("Open this object's Siril working folder "
+                               "(Images/<target>/siril/). Point Siril's "
+                               "working directory here — not the folder above it.")
+            rev_btn.clicked.connect(
+                lambda _=False, s=slug: self._reveal_working_folder(s))
+            btn_row.addWidget(rev_btn)
+        # Gated on having a *stack*, not a working folder: a device stack or
+        # an imported one is just as finishable as a fresh Siril result, and
+        # a target can have those with no sandbox at all.
+        if can_hand_off(slug):
+            aw_btn = QPushButton("Send to AstroWizard…")
+            aw_btn.setToolTip("Link one of this object's stacks into its "
+                              "AstroWizard folder, ready to open")
+            aw_btn.clicked.connect(
+                lambda _=False, s=slug: self._send_to_astrowizard(s))
+            sw_btn = QPushButton("Stack in StackingWizard…")
+            sw_btn.setToolTip("Open StackingWizard on this object's frames, "
+                              "ready to stack and hand to AstroWizard")
+            sw_btn.clicked.connect(
+                lambda _=False, s=slug: stack_in_stackingwizard(self, s))
+            btn_row.addWidget(sw_btn)
+            btn_row.addWidget(aw_btn)
+        if btn_row.count():
+            self._lay.addLayout(btn_row)
+        else:
+            btn_row.deleteLater()
 
     # ---- enrichment sections (Phase 3) ----
     def _section_table(self, title: str, headers: list[str], rows: list[list[str]]):

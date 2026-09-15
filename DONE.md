@@ -651,6 +651,21 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Detail-pane action row forced a horizontal scrollbar** *(2026-09-15,
+  `fix/detail-actions-below-hero`)*. The five processing buttons were a
+  `QHBoxLayout` above the hero; a horizontal box's minimum width is the sum of
+  its items, and `DetailPane` is a `QScrollArea` with `widgetResizable`, so the
+  moment the pane was narrower than the row the *content* widget stopped
+  shrinking and the whole pane scrolled sideways. Fix: `widgets.FlowLayout` (the
+  classic Qt flow layout — `heightForWidth`, minimum = widest single item,
+  `takeAt` hands items back so `_clear_layout` still frees them) and the row
+  moved to `DetailPane._add_action_row`, placed after the hero and Object Notes
+  (the picture and write-up lead; the tools are the next step). Verified
+  offscreen at 420 / 640 / 900 px: no horizontal range at any of them, content
+  minimum width 372 px, the five buttons on three lines at 420 and two at 640. `tests/test_ui_widgets.py` pins
+  the wrap/minimum/take-back contract and `tests/test_ui_detail.py` the
+  hero → notes → actions order and button set.
+
 - [x] **Every beta of a version shipped under the same download name**
   *(2026-09-13, `fix/release-asset-names`)*. Found when the freshly cut 0.3.0b6
   DMG arrived as `M110-0.3.0-4.dmg` — the browser's duplicate suffix, because
