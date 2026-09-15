@@ -8,10 +8,11 @@ was clicked.
 import pytest
 
 pytest.importorskip("PySide6")
-from PySide6.QtWidgets import QPushButton  # noqa: E402
+from PySide6.QtWidgets import QLabel, QPushButton  # noqa: E402
 
 from m110 import config  # noqa: E402
 from tests._helpers import seed_root  # noqa: E402
+from m110.ui.widgets import targets_for_slug  # noqa: E402
 
 
 def _count(widget, text):
@@ -272,5 +273,59 @@ def test_gallery_set_hero_writes_and_rerenders(tmp_path, monkeypatch, qapp):
         assert objects.read_journal(slug)[0]["hero"] == work_name
         assert objects.hero_path(slug) is not None       # hero re-rendered
         assert fired == [slug]                            # shell told to reload thumbs
+    finally:
+        d.deleteLater(); qapp.processEvents()
+
+
+def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, qapp):
+    """The processing actions (Import / Process / Reveal / Send / Stack) used to be
+    a `QHBoxLayout` *above* the hero, whose minimum width — the sum of five
+    buttons — forced the pane into a horizontal scrollbar. They now live below the
+    hero and the notes, in a wrapping `FlowLayout`."""
+    from PySide6.QtWidgets import QPushButton
+    from m110.ui.detail import DetailPane
+    from m110.ui.widgets import FlowLayout
+    from m110.ui.image_viewer import ScalableImage
+    import numpy as np
+    from astropy.io import fits
+    slug, e, t = _seed_object_with_images(tmp_path, monkeypatch)
+    # A Siril sandbox with a finished render in it → Import/Process/Reveal; a
+    # FITS master in stacks/ → Send/Stack. Every button the pane can show.
+    for tid in targets_for_slug(slug):
+        sb = config.siril_dir(tid); sb.mkdir(parents=True, exist_ok=True)
+        (sb / "M_processed.png").write_bytes(b"render")
+        st = config.stacks_dir(tid); st.mkdir(parents=True, exist_ok=True)
+        fits.PrimaryHDU(np.zeros((4, 4), dtype="float32")).writeto(st / "M_stack.fit")
+    d = DetailPane()
+    try:
+        d.show_object(slug, e, t)
+        lay = d._lay
+        kinds = []
+        for i in range(lay.count()):
+            it = lay.itemAt(i)
+            if it.widget() is not None:
+                w = it.widget()
+                kinds.append("hero" if isinstance(w, ScalableImage)
+                             else "notes" if w.__class__.__name__ == "QTextBrowser"
+                             or (isinstance(w, QLabel) and "No notes" in w.text())
+                             else None)
+            elif isinstance(it.layout(), FlowLayout):
+                kinds.append("actions")
+        kinds = [k for k in kinds if k]
+        assert kinds.index("hero") < kinds.index("notes") < kinds.index("actions")
+        flow = next(lay.itemAt(i).layout() for i in range(lay.count())
+                    if isinstance(lay.itemAt(i).layout(), FlowLayout))
+        labels = [flow.itemAt(i).widget().text() for i in range(flow.count())]
+        assert labels == ["Import finished work…", "Process in Siril",
+                          "Reveal working folder", "Stack in StackingWizard…",
+                          "Send to AstroWizard…"]
+        assert all(isinstance(flow.itemAt(i).widget(), QPushButton)
+                   for i in range(flow.count()))
+        # The row's minimum is one button wide, so a narrow pane wraps it rather
+        # than growing a horizontal scrollbar for the whole pane.
+        widest = max(flow.itemAt(i).widget().minimumSizeHint().width()
+                     for i in range(flow.count()))
+        assert flow.minimumSize().width() == widest
+        assert flow.heightForWidth(widest + 8) > flow.heightForWidth(4000)
     finally:
         d.deleteLater(); qapp.processEvents()

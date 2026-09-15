@@ -3,7 +3,7 @@ import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QStyleOptionViewItem, QTableWidget, QTableWidgetItem,
+    QStyleOptionViewItem, QTableWidget, QTableWidgetItem, QWidget,
 )
 
 from m110.ui import theme
@@ -166,3 +166,48 @@ def test_no_widget_label_eats_an_ampersand_as_a_mnemonic():
     assert not offenders, (
         "these labels contain a single '&', which Qt eats as a mnemonic — "
         "write '&&' for a literal ampersand:\n  " + "\n  ".join(offenders))
+
+
+# ── FlowLayout ───────────────────────────────────────────────────────────────
+
+def _flow_of_buttons(n=5):
+    from PySide6.QtWidgets import QPushButton
+    from m110.ui.widgets import FlowLayout
+    host = QWidget()
+    flow = FlowLayout(host, hspacing=8, vspacing=8)
+    btns = [QPushButton(f"Action number {i}…") for i in range(n)]
+    for b in btns:
+        flow.addWidget(b)
+    return host, flow, btns
+
+
+def test_flow_layout_wraps_instead_of_widening(qapp):
+    """The whole point: a row that doesn't fit wraps to more lines, and its
+    *minimum* width is one button — not the sum — so a scroll area never has to
+    grow a horizontal scrollbar for it."""
+    host, flow, btns = _flow_of_buttons()
+    row_w = sum(b.sizeHint().width() for b in btns) + 8 * (len(btns) - 1)
+    one_line = flow.heightForWidth(row_w + 10)
+    assert one_line == max(b.sizeHint().height() for b in btns)
+    narrow = flow.heightForWidth(btns[0].sizeHint().width() + 4)
+    assert narrow >= len(btns) * one_line + 8 * (len(btns) - 1)   # one per line
+    assert flow.hasHeightForWidth()
+    assert flow.minimumSize().width() == max(b.minimumSizeHint().width() for b in btns)
+    # Geometry really is applied: at a narrow width the buttons stack vertically.
+    host.resize(btns[0].sizeHint().width() + 4, narrow)
+    flow.setGeometry(host.rect())
+    ys = [b.geometry().y() for b in btns]
+    assert ys == sorted(ys) and len(set(ys)) == len(btns)
+    host.deleteLater(); qapp.processEvents()
+
+
+def test_flow_layout_take_at_hands_items_back(qapp):
+    """`DetailPane._clear_layout` empties layouts with `takeAt(0)` — a layout
+    that didn't hand its items back would leak every button on each re-render."""
+    host, flow, btns = _flow_of_buttons(3)
+    taken = []
+    while flow.count():
+        taken.append(flow.takeAt(0).widget())
+    assert taken == btns
+    assert flow.itemAt(0) is None and flow.takeAt(0) is None
+    host.deleteLater(); qapp.processEvents()
