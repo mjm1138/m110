@@ -386,9 +386,12 @@ def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
     for target in targets:
         if should_cancel and should_cancel():
             break
-        if not _lights(target):
-            continue
+        # Existence first: it is one stat, and on the refresh-time backfill nearly
+        # every target already has its sandbox — listing its lights just to skip
+        # it re-walked the whole store on every sync.
         if only_missing and config.siril_dir(target).exists():
+            continue
+        if not _lights(target):
             continue
         if has_unimported_output(target):
             skipped.append(target)

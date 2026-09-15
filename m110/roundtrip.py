@@ -199,6 +199,44 @@ ROOT_SKIP_DIRS = {
 } | set(config.SANDBOX_DIRNAMES)
 
 
+def _walk_files(base: Path, skip_dirs):
+    """Yield ``(path, dir_parts)`` for every regular file under `base`, never
+    descending into a directory whose *name* is in `skip_dirs` — `dir_parts` is
+    the file's ancestor chain relative to `base`, what `tier_of` reads.
+
+    Pruning at the directory is what makes this cheap. The skipped directories
+    are exactly the big ones: a sandbox's ``lights/`` is a hardlink of every raw
+    sub, and the object dir holds ``lights/`` plus one such tree per sandbox. An
+    ``rglob("*")`` that filtered *afterwards* still listed and stat'ed all of them
+    — three copies of the whole capture per target, per workflow, per caller — and
+    ``has_unimported_output`` is asked for every target on every refresh, so the
+    sync grew with the collection until it took ~20 s on a 42k-sub store where
+    the output it was looking for amounted to a few hundred files.
+
+    Same answer as the walk it replaces: a file is skipped iff *any* ancestor
+    directory name is in `skip_dirs`, and symlinked directories are not followed.
+    """
+    skip = set(skip_dirs)
+    stack = [(base, ())]
+    while stack:
+        d, parts = stack.pop()
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for ent in entries:
+            try:
+                if ent.is_dir(follow_symlinks=False):
+                    if ent.name not in skip:
+                        stack.append((Path(ent.path), parts + (ent.name,)))
+                    continue
+                if not ent.is_file():
+                    continue
+            except OSError:
+                continue
+            yield Path(ent.path), parts
+
+
 def sandbox_outputs(target: str, sandbox: Sandbox):
     """Yield (path, kind, dest) for finished outputs inside the workflow's own
     sandbox, skipping the subdirs it declared as never holding fresh output. A
@@ -206,12 +244,7 @@ def sandbox_outputs(target: str, sandbox: Sandbox):
     base = sandbox.dir(target)
     if not base.is_dir():
         return
-    for p in base.rglob("*"):
-        if not p.is_file():
-            continue
-        dir_parts = p.relative_to(base).parts[:-1]
-        if sandbox.skip_dirs & set(dir_parts):
-            continue
+    for p, dir_parts in _walk_files(base, sandbox.skip_dirs):
         if sandbox.skip_file and sandbox.skip_file(p):
             continue
         c = classify(p, target, tier_of(dir_parts), sandbox.loose_fits_kind)
@@ -227,12 +260,7 @@ def root_outputs(target: str):
     base = config.target_dir(target)
     if not base.is_dir():
         return
-    for p in base.rglob("*"):
-        if not p.is_file():
-            continue
-        dir_parts = p.relative_to(base).parts[:-1]
-        if ROOT_SKIP_DIRS & set(dir_parts):
-            continue
+    for p, dir_parts in _walk_files(base, ROOT_SKIP_DIRS):
         c = classify(p, target, tier_of(dir_parts))
         if c:
             yield p, c[0], c[1]
