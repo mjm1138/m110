@@ -95,6 +95,20 @@ hour looks like progress rather than a hang, and the full Siril log streams to
 `siril_stack.log` in the working folder. The result lands in the sandbox, where
 **Import finished work** already looks for it.
 
+Want to hear from it more often? Add `-v`:
+
+| Flag | What you see while it runs |
+|---|---|
+| *(none)* | the current stage, every 60 seconds |
+| `-v` | the current stage, every 30 seconds |
+| `-vv` | the current stage, every 10 seconds |
+| `-vvv` | every 10 seconds, plus everything Siril prints, as it prints it |
+
+`-vvv` is the same text that goes to `siril_stack.log`, so nothing is lost by
+leaving it off — it's there for when you'd rather watch than `tail` a log. The
+`[mm:ss]` stage lines still appear in the stream, so you can find where each step
+began. For an exact interval, `--heartbeat 120` overrides the one `-v` picks.
+
 Useful flags: `--only-exposure 30` (stack one exposure when a set mixes them),
 `--exclude-night 2026-06-10`, `--restack` (retry stack settings without repeating
 registration), `--handoff` (see below). `m110-stack --help` lists the rest.

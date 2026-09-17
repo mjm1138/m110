@@ -1270,8 +1270,25 @@ def format_report(s: Survey, p: Proposal, siril: str, working: Path,
     return "\n".join(out)
 
 
+# Seconds between heartbeat lines at each `-v` count: none, -v, -vv. One step
+# further (-vvv) keeps the fastest heartbeat and streams Siril's output as well.
+VERBOSITY_HEARTBEATS = (60, 30, 10)
+
+
+def resolve_verbosity(verbose: int, heartbeat: int | None) -> tuple[int, bool]:
+    """(heartbeat seconds, stream Siril's output) for a `-v` count.
+
+    An explicit `--heartbeat` wins over the level's interval — it is the precise
+    control, `-v` the memorable one — but never changes whether output streams.
+    """
+    level = max(0, verbose)
+    seconds = (heartbeat if heartbeat is not None
+               else VERBOSITY_HEARTBEATS[min(level, len(VERBOSITY_HEARTBEATS) - 1)])
+    return seconds, level >= len(VERBOSITY_HEARTBEATS)
+
+
 def run_siril(siril: str, working: Path, ssf: str, log_path: Path,
-              heartbeat: int, on_line=None) -> tuple[int, list[str]]:
+              heartbeat: int, on_line=None, on_raw=None) -> tuple[int, list[str]]:
     """Run the script, streaming progress instead of hoarding it until the end.
 
     Siril's stdout goes to the log line by line as it arrives, and a heartbeat
@@ -1282,12 +1299,36 @@ def run_siril(siril: str, working: Path, ssf: str, log_path: Path,
     `on_line(str)` receives each heartbeat line. The CLI passes `print`; leaving
     it None makes this silent, which is what lets a caller with its own progress
     surface (or a test) drive the same code.
+
+    `on_raw(str)` receives every line Siril prints, as it is logged (`-vvv`). The
+    heartbeat keeps running beside it: full output is no help through a silence,
+    and the silences are the reason the heartbeat exists. A stage change is
+    announced from the reader, ahead of that stage's own output, so the
+    `[mm:ss]` markers stay where the phases actually begin in the scroll.
     """
     import threading
     import time
 
     t0 = time.monotonic()
     state = {"stage": "starting", "progress": "", "stage_at": t0, "errors": []}
+    # What the last heartbeat announced and when. Two threads emit once output
+    # streams, so every emission — and the stage it reads — goes under the lock.
+    beat = {"stage": None, "at": 0.0}
+    lock = threading.Lock()
+
+    def stamp(t):
+        return f"{int(t) // 60:3d}:{int(t) % 60:02d}"
+
+    def announce(now):                          # caller holds `lock`
+        changed = state["stage"] != beat["stage"]
+        line = f"  [{stamp(now - t0)}] {state['stage']}"
+        if not changed:
+            line += f"  ({stamp(now - state['stage_at'])} in this step)"
+        if state["progress"]:
+            line += f"  |  {state['progress'][:60]}"
+        if on_line:
+            on_line(line)
+        beat["stage"], beat["at"] = state["stage"], now
 
     # `_child_env` is not optional: a frozen M110 exports QT_PLUGIN_PATH,
     # QML*_IMPORT_PATH and _MEI* into its children, and Siril's own bundled
@@ -1307,40 +1348,38 @@ def run_siril(siril: str, working: Path, ssf: str, log_path: Path,
                 log.write(line)
                 s = line.rstrip()
                 low = s.lower()
-                if "running command:" in low:
-                    state["stage"] = s.split(":")[-1].strip()
-                    state["stage_at"] = time.monotonic()
-                    state["progress"] = ""
-                elif s.startswith("progress:"):
-                    state["progress"] = s[len("progress:"):].strip()
-                elif (any(k in low for k in ("error", "failed", "not found"))
-                      and "python" not in low):
-                    state["errors"].append(s)
+                with lock:
+                    if "running command:" in low:
+                        state["stage"] = s.split(":")[-1].strip()
+                        state["stage_at"] = time.monotonic()
+                        state["progress"] = ""
+                        if on_raw:
+                            announce(state["stage_at"])
+                    elif s.startswith("progress:"):
+                        state["progress"] = s[len("progress:"):].strip()
+                    elif (any(k in low for k in ("error", "failed", "not found"))
+                          and "python" not in low):
+                        state["errors"].append(s)
+                    if on_raw:
+                        on_raw(s)
 
     proc.stdin.write(ssf)
     proc.stdin.close()
-    threading.Thread(target=reader, daemon=True).start()
+    reading = threading.Thread(target=reader, daemon=True)
+    reading.start()
 
-    def stamp(t):
-        return f"{int(t) // 60:3d}:{int(t) % 60:02d}"
-
-    last_stage, last_beat = None, 0.0
     while proc.poll() is None:
         time.sleep(1)
         now = time.monotonic()
-        changed = state["stage"] != last_stage
-        if changed or now - last_beat >= heartbeat:
-            el = now - t0
-            line = f"  [{stamp(el)}] {state['stage']}"
-            if not changed:
-                line += f"  ({stamp(now - state['stage_at'])} in this step)"
-            if state["progress"]:
-                line += f"  |  {state['progress'][:60]}"
-            if on_line:
-                on_line(line)
-            last_stage, last_beat = state["stage"], now
+        with lock:
+            if state["stage"] != beat["stage"] or now - beat["at"] >= heartbeat:
+                announce(now)
 
     proc.wait()
+    # Siril has exited, so its pipe is at EOF and this returns at once. Without
+    # it the tail of a streamed log could land after "done" — or be lost when
+    # the caller reads the log file the instant this returns.
+    reading.join(timeout=5)
     if on_line:
         on_line(f"  [{stamp(time.monotonic() - t0)}] done")
     return proc.returncode, state["errors"]
@@ -1757,9 +1796,14 @@ def main() -> int:
     ap.add_argument("--keep-process", action="store_true",
                     help="keep the process/ scratch dir; by default it is removed "
                          "after a successful stack (tens of GB on a mosaic)")
-    ap.add_argument("--heartbeat", type=int, default=60, metavar="SEC",
-                    help="how often to print the current stage while running "
-                         "(default 60s; steps can be silent for hours)")
+    ap.add_argument("-v", "--verbose", action="count", default=0,
+                    help="say more while running. Default: the current stage "
+                         "every 60s (steps can be silent for hours). -v: every "
+                         "30s. -vv: every 10s. -vvv: every 10s, plus every line "
+                         "Siril prints, live — the same text the log gets")
+    ap.add_argument("--heartbeat", type=int, default=None, metavar="SEC",
+                    help="print the current stage exactly this often, overriding "
+                         "the interval -v picks (-vvv still streams Siril's output)")
     ap.add_argument("--handoff", metavar="TOOL", nargs="?", const="astrowizard",
                     help="after a successful stack, hardlink it into that "
                          "workflow's sandbox (Images/<target>/<tool>/) with a "
@@ -1839,8 +1883,13 @@ def main() -> int:
 
     # ---- execute ---------------------------------------------------------
     log_path = working / "siril_stack.log"
+    heartbeat, stream = resolve_verbosity(a.verbose, a.heartbeat)
+    on_raw = _printer if stream else None
     print(f"\nRunning Siril in {working}")
-    print(f"Live log: {log_path}\n", flush=True)
+    print(f"Live log: {log_path}")
+    print(f"Reporting the current stage every {heartbeat}s"
+          + (", with Siril's full output" if stream
+             else " (-v, -vv, -vvv for more)") + ".\n", flush=True)
 
     reg_seq = seq_names(lights.name, p)[1]
     errors: list[str] = []
@@ -1862,8 +1911,8 @@ def main() -> int:
                   flush=True)
 
         # ---- phase 1: solve ----------------------------------------------
-        rc, errors = run_siril(siril, working, ssf_solve, log_path, a.heartbeat,
-                               on_line=_printer)
+        rc, errors = run_siril(siril, working, ssf_solve, log_path, heartbeat,
+                               on_line=_printer, on_raw=on_raw)
         outcome = parse_solve_log(
             log_path.read_text(encoding="utf-8", errors="replace")
             if log_path.exists() else "")
@@ -1891,7 +1940,8 @@ def main() -> int:
         # Its own Siril invocation: phase 1 commits the registration to the .seq
         # before it aborts, so this reads it back regardless of how phase 1 ended.
         rc, errs_reg = run_siril(siril, working, ssf_reg, log_path.with_name(
-            "siril_stack_register.log"), a.heartbeat, on_line=_printer)
+            "siril_stack_register.log"), heartbeat, on_line=_printer,
+            on_raw=on_raw)
         errors += errs_reg
         if rc != 0:
             print(f"\nRegistration failed (exit {rc}). "
@@ -1907,7 +1957,7 @@ def main() -> int:
         ssf_stack = build_ssf_stack(lights.name, p, drop)
 
     rc, errs2 = run_siril(siril, working, ssf_stack, log_path.with_name(
-        "siril_stack_stack.log"), a.heartbeat, on_line=_printer)
+        "siril_stack_stack.log"), heartbeat, on_line=_printer, on_raw=on_raw)
     errors += errs2
 
     for e in errors[:10]:

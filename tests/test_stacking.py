@@ -43,6 +43,8 @@ from m110.stacking import (
     reconcile,
     rejection_for,
     resolve_layout,
+    resolve_verbosity,
+    run_siril,
     select_frames,
     seq_names,
     summarize,
@@ -620,7 +622,8 @@ def test_a_stopped_run_says_how_to_stack_the_frames_that_did_solve():
     assert "--min-solved 50" in text
 
 
-def _drive_main(tmp_path, monkeypatch, solve_rc, solve_log, extra_argv=()):
+def _drive_main(tmp_path, monkeypatch, solve_rc, solve_log, extra_argv=(),
+                calls=None):
     """Run `main --run` over a tiny two-night set with Siril stubbed out.
 
     Returns (exit code, [phases actually run], printed text). The orchestration
@@ -640,7 +643,10 @@ def _drive_main(tmp_path, monkeypatch, solve_rc, solve_log, extra_argv=()):
 
     ran: list[str] = []
 
-    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None):
+    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None,
+                 on_raw=None):
+        if calls is not None:
+            calls.append((heartbeat, on_raw is not None))
         if "seqplatesolve" in ssf:
             ran.append("solve")
             log_path.write_text(solve_log, encoding="utf-8")
@@ -716,7 +722,8 @@ def test_a_stale_scratch_is_cleared_so_the_frame_selection_actually_applies(
 
     seen: list[bool] = []
 
-    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None):
+    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None,
+                 on_raw=None):
         if "seqplatesolve" in ssf:
             seen.append((working / "process" / "pp_lights_.seq").exists())
             log_path.write_text("log: 3 images successfully platesolved out of "
@@ -751,7 +758,8 @@ def test_restack_is_the_one_thing_that_keeps_the_scratch(
     proc.mkdir(parents=True)
     (proc / "r_bkg_pp_lights_00001.fit").write_bytes(b"x" * 64)
 
-    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None):
+    def fake_run(siril, working, ssf, log_path, heartbeat, on_line=None,
+                 on_raw=None):
         _sub(working / "result.fit", OBJECT="M81", STACKCNT=1)
         return 0, []
 
@@ -1074,3 +1082,102 @@ def test_no_candidates_for_a_target_with_nothing_stacked(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
     _sub(config.lights_dir("M27") / "Light_0.fit")
     assert handoff_candidates("M27") == []
+
+
+# --------------------------------------------------------------------------
+# how much a run says while it works (-v / -vv / -vvv)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("verbose,heartbeat,expected", [
+    (0, None, (60, False)),
+    (1, None, (30, False)),
+    (2, None, (10, False)),
+    (3, None, (10, True)),
+    (7, None, (10, True)),       # -vvvvvvv is still just "everything"
+    (0, 5, (5, False)),          # the explicit interval wins...
+    (1, 120, (120, False)),
+    (3, 300, (300, True)),       # ...but never decides whether output streams
+])
+def test_verbosity_levels_resolve_to_a_heartbeat_and_a_stream(
+        verbose, heartbeat, expected):
+    assert resolve_verbosity(verbose, heartbeat) == expected
+
+
+@pytest.mark.parametrize("argv,expected", [
+    ((), (60, False)),
+    (("-v",), (30, False)),
+    (("-vv",), (10, False)),
+    (("-vvv",), (10, True)),
+    (("-vvv", "--heartbeat", "45"), (45, True)),
+])
+def test_every_phase_of_a_run_gets_the_verbosity_that_was_asked_for(
+        tmp_path, monkeypatch, capsys, argv, expected):
+    """All three phases, not just the first: the stack is the phase that runs for
+    hours, and it is the last call site — the easy one to leave on the default."""
+    calls: list = []
+    rc, ran = _drive_main(tmp_path, monkeypatch, 0, "", extra_argv=argv,
+                          calls=calls)
+    assert rc == 0 and ran == ["solve", "register", "stack"]
+    assert calls == [expected] * 3
+    # The run says which level it is at, so a user who wanted more knows how.
+    assert f"every {expected[0]}s" in capsys.readouterr().out
+
+
+def _fake_siril(tmp_path, body: str):
+    """An executable standing in for siril-cli: drains the script on stdin, then
+    runs `body`. POSIX only — it is launched by shebang, as Siril is by path."""
+    import sys
+
+    exe = tmp_path / "fake-siril"
+    exe.write_text(f"#!{sys.executable}\nimport sys, time\nsys.stdin.read()\n"
+                   + body, encoding="utf-8")
+    exe.chmod(0o755)
+    return str(exe)
+
+
+_POSIX_ONLY = pytest.mark.skipif(
+    __import__("sys").platform == "win32", reason="fake siril is a shebang script")
+
+
+@_POSIX_ONLY
+def test_streaming_echoes_every_siril_line_with_stage_markers_in_place(tmp_path):
+    siril = _fake_siril(tmp_path, (
+        "print('log: Running command: register', flush=True)\n"
+        "print('log: 12 frames registered', flush=True)\n"
+        "print('log: Running command: stack', flush=True)\n"
+        "print('progress: 50%', flush=True)\n"))
+    out: list[str] = []
+    log = tmp_path / "run.log"
+    rc, errors = run_siril(siril, tmp_path, "stack\n", log, 60,
+                           on_line=out.append, on_raw=out.append)
+    assert rc == 0 and errors == []
+
+    raw = ["log: Running command: register", "log: 12 frames registered",
+           "log: Running command: stack", "progress: 50%"]
+    # Everything Siril said, in order, and identical to what the log holds.
+    assert [x for x in out if x in raw] == raw
+    assert log.read_text().splitlines() == raw
+    # Each stage's marker lands ahead of that stage's own output, so the phases
+    # can be found in a long scroll — and nothing is announced twice.
+    markers = [x for x in out if x.startswith("  [") and "done" not in x]
+    assert [m.split("] ")[1] for m in markers if "starting" not in m] == [
+        "register", "stack"]
+    assert out.index(markers[-1]) < out.index("log: Running command: stack")
+    assert out[-1].endswith("done")
+
+
+@_POSIX_ONLY
+def test_without_streaming_the_terminal_gets_the_heartbeat_and_nothing_else(
+        tmp_path):
+    siril = _fake_siril(tmp_path, (
+        "print('log: Running command: stack', flush=True)\n"
+        "print('log: integrating', flush=True)\n"
+        "time.sleep(1.5)\n"))
+    out: list[str] = []
+    log = tmp_path / "run.log"
+    rc, _ = run_siril(siril, tmp_path, "stack\n", log, 60, on_line=out.append)
+    assert rc == 0
+    assert any(x.endswith("] stack") for x in out)
+    assert not any("integrating" in x for x in out)
+    assert "log: integrating" in log.read_text()      # the log is still complete

@@ -699,6 +699,23 @@ def test_plan_stack_names_both_script_phases(captured):
     assert "script" not in out
 
 
+@pytest.mark.parametrize("verbosity,flag", [(1, " -v"), (2, " -vv"), (3, " -vvv")])
+def test_plan_stack_carries_the_verbosity_into_the_command(captured, verbosity, flag):
+    """The skill forbids hand-editing `how_to_run`, so a flag the tool cannot emit
+    is a flag the assistant cannot offer."""
+    _root, _slug, target = captured
+    out = call("plan_stack", target=target, verbosity=verbosity)
+    assert out["how_to_run"].split("   #")[0].endswith(f"--run{flag}")
+    # What the run prints is not a stacking setting, so it is not an override.
+    assert out["overrides_applied"] == {}
+
+
+def test_plan_stack_adds_no_verbosity_flag_by_default(captured):
+    _root, _slug, target = captured
+    out = call("plan_stack", target=target)
+    assert out["how_to_run"].split("   #")[0].endswith("--run")
+
+
 def test_plan_stack_names_the_known_folders_when_the_target_is_wrong(captured):
     _root, _slug, target = captured
     with pytest.raises(registry.ToolError, match="Known capture folders"):
