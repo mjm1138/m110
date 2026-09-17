@@ -665,6 +665,31 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
   minimum width 372 px, the five buttons on three lines at 420 and two at 640. `tests/test_ui_widgets.py` pins
   the wrap/minimum/take-back contract and `tests/test_ui_detail.py` the
   hero → notes → actions order and button set.
+- [x] **Sync time grew with the collection — ~25 s on a 42k-sub store**
+  *(2026-09-15, `fix/refresh-sandbox-walk`)*. Profiled read-only against the
+  live store: `scan_sessions.scan` 2 s (955 header reads — EQMODE plus first/last
+  `DATE-OBS` per segment), image render 0.2 s (mtime+size cache), autoprep
+  backfill 0.8 s, and **`build_derived.build_processing` 19.7 s** — all of it in
+  `processing.workflows_with_output` → `roundtrip.has_unimported_output` →
+  `finished_outputs`. `sandbox_outputs` and `root_outputs` did
+  ``base.rglob("*")`` over the whole target / sandbox and dropped files under a
+  skipped directory *afterwards*, so every call listed and stat'ed `lights/`
+  plus each sandbox's hardlink copy of it (`siril/[<FILTER>/]lights/`,
+  `astrowizard/lights/`) — 421k `relative_to` calls and 515k stats to find a
+  few hundred outputs, repeated for 59 targets × 2 workflows on every focus
+  refresh. Fix: `roundtrip._walk_files(base, skip_dirs)` — an `os.scandir` walk
+  that does not descend into a directory whose name is in the skip set, yielding
+  the same `(path, dir_parts)` the filter used (a file is skipped iff any
+  ancestor name is skipped; symlinked dirs not followed). `build_processing`
+  19.7 s → 2.5 s (what remains is `read_latest_stack_metadata` opening every
+  stack header and `same_bytes` re-comparing already-imported leftovers still
+  sitting in a sandbox). Also `siril.autoprep(only_missing=True)` now tests
+  sandbox existence *before* listing the target's lights — the backfill was
+  re-walking the whole store to skip 59 already-prepped targets.
+  `tests/test_roundtrip_walk.py` spies on `os.scandir` to assert no `lights/`
+  or foreign-sandbox directory is ever opened, and pins the ancestor rule.
+  Follow-up if it grows again: cache per-file FITS header facts keyed on
+  (path, size, mtime) so the scan and stack-metadata reads become incremental.
 
 - [x] **Every beta of a version shipped under the same download name**
   *(2026-09-13, `fix/release-asset-names`)*. Found when the freshly cut 0.3.0b6

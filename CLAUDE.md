@@ -262,6 +262,7 @@ wrong) is under the same heading in DONE.md's archived reference.
 **Data & files**
 - FITS extensions are `.fit` **and** `.fits` — always via `config.FIT_EXTS`/`is_fits_file`.
 - Session facts come from the FITS **header**, not filenames (device conventions differ).
+- A walk that skips `lights/`/sandboxes must **prune at the directory** (`roundtrip._walk_files`), never `rglob` then filter — the skipped trees are the whole capture, three times over, per target per sync.
 - Copy from the Seestar (SMB) with `shutil.copyfile` → `.part` → `os.replace`; `copy2` EPERMs.
 - Never trust mtime for provenance/freshness; use header dates (`DATE-OBS`, stack `DATE`).
 - The real Siril stack often sits in `working_files/`, not `stacks/`; readers look there.

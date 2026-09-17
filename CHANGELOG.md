@@ -25,6 +25,16 @@ changes a **user** would notice, per release.
   `M110-0.3.0-beta.7-x86_64.AppImage`, `M110-0.3.0-beta.7-setup.exe`. A final
   release keeps the plain `M110-0.3.0.dmg` form.
 
+### Fixed
+- **Syncing is fast again on a large Library.** The sync that runs at launch and
+  whenever you come back to the window had grown with your collection: on a
+  Library of about 42,000 light frames it took around 25 seconds, most of it
+  spent working out whether each object's processing folder held anything to
+  import. That check walked every frame in every working folder — including the
+  hardlinked copies of your subs in the Siril and AstroWizard sandboxes — three
+  times per object, just to ignore them. It now skips those folders outright,
+  and the same sync takes a few seconds.
+
 ## [0.3.0-beta.6] - 2026-09-13
 
 ### Added
