@@ -4,20 +4,113 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import (
-    Qt, QObject, QRectF, QRunnable, QSize, QThreadPool, QTimer, QUrl, Signal,
+    Qt, QObject, QPoint, QRect, QRectF, QRunnable, QSize, QThreadPool, QTimer,
+    QUrl, Signal,
 )
 from PySide6.QtGui import (
     QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFrame, QHBoxLayout, QMenu, QMessageBox,
-    QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
+    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMenu, QMessageBox,
+    QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
 )
 
 from m110 import derived, objects, siril
 from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
 from m110.ui.theme.tokens import SPACE
+
+
+class FlowLayout(QLayout):
+    """A layout that lays its items out left-to-right and wraps to the next line
+    when the row is full — the standard Qt "flow layout", which Qt ships only as
+    an example.
+
+    Use it for a row of actions whose count varies: a `QHBoxLayout` reports its
+    full width as its *minimum*, so inside a `QScrollArea` a long enough row
+    stops shrinking and hands the whole pane a horizontal scrollbar instead. A
+    flow layout's minimum is its widest single item, and it answers
+    `heightForWidth`, so the scroll area grows the pane downward instead.
+    """
+
+    def __init__(self, parent=None, hspacing: int = -1, vspacing: int = -1):
+        super().__init__(parent)
+        self._items: list = []
+        self._hspace = hspacing
+        self._vspace = vspacing
+        self.setContentsMargins(0, 0, 0, 0)
+
+    # ── QLayout contract ──
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index: int):
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientations(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    # ── helpers ──
+    def horizontal_spacing(self) -> int:
+        return self._hspace if self._hspace >= 0 else self._smart_spacing(Qt.Horizontal)
+
+    def vertical_spacing(self) -> int:
+        return self._vspace if self._vspace >= 0 else self._smart_spacing(Qt.Vertical)
+
+    def _smart_spacing(self, orientation) -> int:
+        parent = self.parent()
+        if parent is None:
+            return SPACE["sm"]
+        if parent.isWidgetType():
+            return parent.style().layoutSpacing(
+                QSizePolicy.PushButton, QSizePolicy.PushButton, orientation)
+        return parent.spacing()
+
+    def _do_layout(self, rect, test_only: bool) -> int:
+        m = self.contentsMargins()
+        effective = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y = effective.x(), effective.y()
+        line_height = 0
+        hs, vs = self.horizontal_spacing(), self.vertical_spacing()
+        for item in self._items:
+            hint = item.sizeHint()
+            next_x = x + hint.width() + hs
+            if next_x - hs > effective.right() + 1 and line_height > 0:
+                x = effective.x()
+                y = y + line_height + vs
+                next_x = x + hint.width() + hs
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x = next_x
+            line_height = max(line_height, hint.height())
+        return y + line_height - rect.y() + m.bottom()
 
 STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
 # Per-cell role carrying the raw status key (e.g. "deep_stack") so the pill delegate

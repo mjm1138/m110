@@ -651,6 +651,20 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **Detail-pane action row forced a horizontal scrollbar** *(2026-09-15,
+  `fix/detail-actions-below-hero`)*. The five processing buttons were a
+  `QHBoxLayout` above the hero; a horizontal box's minimum width is the sum of
+  its items, and `DetailPane` is a `QScrollArea` with `widgetResizable`, so the
+  moment the pane was narrower than the row the *content* widget stopped
+  shrinking and the whole pane scrolled sideways. Fix: `widgets.FlowLayout` (the
+  classic Qt flow layout — `heightForWidth`, minimum = widest single item,
+  `takeAt` hands items back so `_clear_layout` still frees them) and the row
+  moved to `DetailPane._add_action_row`, placed after the hero and Object Notes
+  (the picture and write-up lead; the tools are the next step). Verified
+  offscreen at 420 / 640 / 900 px: no horizontal range at any of them, content
+  minimum width 372 px, the five buttons on three lines at 420 and two at 640. `tests/test_ui_widgets.py` pins
+  the wrap/minimum/take-back contract and `tests/test_ui_detail.py` the
+  hero → notes → actions order and button set.
 - [x] **Sync time grew with the collection — ~25 s on a 42k-sub store**
   *(2026-09-15, `fix/refresh-sandbox-walk`)*. Profiled read-only against the
   live store: `scan_sessions.scan` 2 s (955 header reads — EQMODE plus first/last
