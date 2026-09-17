@@ -1739,6 +1739,24 @@ Details worth keeping:
 - **`--handoff`** hardlinks the finished stack into `Images/<target>/astrowizard/`
   with a provenance sidecar, the sanctioned writer for the item-14 convention. It
   runs in the CLI the user invoked; the assistant only documents the flag.
+- **Verbosity levels (2026-09-17, `feature/stack-verbosity`).** `-v`/`-vv`/`-vvv`
+  over the existing `--heartbeat`, which already gave 30s and 10s to anyone who
+  found it in `--help` — the real gap was that Siril's output reached the log and
+  never the terminal. `resolve_verbosity(count, heartbeat)` is the one mapping
+  (`VERBOSITY_HEARTBEATS = (60, 30, 10)`, streaming one step past the end); an
+  explicit `--heartbeat` wins the interval and never the streaming decision, which
+  is why its argparse default became `None`. `run_siril` gained `on_raw` beside
+  `on_line`, both `None`-silent so other callers and tests are untouched. **The
+  heartbeat stays on under `-vvv`**: full output is no help through a silence, and
+  the silences are why the heartbeat exists. Once output streams, two threads emit,
+  so every emission and the stage it reads sit under one lock, and a stage change is
+  announced **from the reader**, ahead of that stage's own lines — announcing from
+  the 1s poll loop put the marker up to a second *into* the stage it labels, and
+  could print it twice. The reader is now joined before "done", so a streamed tail
+  cannot land after it. `plan_stack` takes `verbosity` (0–3) because the skill
+  forbids hand-editing `how_to_run`: a flag the tool cannot emit is one the
+  assistant cannot offer. It is deliberately **not** in `overrides_applied` — it
+  changes what a run prints, not what it stacks.
 
 
 ## 14a — AstroWizard launcher + Send stack to AstroWizard *(done 2026-08-20, `feature/astrowizard-launcher`)*

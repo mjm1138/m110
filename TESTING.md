@@ -600,6 +600,13 @@ m110-stack "<copy>" --run
       the whole progress design** — the stack step is silent for long stretches, so
       without the in-step timer there is no way to tell working from wedged.
 - [ ] `siril_stack.log` in the working dir fills **as it goes**, not at the end.
+- [ ] The run states its reporting interval before Siril starts (*"Reporting the
+      current stage every 60s (-v, -vv, -vvv for more)"*). Re-run with `-v` and `-vv`:
+      the interval reads 30s, then 10s, and the heartbeat lines arrive that often.
+- [ ] `-vvv` streams Siril's own lines (`log: …`, `progress: …`) **live**, a
+      `[mm:ss] <stage>` marker sits just above each stage's first line, no marker is
+      printed twice, and the terminal's Siril lines match `siril_stack.log`.
+      `-vvv --heartbeat 120` still streams, with heartbeats two minutes apart.
 - [ ] On success the stack is renamed to the Naztronomy convention and the run reports
       colour vs MONO. **MONO means the debayer/drizzle pairing broke** — worth stopping for.
 - [ ] `process/` is removed and the freed GB reported. Re-run with `--keep-process`

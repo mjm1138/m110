@@ -107,6 +107,25 @@ directory, and a heartbeat reports the current stage every 60s with how long it 
 been in that step — that last part is what distinguishes working from wedged, since
 the stack step can be silent for an hour.
 
+How much the run says in the terminal is the user's choice, set with `verbosity`
+on `plan_stack` so the flag arrives in `how_to_run` like everything else:
+
+| `verbosity` | flag | the terminal shows |
+|---|---|---|
+| 0 (default) | — | the current stage every 60s |
+| 1 | `-v` | every 30s |
+| 2 | `-vv` | every 10s |
+| 3 | `-vvv` | every 10s, plus every line Siril prints, live |
+
+Match the person, don't upsell it. Leave the default for a background run — nobody
+is reading it. Offer 1 or 2 to someone who says they'll watch, or who was unnerved
+by a quiet run before. Reach for 3 when a run is being diagnosed (a failing solve,
+a stack that dies partway) or when they ask to see everything. It is a lot of text
+on a mosaic, and it is the same text `siril_stack.log` already holds — so for a run
+already in progress, point them at the log rather than restarting it louder.
+`--heartbeat SEC` still exists for an exact interval; it is not worth a tool
+argument, so mention it only if someone asks for a number the levels don't offer.
+
 Reference points from the 904-frame NGC 7000 mosaic: registration ~12 min, stack
 **25 min** with the defaults but **2 h 50 m** with `-overlap_norm` on. If a run is
 going far longer than its shape suggests, overlap norm is the first suspect.

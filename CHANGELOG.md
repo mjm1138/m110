@@ -10,6 +10,15 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **`m110-stack` can say more while it works.** A run used to report its current
+  stage once a minute and nothing else; the only way to see more was to `tail` the
+  log in a second terminal. Now `-v` reports every 30 seconds, `-vv` every 10, and
+  `-vvv` also streams everything Siril prints, live, with a `[mm:ss]` marker where
+  each step begins. The default is unchanged, and `--heartbeat SEC` still sets an
+  exact interval. The assistant's stacking skill knows the levels too, so the
+  command it hands you can carry the one you asked for.
+
 ### Changed
 - **An object's action buttons now sit below the picture and notes, and wrap.**
   Import finished work, Process in Siril, Reveal working folder, Stack in
