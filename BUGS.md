@@ -417,6 +417,50 @@ Legend: `[ ]` open · `[~]` partially done
   but not yet in `launch._TOOLS`); (c) custom/combined workspaces per #18. **Verify on real
   Linux/Windows** — auto-detect paths are coded but only exercised on macOS + in tests.
 
+- [ ] **Every re-stack re-solves frames it has already solved.** Measured
+  2026-09-17 on 200 M27 subs (Siril 1.4.4, local Gaia DR3, 8 threads): a **cold**
+  plate solve costs **359 ms/frame**. The M27 re-stack that day solved all 3301
+  frames even though 2312 of them had already been solved for the 2026-08-20
+  stack — roughly **14 minutes of repeated work** in a solve phase of about 20.
+
+  **`-force` is not the fix, though it looks like it.** Re-running `seqplatesolve`
+  without `-force` over an already-solved sequence takes **0.56 s against 71.81 s**
+  for 200 frames (128x), because Siril skips solved images. But `clear_scratch`
+  rebuilds `process/` from `lights/` on every non-`--restack` run, so no solution
+  survives to be skipped. Realising the saving needs solutions *persisted* across
+  runs — a per-light WCS sidecar, or a solved sequence kept and keyed to its frame
+  set — plus invalidation when pointing, sampling or the distortion model changes.
+
+  **What was ruled out.** Same 200 frames, sequence rebuilt cold before each
+  variant so none inherits a previous solution:
+
+  | variant | solve | ms/frame |
+  |---|---|---|
+  | current (`-nocache -force -disto=ps_distortion -order=4`) | 71.81 s | 359.1 |
+  | without `-nocache` | 71.67 s | 358.4 |
+  | `-order=2` | 71.52 s | 357.6 |
+  | no distortion fit at all | 71.79 s | 358.9 |
+
+  `-nocache` is **inert against a local catalogue** — identical timing and an
+  identical 401 catalogue fetches with and without it. Siril's help ties the
+  shared per-sequence extraction to *online* catalogues, which fits. Distortion
+  order costs nothing measurable either. So the catalogue traffic in the log (one
+  "Fetched ~2800 stars" line per solved image, 3309 of them on the M27 run) is a
+  symptom of per-image solving, not a cost worth attacking on its own. An earlier
+  measurement suggested otherwise and was wrong: every variant after the first ran
+  against frames already carrying a solution, making all solves the easy case
+  (18 ms/frame warm vs 359 cold).
+
+  Origin note: `-nocache` came from the Naztronomy script by way of the Astronomy
+  repo's `siril_stack.py`, and sits at `m110/stacking.py:950` with no comment. It
+  is harmless, but it should either carry one or go.
+
+  Caveat: one target, one rig. 23 of the 200 test frames failed to solve, in line
+  with the full run's 281/3301 (8.5%) — that rate may deserve its own look, since
+  M52 solved 296/296 and NGC 7000 lost only 2.8%.
+
+---
+
 ## Import
 
 - [x] **`canonical_target` ignores catalog designations — a Caldwell-named capture forks
