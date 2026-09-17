@@ -201,6 +201,15 @@ _CLI_FLAGS = {
             "filter_pct": {"type": "number",
                            "description": ("Set all four quality-filter thresholds at "
                                            "once, e.g. 95. The default is 98.")},
+            "verbosity": {"type": "integer", "minimum": 0, "maximum": 3,
+                          "description": ("How much the run says in the terminal. "
+                                          "Changes only the `how_to_run` command, "
+                                          "never the proposal. 0 (default): the "
+                                          "current stage every 60s — right for a "
+                                          "background run. 1: every 30s. 2: every "
+                                          "10s. 3: every line Siril prints, live — "
+                                          "for diagnosing a run, or a user who "
+                                          "asks to see everything.")},
         },
         "required": ["target"],
     },
@@ -214,7 +223,7 @@ def plan_stack(target: str, filter: str | None = None,
                rejection: str | None = None, weight: str | None = None,
                overlap_norm: bool | None = None, feather: int | None = None,
                no_bg_extract: bool = False, no_filters: bool = False,
-               filter_pct: float | None = None) -> ToolResult:
+               filter_pct: float | None = None, verbosity: int = 0) -> ToolResult:
     require_store()
     from m110 import stacking            # lazy: pulls astropy on first header read
 
@@ -282,6 +291,10 @@ def plan_stack(target: str, filter: str | None = None,
     # relativize a Path — a path baked into a command string sails straight
     # through. `m110-stack` resolves the name against the store itself.
     flags = "".join(_CLI_FLAGS[k](v) for k, v in applied.items())
+    # Not an override — it changes what the run prints, not what it stacks — so it
+    # rides in the command without appearing in `overrides_applied`.
+    level = max(0, min(3, int(verbosity or 0)))
+    flags += f" -{'v' * level}" if level else ""
     name = f"{target}/{filter}" if filter else target
     payload["how_to_run"] = (
         f"m110-stack {name!r} --run{flags}"
