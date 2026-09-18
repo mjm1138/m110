@@ -151,6 +151,24 @@ Legend: `[ ]` open · `[~]` partially done
   revisiting only if a cheap structural signal turns up — the file sits *inside*
   `archive/<ts>/` beside genuine output, so place doesn't distinguish it.
 
+- [x] **An AstroWizard export that kept the `_AW<n>_` token was invisible to
+  import** (done — `fix/astrowizard-export-autosave`). `astrowizard.is_autosave`
+  matched `_AW\d+_` anywhere in the name, and `SANDBOX.skip_file` runs *before*
+  `classify`, so nothing downstream — not the raster-is-a-render default, not the
+  finished-hint vocabulary, not the `finished/` tier rule — ever saw the file.
+  Real case (M27, 2026-09-18): AstroWizard's save dialog defaults to the current
+  step's name, the user appended `_final`, and `…_1440_og_AW23_final.png` sat in
+  the sandbox while Import finished work offered nothing. Fix: only the **step
+  suffix** after the last token is consulted; a suffix carrying a finished hint
+  (`hints.is_finished_name`) is the user's export, since AstroWizard's step names
+  (`init`, `crop`, `str_dee`, `rescreen`, …) never do. The stem before the token
+  is deliberately *not* consulted — the chain inherits it from the master, and a
+  master imported from Siril as `…_finished.fit` would otherwise make all of its
+  autosaves look finished. `is_master` now excludes the chain by the raw token
+  rather than via `is_autosave`, so `…_wizardstack_AW3_final.fits` is neither
+  autosave nor master and is offered as a render. Three regression tests in
+  `tests/test_astrowizard.py`.
+
 - [x] **A second processing workflow's sandbox would have been claimed, re-imported
   and backed up** (done — `feature/astrowizard-groundwork`). Three walks each
   hardcoded the string `"siril"` as *the* sandbox: `siril._ROOT_SKIP_DIRS`,

@@ -54,7 +54,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import config, roundtrip
+from . import config, hints, roundtrip
 
 #: Sidecar written by `stacking.apply_handoff` beside the handed-off stack.
 SRC_SIDECAR_SUFFIX = ".src.json"
@@ -77,6 +77,15 @@ def is_handoff(child: Path) -> bool:
 _AUTOSAVE_RE = re.compile(r"_AW\d+_")
 
 
+def _autosave_step(name: str) -> str | None:
+    """The `<step>` part after the last `_AW<n>_` token in `name` (extension
+    already stripped), or None when the name carries no token at all."""
+    last = None
+    for last in _AUTOSAVE_RE.finditer(name):
+        pass
+    return None if last is None else name[last.end():]
+
+
 def is_autosave(child: Path) -> bool:
     """True for a file AstroWizard wrote itself as a per-step snapshot.
 
@@ -90,8 +99,22 @@ def is_autosave(child: Path) -> bool:
     filename vocabulary already drops for carrying no finished hint — but it also
     emits rasters (`…_AW10_str_dee_sn_in.tif`), and a loose raster is a
     deliverable by default with no hint required. On a real M27 finish that put a
-    41 MB working TIFF in the import preview alongside the two real exports."""
-    return bool(_AUTOSAVE_RE.search(child.name))
+    41 MB working TIFF in the import preview alongside the two real exports.
+
+    **An export can carry the token too.** AstroWizard's save dialog defaults to
+    the name of the step it is on, so a user who accepts that and appends their
+    own word exports `…_og_AW23_final.png` — which a bare `_AW<n>_` match hid from
+    the importer entirely (a real M27 finish, 2026-09-18). The tell is *what
+    follows* the token: AstroWizard's step names (`init`, `crop`, `str_dee`,
+    `rescreen`, …) never include a finished hint, so a step suffix that does is
+    the user's export. Only the suffix is consulted, never the stem before the
+    token: the chain inherits its stem from the master, and a master named
+    `…_finished.fit` (a Siril import the user named) would otherwise make every
+    one of its autosaves look finished."""
+    step = _autosave_step(child.stem)
+    if step is None:
+        return False
+    return not hints.is_finished_name(step)
 
 
 def _not_output(child: Path) -> bool:
@@ -117,8 +140,10 @@ def is_master(child: Path) -> bool:
     **An autosave is not a master**, even though it looks like one: AstroWizard
     names each step after the file it opened, so the whole `_AW<n>_` chain carries
     the master's stem. Without this the sweep spared all twelve of them and the
-    working area never got tidied."""
-    if is_autosave(child):
+    working area never got tidied. The raw token is what excludes here, not
+    `is_autosave`: an export that kept the token (`…_wizardstack_AW3_final.fits`)
+    is not an autosave, but it is not the master either — it is downstream of it."""
+    if _AUTOSAVE_RE.search(child.name):
         return False
     return (MASTER_TOKEN in child.stem.lower()
             and child.suffix.lower() in (".fits", ".fit"))
