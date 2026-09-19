@@ -35,6 +35,16 @@ changes a **user** would notice, per release.
   release keeps the plain `M110-0.3.0.dmg` form.
 
 ### Fixed
+- **A finished AstroWizard export named after its last step is imported again.**
+  AstroWizard's save dialog offers the name of the step you are on, so accepting
+  it and adding your own word produces a file like `…_og_AW23_final.png`. M110
+  uses that `_AW23_` token to recognise AstroWizard's per-step autosaves and keep
+  them out of the import preview, and it was hiding your export along with them:
+  Import finished work found nothing, with no hint why. Now what *follows* the
+  token decides. AstroWizard's own step names never contain a finished word, so a
+  suffix that does (`final`, `finished`, `processed`, or whatever you have set in
+  Preferences) is treated as your export. The rest of the chain stays hidden as
+  before, including when the stack it descends from is itself named `…_finished`.
 - **Syncing is fast again on a large Library.** The sync that runs at launch and
   whenever you come back to the window had grown with your collection: on a
   Library of about 42,000 light frames it took around 25 seconds, most of it

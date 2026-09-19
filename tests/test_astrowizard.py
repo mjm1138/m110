@@ -211,6 +211,64 @@ def test_the_autosave_raster_is_excluded_by_pattern_not_by_hints(
         "M27 my export.tif"}
 
 
+def test_an_export_that_kept_the_autosave_token_is_offered(tmp_path, monkeypatch):
+    """Regression (real M27 finish, 2026-09-18): AstroWizard's save dialog defaults
+    to the current step's name, so accepting it and appending a word exports
+    `…_og_AW23_final.png`. The bare `_AW<n>_` match hid it from the importer and
+    the user's finish never reached `finished/`. A finished hint *after* the
+    token is the user's word, not a step name, so it is an export."""
+    target, base = _make_sandbox(tmp_path, monkeypatch, chain=False,
+                                 exports=False)
+    export = base / f"{STACK[:-4]}_AW23_final.png"
+    export.write_text("the finish")
+    assert not astrowizard.is_autosave(export)
+    plan = astrowizard.scan_finished(target)
+    assert [i.name for i in plan.items] == [export.name]
+    assert plan.items[0].kind == "render"
+    assert astrowizard.has_unimported_output(target)
+
+
+def test_a_chain_descended_from_a_finished_named_master_stays_hidden(
+        tmp_path, monkeypatch):
+    """The chain inherits the master's stem, and a master a user imported from
+    Siril as `…_finished.fit` puts the hint *before* every `_AW<n>_` token. Only
+    the step suffix may carry the hint, so these are still autosaves."""
+    target, base = _make_sandbox(tmp_path, monkeypatch, chain=False,
+                                 exports=False)
+    stem = "M_27_2888x20sec_2026-05-25_2026-09-17_1440_finished"
+    chain = [f"{stem}_AW1_init.fits", f"{stem}_AW10_str_dee_sn_in.tif",
+             f"{stem}_AW24_rescreen.fits"]
+    for n in chain:
+        (base / n).write_text("step")
+        assert astrowizard.is_autosave(base / n), n
+    assert not astrowizard.scan_finished(target).items
+    # …and the export from that chain is still recognised by its suffix.
+    (base / f"{stem}_AW25_final.png").write_text("the finish")
+    assert {i.name for i in astrowizard.scan_finished(target).items} == {
+        f"{stem}_AW25_final.png"}
+
+
+def test_a_token_carrying_export_is_not_mistaken_for_a_wizardstack_master(
+        tmp_path, monkeypatch):
+    """`is_master` excludes the chain by the raw token, not by `is_autosave`:
+    `M_15_wizardstack_AW3_final.fits` is neither an autosave nor the master, so
+    it is offered (as a render — everything downstream of the master is) and
+    the sweep does not spare it."""
+    target, base = _make_sandbox(tmp_path, monkeypatch, handoff=False,
+                                 chain=False, exports=False)
+    master = base / "M_15_wizardstack.fits"
+    master.write_text("stack")
+    export = base / "M_15_wizardstack_AW3_final.fits"
+    export.write_text("finish")
+    assert astrowizard.is_master(master)
+    assert not astrowizard.is_master(export)
+    assert not astrowizard.is_autosave(export)
+    items = {i.name: i.kind for i in astrowizard.scan_finished(target).items}
+    assert items == {export.name: "render"}
+    assert astrowizard._archive_keep(master)
+    assert not astrowizard._archive_keep(export)
+
+
 # ── registry wiring ──────────────────────────────────────────────────────────
 
 def test_both_workflows_prepare_and_both_import():
