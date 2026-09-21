@@ -456,7 +456,35 @@ def build(out: Path):
     # a non-default example. After refresh so M42 is in the Library with a journal.
     objects.set_curation("m42", "stacked.jpg", "finished")
 
+    _nfs_sidecars(out)
+
     return out
+
+
+# The first 48 bytes of a real AppleDouble file (magic 00051607, version 2,
+# "Mac OS X" filler, two entries) — what macOS writes as ``._<name>`` beside every
+# file it creates on a filesystem without extended-attribute support (#161).
+_APPLEDOUBLE = (bytes.fromhex("0005160700020000") + b"Mac OS X" + b" " * 8
+                + bytes.fromhex("0002") + bytes(11) + b"\xb0" + bytes(10))
+
+
+def _nfs_sidecars(out: Path):
+    """Make the store look like it lives on an NFS export from a Mac (#161): an
+    AppleDouble ``._`` sidecar beside one file of every kind the app enumerates —
+    a light, a stack, a finished render, the site profile, a journal. The app must
+    behave exactly as if they weren't there: same session counts, one profile, no
+    ``._`` in any sandbox, gallery or import preview. A tester on a local disk sees
+    the fix without an NFS mount; a tester *on* an NFS mount sees these anyway."""
+    victims = [
+        next(iter(sorted(config.lights_dir("M51").glob("Light_*.fit")))),
+        next(iter(sorted(config.seestar_stacks_dir("M51").iterdir()))),
+        config.finished_dir("M63") / "M63_119x30sec_processed.png",
+        config.PROFILES_DIR / "default.toml",
+        config.OBJECTS_DIR / "m51" / "journal.md",
+    ]
+    for v in victims:
+        assert v.is_file(), f"sidecar victim missing: {v}"
+        (v.parent / f"._{v.name}").write_bytes(_APPLEDOUBLE)
 
 
 def _build_import_source(src: Path):
@@ -787,6 +815,22 @@ def verify(out: Path):
           f"(captured collection) · captured Caldwell: {captured_cald}")
     print(f"  ngc-6992 stub (Fill-missing target): name={stub.get('name')!r} "
           f"type={stub.get('type')!r}")
+
+    # #161: the AppleDouble sidecars planted by `_nfs_sidecars` are invisible.
+    from m110 import planning_config, build_images
+    planted = [p for p in out.rglob("._*") if p.is_file()]
+    assert len(planted) == 5, f"expected 5 planted sidecars, found {len(planted)}"
+    m51_frames = sum(s["frames"] for s in sessions if s["object_dir"] == "M51")
+    m51_lights = len(list(config.lights_dir("M51").glob("Light_*.fit")))
+    assert m51_frames == m51_lights, "a ._ sidecar was counted as an M51 sub"
+    assert planning_config.list_profiles() == ["default"], "._default.toml listed as a profile"
+    planning_config.load_site("default")
+    assert not any(f.name.startswith("._") for f in siril._lights("M51")), \
+        "._ sidecar offered to Siril prep"
+    m63 = [i["name"] for i in build_images.discover_images("m63", ["M63"], {})]
+    assert "._M63_119x30sec_processed.png" not in m63, "._ render in the gallery"
+    print(f"  #161: {len(planted)} AppleDouble sidecars planted, none visible "
+          f"(sessions/profile/prep/gallery)")
 
 
 def make_tar(paths, tar_path: Path):

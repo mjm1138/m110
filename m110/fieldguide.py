@@ -209,7 +209,7 @@ def _title_of(path: Path) -> str:
             m = _TITLE_RE.match(line)
             if m:
                 return m.group(1).strip()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         pass
     return path.stem
 
@@ -222,6 +222,8 @@ def list_guides() -> list[dict]:
         return []
     out = []
     for p in d.glob("*.md"):
+        if config.is_hidden_name(p.name):
+            continue
         m = re.match(r"(\d{4}-\d{2}-\d{2})_", p.name)
         dt = m.group(1) if m else date.fromtimestamp(p.stat().st_mtime).isoformat()
         out.append({"path": p, "name": p.name, "date": dt, "title": _title_of(p)})

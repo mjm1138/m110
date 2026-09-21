@@ -355,7 +355,7 @@ def read_latest_stack_metadata(folder: Path,
         for f in d.iterdir():
             if not f.is_file():
                 continue
-            if f.suffix.lower() not in (".fit", ".fits"):
+            if not config.is_fits_file(f.name):
                 continue
             try:
                 with fits.open(f) as hdul:
@@ -577,7 +577,7 @@ def build_processing(totals: dict, overrides: dict | None,
         light_files = []
         if lights.is_dir():
             light_files = [f for f in lights.iterdir()
-                           if f.is_file() and f.suffix.lower() in config.FIT_EXTS]
+                           if f.is_file() and config.is_fits_file(f.name)]
         newest_light_mtime = (max(f.stat().st_mtime for f in light_files)
                               if light_files else 0.0)
 
@@ -595,7 +595,7 @@ def build_processing(totals: dict, overrides: dict | None,
             search_dirs.append((finished_subdir, FINISHED_EXTS))
         for d, exts in search_dirs:
             for f in d.iterdir():
-                if not f.is_file():
+                if not f.is_file() or config.is_hidden_name(f.name):
                     continue
                 if f.suffix.lower() not in exts:
                     continue

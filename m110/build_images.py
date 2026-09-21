@@ -140,7 +140,8 @@ def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict
             if not src_dir.is_dir():
                 continue
             for f in sorted(src_dir.iterdir()):
-                if not f.is_file() or f.suffix.lower() not in IMG_EXTS:
+                if (not f.is_file() or config.is_hidden_name(f.name)
+                        or f.suffix.lower() not in IMG_EXTS):
                     continue
                 if "_thn." in f.name or _is_intermediate_fit(f):
                     continue
@@ -159,7 +160,7 @@ def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict
 def _photos_in(d: Path) -> list[Path]:
     if not d.is_dir():
         return []
-    return [f for f in d.iterdir() if f.is_file() and not f.name.startswith(".")
+    return [f for f in d.iterdir() if f.is_file() and not config.is_hidden_name(f.name)
             and f.suffix.lower() in PHOTO_EXTS]
 
 

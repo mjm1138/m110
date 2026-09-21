@@ -93,7 +93,8 @@ def _drop_legacy(d: Path) -> None:
         if child.is_dir():
             _drop_legacy(child)
     remaining = list(d.iterdir())
-    if remaining and all(c.is_file() and c.name in _JUNK_FILES for c in remaining):
+    if remaining and all(c.is_file() and (c.name in _JUNK_FILES or c.name.startswith("._"))
+                         for c in remaining):
         for c in remaining:
             try:
                 c.unlink()

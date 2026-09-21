@@ -481,6 +481,25 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [x] **#161 — an NFS data root crashed startup and failed import: AppleDouble
+  `._` sidecars were enumerated as content** (done — `fix/nfs-appledouble-sidecars`).
+  Reported by ddb from a Synology NFSv3 export on macOS 27. On a filesystem without
+  xattr support macOS writes `._<name>` beside every file, and macOS 26+ stamps
+  `com.apple.provenance` on every file it creates, so the store grows one sidecar
+  per sub/profile/guide with no mount option to stop it. Four consumers bit:
+  `planning_config.list_profiles` globbed `._default.toml` and `tomllib` died on the
+  binary header (the reported startup trace); `siril._lights` admitted
+  `._Light_x.fit` (`is_light_frame` only checked the suffix) and the sandbox
+  hardlink failed (the reported import trace); `scan_sessions`' Seestar fast path is
+  a `re.search`, so every sidecar counted as a second sub; and `fieldguide.list_guides`
+  would have crashed the same way once a guide existed (`_title_of` caught only
+  `OSError`). Fix: one predicate, `config.is_hidden_name`, folded into `is_fits_file`
+  (the documented single authority), the three direct `FIT_EXTS` suffix checks routed
+  through it, explicit guards at `roundtrip._walk_files`, profiles, guides, gallery,
+  outbox and `migrate._drop_legacy`, and `backup.scope` excludes `._*`/`.DS_Store`.
+  `tests/test_nfs_sidecars.py` plants the real AppleDouble bytes next to every kind of
+  file (32 of 33 cases fail on the old engine); the synthetic corpus ships five of them.
+
 - [x] **`canonical_target` ignores catalog designations — a Caldwell-named capture forks
   its own folder** (done — `fix/canonical-target-designations`). Reported 2026-08-01 from
   the live store. The Seestar writes the folder

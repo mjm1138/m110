@@ -35,6 +35,17 @@ changes a **user** would notice, per release.
   release keeps the plain `M110-0.3.0.dmg` form.
 
 ### Fixed
+- **A Library on a network share now works from a Mac.** With the data folder on
+  an NFS export (or any share that can't hold a file's extended attributes),
+  macOS writes a hidden `._<name>` companion file beside every file it creates,
+  and recent macOS versions do this for essentially every file. M110 treated those
+  companions as real content: the app crashed before its window appeared, because
+  the companion of the site profile was read as a settings file; importing from a
+  telescope copied every frame and then failed while preparing the Siril working
+  folder; and each session counted every frame twice. There is no mount setting
+  that stops macOS writing these files, so M110 now ignores them everywhere it
+  looks at the store, including backups, which no longer copy them. Reported in
+  [#161](https://github.com/mjm1138/m110/issues/161).
 - **A finished AstroWizard export named after its last step is imported again.**
   AstroWizard's save dialog offers the name of the step you are on, so accepting
   it and adding your own word produces a file like `…_og_AW23_final.png`. M110

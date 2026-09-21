@@ -306,7 +306,7 @@ def scan() -> list[dict]:
         rep: dict[tuple[str, float, str], Path] = {}   # one sub per bucket → EQMODE read
         members: dict[tuple[str, float, str], list[Path]] = defaultdict(list)
         for f in lights.iterdir():
-            if not f.is_file() or f.suffix.lower() not in config.FIT_EXTS:
+            if not f.is_file() or not config.is_fits_file(f.name):
                 continue
             key = _session_key(f)
             if key is None:

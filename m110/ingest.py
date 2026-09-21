@@ -144,7 +144,7 @@ def _fit_files(d: Path) -> list[str]:
     if not d.is_dir():
         return []
     return sorted(f.name for f in d.iterdir()
-                  if f.is_file() and f.suffix.lower() in (".fit", ".fits"))
+                  if f.is_file() and config.is_fits_file(f.name))
 
 
 def _all_files(d: Path) -> list[str]:
@@ -1520,7 +1520,7 @@ def plan_lights_cleanup(targets: list[str] | None = None) -> list[IngestOp]:
         if not ldir.is_dir():
             continue
         for f in sorted(ldir.iterdir()):
-            if not (f.is_file() and f.suffix.lower() in config.FIT_EXTS):
+            if not (f.is_file() and config.is_fits_file(f.name)):
                 continue
             if config.is_light_frame(f.name):
                 continue                        # genuine sub — leave it

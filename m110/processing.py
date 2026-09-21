@@ -142,7 +142,7 @@ def _store_targets() -> list[str]:
     for d in sorted(images.iterdir()):
         lights = d / "lights"
         if d.is_dir() and lights.is_dir() and any(
-                f.suffix.lower() in config.FIT_EXTS for f in lights.iterdir() if f.is_file()):
+                config.is_fits_file(f.name) for f in lights.iterdir() if f.is_file()):
             out.append(d.name)
     return out
 
