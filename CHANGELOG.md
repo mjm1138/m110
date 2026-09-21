@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.7] - 2026-09-21
+
 ### Added
 - **`m110-stack` can say more while it works.** A run used to report its current
   stage once a minute and nothing else; the only way to see more was to `tail` the
