@@ -230,7 +230,7 @@ def _walk_files(base: Path, skip_dirs):
                     if ent.name not in skip:
                         stack.append((Path(ent.path), parts + (ent.name,)))
                     continue
-                if not ent.is_file():
+                if not ent.is_file() or config.is_hidden_name(ent.name):
                     continue
             except OSError:
                 continue

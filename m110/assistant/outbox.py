@@ -127,7 +127,10 @@ def _resolved_within(path: Path) -> Path:
 
 def _existing() -> list[Path]:
     d = outbox_dir()
-    return sorted(p for p in d.glob("*") if p.is_file()) if d.is_dir() else []
+    if not d.is_dir():
+        return []
+    return sorted(p for p in d.glob("*")
+                  if p.is_file() and not config.is_hidden_name(p.name))
 
 
 def usage() -> dict:

@@ -172,6 +172,7 @@ What it contains (and what each fixture exercises):
 | `M81 M82` (multi-object folder) | many-to-many target→object rollups | §2.3 |
 | `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Tools → Clean up imported sidecars** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster | §2.3 |
 | `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced | §2.2 |
+| **AppleDouble `._` sidecars** beside one M51 light, the M51 Seestar stack, the M63 finished render, `profiles/default.toml` and the M51 journal (the real 48-byte header) | **#161 — a data root on NFS/SMB from a Mac**: the app must start (the `._default.toml` is not a profile), sessions count M51's real subs only, Siril prep links no `._` file, the gallery shows no `._` render, and a backup copies none of them. A tester on a real NFS mount gets these for free; a local-disk tester gets them from the corpus | §2.1, §2.4 |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
 | **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one | §2.2, §2.4 |
 
@@ -276,6 +277,12 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] Preferences (Cmd+,) → change data folder → Save → prompts restart →
       relaunch reads the new folder.
 - [ ] `M110_DATA_ROOT` env var overrides the saved preference.
+- [ ] **Data root on a network share from a Mac (#161).** Point `M110_DATA_ROOT`
+      at an NFS or SMB mount that can't hold xattrs (a Synology NFS export
+      reproduces it; `ls -a` shows `._default.toml` under `profiles/` after the
+      first launch). Relaunch → the window opens. Import from a telescope →
+      completes, and `siril/lights/` holds no `._` name. Sessions count the real
+      subs only. The synthetic corpus ships the same sidecars on a local disk.
 
 #### Appearance / theme (UI Phase 0)  ⚙ *(tokens/qss/manager/restyle automated — `test_theme_*.py`)*
 - [ ] **Preferences → Appearance → Theme**: switch **Light / Dark / Follow system** →

@@ -264,9 +264,28 @@ def working_files_dir(name: str) -> Path:
 FIT_EXTS = (".fit", ".fits")
 
 
+def is_hidden_name(name: str) -> bool:
+    """True for a leading-dot filename — never content, whatever its extension.
+
+    The case that matters is the AppleDouble sidecar (#161): on a filesystem that
+    can't hold an extended attribute (NFS, most SMB exports, FAT), macOS writes
+    ``._<name>`` beside every file it creates — and macOS 26+ stamps
+    ``com.apple.provenance`` on essentially every file, so a store on NFS grows a
+    sidecar per sub, per profile, per guide. Their *names* pass every extension
+    test (``._Light_x.fit`` ends in ``.fit``) and their bytes are a binary header,
+    so anything that enumerates the store and trusts the suffix then parses
+    garbage, double-counts a session, or tries to hardlink a name the NFS client
+    reserves. ``.DS_Store``/``.localized`` are the same class. There is no mount
+    option that stops them, so the store skips them everywhere it lists files.
+    """
+    return name.startswith(".")
+
+
 def is_fits_file(name: str) -> bool:
-    """True if ``name`` has a FITS extension (``.fit`` or ``.fits``)."""
-    return name.lower().endswith(FIT_EXTS)
+    """True if ``name`` has a FITS extension (``.fit`` or ``.fits``) and isn't a
+    hidden/OS-sidecar name (`is_hidden_name`) — the one authority for "is this a
+    FITS file we should look at", so every consumer skips ``._x.fit`` at once."""
+    return not is_hidden_name(name) and name.lower().endswith(FIT_EXTS)
 
 
 # A ``lights/`` folder must hold only raw subs. We identify the enemy — a

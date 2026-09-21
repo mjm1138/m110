@@ -38,6 +38,13 @@ These hold today and constrain every future change:
 5. **Discoverability.** A human browsing the store on disk can find things from
    folder names alone — object ids, target names, and tier folders
    (`lights/`, `stacks/`, `finished/`, …) are self-describing.
+6. **Leading-dot names are never content.** A store can live on a network share,
+   and a Mac writing to one without extended-attribute support leaves an AppleDouble
+   `._<name>` beside every file (#161); Finder leaves `.DS_Store`. Every
+   enumeration of the store skips `config.is_hidden_name` names (folded into
+   `is_fits_file`), backups exclude them, and the migration treats a legacy
+   container holding only such files as empty. M110 never creates a leading-dot
+   file of its own except `.m110_internal_data/` and its `.store_version`.
 6. **Engine stays Qt-free.** The data model is owned by the headless engine
    (`m110/*.py`); the UI only reads it. Path resolution is centralized in
    `config.py`.

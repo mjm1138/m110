@@ -651,6 +651,27 @@ Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).
 
 ## Fixed bugs & shipped improvements *(archive)*
 
+- [x] **NFS data root: AppleDouble `._` sidecars enumerated as content (#161)**
+  *(2026-09-21, `fix/nfs-appledouble-sidecars`)*. See BUGS.md for the report and
+  the four consumers. Engineering notes: the fix is a *predicate*, not the
+  reporter's proposed `store_files()` wrapper — 82 enumeration sites in the engine
+  would each have had to remember to call a wrapper, whereas `config.is_fits_file`
+  is already the one authority for "is this a FITS file" and folding
+  `is_hidden_name` into it fixed Siril prep, calibration frames, the stacker's
+  survey, ingest's `_fit_files` and the sandbox stack finder in one line. The
+  remaining direct `f.suffix in FIT_EXTS` checks (`scan_sessions`, `build_derived`
+  ×2, `processing._store_targets`, `ingest` ×1) were routed through it so the
+  bypass can't recur; grep for `FIT_EXTS` outside `config.py` should now find only
+  `roundtrip`'s private copy. The hardlink failure is worth knowing: the macOS NFS
+  client reserves the `._` namespace for its own xattr emulation, so `os.link` to a
+  `._` *destination* fails `ENOENT` even though the source exists — a sidecar is
+  not just noise, it is a name you cannot create. Backups now exclude `._*`,
+  `.DS_Store`, `.localized`, `Thumbs.db` (the scope denylist otherwise fails toward
+  keeping; these are OS-regenerated, unreadable as content, and a mirrored backup
+  would try to hardlink the reserved name). `fieldguide._title_of` now also catches
+  `UnicodeDecodeError` — a binary `.md` reaching it should degrade to the stem,
+  never crash a page. Test fixture: the first 48 bytes of a real AppleDouble header
+  with `0xb0` at offset 37, the byte the reported traceback blamed.
 - [x] **Detail-pane action row forced a horizontal scrollbar** *(2026-09-15,
   `fix/detail-actions-below-hero`)*. The five processing buttons were a
   `QHBoxLayout` above the hero; a horizontal box's minimum width is the sum of

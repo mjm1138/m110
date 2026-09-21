@@ -149,7 +149,8 @@ def list_profiles() -> list[str]:
     d = Path(config.PROFILES_DIR)
     if not d.is_dir():
         return []
-    names = sorted(p.stem for p in d.glob("*.toml"))
+    names = sorted(p.stem for p in d.glob("*.toml")
+                   if not config.is_hidden_name(p.name))
     if DEFAULT_PROFILE in names:
         names.remove(DEFAULT_PROFILE)
         names.insert(0, DEFAULT_PROFILE)
