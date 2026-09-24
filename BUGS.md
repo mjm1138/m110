@@ -754,6 +754,36 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Session analytics / capture diagnostics
 
+- [ ] **Flag sessions captured on the wrong filter for the object.** Compare each
+  session's filter (already parsed from the Seestar filename / `FILTER` header) with
+  the object's `recommended_filter`, and warn on a mismatch. **Surface it at ingest**
+  (the preview dialog, before confirm) and keep it visible on the object detail /
+  processing state, because at ingest is when it can still change the *next* session.
+
+  **Why — found 2026-09-24 by hand, two months late.** NGC 6543's
+  `recommended_filter` is LP and every M110 plan that scheduled it said LP, yet 8 of
+  its 9 nights (8.4 of 10.6 h) are IRCUT. Same for NGC 7662 (6 of 7 nights IRCUT)
+  and NGC 7009 (3 of 3). The Seestar app sets the filter itself per object, and the
+  pattern tracks the **catalog the target was picked from**: Messier planetaries
+  (M27, M57, M76, M97) were LP on every one of ~50 nights, while the Caldwell-picked
+  ones (object names `C 6`, `C 22`, `C 55` in the filenames) defaulted to IRCUT. The
+  user did not override anything; the plan's filter column simply never reaches the
+  scope. Nothing in M110 noticed, so the error repeated for eight sessions.
+
+  **Design notes:**
+  - A warning, not an error, and dismissable per object: IRCUT on a planetary *can*
+    be deliberate (a broadband layer for star colour, as NGC 6543's re-stack now uses
+    it). Dismissal should stick, so a deliberate broadband campaign doesn't re-nag
+    every ingest.
+  - Say the consequence, not just the fact: "3rd IRCUT session on an LP target;
+    LP now 2.2 h of 10.6 h". The share is what tells the user whether it matters.
+  - Worth one line in the generated plan too, when a nebula is picked under a
+    Caldwell/NGC designation: "check the LP toggle in the Seestar app, it defaults
+    to IRCUT for these". Cheap, and it is the preventive half of the same fix.
+  - Scope to objects whose recommended filter is unambiguous (emission, planetary,
+    SNR → LP; galaxy/cluster → IRCUT). A galaxy shot on LP is the same check
+    reversed and worth the same warning.
+
 - [ ] **#45 — Per-session capture diagnostics (why is rejection high?).** Analyse an
   incoming session's sub timestamps to explain the yield the app already shows. Grounded in
   a read-only proof of concept over real data (4,799 subs parsed in ~20 ms) + the
