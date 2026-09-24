@@ -10,6 +10,28 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [ ] **`m110-stack` heartbeat repeats a stale "100.00%" through the whole stack
+  pass.** Seen on NGC 6543/IRCUT (1360 frames, 2.0× drizzle, `-vv`,
+  2026-09-24): after `Computing normalization...` finished, every 10 s line read
+  `stack  (n:nn in this step)  |  100.00%` for 8+ minutes while Siril sat at
+  ~580% CPU doing the actual stack. That reads as "finished but hung", and the
+  user asked whether the script was broken. Siril prints **no `progress:` lines
+  during the stacking pass itself** from `siril-cli` — the last ones in the log
+  are the normalization sub-step's `100.00%` and `Opening images for stacking,
+  100.00%`, then `log: Computing weights based on noise...` / `log: Starting
+  stacking...` and silence until the end.
+
+  Cause in `run_siril()` (`m110/stacking.py`): `state["progress"]` is cleared
+  only on a `running command:` stage change, and `log:` lines never touch it, so
+  the heartbeat keeps quoting a percentage that belongs to a sub-step that has
+  already ended. Fix options: (a) let a `log:` line supersede the progress text
+  (so the heartbeat shows `Starting stacking...`), and/or (b) track when
+  `progress` last changed and, once it is stale (say >30 s), render it as
+  `last progress 100.00% (normalization) 6:12 ago — Siril reports none during
+  the stack pass` rather than as live. (a) alone is probably enough and matches
+  what the log actually says. The "in this step" timer was correct throughout —
+  it is only the progress field that misleads.
+
 - [x] **Backups threw away every archived processing run** (done —
   `feature/backup-sandbox-scope`). `scope.is_excluded` skipped a workflow sandbox
   **wholesale**, on the reasoning that it is a "regenerable working area". True of
