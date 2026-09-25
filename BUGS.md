@@ -956,8 +956,22 @@ Legend: `[ ]` open · `[~]` partially done
   the tape-era model buys restores that need an intact chain, retention that can't drop a
   full until its dependents expire, and a corruption blast radius spanning days.
 
-- [ ] **Destinations become a list** *(the remaining half of #93)*. `backup_destination`
-  is a single setting; offsite implies plurality (local NAS nightly + S3 weekly, different
+- [x] **Two backup slots — Local + Cloud** *(landed 2026-09-25; the two-slot cut of the
+  item below)*. Users who knew cloud backup existed weren't finding it: the only way in
+  was typing `s3://` into the one destination field, and the guide recommended
+  "Everything local, Essentials to the cloud", which one saved destination couldn't
+  automate. Now `backup/slots.py` holds `backup_destinations = {"local", "cloud"}`, each
+  with its own destination, scope (cloud defaults to Essentials), schedule and retention
+  (cloud: keep-N only, no min-free). The legacy flat keys are read when the dict is
+  absent (the destination goes to the slot its kind names) and are never deleted. The
+  dialog is a both-slot summary over Local drive / Cloud tabs. Auto-backup queues the
+  due slots and runs them one at a time (`_RUN_LOCK`). Restore gains a "From:" picker.
+  The format preference moved onto the local slot, so a bucket can no longer leak
+  `pooled` into it.
+
+- [ ] **Destinations become a list — N destinations** *(what's left of #93 after the two
+  slots above; defer until someone needs a third destination)*. `backup_destination`
+  was a single setting; offsite implies plurality (local NAS nightly + S3 weekly, different
   retention each). This — not the storage format — is the real UI change: destination rows
   with per-row scope, schedule, retention. Format stays *derived from the probed
   destination*, never a user-facing mode for the cases where there's no real choice; same

@@ -18,7 +18,7 @@ from tests._helpers import seed_capture, seed_root, seed_sandbox
 
 
 def _use_pooled():
-    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_POOLED)
+    backup.update_slot(backup.SLOT_LOCAL, format=backup.FORMAT_POOLED)
 
 
 def _snap(dest, **kw):
@@ -299,7 +299,7 @@ def test_retention_spans_both_formats_and_keeps_the_last(tmp_path, monkeypatch):
     seed_capture(root)
     dest = tmp_path / "backups"
 
-    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_MIRRORED)
+    backup.update_slot(backup.SLOT_LOCAL, format=backup.FORMAT_MIRRORED)
     _snap(dest)
     _use_pooled()
     _snap(dest)
@@ -319,7 +319,7 @@ def test_mirrored_snapshots_stay_readable_beside_pooled_ones(tmp_path, monkeypat
     slug, tid = seed_capture(root)
     dest = tmp_path / "backups"
 
-    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_MIRRORED)
+    backup.update_slot(backup.SLOT_LOCAL, format=backup.FORMAT_MIRRORED)
     _snap(dest)
     _use_pooled()
     _snap(dest)
@@ -363,10 +363,12 @@ def test_a_destination_without_hardlinks_forces_pooled_and_persists_it(tmp_path,
     fmt, forced = backup.resolve_format(dest)
     assert (fmt, forced) == (backup.FORMAT_POOLED, True)
     # resolve_format alone is read-only — it reports, it doesn't rewrite settings
-    assert config.get_setting(backup.SETTING_FORMAT) is None
+    assert config.get_setting(backup.SETTING_DESTINATIONS) is None
 
     assert _snap(dest)["format"] == backup.FORMAT_POOLED
-    assert config.get_setting(backup.SETTING_FORMAT) == backup.FORMAT_POOLED
+    # Remembered on the local slot — the only one with a format choice — and
+    # never on the cloud slot.
+    assert backup.load_slot(backup.SLOT_LOCAL).format == backup.FORMAT_POOLED
 
 
 def test_two_backups_cannot_run_at_once(tmp_path, monkeypatch):

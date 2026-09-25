@@ -724,6 +724,8 @@ Always against a **temp root** ([§0](#0-safe-test-environment)), never a live
 library. The interesting cases are about the *destination*, which unit tests can
 only simulate.
 
+The dialog has two slots — a **Local drive** tab and a **Cloud** tab — each with
+its own destination, scope, schedule and retention; §2.5d covers the two together.
 Three destination kinds, in increasing cost to set up. **§2.5b needs no account
 and is the one to run on every backup change**; §2.5a needs a disk image; §2.5c
 needs a provider account and is a per-release check.
@@ -740,7 +742,7 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
 
 (Linux: `mkfs.vfat` a loop file. Windows: format a small VHD as exFAT.)
 
-- [ ] **Capability line, before the first backup.** Tools → Back up…, choose a normal
+- [ ] **Capability line, before the first backup.** Tools → Back up…, Local drive tab, choose a normal
       folder: "Unchanged files are shared between backups", plus free space. Choose
       `/Volumes/M110TEST`: it says the destination can't share files. Neither needs an
       existing backup to report this.
@@ -821,7 +823,7 @@ a matching Xcode — that is how it failed here on macOS 27.
 credentials, and create a bucket named `m110test`. (Or, with the `mc` client:
 `mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb local/m110test`.)
 
-**Point M110 at it** — Tools → Back up:
+**Point M110 at it** — Tools → Back up…, **Cloud** tab:
 
 | Field | Value |
 |---|---|
@@ -850,11 +852,12 @@ changed.
 
 **The checks.**
 
-- [ ] **The cloud fields appear as you type** `s3://…`, and **before any probe**:
-      "Backups are stored as" reads **Pooled backups** and is disabled, its note
-      doesn't mention file links or a browsable copy, and **Keep at least … GB free**
-      is greyed out. (None of that waits for Test connection — it's all knowable from
-      the destination string.)
+- [ ] **The Cloud tab is complete before any probe**: the credentials section is
+      there, the format note says files are stored once (no mention of file links or
+      a browsable copy), **Back up:** defaults to **Essentials**, and there is **no
+      Keep at least … GB free** control. Typing `s3://…` into the *Local drive* tab
+      instead says to use the Cloud tab, and a folder in the Cloud tab says it needs
+      an `s3://` address.
 - [ ] **Test connection** → the status line says "Connected".
 - [ ] **Wrong credentials fail clearly.** Change one character of the secret → Test
       connection → an actionable message, not a traceback and not a hang. Repeat with
@@ -882,7 +885,7 @@ changed.
       ```bash
       diff -r ~/Documents/M110-test /tmp/restored | grep -v '\.m110_internal_data/derived\|renders\|sessions.jsonl'
       ```
-- [ ] **Essentials scope.** Set **Back up: Essentials**, run again → the file count
+- [ ] **Essentials scope.** With the Cloud tab on **Everything**, back up once; then set **Back up: Essentials**, run again → the file count
       drops by the light frames (on the corpus, 251 → 53 — the synthetic frames are
       tiny, so the *byte* saving is nothing like the "few percent" a real library sees;
       it's the file list that matters here). Then restore from the **earlier**
@@ -899,8 +902,8 @@ changed.
       python -c "import time; from m110 import backup; print(backup.sweep_objects('s3://m110test/backups', now=time.time()+2*86400))"
       ```
       → `objects/` shrinks to only what the surviving snapshot references, and that
-      snapshot still verifies. **Keep at least … GB free must have had no effect** —
-      there is no volume to measure, and honouring it would prune a cloud history to
+      snapshot still verifies. The cloud slot has no free-space rule — there is no
+      volume to measure, and honouring the local one would prune a cloud history to
       one snapshot per run.
 - [ ] **Recovery without M110.** Download the bucket prefix (`mc mirror
       local/m110test/backups /tmp/frombucket`) and run
@@ -955,6 +958,35 @@ Use a **throwaway bucket** and a scratch store ([§0](#0-safe-test-environment))
       scheduled backups to a local folder named `s3:` while manual ones worked.)*
 - [ ] **Housekeeping.** Delete the test bucket afterwards, and set a lifecycle rule to
       abort incomplete multipart uploads — orphaned parts bill silently.
+
+#### 2.5d Both slots together
+
+A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
+
+- [ ] **Upgrading keeps the old destination.** With a pre-slot `~/.m110/settings.json`
+      holding `backup_destination` (a folder), `backup_auto_on_launch: true` and a
+      `backup_retention_keep`, open Tools → Back up… → the summary shows that folder
+      on the **Local** line, "automatic", and the Local drive tab has the same
+      interval and keep count. The Cloud line reads "Not set up — back up your
+      essentials offsite to Amazon S3, Backblaze B2, …". Repeat with an `s3://`
+      `backup_destination` → it lands on the **Cloud** line instead. After Save,
+      `settings.json` has a `backup_destinations` dict *and still has* the old flat
+      keys.
+- [ ] **The summary link opens the tab.** Click **Set up cloud backup…** → the Cloud
+      tab, with the destination field focused. With only Cloud configured, the dialog
+      opens on the Cloud tab.
+- [ ] **Each tab saves only itself.** Change the Local interval and Save; reopen →
+      Cloud's settings are unchanged, and vice versa.
+- [ ] **Both run, one after the other.** Tick **Back up automatically** on both, with
+      a short interval, quit and relaunch → the status bar reads "Backing up to
+      Local…", then "Backed up N files to Local · Backing up to Cloud…", then both
+      results. Stop MinIO first → "Cloud backup skipped" appears **beside** the
+      Local result, and the Local backup still happened.
+- [ ] **Last backup times.** After each run, reopen the dialog → each summary line
+      says "last backup just now". The Cloud line shows it without a Test connection.
+- [ ] **Restore offers both.** Tools → Restore… → a **From:** picker lists Local and
+      Cloud; switching lists that destination's snapshots. With only one configured,
+      there's no picker.
 
 ---
 

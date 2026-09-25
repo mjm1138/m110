@@ -15,7 +15,7 @@ each page links to the next.
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
 4. **[The library & object metadata](library.md)** — the List/Grid/Feed views, adding objects, filling in details, and per-image curation
 5. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), the **AstroWizard** round-trip, **keeping working files under control** (how many past runs M110 keeps), and *what hardlinks mean for your files* (important)
-6. **[Backing up your library](backup.md)** — snapshots, retention, and how hardlinked backups behave
+6. **[Backing up your library](backup.md)** — local and cloud snapshots, retention, and how hardlinked backups behave
 7. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
 8. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
 9. **[Using an AI assistant](assistant.md)** — connect your own assistant to your library, the skills and tools it gets, and why it can't change anything
@@ -94,10 +94,13 @@ Everything that isn't your object collection lives here as **collapsible section
 
 ### Menus, preferences & updates
 
-- **Library menu** — Refresh (Ctrl+R), Prepare working folders, **Add object…**, **Fill
-  missing metadata** / **Enrich online…** (see **[the library page](library.md)**),
-  **Publish**, **Back up / Restore**, and **Preferences** (Cmd+, — on macOS it lives under
-  the app menu).
+- **File menu** — **Import…**, **Publish / share…**, Exit.
+- **Library menu** — Refresh (Ctrl+R), **Add object…**, **Fill missing metadata…** /
+  **Enrich online…** (see **[the library page](library.md)**).
+- **Tools menu** — Prepare working folders, Clean up imported sidecars, **Back up…** /
+  **Restore…** (to a local drive, the cloud, or both — see
+  **[Backing up your library](backup.md)**), and **Preferences** (Cmd+, — on macOS it
+  lives under the app menu).
 - **Help menu** — **User guide** (opens this guide), **Check for updates…**, **Report a
   problem…** (a pre-filled bug report), and **About M110**.
 - **Appearance / theme.** M110 follows your system light/dark appearance automatically;

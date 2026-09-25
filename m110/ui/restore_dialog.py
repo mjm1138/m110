@@ -45,12 +45,20 @@ class _Worker(QThread):
 
 
 class RestoreDialog(QDialog):
-    def __init__(self, destination: str, parent=None):
+    def __init__(self, destination, parent=None):
+        """`destination` is one destination string, or a list of `(label,
+        destination)` sources — the backup slots — in the order to offer them.
+        With more than one, a "From:" picker switches between them."""
         super().__init__(parent)
         self.setWindowTitle("Restore from backup")
+        if isinstance(destination, (list, tuple)):
+            self._sources = [(label, dest) for label, dest in destination if dest]
+        else:
+            self._sources = [("", destination)] if destination else []
         # Kept as the destination *string* — `Path(...)` would mangle an s3:// URI
         # into `s3:/bucket/prefix`, and the engine parses it either way.
-        self._destination = destination or None
+        self._destination = self._sources[0][1] if self._sources else None
+        self._snapshots: list = []
         self._worker = None
         self._progress = None
         self._cancel_event = None
@@ -62,31 +70,22 @@ class RestoreDialog(QDialog):
         layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
         layout.setSpacing(s["md"])
 
+        # ── source picker ── (only when there's a choice)
+        self._source_combo = None
+        if len(self._sources) > 1:
+            src_row = QHBoxLayout()
+            src_row.addWidget(QLabel("From:"))
+            self._source_combo = QComboBox()
+            for label, dest in self._sources:
+                self._source_combo.addItem(f"{label}  ·  {dest}", dest)
+            self._source_combo.currentIndexChanged.connect(self._on_source_changed)
+            src_row.addWidget(self._source_combo, 1)
+            layout.addLayout(src_row)
+
         # ── snapshot picker ──
         snap_row = QHBoxLayout()
         snap_row.addWidget(QLabel("Snapshot:"))
         self._snap_combo = QComboBox()
-        self._snapshots = backup.list_snapshots(self._destination) if self._destination else []
-        for snap in self._snapshots:
-            # Label how each snapshot is stored. Mixed histories are normal — the
-            # format follows the destination, and a share can be remounted with
-            # different capabilities. Either way it restores the same.
-            if snap.format == backup.FORMAT_POOLED:
-                kind = "  ·  pooled"
-            elif not snap.hardlinks:
-                kind = "  ·  full copy"
-            else:
-                kind = ""
-            # A backup that never held the light frames must not look like one
-            # that lost them. `None` is a snapshot written before tiers existed,
-            # which is to say: everything.
-            if snap.scope not in (None, backup.DEFAULT_SCOPE):
-                kind += "  ·  no light frames"
-            # Carry the SnapshotInfo itself, not `snap.path`: a snapshot in a
-            # bucket has no path, and the engine resolves the object either way.
-            self._snap_combo.addItem(
-                f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files{kind}",
-                snap)
         self._snap_combo.currentIndexChanged.connect(self._reload_tree)
         snap_row.addWidget(self._snap_combo, 1)
         self._verify_btn = QPushButton("Verify integrity")
@@ -130,12 +129,46 @@ class RestoreDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        if not self._snapshots:
-            self._restore_btn.setEnabled(False)
-            self._verify_btn.setEnabled(False)
-            layout.insertWidget(1, QLabel("<i>No backups found at this destination.</i>"))
-        else:
-            self._reload_tree()
+        self._empty = QLabel("<i>No backups found at this destination.</i>")
+        layout.insertWidget(layout.indexOf(self._tree) - 1, self._empty)
+        self._load_snapshots()
+
+    # ---- source ----
+    def _on_source_changed(self, *_):
+        self._destination = self._source_combo.currentData()
+        self._load_snapshots()
+
+    def _load_snapshots(self):
+        self._snapshots = (backup.list_snapshots(self._destination)
+                           if self._destination else [])
+        blocked = self._snap_combo.blockSignals(True)
+        self._snap_combo.clear()
+        for snap in self._snapshots:
+            # Label how each snapshot is stored. Mixed histories are normal — the
+            # format follows the destination, and a share can be remounted with
+            # different capabilities. Either way it restores the same.
+            if snap.format == backup.FORMAT_POOLED:
+                kind = "  ·  pooled"
+            elif not snap.hardlinks:
+                kind = "  ·  full copy"
+            else:
+                kind = ""
+            # A backup that never held the light frames must not look like one
+            # that lost them. `None` is a snapshot written before tiers existed,
+            # which is to say: everything.
+            if snap.scope not in (None, backup.DEFAULT_SCOPE):
+                kind += "  ·  no light frames"
+            # Carry the SnapshotInfo itself, not `snap.path`: a snapshot in a
+            # bucket has no path, and the engine resolves the object either way.
+            self._snap_combo.addItem(
+                f"{snap.created:%Y-%m-%d %H:%M}  ·  {snap.file_count} files{kind}",
+                snap)
+        self._snap_combo.blockSignals(blocked)
+        has = bool(self._snapshots)
+        self._restore_btn.setEnabled(has)
+        self._verify_btn.setEnabled(has)
+        self._empty.setVisible(not has)
+        self._reload_tree()
 
     # ---- tree ----
     def _current_snapshot(self) -> backup.SnapshotInfo | None:
