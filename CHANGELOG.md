@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.8] - 2026-09-25
+
 ### Added
 - **Back up to a local drive and the cloud at the same time.** The Back up window
   (Tools → Back up…) now has two tabs, **Local drive** and **Cloud**. Each has its own
