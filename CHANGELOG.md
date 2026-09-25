@@ -10,6 +10,39 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **DwarfLab Draco sessions are recognized.** Import treats a `Draco_RAW_TELE_…`
+  folder like a Dwarf 3 session: the `.fits` subs go to the object's lights, the
+  in-app stack and its previews to the device-stack tier, and the thumbnails and
+  reference renders are left alone. (Based on one pre-release sample; the Draco
+  ships later in 2026.) Planning has a Draco device preset with 300 s exposures.
+- **A session the telescope never named is named from where it pointed.** When a
+  Dwarf or Draco session's object is the device placeholder "Unknown" but its
+  frames point within 1° of a catalog object, the import preview proposes that
+  object and says so in the Pointing column ("identified by pointing — 0.36° from
+  NGC 6992"). You can still pick a different object before confirming, and
+  nothing is written until you do. Sessions that point nowhere near a catalog
+  object go to the holding area as before.
+- **A calibration library per telescope.** The Draco ships master darks, flats and
+  a bias for the whole device (darks for every exposure, gain, binning and sensor
+  temperature) in a `CALI_FRAME` folder. Import now recognizes that folder and
+  files the masters under a new top-level `Calibration/<telescope>/` in your
+  library, named after the telescope that the session folder next to it was shot
+  with; they are never mistaken for light frames or for a capture target. If no
+  session folder is beside them, they go to the holding area with a note saying
+  why. The pre-release masters carry no information in their headers, so M110
+  writes the exposure, gain, binning, temperature and frame count from the
+  filename into *its own copy* (marked with an `M110STMP` header card); the files
+  on your device are never modified. Backups keep the library at every tier.
+  Using the masters when you prepare or stack a target is the next step.
+
+### Fixed
+- **Same-named folders no longer merge in the holding area.** Files from two
+  source folders that share a name (the Draco's `dark/cam_0` and `flat/cam_0`)
+  used to be held together under one name, and a file with the same name in the
+  second folder was silently skipped. Each now gets its own group, named after its
+  parent folder too (`dark_cam_0`, `flat_cam_0`).
+
 ## [0.3.0-beta.8] - 2026-09-25
 
 ### Added

@@ -362,6 +362,30 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
       (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
 
+#### Import — DwarfLab Draco  (6d, pre-release)  ⚙ *(classification automated — `test_ingest_dwarf.py` Draco block; needs the real sample at `~/Documents/M110-test-import-source/Veil_nebula` until the corpus grows a Draco session)*
+- [ ] Browse the **`Veil_nebula/`** sample. Its `Draco_RAW_TELE_Unknown_…` session
+      (OBJECT = `Unknown`, 300 s BGGR subs) is **not** held: the preview shows
+      **lights → `Images/NGC 6992/lights/`** (17) and the `stacked-16` stack + previews →
+      the **stack tier** (3), both with the Pointing column reading
+      **"identified by pointing — 0.36° from NGC 6992"** and the Object cell offering
+      the retarget combo. `stacked_thumbnail.jpg`, `img_reference.png`, `shotsInfo.json`
+      are not surfaced.
+- [ ] Retarget the lights row to NGC 6960 → the note clears and the destination follows.
+- [ ] The `CALI_FRAME/{dark,flat,bias}/cam_0/` tree shows as three **master darks /
+      master flats / master biases** rows whose Object is **Draco** (28 · 2 · 1), Pointing
+      "—", destination `Calibration/Draco/<tier>/`; the empty `dark/cam_2/` is silent;
+      the holding count is **0**. *(`test_calibration_ingest.py`.)*
+- [ ] Confirm the import. `Calibration/Draco/darks/…_13C_stack_10.fits` in the store
+      has `IMAGETYP = 'Master Dark'`, `EXPTIME 300`, `GAIN 60`, `CCD-TEMP 13`,
+      `NCOMBINE 10`, `TELESCOP 'Draco'`, `M110STMP 'filename'`; the **source** file on
+      the device/sample is byte-identical to before (no header written there). Browse
+      the sample again → nothing offered (already present).
+- [ ] Copy only `CALI_FRAME/` somewhere with **no** session folder beside it and browse
+      that: the masters go to the **holding area** as `dark_cam_0` / `flat_cam_0` /
+      `bias_cam_0`; Inspect says *"Held: calibration frames from an unidentified
+      device…"* and the Kind combo is pre-filled (dark/flat/bias).
+- [ ] Planning → device: a **DwarfLab Draco** preset exists (300 s, gain 60, soft 80°).
+
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
 - [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown

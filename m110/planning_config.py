@@ -119,6 +119,11 @@ class Device:
 # * EQ mode (any device) removes field rotation — the soft ceiling stops
 #   applying; whether the Seestar app still enforces its hard check in EQ mode
 #   is undocumented, so the Seestar presets stay hard until falsified.
+# * Draco (DwarfLab, ships Nov–Dec 2026): UNVERIFIED — everything here comes from
+#   ONE pre-release sample (2026-09): 300 s subs at gain 60, alt-az (EQMODE=0),
+#   340 mm / 2.394 µm / 4096×3072 (≈1.45″/px, 1.65°×1.24° field — a deep-tier
+#   field, not a Dwarf 3 widefield). Same soft alt-az ceiling as the Dwarf 3 until
+#   a real unit says otherwise. Revisit when production data arrives.
 DEVICE_PRESETS: dict[str, Device] = {
     "seestar_s50": Device(),
     "seestar_s30": Device(name="ZWO Seestar S30"),
@@ -127,6 +132,9 @@ DEVICE_PRESETS: dict[str, Device] = {
                       ceiling_is_hard=False),
     "dwarf_mini": Device(name="DwarfLab Dwarf Mini", start_alt_ceiling_deg=80.0,
                          ceiling_is_hard=False),
+    "draco": Device(name="DwarfLab Draco", start_alt_ceiling_deg=80.0,
+                    ceiling_is_hard=False, max_exposure_s=300,
+                    default_exposure_s=300, gain=60),
 }
 
 

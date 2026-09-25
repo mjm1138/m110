@@ -24,7 +24,7 @@ a north-star goal to chase.
 
 - **A real library** — every object you've shot, organized by catalog (Messier,
   Caldwell, and more) with status, integration time, and a per-object journal.
-- **One-click ingest** — point it at your Seestar, DwarfLab Dwarf, or a folder; it groups, names, and
+- **One-click ingest** — point it at your Seestar, DwarfLab Dwarf or Draco, or a folder; it groups, names, and
   files your subs, stacks, and finished renders. You always preview before anything
   is written.
 - **Capture tracking** — sessions, frames, filters, and total integration roll up

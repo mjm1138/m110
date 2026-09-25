@@ -212,3 +212,17 @@ def test_ingest_dialog_close_during_scan_is_safe(tmp_path, monkeypatch, qtbot):
     qtbot.addWidget(dlg)
     dlg.reject()                          # close immediately — must cancel+wait, not crash
     assert dlg._worker is None
+
+
+def test_every_ingest_kind_has_a_label_and_a_pointing_rule():
+    """A kind the engine can emit must render with a readable label, and the
+    kinds without a pointing to verify must show "—", not a false ✓ — the
+    device-level calibration kinds (feature/draco) included."""
+    from m110.ui.ingest_dialog import KIND_LABEL, NO_POINTING_KINDS
+    emitted = (set(ingest._KIND_DIR) | {"media", "unassigned"}) - {"siril-preset", "working"}
+    for k in emitted:
+        assert k in KIND_LABEL, k
+    for k in ingest._CAL_KINDS:
+        assert KIND_LABEL[k].startswith("master ")
+        assert k in NO_POINTING_KINDS
+    assert "light" not in NO_POINTING_KINDS and "stack" not in NO_POINTING_KINDS

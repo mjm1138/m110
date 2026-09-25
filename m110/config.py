@@ -28,6 +28,7 @@ INTERNAL_DIRNAME = ".m110_internal_data"
 # .m110_internal_data/ holding all machine state.
 _SUBDIRS = [
     "Objects", "Images", "Media", "Inbox", "Plans",
+    "Calibration",       # device-level master darks/flats/biases (feature/draco)
     INTERNAL_DIRNAME,
     f"{INTERNAL_DIRNAME}/derived",
     f"{INTERNAL_DIRNAME}/renders/hero",
@@ -175,6 +176,7 @@ def _apply(root: Path) -> None:
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
     global MEDIA_RENDERS_DIR
     global PROFILES_DIR, PINS_TOML, PLANS_DIR, ASSISTANT_DIR, ASSISTANT_OUTBOX
+    global CALIBRATION_DIR
     DATA_ROOT = root
     # Visible content axes
     OBJECTS_DIR = root / "Objects"          # Objects/<catalog id>/journal.md
@@ -182,6 +184,7 @@ def _apply(root: Path) -> None:
     MEDIA_DIR = root / "Media"              # Media/<Category>_photo|_video
     STAGING_DIR = root / "Inbox"            # ingest staging
     PLANS_DIR = root / "Plans"              # saved session-plan field guides (*.md)
+    CALIBRATION_DIR = root / "Calibration"  # Calibration/<device>/{darks,flats,biases}
     # Hidden machine state
     INTERNAL_DIR = root / INTERNAL_DIRNAME
     LIBRARY_TOML = INTERNAL_DIR / "library.toml"   # the user's object corpus
@@ -305,10 +308,19 @@ _PRODUCT_MARKERS = (
 )
 
 
+# DwarfLab's calibration-master vocabulary (Draco 2026 pre-release sample, also
+# the shape of a Dwarf 3 CALI_FRAME/ tree): ``dark_exp_300.000000_gain_60_bin_1_
+# 12C_stack_11``, ``flat_gain_2_bin_1_ir_1``, ``bias_gain_2_bin_1``. A master is
+# never a sub, and these carry no other product marker, so they get their own rule.
+_CAL_MASTER_PREFIXES = ("dark_exp_", "flat_gain_", "bias_gain_")
+
+
 def is_processing_product(name: str) -> bool:
     """True if ``name`` reads as a processing by-product, not a raw sub."""
     low = name.lower()
-    return bool(_STACK_SIG_RE.search(low)) or any(m in low for m in _PRODUCT_MARKERS)
+    return (bool(_STACK_SIG_RE.search(low))
+            or any(m in low for m in _PRODUCT_MARKERS)
+            or low.startswith(_CAL_MASTER_PREFIXES))
 
 
 def is_light_frame(name: str) -> bool:
@@ -330,6 +342,24 @@ def flats_dir(name: str) -> Path:
 def biases_dir(name: str) -> Path:
     """Bias/offset calibration frames for a capture target."""
     return IMAGES_DIR / name / "biases"
+
+
+# ── device-level calibration library (Calibration/<device>/<tier>) ─────────────
+# A smart telescope's calibration frames are a property of the *device*, not of
+# any one target: the DwarfLab Draco ships a library of master darks spanning
+# exposure × gain × binning × sensor temperature, plus flats per filter and a bias,
+# and the same master serves every target shot with those settings. Per-target
+# `darks/`/`flats/`/`biases/` (above) remain as an override for frames a user
+# shot for one project. `<device>` is the FITS ``TELESCOP`` string (devices.py).
+# Additive, lazily populated → no .store_version bump (DATA_MODEL.md).
+CALIBRATION_TIERS = ("darks", "flats", "biases")
+
+
+def calibration_dir(device: str, tier: str) -> Path:
+    """``Calibration/<device>/<tier>`` for a tier in `CALIBRATION_TIERS`."""
+    if tier not in CALIBRATION_TIERS:
+        raise ValueError(f"unknown calibration tier {tier!r}")
+    return CALIBRATION_DIR / device / tier
 
 
 # Per-target tool-workflow sandboxes (``Images/<target>/<name>/``). Each names a

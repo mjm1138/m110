@@ -4,12 +4,25 @@
 
 ## Bringing captures in
 
-Open the **Import** page. Pick a source — a mounted Seestar, a DwarfLab Dwarf 3, an
-SD card, or any folder of FITS — and M110 scans it (without changing anything) and
-shows a **grouped preview**: one row per object, with the kind of file (light subs,
-device stack, finished render, media), the file count, size, and where each group
-will land. Device layouts are recognized automatically — a Seestar export, a Dwarf 3
-`DWARF_RAW_*` / `STARTRAILS_*` session, an M110 store, or a loose pile of FITS.
+Open the **Import** page. Pick a source — a mounted Seestar, a DwarfLab Dwarf 3 or
+Draco, an SD card, or any folder of FITS — and M110 scans it (without changing
+anything) and shows a **grouped preview**: one row per object, with the kind of file
+(light subs, device stack, finished render, media), the file count, size, and where
+each group will land. Device layouts are recognized automatically — a Seestar export,
+a DwarfLab `DWARF_RAW_*` / `Draco_RAW_*` / `STARTRAILS_*` session, an M110 store, or
+a loose pile of FITS.
+
+If a DwarfLab session was captured without naming a target (the device writes
+"Unknown"), M110 looks at where the telescope was pointing: when a catalog object
+sits within 1°, the preview proposes it and the Pointing column reads *"identified
+by pointing — 0.36° from NGC 6992"*. Change the object in the row if that guess is
+wrong; nothing is written until you confirm.
+
+A DwarfLab `CALI_FRAME` folder (the device's master darks, flats and bias) is
+recognized too. Its masters belong to the telescope rather than to one object, so
+they are filed under `Calibration/<telescope>/` in your library, with the telescope
+taken from the session folder next to them. Import the two together; on their own
+the masters go to the holding area with a note explaining why.
 
 - Check or uncheck groups; retarget a group to a different object if the name or
   pointing looks off.

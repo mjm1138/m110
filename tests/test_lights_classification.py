@@ -42,6 +42,20 @@ def test_is_light_frame_classification():
     assert not config.is_light_frame("anything.png")   # not a .fit
 
 
+def test_dwarflab_calibration_masters_are_never_lights():
+    """DwarfLab's CALI_FRAME masters carry their facts in the filename and no
+    product marker — without this rule they'd read as subs and could be imported
+    into lights/ (a master dark in a stack = a ruined stack)."""
+    for n in ("dark_exp_300.000000_gain_60_bin_1_12C_stack_11.fits",
+              "flat_gain_2_bin_1_ir_1.fits", "bias_gain_2_bin_1.fits",
+              "DARK_EXP_10.000000_gain_80_bin_1_14C_stack_2.fits"):
+        assert not config.is_light_frame(n), n
+        assert config.is_processing_product(n), n
+    # …but a Draco/Dwarf sub is not caught: the prefixes are followed by the
+    # device's field names, and a sub starts with its object.
+    assert config.is_light_frame("Unknown_300s60_Duo-Band_20260919-220535997_13C.fits")
+
+
 def _seed_lights(root, target, names):
     d = config.lights_dir(target)
     d.mkdir(parents=True, exist_ok=True)

@@ -91,6 +91,8 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
     lights/ rejected/ stacks/ seestar-stacks/ finished/ previews/
     siril/  astrowizard/            per-workflow sandboxes (config.SANDBOX_LINKED_INPUTS)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
+  Calibration/<device>/             device-level master darks/flats/biases (device = TELESCOP)
+    darks/ flats/ biases/           per-target Images/<t>/darks/… overrides it
   Inbox/                            ingest holding area
   Plans/                            saved field guides
   .m110_internal_data/              library.toml goals.toml priorities.toml pins.toml
@@ -124,7 +126,8 @@ DONE.md's archived reference — grep the module name there.
 | `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path |
 | `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
-| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3) + gated `apply_ops` (the only writer); holding area + identification aids |
+| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + DwarfLab Dwarf 3/Draco + `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; a placeholder `OBJECT` is named by pointing (`_object_by_pointing`, `IngestOp.note`); a DwarfLab `CALI_FRAME/` tree → `Calibration/<device>/` (`_classify_calibration_dir`, kinds `cal-*`), headerless masters get their facts **stamped into the copy** (`IngestOp.stamp` — TEMPORARY SHIM, delete when production Draco masters carry headers) |
+| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`) and `preset_key` (→ `DEVICE_PRESETS`) |
 | `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor |
 | `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`, Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
 | `astrowizard.py` | the finishing round-trip (thin `roundtrip` consumer): `is_master`/`is_autosave`/`is_handoff` (sidecar-keyed, never filename), `prepare_lights` |

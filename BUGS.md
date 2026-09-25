@@ -503,6 +503,16 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [x] **Holding-area groups collided on the leaf folder name** (done —
+  `feature/draco`). `scan_directory_plan` passed only `d.name` to the sweep, so two
+  unclassifiable dirs sharing a leaf (the Draco's `CALI_FRAME/dark/cam_0` +
+  `flat/cam_0` + `bias/cam_0`) merged into one `Inbox/cam_0/` group, and a
+  same-named file in the second dir was skipped as "already held" — dropped without
+  a log line. Fix: the walk is collected first, `_hold_names` qualifies only the
+  colliding dirs with their parent (`dark_cam_0`), and `_classify_dir` takes that as
+  a separate `hold_name` so layout detection and object resolution still key on the
+  bare name. `tests/test_ingest.py::test_holding_groups_do_not_collide_on_leaf_name`.
+
 - [x] **#161 — an NFS data root crashed startup and failed import: AppleDouble
   `._` sidecars were enumerated as content** (done — `fix/nfs-appledouble-sidecars`).
   Reported by ddb from a Synology NFSv3 export on macOS 27. On a filesystem without

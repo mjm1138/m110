@@ -85,9 +85,11 @@ class HoldingInspectDialog(QDialog):
         lay.addLayout(row)
 
         sug_id, reason = info.get("suggested_id"), info.get("reason")
+        note = info.get("note")          # e.g. a headerless calibration master
         sug = QLabel(f"<b>Suggested:</b> {sug_id}  <span style='color:"
                      f"{theme.active_tokens().text_secondary}'>({reason})</span>"
-                     if sug_id else "No suggestion — no readable FITS header / pointing.")
+                     if sug_id else (f"<b>Held:</b> {note}" if note
+                                     else "No suggestion — no readable FITS header / pointing."))
         sug.setTextFormat(Qt.RichText)
         sug.setWordWrap(True)
         lay.addSpacing(s["xs"])

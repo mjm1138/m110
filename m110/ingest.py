@@ -55,6 +55,11 @@ class IngestOp:
     size_bytes: int = 0       # source file size (stat'd on the scan worker)
     layout: str = "seestar"   # recognizer that claimed it (LAYOUTS id)
     object: str = ""          # canonical object/category label this op lands under
+    note: str = ""            # provenance the preview must show (e.g. "identified by
+                              # pointing"); folded into IngestGroup.pointing by group_ops
+    stamp: dict | None = None # header cards apply_ops writes into M110's COPY (never
+                              # the source) — the headerless-master shim, see
+                              # parse_dwarflab_master_name
 
 
 @dataclass
@@ -88,8 +93,9 @@ class Layout:
 
 LAYOUTS = [
     Layout("seestar",         "Seestar",         True),   # folder-name conventions (_sub/Stacked_/_photo)
-    Layout("dwarf",           "DwarfLab Dwarf",  True),    # DWARF_RAW_*/STARTRAILS_* session folders
+    Layout("dwarf",           "DwarfLab Dwarf / Draco", True),  # <model>_RAW_TELE|WIDE_* / STARTRAILS_* session folders
     Layout("m110-store",      "M110 store",      True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
+    Layout("calibration",     "Calibration masters", True), # DwarfLab CALI_FRAME/ tree or a store's Calibration/<device>/
     Layout("raw-fits",        "Raw FITS",        True),    # loose FITS sorted by header
     Layout("finished-render", "Finished render", True),    # a loose *_processed/final raster in an object folder
     Layout("asiair",          "ZWO ASIAIR",      False),   # registered placeholder
@@ -133,11 +139,18 @@ def _usable_object(name: str | None) -> str | None:
     return None if s.lower() in _UNUSABLE_OBJECTS else s
 
 
+# DwarfLab on-device session folders: ``DWARF_RAW_TELE_<obj>_EXP_…`` (Dwarf 3),
+# ``Draco_RAW_TELE_<obj>_EXP_…`` (Draco, 2026 pre-release sample) — the model name
+# is the prefix, the ``_RAW_<camera>_`` token is the constant. Startrails folders
+# keep their own prefix.
+_SESSION_DIR_RE = re.compile(r"^[A-Za-z0-9]+_RAW_(TELE|WIDE)_", re.IGNORECASE)
+
+
 def _is_dwarf_session_dir(name: str) -> bool:
-    """A DwarfLab Dwarf on-device session folder (its subs sit beside an in-app
-    ``stacked-16_*`` stack, a ``Thumbnail/`` dir, and ``stacked.jpg`` previews)."""
-    n = name.upper()
-    return n.startswith("DWARF_RAW_") or n.startswith("STARTRAILS_")
+    """A DwarfLab on-device session folder (Dwarf 3, Draco, …): its subs sit
+    beside an in-app ``stacked-16_*`` stack, a ``Thumbnail/`` dir, and
+    ``stacked.jpg`` previews."""
+    return bool(_SESSION_DIR_RE.match(name)) or name.upper().startswith("STARTRAILS_")
 
 
 def _fit_files(d: Path) -> list[str]:
@@ -388,12 +401,14 @@ def frame_info(path: str) -> dict | None:
     except (ValueError, TypeError):
         ra_deg = dec_deg = None
     obj = hdr.get("OBJECT")
+    tel = hdr.get("TELESCOP")
     return {
         "object": str(obj).strip() if obj not in (None, "") else None,
         "imagetyp": _normalize_imagetyp(hdr.get("IMAGETYP")),
         "filter": (str(hdr.get("FILTER")).strip() or None) if hdr.get("FILTER") else None,
         "ra_deg": ra_deg,
         "dec_deg": dec_deg,
+        "telescop": str(tel).strip() if tel not in (None, "") else None,
     }
 
 
@@ -451,8 +466,13 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
             break
         if progress:
             progress(i, g.object)
-        if g.kind in ("media", "dark", "flat", "bias", "finished") or not g.ops:
+        if (g.kind in ("media", "dark", "flat", "bias", "finished")
+                or g.kind in _CAL_KINDS or not g.ops):
             continue
+        if g.pointing:
+            continue      # already carries provenance (named by pointing): the
+                          # object *is* the nearest catalog entry, so re-checking it
+                          # at POINTING_TOL_DEG would only overwrite the note
         radec = frame_radec(g.ops[0].src)
         if radec is None:
             continue
@@ -496,12 +516,19 @@ def staging_available() -> bool:
     return _staging().is_dir()
 
 
+# Device-level calibration masters (Calibration/<device>/<tier>): the "object" of
+# such an op is the device name, and the dir is never a capture target.
+_CAL_KINDS = {"cal-dark": "darks", "cal-flat": "flats", "cal-bias": "biases"}
+
 # kind → per-target destination dir (media routes to MEDIA_DIR, handled separately)
 _KIND_DIR = {
     "light": config.lights_dir,
     "dark": config.darks_dir,
     "flat": config.flats_dir,
     "bias": config.biases_dir,
+    "cal-dark": lambda dev: config.calibration_dir(dev, "darks"),
+    "cal-flat": lambda dev: config.calibration_dir(dev, "flats"),
+    "cal-bias": lambda dev: config.calibration_dir(dev, "biases"),
     "stack": config.seestar_stacks_dir,
     "siril-stack": config.stacks_dir,
     "finished": config.finished_dir,
@@ -613,7 +640,7 @@ def _emit_one_kind(src_dir: Path, files, kind: str, obj: str, group: str,
     dst_dir = _KIND_DIR[kind](obj)
     existing = (_light_tier_names(obj) if kind in _LIGHT_TIERS
                 else set(_all_files(dst_dir)))
-    new_object = not config.target_dir(obj).is_dir()
+    new_object = kind not in _CAL_KINDS and not config.target_dir(obj).is_dir()
     ops: list[IngestOp] = []
     for f in files:
         if f in existing:
@@ -629,6 +656,11 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     """Which LAYOUTS recognizer claims this directory (or None to skip it)."""
     if name.lower() in _SKIP_DIRS:
         return None
+    # Device-level calibration masters — checked FIRST: a store's
+    # `Calibration/<device>/darks/` would otherwise match the `darks` store-subdir
+    # rule below and import as a capture target named after the device.
+    if _is_dwarflab_cali_dir(src_dir, name) or _is_store_calibration_dir(src_dir, name):
+        return "calibration"
     # M110-store-shaped (precursor like ~/Astronomy/Images): a known content
     # subdir under an <object>, or an <object> under a known container.
     if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
@@ -857,12 +889,23 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
 
     # DSO / Moon — object comes from the OBJECT header (shared across subs).
     obj = None
+    note = ""
+    first_info = None
     for f in raw_subs:
         info = frame_info(str(src_dir / f))
+        if info and first_info is None:
+            first_info = info
         cand = _usable_object(info["object"]) if info else None
         if cand:
             obj = canonical_target(cand)
             break
+    if obj is None and first_info is not None:
+        # OBJECT is a device placeholder (``Unknown``) but the frames still carry
+        # where the scope pointed → name the target from the catalog when a known
+        # object sits within IDENTIFY_TOL_DEG. The preview shows the provenance
+        # ("identified by pointing") and the group can be retargeted before the
+        # write, so this stays preview-then-confirm.
+        obj, note = _object_by_pointing(first_info)
 
     ops = []
     if obj:
@@ -886,8 +929,11 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
         handled.update(previews)
         ops += _emit_files(src_dir, stacks, "stack", obj, name, action, "dwarf")
         ops += _emit_files(src_dir, previews, "stack", obj, name, action, "dwarf")
-    # else: OBJECT was a placeholder (Unknown/empty) → leave raw subs to the sweep
-    # (holding area, where identify-by-pointing can name them).
+        if note:
+            ops = [replace(op, note=note) for op in ops]
+    # else: OBJECT was a placeholder (Unknown/empty) and nothing in the catalog
+    # sits near the pointing → leave raw subs to the sweep (holding area, where the
+    # identification aids show the nearest object and the user assigns by hand).
 
     # Ignore aux rasters (reference/counter renders, small thumbnails, the flat
     # img_stacked_all.tif rendition) so they never hit the holding area.
@@ -895,6 +941,222 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
            if f.startswith("img_") or f.lower() == "stacked_thumbnail.jpg"]
     handled.update(aux)
     return ops
+
+
+# ── device-level calibration masters (Calibration/<device>/<tier>) ─────────────
+#
+# The DwarfLab Draco (and a Dwarf 3's CALI_FRAME/ export) ships a *library* of
+# calibration MASTERS — darks across exposure × gain × binning × sensor
+# temperature, flats per filter index, one bias — under
+# ``CALI_FRAME/{dark,flat,bias}/cam_<n>/``. They belong to the device, not to any
+# target, so they import into ``Calibration/<device>/{darks,flats,biases}/`` and
+# processing prep picks the matching one per target (calibration.py).
+
+_CALI_FRAME_DIRNAME = "CALI_FRAME"
+_CALI_TIER_BY_DIR = {"dark": "darks", "flat": "flats", "bias": "biases"}
+_CAL_KIND_BY_TIER = {tier: kind for kind, tier in _CAL_KINDS.items()}
+_CAM_DIR_RE = re.compile(r"cam_\d+", re.IGNORECASE)
+
+
+def _is_dwarflab_cali_dir(src_dir: Path, name: str) -> bool:
+    """``CALI_FRAME/<dark|flat|bias>/cam_<n>/`` holding FITS (the DwarfLab export)."""
+    parent = src_dir.parent
+    return bool(_CAM_DIR_RE.fullmatch(name)
+                and parent.name.lower() in _CALI_TIER_BY_DIR
+                and parent.parent.name.upper() == _CALI_FRAME_DIRNAME
+                and _fit_files(src_dir))
+
+
+def _is_store_calibration_dir(src_dir: Path, name: str) -> bool:
+    """``Calibration/<device>/<darks|flats|biases>/`` holding FITS — another M110
+    store's (a backup, a second machine) device library, imported as itself."""
+    return bool(name.lower() in config.CALIBRATION_TIERS
+                and src_dir.parent.parent.name == config.CALIBRATION_DIR.name
+                and _fit_files(src_dir))
+
+
+# ── TEMPORARY SHIM — headerless DwarfLab masters ──────────────────────────────
+# The 2026-09 Draco pre-release sample's masters carry NO facts in their headers
+# (SIMPLE/BITPIX/NAXIS*/BZERO/BSCALE/BAYERPAT only); every fact is in the filename:
+#   dark_exp_300.000000_gain_60_bin_1_12C_stack_11.fits
+#   flat_gain_2_bin_1_ir_1.fits
+#   bias_gain_2_bin_1.fits
+# Header truth is the rule everywhere else, so rather than teach the matcher to
+# read filenames, ingest STAMPS the parsed facts into M110's copy (never the
+# source) and everything downstream stays header-only. Production units are
+# expected to write real headers; when they do, `_needs_stamp` will already say
+# no and this block can be deleted (parse + cards + the `stamp` field). The
+# ``M110STMP`` card marks a stamped file so such copies can be found later.
+_DWARFLAB_DARK_RE = re.compile(
+    r"^dark_exp_(?P<exp>\d+(?:\.\d+)?)_gain_(?P<gain>\d+)_bin_(?P<bin>\d+)"
+    r"_(?P<temp>-?\d+)c_stack_(?P<n>\d+)$")
+_DWARFLAB_FLAT_RE = re.compile(r"^flat_gain_(?P<gain>\d+)_bin_(?P<bin>\d+)_ir_(?P<ir>\d+)$")
+_DWARFLAB_BIAS_RE = re.compile(r"^bias_gain_(?P<gain>\d+)_bin_(?P<bin>\d+)$")
+
+
+def parse_dwarflab_master_name(name: str) -> dict | None:
+    """Facts encoded in a DwarfLab calibration-master filename, or None when the
+    name isn't one. Keys: ``tier`` (darks/flats/biases), ``gain``, ``binning``, plus
+    ``exptime``/``temp_c``/``ncombine`` for a dark and ``filter_index`` for a flat."""
+    stem = Path(name).stem.lower()
+    m = _DWARFLAB_DARK_RE.match(stem)
+    if m:
+        return {"tier": "darks", "exptime": float(m["exp"]), "gain": int(m["gain"]),
+                "binning": int(m["bin"]), "temp_c": int(m["temp"]),
+                "ncombine": int(m["n"])}
+    m = _DWARFLAB_FLAT_RE.match(stem)
+    if m:
+        return {"tier": "flats", "gain": int(m["gain"]), "binning": int(m["bin"]),
+                "filter_index": int(m["ir"])}
+    m = _DWARFLAB_BIAS_RE.match(stem)
+    if m:
+        return {"tier": "biases", "gain": int(m["gain"]), "binning": int(m["bin"])}
+    return None
+
+
+_STAMP_MARK = "M110STMP"
+
+
+def _stamp_cards(parsed: dict, device: str) -> dict:
+    """Header cards (card → (value, comment)) that make a headerless DwarfLab
+    master self-describing. Only the facts the filename actually carries."""
+    tier = parsed["tier"]
+    imagetyp = {"darks": "Master Dark", "flats": "Master Flat",
+                "biases": "Master Bias"}[tier]
+    cards: dict[str, tuple] = {"IMAGETYP": (imagetyp, "stamped by M110 from the filename")}
+    if "exptime" in parsed:
+        cards["EXPTIME"] = (parsed["exptime"], "[s] Exposure Time")
+    cards["GAIN"] = (parsed["gain"], "Gain")
+    cards["XBINNING"] = (parsed["binning"], "binning factor used on X axis")
+    cards["YBINNING"] = (parsed["binning"], "binning factor used on Y axis")
+    if "temp_c" in parsed:
+        cards["CCD-TEMP"] = (parsed["temp_c"], "[C] sensor temperature")
+    if "ncombine" in parsed:
+        cards["NCOMBINE"] = (parsed["ncombine"], "frames averaged into this master")
+    if "filter_index" in parsed:
+        cards["FILTER"] = (f"ir_{parsed['filter_index']}",
+                           "DwarfLab filter index (name map unverified)")
+    cards["TELESCOP"] = (device, "DWARFLAB telescope (inferred at import)")
+    cards["INSTRUME"] = (device, "DWARFLAB instrument (inferred at import)")
+    cards["ORIGIN"] = ("DWARFLAB", "DWARFLAB TEAM")
+    cards[_STAMP_MARK] = ("filename", "cards above stamped by M110 (headerless master)")
+    return cards
+
+
+def _needs_stamp(path: str) -> bool:
+    """True when the source master has no readable IMAGETYP — i.e. the shim must
+    supply the facts. A master that already describes itself is never touched."""
+    info = frame_info(path)
+    return info is not None and info["imagetyp"] is None
+# ── end of shim ───────────────────────────────────────────────────────────────
+
+
+def _device_from_sessions(base: Path) -> str | None:
+    """``TELESCOP`` of the first sub in the first DwarfLab session folder directly
+    under `base` (startrails excluded — those subs have no target and, on the
+    Dwarf 3, a different camera)."""
+    try:
+        children = sorted(c for c in base.iterdir() if c.is_dir())
+    except OSError:
+        return None
+    for c in children:
+        if not _SESSION_DIR_RE.match(c.name):
+            continue
+        for f in _fit_files(c):
+            if f.startswith("stacked-16_"):
+                continue
+            info = frame_info(str(c / f))
+            if info and info.get("telescop"):
+                return info["telescop"]
+            break                      # one header per session is enough
+    return None
+
+
+def _infer_device(cam_dir: Path, ctx: dict | None) -> str | None:
+    """Which telescope a ``CALI_FRAME/<tier>/cam_<n>/`` belongs to. The masters
+    say nothing themselves, so look for a DwarfLab session folder beside
+    ``CALI_FRAME/`` (the export puts them side by side), then directly under the
+    scan root. Memoised per CALI_FRAME tree in the scan's `ctx` — the walk visits
+    ``CALI_FRAME`` (sorts first) before the sessions, so the answer can't come
+    from what was classified earlier."""
+    cali_root = cam_dir.parent.parent
+    memo = ctx.setdefault("cali_device", {}) if ctx is not None else {}
+    key = str(cali_root)
+    if key in memo:
+        return memo[key]
+    bases = [cali_root.parent]
+    root = ctx.get("root") if ctx else None
+    if root is not None and Path(root) != bases[0]:
+        bases.append(Path(root))
+    device = None
+    for base in bases:
+        device = _device_from_sessions(base)
+        if device:
+            break
+    _log.info("scan: calibration tree %s → device %s", cali_root, device or "(unknown)")
+    memo[key] = device
+    return device
+
+
+def _classify_calibration_dir(src_dir: Path, name: str, action: str,
+                              handled: set, ctx: dict | None) -> list[IngestOp]:
+    """Route a calibration-master dir into ``Calibration/<device>/<tier>/``.
+    Two shapes: a DwarfLab ``CALI_FRAME/<dark|flat|bias>/cam_<n>/`` (tier from the
+    parent, device inferred from a sibling session — see `_infer_device`), or
+    another store's ``Calibration/<device>/<darks|flats|biases>/`` (both in the
+    path). No device → nothing claimed, so the sweep holds the files under their
+    qualified name and `identify_holding` explains what they are. Ops carry the
+    device as their `object` (never a capture target — `new_object` stays False)
+    and, for a headerless master, the shim's `stamp`."""
+    if _is_store_calibration_dir(src_dir, name):
+        tier = name.lower()
+        device = src_dir.parent.name
+    else:
+        tier = _CALI_TIER_BY_DIR[src_dir.parent.name.lower()]
+        device = _infer_device(src_dir, ctx)
+        if not device:
+            return []
+    dev = _safe_segment(device)
+    files = _fit_files(src_dir)
+    handled.update(files)
+    ops = _emit_one_kind(src_dir, files, _CAL_KIND_BY_TIER[tier], dev,
+                         f"{dev} calibration masters", action, "calibration")
+    out: list[IngestOp] = []
+    for op in ops:
+        parsed = parse_dwarflab_master_name(Path(op.src).name)
+        if parsed and parsed["tier"] == tier and _needs_stamp(op.src):
+            op = replace(op, stamp=_stamp_cards(parsed, dev))
+        out.append(op)
+    return out
+
+
+_CAL_HOLD_NOTE = ("calibration frames from an unidentified device — import them "
+                  "together with a session folder from the same telescope")
+
+
+def _object_by_pointing(info: dict) -> tuple[str | None, str]:
+    """(canonical target, provenance note) for a frame whose OBJECT is a device
+    placeholder, from the nearest catalog object within IDENTIFY_TOL_DEG of its
+    RA/DEC — or (None, "") when the frame has no usable pointing (a Dwarf writes
+    0.0/0.0 when it was never told a target) or nothing in the catalog is near.
+    Same tolerance and same `_nearest` as the holding-area aid, so the preview
+    proposes exactly what the holding area would have suggested."""
+    ra, dec = info.get("ra_deg"), info.get("dec_deg")
+    if ra is None or dec is None or (ra == 0.0 and dec == 0.0):
+        return None, ""
+    coords = catalog.load_coords()
+    if not coords:
+        return None, ""
+    slug, sep = _nearest(coords, ra, dec)
+    if not slug or sep > IDENTIFY_TOL_DEG:
+        return None, ""
+    try:
+        cat = catalog.load_library()
+    except Exception:
+        cat = {}
+    disp = (cat.get(slug, {}).get("id")
+            or catalog.load_reference().get(slug, {}).get("id") or slug)
+    return canonical_target(disp), f"identified by pointing — {sep:.2f}° from {disp}"
 
 
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
@@ -956,7 +1218,8 @@ def _emit_unassigned(src_dir: Path, files, name: str, action: str,
 
 
 def _classify_dir(src_dir: Path, name: str, action: str,
-                  should_cancel=None) -> list[IngestOp]:
+                  should_cancel=None, *, hold_name: str | None = None,
+                  ctx: dict | None = None) -> list[IngestOp]:
     """Classify ONE source directory and return the ops for its NEW files. Picks a
     layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
     raw-FITS header sort — delegates, then **sweeps any unclaimed content file into
@@ -964,13 +1227,22 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     this app's own store, or a sandbox (process/siril), is skipped. Reads only.
     `should_cancel` is threaded into the per-frame header-read loops so a slow scan
     (many FITS over a slow share) stays cancellable *within* a directory, not only at
-    directory boundaries."""
+    directory boundaries.
+
+    `name` is the bare leaf name — what layout detection and object resolution key
+    on. `hold_name` (default `name`) is the label the holding area files under; the
+    scan passes a parent-qualified one when two visited dirs share a leaf name, so
+    ``dark/cam_0`` and ``flat/cam_0`` don't merge into one ``Inbox/cam_0/`` group
+    (and a same-named file from the second dir isn't silently dropped as "already
+    held"). `ctx` is the per-scan memo the recognizers may share."""
     if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
     handled: set[str] = set()      # files the recognizer claimed (new OR already-present)
     if layout == "m110-store":
         ops = _classify_store_dir(src_dir, name, action, handled)
+    elif layout == "calibration":
+        ops = _classify_calibration_dir(src_dir, name, action, handled, ctx)
     elif layout == "dwarf":
         ops = _classify_dwarf_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "seestar":
@@ -991,7 +1263,8 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     # (not the emitted ops) is the authority, so files skipped as already-present
     # don't get mistaken for unclassifiable and re-held.
     leftover = [f for f in _content_files(src_dir) if f not in handled]
-    ops += _emit_unassigned(src_dir, leftover, name, action, layout or "unknown")
+    ops += _emit_unassigned(src_dir, leftover, hold_name or name, action,
+                            layout or "unknown")
     return ops
 
 
@@ -1044,7 +1317,7 @@ def _in_own_store(src_dir: Path) -> bool:
         rp = src_dir.resolve()
     except OSError:
         rp = src_dir
-    for base in (config.IMAGES_DIR, config.INTERNAL_DIR):
+    for base in (config.IMAGES_DIR, config.INTERNAL_DIR, config.CALIBRATION_DIR):
         try:
             rp.relative_to(Path(base).resolve())
             return True
@@ -1075,11 +1348,45 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None,
     ops: list[IngestOp] = []
     scanned = 0                                   # files seen so far (for progress)
     dirs_visited = dirs_skipped = 0
+    visited = _walk(root, should_cancel)
+    hold_names = _hold_names([d for d, _files in visited])
+    ctx: dict = {"root": root}                    # per-scan memo shared by recognizers
+    for d, files in visited:
+        if should_cancel and should_cancel():
+            raise IngestCancelled()
+        if progress:
+            progress(scanned, d.name)             # announce the dir before scanning it
+        dir_ops = _classify_dir(d, d.name, action, should_cancel,
+                                hold_name=hold_names[d], ctx=ctx)
+        content = len(_content_files(d))
+        if content or dir_ops:
+            dirs_visited += 1
+            held = sum(1 for o in dir_ops if o.kind == "unassigned")
+            _log.debug("scan: %s → layout=%s content=%d ops=%d held=%d",
+                       d, _detect_layout(d, d.name), content, len(dir_ops), held)
+        else:
+            dirs_skipped += 1                     # a structural/empty dir (no content)
+        ops.extend(dir_ops)
+        scanned += len(files)
+    summ = scan_summary(ops)
+    _log.info("scan: done dirs_with_content=%d structural_dirs=%d files_seen=%d "
+              "→ %d object(s), %d file(s) to import, %d to holding",
+              dirs_visited, dirs_skipped, scanned,
+              summ["objects"], summ["to_import"], summ["to_holding"])
+    return ops
+
+
+def _walk(root: Path, should_cancel=None) -> list[tuple[Path, list[str]]]:
+    """The directories `scan_directory_plan` will classify, in walk order, each with
+    its non-hidden file names. Pruning happens here: hidden dirs + app sandboxes
+    (process/siril/thumbnail) are never descended, and the reason a subtree wasn't
+    scanned is logged. Collected up front (rather than classified inline) so the
+    holding-area names can be made unique across the whole walk before any dir is
+    classified."""
+    out: list[tuple[Path, list[str]]] = []
     for dirpath, dirnames, files in os.walk(root):
         if should_cancel and should_cancel():
             raise IngestCancelled()
-        # Prune traversal: hidden dirs + app sandboxes (process/siril/thumbnail) are
-        # never descended. Logged so the reason a subtree wasn't scanned is visible.
         pruned = [d for d in dirnames
                   if d.startswith(".") or d.lower() in _SKIP_DIRS]
         if pruned:
@@ -1089,25 +1396,32 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None,
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
-        if progress:
-            progress(scanned, d.name)             # announce the dir before scanning it
-        dir_ops = _classify_dir(d, d.name, action, should_cancel)
-        content = len(_content_files(d))
-        if content or dir_ops:
-            dirs_visited += 1
-            held = sum(1 for o in dir_ops if o.kind == "unassigned")
-            _log.debug("scan: %s → layout=%s content=%d ops=%d held=%d",
-                       dirpath, _detect_layout(d, d.name), content, len(dir_ops), held)
-        else:
-            dirs_skipped += 1                     # a structural/empty dir (no content)
-        ops.extend(dir_ops)
-        scanned += sum(1 for f in files if not f.startswith("."))
-    summ = scan_summary(ops)
-    _log.info("scan: done dirs_with_content=%d structural_dirs=%d files_seen=%d "
-              "→ %d object(s), %d file(s) to import, %d to holding",
-              dirs_visited, dirs_skipped, scanned,
-              summ["objects"], summ["to_import"], summ["to_holding"])
-    return ops
+        out.append((d, [f for f in files if not f.startswith(".")]))
+    return out
+
+
+def _hold_names(dirs: list[Path]) -> dict[Path, str]:
+    """A unique holding-area label per visited dir. The leaf name, as before, unless
+    two visited dirs share it — then each is qualified with its parent
+    (``dark_cam_0`` / ``flat_cam_0``), and with the next ancestor while still
+    colliding. Only dirs that actually collide change name, so the holding groups
+    of an ordinary import keep the labels they always had (and their
+    already-held detection)."""
+    names: dict[Path, str] = {}
+    depth: dict[Path, int] = {d: 1 for d in dirs}
+    while True:
+        for d in dirs:
+            parts = d.parts[-depth[d]:] if depth[d] <= len(d.parts) else d.parts
+            names[d] = "_".join(parts)
+        counts: dict[str, int] = {}
+        for n in names.values():
+            counts[n] = counts.get(n, 0) + 1
+        clashing = [d for d in dirs if counts[names[d]] > 1
+                    and depth[d] < len(d.parts)]
+        if not clashing:
+            return names
+        for d in clashing:
+            depth[d] += 1
 
 
 def scan_summary(ops: list[IngestOp]) -> dict:
@@ -1119,8 +1433,8 @@ def scan_summary(ops: list[IngestOp]) -> dict:
     objects: set[str] = set()
     for o in ops:
         by_kind[o.kind] = by_kind.get(o.kind, 0) + 1
-        if o.kind != "unassigned" and o.object:
-            objects.add(o.object)
+        if o.kind != "unassigned" and o.kind not in _CAL_KINDS and o.object:
+            objects.add(o.object)      # a calibration op's "object" is a device
     return {
         "total": len(ops),
         "to_import": len(ops) - to_holding,
@@ -1169,6 +1483,9 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
             new_object=any(o.new_object for o in gops),
             action=gops[0].action,
             ops=gops,
+            # an op-level provenance note ("identified by pointing") surfaces in the
+            # same column as a pointing warning, and enables the retarget combo
+            pointing=next((o.note for o in gops if o.note), None),
             layout=gops[0].layout,
         ))
     # media rows after catalog objects, then by natural catalog order (M1, M2, …
@@ -1327,7 +1644,7 @@ def identify_holding(group: IngestGroup, coords: dict | None = None,
 
     fits_path, sample = _representative_files(group)
     info = {"header": None, "suggested_id": None, "suggested_slug": None,
-            "suggested_kind": None, "reason": None,
+            "suggested_kind": None, "reason": None, "note": None,
             "sample": str(sample) if sample else None}
     if fits_path is None:
         return info
@@ -1339,6 +1656,15 @@ def identify_holding(group: IngestGroup, coords: dict | None = None,
 
     if hdr.get("imagetyp") in ("light", "dark", "flat", "bias"):
         info["suggested_kind"] = hdr["imagetyp"]
+    elif hdr.get("imagetyp") is None:
+        # A headerless DwarfLab master (its facts are in the name): say what it
+        # is and why it was held — the scan found no session to take the device
+        # from. Assigning it to a target's darks/ is still possible by hand.
+        parsed = parse_dwarflab_master_name(fits_path.name)
+        if parsed:
+            info["suggested_kind"] = {"darks": "dark", "flats": "flat",
+                                      "biases": "bias"}[parsed["tier"]]
+            info["note"] = _CAL_HOLD_NOTE
 
     slug, reason = _suggest_slug(hdr, coords, cat, ref)
     if slug:
@@ -1425,6 +1751,18 @@ def _same_content(a: str, b: str) -> bool:
         return False
 
 
+def _write_stamp(path: str, cards: dict) -> None:
+    """Write the shim's header cards into M110's copy of a headerless master
+    (`IngestOp.stamp`). Called on the ``.part`` file before the atomic rename, so a
+    failed stamp leaves no half-imported file. Pixel data is left exactly as is
+    (``do_not_scale_image_data`` keeps the BZERO/BSCALE int16 encoding)."""
+    from astropy.io import fits
+    with fits.open(path, mode="update", do_not_scale_image_data=True) as h:
+        hdr = h[0].header
+        for card, (value, comment) in cards.items():
+            hdr[card] = (value, comment)
+
+
 def _free_dest(dest: str) -> str:
     """A non-colliding destination path: `dest` if free, else `stem_1.ext`,
     `stem_2.ext`, … (preserves the original filename, just disambiguates)."""
@@ -1468,8 +1806,12 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
             cancelled = True
             break
         os.makedirs(os.path.dirname(op.dest), exist_ok=True)
-        if os.path.exists(op.dest) and _same_content(op.src, op.dest):
-            skipped += 1                    # identical bytes already present
+        # A stamped copy is no longer byte-identical to its source, so for a
+        # stamped op "present by name" is the duplicate test: a same-named DwarfLab
+        # master IS the same master — its name encodes every fact it has.
+        if os.path.exists(op.dest) and (op.stamp is not None
+                                        or _same_content(op.src, op.dest)):
+            skipped += 1                    # already present
         else:
             dest = _free_dest(op.dest)      # free → op.dest; distinct clash → _N
             if op.action == "copy":
@@ -1481,6 +1823,8 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
                 tmp = dest + ".part"
                 try:
                     shutil.copyfile(op.src, tmp)
+                    if op.stamp:
+                        _write_stamp(tmp, op.stamp)     # our copy only, pre-rename
                     os.replace(tmp, dest)
                 except BaseException:
                     if os.path.exists(tmp):
@@ -1491,6 +1835,8 @@ def apply_ops(ops: list[IngestOp], progress=None, should_cancel=None) -> dict:
                     raise
             else:
                 shutil.move(op.src, dest)
+                if op.stamp:
+                    _write_stamp(dest, op.stamp)
             moved += 1
         if progress:
             progress(i, total)

@@ -25,6 +25,7 @@ from m110 import catalog, config, ingest
 from m110.ui import theme
 from m110.ui.ingest_dialog import (
     _ScanWorker, _ApplyWorker, _fmt_size, KIND_LABEL, ASSIGNABLE_KINDS,
+    NO_POINTING_KINDS,
 )
 from m110.ui.widgets import fit_cell_widgets
 
@@ -288,9 +289,7 @@ class ImportPage(QWidget):
             self.table.setItem(r, 2, kind_item)
             self.table.setItem(r, 3, QTableWidgetItem(str(g.frames)))
             self.table.setItem(r, 4, QTableWidgetItem(_fmt_size(g.size_bytes)))
-            no_pointing = g.kind in ("media", "dark", "flat", "bias", "finished",
-                                     "unassigned")
-            point = g.pointing or ("—" if no_pointing else "✓")
+            point = g.pointing or ("—" if g.kind in NO_POINTING_KINDS else "✓")
             self.table.setItem(r, 5, QTableWidgetItem(point))
             self.table.setItem(r, 6, QTableWidgetItem(g.dest_dir))
         self._loading = False

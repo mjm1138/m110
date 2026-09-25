@@ -770,7 +770,29 @@ device-profiles (`planning_config.load_device`). This is the phase that bumps
 
 Dwarf 3 core support **shipped 2026-07-09** (see [`DONE.md`](DONE.md)); the
 remaining device-source gaps collect here:
-- **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers.
+- **DwarfLab Draco** *(in progress on `feature/draco` — the device ships Nov–Dec
+  2026; one pre-release sample so far)*. Landed: the `<model>_RAW_TELE|WIDE_`
+  session-folder recognizer (`ingest._SESSION_DIR_RE`), a `draco` device preset
+  (300 s / gain 60, soft 80° — UNVERIFIED), `devices.py` (TELESCOP → folder name /
+  preset key), and **pointing-named targets**: a placeholder `OBJECT` whose RA/DEC
+  sits within `IDENTIFY_TOL_DEG` of a catalog object is routed to it in the
+  preview with an "identified by pointing" note (`ingest._object_by_pointing`).
+  Also landed: the **device-level calibration library** `Calibration/<device>/
+  {darks,flats,biases}/` (`config.calibration_dir`, DATA_MODEL.md) fed by a
+  `calibration` layout recognizer for the DwarfLab `CALI_FRAME/{dark,flat,bias}/
+  cam_<n>/` tree (device inferred from a sibling session's `TELESCOP`) and for
+  another store's library; headerless pre-release masters get their facts
+  **stamped into M110's copy** (`IngestOp.stamp`, `M110STMP`) — a TEMPORARY SHIM
+  to delete once production units write headers. Open for the Draco: **using the
+  masters** (match per target on EXPTIME/GAIN/XBINNING/nearest CCD-TEMP, link one
+  per tier into the Siril job dir, `-dark=`/`-flat=`/`-bias=` in the stacker —
+  the next phase on the branch), assigning a *held* master from the holding area
+  (needs a device picker; `ASSIGNABLE_KINDS` untouched), volume auto-detection
+  (its mount layout is unknown), whether `DATE-OBS` is UTC or local (filename ==
+  header on both DwarfLab devices, unlike the Seestar), the `ir_N` flat index ↔
+  filter-name map (flats/bias also say `gain_2` while the lights say 60 — scale
+  unknown), and re-validating the preset against a production unit.
+- **`DWARF_DARK/` routing** → darks tier (`CALI_FRAME/` is handled above).
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +

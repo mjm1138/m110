@@ -135,9 +135,14 @@ def test_device_presets_ceiling_kinds():
     for k in ("seestar_s50", "seestar_s30", "seestar_s30_pro"):
         d = DEVICE_PRESETS[k]
         assert d.start_alt_ceiling_deg == 78.0 and d.ceiling_is_hard
-    for k in ("dwarf_3", "dwarf_mini"):
+    for k in ("dwarf_3", "dwarf_mini", "draco"):
         d = DEVICE_PRESETS[k]
         assert d.start_alt_ceiling_deg == 80.0 and not d.ceiling_is_hard
+    # Draco (pre-release sample): 300 s subs at gain 60 — the exposure defaults
+    # must not inherit the Seestar's 30/20 s.
+    assert DEVICE_PRESETS["draco"].max_exposure_s == 300
+    assert DEVICE_PRESETS["draco"].default_exposure_s == 300
+    assert DEVICE_PRESETS["draco"].gain == 60
 
 
 def test_high_transit_target_gets_startable_slot():

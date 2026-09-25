@@ -25,6 +25,7 @@ def seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "MEDIA_DIR", root / "Media")
     monkeypatch.setattr(config, "STAGING_DIR", root / "Inbox")
     monkeypatch.setattr(config, "PLANS_DIR", root / "Plans")
+    monkeypatch.setattr(config, "CALIBRATION_DIR", root / "Calibration")
     monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
     monkeypatch.setattr(config, "PINS_TOML", internal / "pins.toml")
     monkeypatch.setattr(config, "PROFILES_DIR", internal / "profiles")
