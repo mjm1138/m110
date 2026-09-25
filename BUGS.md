@@ -10,6 +10,28 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [ ] **`m110-stack` heartbeat repeats a stale "100.00%" through the whole stack
+  pass.** Seen on NGC 6543/IRCUT (1360 frames, 2.0× drizzle, `-vv`,
+  2026-09-24): after `Computing normalization...` finished, every 10 s line read
+  `stack  (n:nn in this step)  |  100.00%` for 8+ minutes while Siril sat at
+  ~580% CPU doing the actual stack. That reads as "finished but hung", and the
+  user asked whether the script was broken. Siril prints **no `progress:` lines
+  during the stacking pass itself** from `siril-cli` — the last ones in the log
+  are the normalization sub-step's `100.00%` and `Opening images for stacking,
+  100.00%`, then `log: Computing weights based on noise...` / `log: Starting
+  stacking...` and silence until the end.
+
+  Cause in `run_siril()` (`m110/stacking.py`): `state["progress"]` is cleared
+  only on a `running command:` stage change, and `log:` lines never touch it, so
+  the heartbeat keeps quoting a percentage that belongs to a sub-step that has
+  already ended. Fix options: (a) let a `log:` line supersede the progress text
+  (so the heartbeat shows `Starting stacking...`), and/or (b) track when
+  `progress` last changed and, once it is stale (say >30 s), render it as
+  `last progress 100.00% (normalization) 6:12 ago — Siril reports none during
+  the stack pass` rather than as live. (a) alone is probably enough and matches
+  what the log actually says. The "in this step" timer was correct throughout —
+  it is only the progress field that misleads.
+
 - [x] **Backups threw away every archived processing run** (done —
   `feature/backup-sandbox-scope`). `scope.is_excluded` skipped a workflow sandbox
   **wholesale**, on the reasoning that it is a "regenerable working area". True of
@@ -732,6 +754,36 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Session analytics / capture diagnostics
 
+- [ ] **Flag sessions captured on the wrong filter for the object.** Compare each
+  session's filter (already parsed from the Seestar filename / `FILTER` header) with
+  the object's `recommended_filter`, and warn on a mismatch. **Surface it at ingest**
+  (the preview dialog, before confirm) and keep it visible on the object detail /
+  processing state, because at ingest is when it can still change the *next* session.
+
+  **Why — found 2026-09-24 by hand, two months late.** NGC 6543's
+  `recommended_filter` is LP and every M110 plan that scheduled it said LP, yet 8 of
+  its 9 nights (8.4 of 10.6 h) are IRCUT. Same for NGC 7662 (6 of 7 nights IRCUT)
+  and NGC 7009 (3 of 3). The Seestar app sets the filter itself per object, and the
+  pattern tracks the **catalog the target was picked from**: Messier planetaries
+  (M27, M57, M76, M97) were LP on every one of ~50 nights, while the Caldwell-picked
+  ones (object names `C 6`, `C 22`, `C 55` in the filenames) defaulted to IRCUT. The
+  user did not override anything; the plan's filter column simply never reaches the
+  scope. Nothing in M110 noticed, so the error repeated for eight sessions.
+
+  **Design notes:**
+  - A warning, not an error, and dismissable per object: IRCUT on a planetary *can*
+    be deliberate (a broadband layer for star colour, as NGC 6543's re-stack now uses
+    it). Dismissal should stick, so a deliberate broadband campaign doesn't re-nag
+    every ingest.
+  - Say the consequence, not just the fact: "3rd IRCUT session on an LP target;
+    LP now 2.2 h of 10.6 h". The share is what tells the user whether it matters.
+  - Worth one line in the generated plan too, when a nebula is picked under a
+    Caldwell/NGC designation: "check the LP toggle in the Seestar app, it defaults
+    to IRCUT for these". Cheap, and it is the preventive half of the same fix.
+  - Scope to objects whose recommended filter is unambiguous (emission, planetary,
+    SNR → LP; galaxy/cluster → IRCUT). A galaxy shot on LP is the same check
+    reversed and worth the same warning.
+
 - [ ] **#45 — Per-session capture diagnostics (why is rejection high?).** Analyse an
   incoming session's sub timestamps to explain the yield the app already shows. Grounded in
   a read-only proof of concept over real data (4,799 subs parsed in ~20 ms) + the
@@ -904,8 +956,22 @@ Legend: `[ ]` open · `[~]` partially done
   the tape-era model buys restores that need an intact chain, retention that can't drop a
   full until its dependents expire, and a corruption blast radius spanning days.
 
-- [ ] **Destinations become a list** *(the remaining half of #93)*. `backup_destination`
-  is a single setting; offsite implies plurality (local NAS nightly + S3 weekly, different
+- [x] **Two backup slots — Local + Cloud** *(landed 2026-09-25; the two-slot cut of the
+  item below)*. Users who knew cloud backup existed weren't finding it: the only way in
+  was typing `s3://` into the one destination field, and the guide recommended
+  "Everything local, Essentials to the cloud", which one saved destination couldn't
+  automate. Now `backup/slots.py` holds `backup_destinations = {"local", "cloud"}`, each
+  with its own destination, scope (cloud defaults to Essentials), schedule and retention
+  (cloud: keep-N only, no min-free). The legacy flat keys are read when the dict is
+  absent (the destination goes to the slot its kind names) and are never deleted. The
+  dialog is a both-slot summary over Local drive / Cloud tabs. Auto-backup queues the
+  due slots and runs them one at a time (`_RUN_LOCK`). Restore gains a "From:" picker.
+  The format preference moved onto the local slot, so a bucket can no longer leak
+  `pooled` into it.
+
+- [ ] **Destinations become a list — N destinations** *(what's left of #93 after the two
+  slots above; defer until someone needs a third destination)*. `backup_destination`
+  was a single setting; offsite implies plurality (local NAS nightly + S3 weekly, different
   retention each). This — not the storage format — is the real UI change: destination rows
   with per-row scope, schedule, retention. Format stays *derived from the probed
   destination*, never a user-facing mode for the cases where there's no real choice; same

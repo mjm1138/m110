@@ -1,26 +1,47 @@
-"""Back up dialog — snapshot the store to a destination on a worker thread.
+"""Back up dialog — two backup slots (a local drive and the cloud), each snapshotting
+the store to its own destination on a worker thread.
+
+A summary of both slots sits on top, then a tab per slot. The Cloud slot is always
+on screen, even unconfigured: it used to be reachable only by typing `s3://` into
+the one destination field, and people who knew the feature existed still didn't
+find it — while the guide recommended exactly the both-at-once pattern
+("Everything to a local drive, Essentials to the cloud") that one destination
+couldn't automate.
 
 Mirrors `publish_dialog.py`: a `_BackupWorker` (QThread) emits progress/done/failed,
-a `threading.Event` backs Cancel, the worker is torn down safely on close. The
-destination is pre-seeded from the saved setting so the common case is one click;
-Browse only overrides it for an ad-hoc destination, and a successful run saves the
-chosen destination back as the new default.
+a `threading.Event` backs Cancel, workers are torn down safely on close. Each
+slot's destination is pre-seeded from its saved settings so the common case is one
+click; a successful run saves that slot back.
 """
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QProgressDialog, QPushButton, QSpinBox, QVBoxLayout,
+    QProgressDialog, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout,
+    QWidget,
 )
 
 from m110.ui.widgets import drain_worker
 from m110 import backup, config
 
+LOCAL, CLOUD = backup.SLOT_LOCAL, backup.SLOT_CLOUD
+
+TAB_LABELS = {LOCAL: "Local drive", CLOUD: "Cloud"}
+
+# The providers, named. "S3" alone reads as "Amazon only" to most people, and the
+# cheaper S3-compatible services are exactly the ones a hobbyist would pick.
+PROVIDERS = "Amazon S3, Backblaze B2, Cloudflare R2, Wasabi"
+
+CLOUD_INTRO = (
+    f"Keep an offsite copy in {PROVIDERS}, or any S3-compatible storage. "
+    "Essentials — everything except your raw light frames — is usually a few "
+    "percent of your Library, so it uploads quickly and costs little to keep.")
 
 # Written for a bucket rather than assembled from the pooled blurb. Concatenating
 # them said "stored once, named by its contents" twice and then finished with "a
@@ -40,6 +61,19 @@ def _fmt_bytes(n: int) -> str:
             return f"{f:.0f} {unit}" if unit in ("B", "KB") else f"{f:.1f} {unit}"
         f /= 1024
     return f"{f:.1f} TB"
+
+
+def _ago(when: datetime, now: datetime | None = None) -> str:
+    secs = ((now or datetime.now()) - when).total_seconds()
+    if secs < 90:
+        return "just now"
+    if secs < 3600:
+        return f"{int(secs // 60)} min ago"
+    if secs < 48 * 3600:
+        return f"{int(secs // 3600)} h ago"
+    if secs < 30 * 86400:
+        return f"{int(secs // 86400)} days ago"
+    return f"on {when:%Y-%m-%d}"
 
 
 class _ProbeWorker(QThread):
@@ -87,45 +121,51 @@ class _BackupWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
-class BackupDialog(QDialog):
+class _SlotPanel(QWidget):
+    """Everything about one slot: destination, format (local only), cloud
+    credentials (cloud only), scope, automation and retention, and its own
+    Back up now. Writes only its own slot — see `persist`."""
+    dirty_changed = Signal()
+    changed = Signal()          # something the summary shows may have moved
     backed_up = Signal(dict)
 
-    def __init__(self, parent=None):
+    def __init__(self, slot: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Back up Library")
+        self.slot = slot
+        self._is_cloud_slot = slot == CLOUD
         self._worker = None
         self._progress = None
         self._cancel_event = None
         self._probe_worker = None
         self._probe_cache: dict[str, object] = {}
+        saved = backup.load_slot(slot)
+        self._saved_scope = saved.scope
 
         from m110.ui.theme import tokens
         s = tokens.SPACE
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
+        layout.setContentsMargins(s["md"], s["md"], s["md"], s["md"])
         layout.setSpacing(s["md"])
-        intro = QLabel(
-            "Back up your Library to another drive, folder, or cloud storage. Only "
-            "what changed is stored each time, so repeat backups are fast and "
-            "small — and every backup can be restored on its own, whatever its age.")
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
+
+        if self._is_cloud_slot:
+            intro = QLabel(CLOUD_INTRO)
+            intro.setWordWrap(True)
+            layout.addWidget(intro)
 
         # ── destination ──
         dest_row = QHBoxLayout()
         dest_row.addWidget(QLabel("Destination:"))
-        self._dest = QLineEdit(str(config.get_setting(backup.SETTING_DEST, "")))
-        self._dest.setPlaceholderText("A folder, or s3://your-bucket/backups")
+        self._dest = QLineEdit(saved.destination)
+        self._dest.setPlaceholderText(
+            "s3://your-bucket/m110-backups" if self._is_cloud_slot
+            else "An external drive, network share, or folder")
         # Probe on commit, not per keystroke — see _ProbeWorker.
         self._dest.editingFinished.connect(self._refresh_status)
-        # The cloud fields appear as soon as the destination *looks* like a bucket,
-        # so the user isn't asked to commit a URI before being shown where the keys
-        # go. Cheap and synchronous — a string prefix test, not the probe.
-        self._dest.textChanged.connect(self._sync_cloud_visibility)
         dest_row.addWidget(self._dest, 1)
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse)
-        dest_row.addWidget(browse)
+        if not self._is_cloud_slot:
+            browse = QPushButton("Browse…")
+            browse.clicked.connect(self._browse)
+            dest_row.addWidget(browse)
         layout.addLayout(dest_row)
 
         self._status = QLabel()
@@ -133,16 +173,19 @@ class BackupDialog(QDialog):
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
-        # ── format ──  (a property of the destination, so it sits with it)
-        fmt_row = QHBoxLayout()
-        fmt_row.addWidget(QLabel("Backups are stored as:"))
-        self._format = QComboBox()
-        for fid in backup.FORMATS:
-            self._format.addItem(backup.FORMAT_LABELS[fid], fid)
-        self._select_format(backup.preferred_format())
-        self._format.currentIndexChanged.connect(self._on_format_changed)
-        fmt_row.addWidget(self._format, 1)
-        layout.addLayout(fmt_row)
+        # ── format ──  (a property of the destination, so it sits with it.) A
+        # bucket has no choice to make, so the cloud slot just says what it is.
+        self._format = None
+        if not self._is_cloud_slot:
+            fmt_row = QHBoxLayout()
+            fmt_row.addWidget(QLabel("Backups are stored as:"))
+            self._format = QComboBox()
+            for fid in backup.FORMATS:
+                self._format.addItem(backup.FORMAT_LABELS[fid], fid)
+            self._select_format(saved.format)
+            self._format.currentIndexChanged.connect(self._on_format_changed)
+            fmt_row.addWidget(self._format, 1)
+            layout.addLayout(fmt_row)
 
         self._format_note = QLabel()
         self._format_note.setProperty("caption", True)
@@ -150,9 +193,10 @@ class BackupDialog(QDialog):
         layout.addWidget(self._format_note)
         self._on_format_changed()
 
-        # ── cloud credentials ──  (only for an s3:// destination)
-        self._cloud_box = self._build_cloud_box(s)
-        layout.addWidget(self._cloud_box)
+        # ── cloud credentials ──
+        if self._is_cloud_slot:
+            self._cloud_box = self._build_cloud_box(s)
+            layout.addWidget(self._cloud_box)
 
         # ── scope ──  (what goes to this destination)
         scope_row = QHBoxLayout()
@@ -160,8 +204,7 @@ class BackupDialog(QDialog):
         self._scope = QComboBox()
         for sid in backup.SCOPES:
             self._scope.addItem(backup.SCOPE_LABELS[sid], sid)
-        self._select_scope(config.get_setting(backup.SETTING_SCOPE,
-                                              backup.DEFAULT_SCOPE))
+        self._select_scope(saved.scope)
         self._scope.currentIndexChanged.connect(self._on_scope_changed)
         scope_row.addWidget(self._scope, 1)
         layout.addLayout(scope_row)
@@ -179,7 +222,7 @@ class BackupDialog(QDialog):
         sl = QVBoxLayout(settings_box)
         auto_row = QHBoxLayout()
         self._auto = QCheckBox("Back up automatically")
-        self._auto.setChecked(bool(config.get_setting(backup.SETTING_AUTO, False)))
+        self._auto.setChecked(saved.auto)
         self._auto.setToolTip(
             "Backs up in the background: at launch if the last one is older than the "
             "interval below, and daily at 02:00 while the app stays running.")
@@ -194,9 +237,9 @@ class BackupDialog(QDialog):
         auto_hint.setProperty("muted", True)
         sl.addWidget(auto_hint)
 
-        # One grid, not three QHBoxLayouts: independent rows gave each label its own
-        # width, so the three fields started at three different x (a 48px spread) and
-        # had three different widths. A shared label column lines them up.
+        # One grid, not independent QHBoxLayouts: independent rows gave each label
+        # its own width, so the fields started at different x and had different
+        # widths. A shared label column lines them up.
         grid = QGridLayout()
         grid.setHorizontalSpacing(s["sm"])
         grid.setVerticalSpacing(s["xs"])
@@ -205,72 +248,64 @@ class BackupDialog(QDialog):
         self._interval = QSpinBox()
         self._interval.setRange(1, 24 * 30)
         self._interval.setSuffix(" h")
-        self._interval.setValue(int(config.get_setting(
-            backup.SETTING_INTERVAL, backup.DEFAULT_INTERVAL_HOURS)))
+        self._interval.setValue(int(saved.interval_hours))
 
         self._keep = QSpinBox()
         self._keep.setRange(0, 999)
         self._keep.setSpecialValueText("all")     # 0 → "all" (no limit)
-        self._keep.setValue(int(config.get_setting(backup.SETTING_KEEP, 0) or 0))
+        self._keep.setValue(saved.retention_keep)
 
-        self._min_free = QDoubleSpinBox()
-        self._min_free.setRange(0.0, 1_000_000.0)
-        self._min_free.setDecimals(0)
-        self._min_free.setSpecialValueText("off")     # 0 → disabled
-        self._min_free.setToolTip("Prune the oldest backups to maintain this much "
-                                  "free space on the destination. 0 = off.")
-        self._min_free.setValue(float(config.get_setting(
-            backup.SETTING_MIN_FREE, backup.DEFAULT_MIN_FREE_GB)))
-
-        for row, (label, field, suffix) in enumerate((
-                ("…at most once every", self._interval, ""),
-                ("Keep newest", self._keep, "backups"),
-                ("Keep at least", self._min_free, "GB free on the destination volume"))):
+        rows = [("…at most once every", self._interval, ""),
+                ("Keep newest", self._keep, "backups")]
+        # A bucket has no volume to run out of, so the engine skips this rule and
+        # the cloud slot has no control implying a policy that won't run.
+        self._min_free = None
+        if not self._is_cloud_slot:
+            self._min_free = QDoubleSpinBox()
+            self._min_free.setRange(0.0, 1_000_000.0)
+            self._min_free.setDecimals(0)
+            self._min_free.setSpecialValueText("off")     # 0 → disabled
+            self._min_free.setToolTip("Prune the oldest backups to maintain this "
+                                      "much free space on the destination. 0 = off.")
+            self._min_free.setValue(float(saved.min_free_gb))
+            rows.append(("Keep at least", self._min_free,
+                         "GB free on the destination volume"))
+        spins = [field for _, field, _ in rows]
+        for row, (label, field, suffix) in enumerate(rows):
             grid.addWidget(QLabel(label), row, 0)
             grid.addWidget(field, row, 1)
             if suffix:
                 grid.addWidget(QLabel(suffix), row, 2)
-        # One width for all three, from the widest — `min_free` used to carry a
-        # hardcoded 90px that was 18px BELOW its own sizeHint, so it clipped at large
-        # values ("1000000" needs 54px in a 58px field).
-        field_w = max(w.sizeHint().width()
-                      for w in (self._interval, self._keep, self._min_free))
-        for w in (self._interval, self._keep, self._min_free):
+        # One width for all, from the widest — `min_free` used to carry a hardcoded
+        # 90px that was 18px BELOW its own sizeHint, so it clipped at large values.
+        field_w = max(w.sizeHint().width() for w in spins)
+        for w in spins:
             w.setFixedWidth(field_w)
         sl.addLayout(grid)
         layout.addWidget(settings_box)
-
-        buttons = QDialogButtonBox()
-        self._restore_btn = buttons.addButton("Restore…", QDialogButtonBox.ActionRole)
-        self._restore_btn.clicked.connect(self._open_restore)
-        self._save_btn = buttons.addButton("Save", QDialogButtonBox.AcceptRole)
-        self._save_btn.clicked.connect(self._save_and_close)
-        # Label depends on whether there is anything to discard — see `_set_dirty`.
-        self._reject_btn = buttons.addButton("Close", QDialogButtonBox.RejectRole)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        layout.addStretch(1)
 
         self._dirty = False
-        self._wire_dirty_tracking()
-        self._sync_exit_buttons()
-        self._sync_cloud_visibility()
+        self._wire_dirty_tracking(spins)
         self._on_scope_changed()
         self._refresh_status()
 
-        # Size the window LAST, once the layout knows what it needs. This used to be
-        # `self.resize(560, 0)` at the top of __init__ — before any widget existed —
-        # and a zero height is clamped to the layout's minimum *as it stands at that
-        # moment*, which was nothing. The dialog therefore opened 58px shorter than
-        # the layout's real minimum, and the retention rows were squeezed until the
-        # three spin boxes physically OVERLAPPED by 3px each (6px once the async
-        # destination probe wrapped the status line to two lines). That, not the
-        # control padding, is what still looked broken after the padding fix.
-        # heightForWidth is what the layout actually needs at this width; sizeHint
-        # can be shorter when word-wrapped labels are involved.
-        self.setMinimumWidth(420)
-        w = 560
-        self.resize(w, max(self.sizeHint().height(),
-                           self.layout().heightForWidth(w)))
+    # ---- what the summary reads ----
+    def destination(self) -> str:
+        return self._dest.text().strip()
+
+    def auto_enabled(self) -> bool:
+        return self._auto.isChecked()
+
+    def last_backup(self) -> datetime | None:
+        """Newest known backup: what the probe found at the destination when it
+        has run, else the time the slot recorded after its last run. The probe
+        wins because it's the truth at the destination; the record is what makes
+        a cloud slot's summary possible without a network call on open."""
+        info = self._probe_cache.get(self.destination())
+        if info is not None and getattr(info, "newest", None) is not None:
+            return info.newest.created
+        return backup.load_slot(self.slot).last_backup
 
     # ---- cloud credentials ----
     def _build_cloud_box(self, s) -> QGroupBox:
@@ -345,60 +380,6 @@ class BackupDialog(QDialog):
         self._s3_secret.setPlaceholderText(
             "Saved — leave blank to keep it" if saved else "Secret access key")
 
-    def _is_cloud(self) -> bool:
-        return self._dest.text().strip().lower().startswith("s3://")
-
-    def _sync_cloud_visibility(self, *_):
-        """Reflect the *kind* of destination as soon as it's typed.
-
-        Everything here is knowable from the string alone, so none of it waits for
-        the probe — which for a bucket doesn't run until Test connection. Before
-        this, an `s3://` destination sat there reading "Mirrored backups … needs a
-        destination that supports file links", beside a min-free box offering to
-        manage free space on a volume that doesn't exist. All three were false,
-        and all three were on screen for as long as the user hadn't pressed a
-        button they had no reason to press yet."""
-        was = self._cloud_box.isVisibleTo(self)
-        now = self._is_cloud()
-        self._cloud_box.setVisible(now)
-
-        if now:
-            self._select_format(backup.FORMAT_POOLED)
-            self._format.setEnabled(False)
-            self._format_note.setText(
-                CLOUD_FORMAT_NOTE)
-        elif not self._format.isEnabled():
-            # Coming back from a bucket: hand the choice back rather than leaving
-            # it stuck on whatever the cloud forced.
-            self._format.setEnabled(True)
-            self._select_format(backup.preferred_format())
-            self._on_format_changed()
-
-        # A bucket has no volume to run out of, so the engine skips this rule —
-        # the control has to say so rather than imply a policy that won't run.
-        self._min_free.setEnabled(not now)
-        self._min_free.setToolTip(
-            "Cloud storage has no free-space limit to manage." if now else
-            "Prune the oldest backups to maintain this much free space on the "
-            "destination. 0 = off.")
-
-        if now != was:
-            self._fit_height()
-
-    def _fit_height(self):
-        """Grow to whatever the layout needs at the current width.
-
-        The dialog is sized once in `__init__`, with the cloud group hidden.
-        Revealing four fields, a button and a wrapped note afterwards adds real
-        height, and a layout that doesn't fit gets *squeezed* rather than
-        scrolled — which is how the retention spin boxes once ended up physically
-        overlapping. `heightForWidth`, not `sizeHint`: word-wrapped labels report
-        short from `sizeHint`."""
-        w = max(self.width(), self.minimumWidth())
-        needed = max(self.sizeHint().height(), self.layout().heightForWidth(w))
-        if needed > self.height():
-            self.resize(w, needed)
-
     # ---- scope ----
     def _current_scope(self) -> str:
         return self._scope.currentData() or backup.DEFAULT_SCOPE
@@ -420,14 +401,18 @@ class BackupDialog(QDialog):
         understanding a delayed change and discovering it."""
         scope = self._current_scope()
         note = backup.SCOPE_BLURBS[scope]
-        if scope != backup.DEFAULT_SCOPE:
+        # Only for a real narrowing of *this* slot. Essentials is the cloud slot's
+        # default, and warning about existing backups there — before it has any —
+        # reads as though something is about to be lost.
+        if (scope == backup.SCOPE_ESSENTIALS
+                and self._saved_scope == backup.SCOPE_EVERYTHING):
             note += ("  Backups you already have keep their light frames until "
                      "they're pruned by the retention settings below.")
         self._scope_note.setText(note)
 
     # ---- dirty tracking ----
-    def _wire_dirty_tracking(self):
-        """Every control whose value `_persist_settings` writes.
+    def _wire_dirty_tracking(self, spins):
+        """Every control whose value `persist` writes.
 
         Kept as one list beside that method on purpose: if a new setting is added to
         one and not the other, the dialog either forgets a change (offers "Close"
@@ -440,53 +425,55 @@ class BackupDialog(QDialog):
         # exactly the "I fixed the path and couldn't save it" report. The probe
         # writes `_status`, never `_dest`, so nothing else can arm this.
         self._dest.textChanged.connect(self._mark_dirty)
-        self._format.currentIndexChanged.connect(self._mark_dirty)
+        if self._format is not None:
+            self._format.currentIndexChanged.connect(self._mark_dirty)
         self._scope.currentIndexChanged.connect(self._mark_dirty)
         self._auto.toggled.connect(self._mark_dirty)
-        for field in (self._s3_endpoint, self._s3_region, self._s3_access,
-                      self._s3_secret):
-            field.textChanged.connect(self._mark_dirty)
-        for spin in (self._interval, self._keep, self._min_free):
+        if self._is_cloud_slot:
+            for field in (self._s3_endpoint, self._s3_region, self._s3_access,
+                          self._s3_secret):
+                field.textChanged.connect(self._mark_dirty)
+        for spin in spins:
             spin.valueChanged.connect(self._mark_dirty)
+
+    @property
+    def dirty(self) -> bool:
+        return self._dirty
 
     def _mark_dirty(self, *_):
         self._set_dirty(True)
 
     def _set_dirty(self, dirty: bool):
         self._dirty = dirty
-        self._sync_exit_buttons()
-
-    def _sync_exit_buttons(self):
-        """"Cancel" only when it can actually undo something.
-
-        With no pending edits the dialog has nothing to discard — and after "Back up
-        now" (which persists the settings itself before running) a button labelled
-        "Cancel" reads as though it would roll back the snapshot that just ran. It
-        can't: `reject()` only closes the window. So it says **Close** until an edit
-        is made, and Save is disabled while there's nothing to save."""
-        self._reject_btn.setText("Cancel" if self._dirty else "Close")
-        self._save_btn.setEnabled(self._dirty)
+        self.dirty_changed.emit()
 
     # ---- helpers ----
     def _browse(self):
-        # Start at the current folder, unless it's a bucket — a file dialog can't
-        # open `s3://…`, and passing it produces an empty panel at an odd place.
-        start = "" if self._is_cloud() else self._dest.text()
         d = QFileDialog.getExistingDirectory(self, "Choose backup destination",
-                                             start or str(Path.home()))
+                                             self._dest.text() or str(Path.home()))
         if d:
             self._dest.setText(d)
             self._refresh_status()
 
+    def validation_error(self) -> str | None:
+        return backup.check_slot_destination(self.slot, self.destination())
+
     def _refresh_status(self, *, force: bool = False):
         """Probe the destination on a worker and describe it. Results are memoized
         per path for the dialog's lifetime; `force=True` re-probes (after a run)."""
-        dest = self._dest.text().strip()
+        dest = self.destination()
         if not dest:
-            self._status.setText("Choose a destination folder (an external drive or "
-                                 "network share), or enter an s3:// address.")
+            self._status.setText(
+                "Enter a bucket address, add your keys below, then choose Test "
+                "connection." if self._is_cloud_slot else
+                "Choose a destination folder — an external drive or network share.")
+            self.changed.emit()
             return
-        if self._is_cloud() and not force and dest not in self._probe_cache:
+        err = self.validation_error()
+        if err:
+            self._status.setText(f"⚠ {err}")
+            return
+        if self._is_cloud_slot and not force and dest not in self._probe_cache:
             # Never reach for the network just because a field lost focus.
             self._status.setText("Enter your cloud details, then choose "
                                  "Test connection.")
@@ -505,6 +492,8 @@ class BackupDialog(QDialog):
 
     # ---- format ----
     def _current_format(self) -> str:
+        if self._format is None:
+            return backup.FORMAT_POOLED
         return self._format.currentData() or backup.DEFAULT_FORMAT
 
     def _select_format(self, fmt: str):
@@ -515,7 +504,9 @@ class BackupDialog(QDialog):
             self._format.blockSignals(blocked)
 
     def _on_format_changed(self, *_args):
-        self._format_note.setText(backup.FORMAT_BLURBS[self._current_format()])
+        self._format_note.setText(
+            CLOUD_FORMAT_NOTE if self._format is None
+            else backup.FORMAT_BLURBS[self._current_format()])
 
     def _apply_format(self, info):
         """Reflect what this destination actually allows.
@@ -523,18 +514,13 @@ class BackupDialog(QDialog):
         A destination that can't share files leaves no choice — mirrored backups
         there would each be a full copy of the Library — so the choice is made and
         persisted rather than left as a trap the user discovers a month later."""
+        if self._format is None:
+            return                  # a bucket: pooled is simply what it is
         self._format.setEnabled(not info.format_forced)
         self._select_format(info.format)
         self._on_format_changed()
-        if info.kind == backup.KIND_S3:
-            # Not a limitation being worked around — object storage has no notion
-            # of a shared file, so pooled is simply what a bucket is. Said as a
-            # fact rather than as the apology the link-less-share wording is. The
-            # preference is deliberately not persisted here: it's global, and a
-            # bucket says nothing about the user's external drive.
-            self._format_note.setText(CLOUD_FORMAT_NOTE)
-        elif info.format_forced:
-            config.save_setting(backup.SETTING_FORMAT, info.format)
+        if info.format_forced:
+            backup.update_slot(LOCAL, format=info.format)
             self._format_note.setText(
                 "This destination can't share files between backups, so M110 will "
                 "use pooled backups here. " + backup.FORMAT_BLURBS[info.format])
@@ -549,10 +535,11 @@ class BackupDialog(QDialog):
         # has no path, and `str(None)` would collapse every bucket to one cache key.
         self._probe_cache[info.destination] = info
         self._finish_probe()
-        if info.destination == self._dest.text().strip():
+        if info.destination == self.destination():
             self._show_destination(info)
             if info.exists and info.writable:
                 self._apply_format(info)
+        self.changed.emit()
 
     def _show_destination(self, info):
         """One line describing what this destination is and what it can do. The
@@ -592,26 +579,39 @@ class BackupDialog(QDialog):
                     "every backup stores a full copy.")
         self._status.setText(head + note)
 
-    def _persist_settings(self, dest: str):
+    # ---- persistence ----
+    def persist(self):
+        """Write this slot's settings (and, for the cloud slot, the credentials).
+
+        Only the fields this panel owns: `update_slot` leaves the rest — notably
+        the last-backup time a run stamps — alone, and never touches the other
+        slot."""
         # Whatever the caller was doing (Save, or "Back up now" saving before it
         # runs), the on-disk settings now match the widgets — so there is nothing
         # left to discard and the exit button goes back to "Close".
         self._set_dirty(False)
+        changes = dict(
+            scope=self._current_scope(),
+            auto=self._auto.isChecked(),
+            interval_hours=self._interval.value(),
+            retention_keep=self._keep.value(),
+        )
         # Never let an empty field erase a configured destination. Everything else
         # here has a real value whatever the widget state, but the destination is a
         # path the user chose once and may not remember — and losing it silently
         # disables their backups. An empty box means "not entered", not "clear it".
+        dest = self.destination()
         if dest:
-            config.save_setting(backup.SETTING_DEST, dest)
-        config.save_setting(backup.SETTING_FORMAT, self._current_format())
-        config.save_setting(backup.SETTING_SCOPE, self._current_scope())
-        self._persist_cloud_settings()
-        config.save_setting(backup.SETTING_AUTO, self._auto.isChecked())
-        config.save_setting(backup.SETTING_INTERVAL, self._interval.value())
-        config.save_setting(backup.SETTING_KEEP, self._keep.value() or None)
-        # Store 0 explicitly ("off"); an absent key is what triggers the 100 GB
-        # default, so we must persist the user's 0 rather than collapse it to None.
-        config.save_setting(backup.SETTING_MIN_FREE, self._min_free.value())
+            changes["destination"] = dest
+        if self._format is not None:
+            changes["format"] = self._current_format()
+        if self._min_free is not None:
+            # Store 0 explicitly ("off") rather than falling back to the default.
+            changes["min_free_gb"] = self._min_free.value()
+        backup.update_slot(self.slot, **changes)
+        if self._is_cloud_slot:
+            self._persist_cloud_settings()
+        self.changed.emit()
 
     def _persist_cloud_settings(self):
         """Endpoint/region/access key to settings, secret to the keyring.
@@ -641,35 +641,25 @@ class BackupDialog(QDialog):
             # key" — which says the opposite of what just happened.
             self._sync_secret_placeholder()
 
-    def _open_restore(self):
-        from m110.ui.restore_dialog import RestoreDialog
-        RestoreDialog(self._dest.text().strip(), self).exec()
-        self._refresh_status(force=True)
-
-    def _save_and_close(self):
-        """Persist the destination + automation/retention settings without running a
-        backup, then close. (A manual "Back up now" also persists, but the user must
-        be able to change the interval etc. without triggering a snapshot.)"""
-        self._persist_settings(self._dest.text().strip())
-        self.accept()
-
-    def accept(self):
-        self._stop_probe()
-        super().accept()
-
     # ---- run ----
     def _do_backup(self):
-        dest = self._dest.text().strip()
+        dest = self.destination()
         if not dest:
-            QMessageBox.warning(self, "Back up", "Choose a destination folder.")
+            QMessageBox.warning(self, "Back up",
+                                "Enter a bucket address first." if self._is_cloud_slot
+                                else "Choose a destination folder.")
+            return
+        err = self.validation_error()
+        if err:
+            QMessageBox.warning(self, "Back up", err)
             return
         try:
             backup.parse_destination(dest)
         except backup.BackupError as exc:
             QMessageBox.warning(self, "Back up", str(exc))
             return
-        self._persist_settings(dest)
-        options = backup.options_from_settings(dest)
+        self.persist()
+        options = backup.options_from_settings(self.slot)
 
         self._cancel_event = threading.Event()
         pd = QProgressDialog("Backing up…", "Cancel", 0, 0, self)
@@ -703,6 +693,7 @@ class BackupDialog(QDialog):
             return
         self.backed_up.emit(result)
         self._refresh_status(force=True)
+        self.changed.emit()
         self._backup_btn.setEnabled(True)
         new = result.get("bytes_new", 0)
         msg = QMessageBox(self)
@@ -713,35 +704,18 @@ class BackupDialog(QDialog):
                     f"({_fmt_bytes(new)} new) to:\n{result.get('snapshot', '')}{extra}")
         # There is no folder to open for a bucket, and a button that silently does
         # nothing is worse than no button.
-        open_btn = (None if self._is_cloud()
+        open_btn = (None if self._is_cloud_slot
                     else msg.addButton("Open folder", QMessageBox.AcceptRole))
         msg.addButton("Close", QMessageBox.RejectRole)
         msg.exec()
         if open_btn is not None and msg.clickedButton() is open_btn:
-            self._open_folder(result.get("snapshot", ""))
+            BackupDialog._open_folder(result.get("snapshot", ""))
 
     def _on_failed(self, message):
         self._finish_worker()
         self._close_progress()
         QMessageBox.warning(self, "Backup failed", message)
         self._backup_btn.setEnabled(True)
-
-    @staticmethod
-    def _open_folder(path: str):
-        import subprocess
-        import sys
-        if not path:
-            return
-        try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", path])
-            elif sys.platform.startswith("win"):
-                import os
-                os.startfile(path)  # type: ignore[attr-defined]
-            else:
-                subprocess.Popen(["xdg-open", path])
-        except Exception:
-            pass
 
     # ---- teardown ----
     def _close_progress(self):
@@ -765,14 +739,210 @@ class BackupDialog(QDialog):
             self._cancel_event.set()
         self._worker = drain_worker(self._worker)
 
-    def reject(self):
+    def teardown(self):
         self._stop_worker()
         self._stop_probe()
         self._close_progress()
+
+
+class BackupDialog(QDialog):
+    backed_up = Signal(dict)
+
+    def __init__(self, parent=None, *, slot: str | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Back up Library")
+
+        from m110.ui.theme import tokens
+        s = tokens.SPACE
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
+        layout.setSpacing(s["md"])
+        intro = QLabel(
+            "Keep one copy on a local drive and another offsite in the cloud. Only "
+            "what changed is stored each time, so repeat backups are fast and "
+            "small — and every backup can be restored on its own, whatever its age.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        # ── summary: one line per slot, so the cloud option is visible before
+        # anyone opens its tab ──
+        summary = QGridLayout()
+        summary.setHorizontalSpacing(s["md"])
+        summary.setVerticalSpacing(s["xs"])
+        summary.setColumnStretch(1, 1)
+        self._summary: dict[str, QLabel] = {}
+        for row, name in enumerate(backup.SLOTS):
+            head = QLabel(f"<b>{backup.SLOT_LABELS[name]}</b>")
+            summary.addWidget(head, row, 0, alignment=Qt.AlignTop)
+            detail = QLabel()
+            detail.setWordWrap(True)
+            detail.setTextFormat(Qt.RichText)
+            detail.linkActivated.connect(self._on_summary_link)
+            summary.addWidget(detail, row, 1)
+            self._summary[name] = detail
+        layout.addLayout(summary)
+
+        # ── one tab per slot ── Each page scrolls: the cloud tab alone is taller
+        # than a laptop screen once its credentials are included, and a layout that
+        # doesn't fit is squeezed rather than scrolled (the overlapping spin boxes).
+        self._tabs = QTabWidget()
+        self._panels: dict[str, _SlotPanel] = {}
+        for name in backup.SLOTS:
+            panel = _SlotPanel(name, self)
+            panel.dirty_changed.connect(self._sync_exit_buttons)
+            panel.changed.connect(self._refresh_summary)
+            panel.backed_up.connect(self.backed_up.emit)
+            self._panels[name] = panel
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll.setWidget(panel)
+            self._tabs.addTab(scroll, TAB_LABELS[name])
+        self._local, self._cloud = self._panels[LOCAL], self._panels[CLOUD]
+        layout.addWidget(self._tabs, 1)
+
+        buttons = QDialogButtonBox()
+        self._restore_btn = buttons.addButton("Restore…", QDialogButtonBox.ActionRole)
+        self._restore_btn.clicked.connect(self._open_restore)
+        self._save_btn = buttons.addButton("Save", QDialogButtonBox.AcceptRole)
+        self._save_btn.clicked.connect(self._save_and_close)
+        # Label depends on whether there is anything to discard — see
+        # `_sync_exit_buttons`.
+        self._reject_btn = buttons.addButton("Close", QDialogButtonBox.RejectRole)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # Open where the user is most likely headed: the slot asked for, else the
+        # cloud tab only when it's the one slot already in use.
+        if slot is None:
+            configured = backup.configured_slots()
+            slot = CLOUD if configured == [CLOUD] else LOCAL
+        self.show_slot(slot)
+        self._sync_exit_buttons()
+        self._refresh_summary()
+
+        # Size the window LAST, once the layout knows what it needs. A zero height
+        # at the top of __init__ is clamped to the layout's minimum *as it stands at
+        # that moment*, which was nothing, and the retention rows were squeezed until
+        # the spin boxes physically OVERLAPPED. heightForWidth is what the layout
+        # actually needs at this width; sizeHint can be shorter when word-wrapped
+        # labels are involved.
+        # The pages scroll, so the tabs' own hint is small; ask the panels what
+        # they'd need unscrolled, and open that tall — but never taller than the
+        # screen, which is the case the scrolling is for.
+        self.setMinimumWidth(460)
+        w = 600
+        panel_w = w - 2 * s["lg"] - 2 * s["md"]
+        extra = max(p.layout().heightForWidth(panel_w) for p in self._panels.values()) \
+            - self._tabs.currentWidget().sizeHint().height() + 2 * s["md"]
+        needed = max(self.sizeHint().height(), self.layout().heightForWidth(w)) \
+            + max(0, extra)
+        screen = self.screen().availableGeometry().height() if self.screen() else 0
+        self.resize(w, min(needed, int(screen * 0.9)) if screen else needed)
+
+    def show_slot(self, slot: str):
+        self._tabs.setCurrentIndex(backup.SLOTS.index(slot))
+
+    def current_slot(self) -> str:
+        return backup.SLOTS[self._tabs.currentIndex()]
+
+    # ---- summary ----
+    def _refresh_summary(self):
+        for name, panel in self._panels.items():
+            self._summary[name].setText(self._summary_text(name, panel))
+
+    @staticmethod
+    def _summary_text(name: str, panel: _SlotPanel) -> str:
+        from html import escape
+        dest = backup.load_slot(name).destination
+        if not dest:
+            what = ("back up your essentials offsite to " + PROVIDERS
+                    if name == CLOUD else "back up to an external drive or network share")
+            return (f"Not set up — {what}.  "
+                    f"<a href='{name}'>Set up {backup.SLOT_LABELS[name].lower()} "
+                    "backup…</a>")
+        parts = [escape(dest)]
+        last = panel.last_backup()
+        parts.append(f"last backup {_ago(last)}" if last else "no backups yet")
+        parts.append("automatic" if backup.load_slot(name).auto else "manual")
+        return " · ".join(parts) + f"  <a href='{name}'>Edit…</a>"
+
+    def _on_summary_link(self, slot: str):
+        if slot in self._panels:
+            self.show_slot(slot)
+            self._panels[slot]._dest.setFocus()
+
+    # ---- dirty tracking ----
+    @property
+    def _dirty(self) -> bool:
+        return any(p.dirty for p in self._panels.values())
+
+    def _sync_exit_buttons(self):
+        """"Cancel" only when it can actually undo something.
+
+        With no pending edits the dialog has nothing to discard — and after "Back up
+        now" (which persists the settings itself before running) a button labelled
+        "Cancel" reads as though it would roll back the snapshot that just ran. It
+        can't: `reject()` only closes the window. So it says **Close** until an edit
+        is made, and Save is disabled while there's nothing to save."""
+        self._reject_btn.setText("Cancel" if self._dirty else "Close")
+        self._save_btn.setEnabled(self._dirty)
+
+    # ---- actions ----
+    def _open_restore(self):
+        """Restore from the slot on screen first, the other one a combo away."""
+        from m110.ui.restore_dialog import RestoreDialog
+        current = self.current_slot()
+        order = [current] + [n for n in backup.SLOTS if n != current]
+        sources = [(backup.SLOT_LABELS[n], self._panels[n].destination()
+                    or backup.load_slot(n).destination) for n in order]
+        RestoreDialog([src for src in sources if src[1]], self).exec()
+        self._panels[current]._refresh_status(force=True)
+
+    def _save_and_close(self):
+        """Persist every edited slot without running a backup, then close. A slot
+        whose destination is in the wrong place is shown instead of saved."""
+        for name, panel in self._panels.items():
+            err = panel.validation_error() if panel.dirty else None
+            if err:
+                self.show_slot(name)
+                QMessageBox.warning(self, "Back up", err)
+                return
+        for panel in self._panels.values():
+            if panel.dirty:
+                panel.persist()
+        self.accept()
+
+    def accept(self):
+        for panel in self._panels.values():
+            panel._stop_probe()
+        super().accept()
+
+    @staticmethod
+    def _open_folder(path: str):
+        import subprocess
+        import sys
+        if not path:
+            return
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            elif sys.platform.startswith("win"):
+                import os
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception:
+            pass
+
+    # ---- teardown ----
+    def reject(self):
+        for panel in self._panels.values():
+            panel.teardown()
         super().reject()
 
     def closeEvent(self, event):
-        self._stop_worker()
-        self._stop_probe()
-        self._close_progress()
+        for panel in self._panels.values():
+            panel.teardown()
         super().closeEvent(event)

@@ -149,14 +149,17 @@ def test_options_default_min_free_and_explicit_off(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     dest = tmp_path / "backups"
 
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(dest))
+
     # Unconfigured → keep all snapshots + default 100 GB free floor.
-    opts = backup.options_from_settings(dest)
+    opts = backup.options_from_settings(backup.SLOT_LOCAL)
+    assert opts.destination == str(dest)
     assert opts.retention_keep is None
     assert opts.min_free_gb == backup.DEFAULT_MIN_FREE_GB
 
     # Explicit 0 means "off" (distinct from unset → no space-based pruning).
-    config.save_setting(backup.SETTING_MIN_FREE, 0)
-    assert backup.options_from_settings(dest).min_free_gb is None
+    backup.update_slot(backup.SLOT_LOCAL, min_free_gb=0)
+    assert backup.options_from_settings(backup.SLOT_LOCAL).min_free_gb is None
 
 
 def test_incomplete_snapshot_ignored_and_swept(tmp_path, monkeypatch):
@@ -241,17 +244,17 @@ def test_due_for_auto_backup_uses_interval(tmp_path, monkeypatch):
     seed_capture(root)
     dest = tmp_path / "backups"
     backup.create_snapshot(backup.BackupOptions(destination=dest))
-    config.save_setting(backup.SETTING_AUTO, True)
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(dest), auto=True)
 
     # Default interval is now 12h: a 6h-old snapshot is not due; a 13h-old one is.
     _age_newest(dest, datetime.now() - timedelta(hours=6))
-    assert backup.due_for_auto_backup(dest) is False
+    assert backup.due_for_auto_backup(backup.SLOT_LOCAL) is False
     _age_newest(dest, datetime.now() - timedelta(hours=13))
-    assert backup.due_for_auto_backup(dest) is True
+    assert backup.due_for_auto_backup(backup.SLOT_LOCAL) is True
 
     # Disabled → never due, even when stale.
-    config.save_setting(backup.SETTING_AUTO, False)
-    assert backup.due_for_auto_backup(dest) is False
+    backup.update_slot(backup.SLOT_LOCAL, auto=False)
+    assert backup.due_for_auto_backup(backup.SLOT_LOCAL) is False
 
 
 def test_due_for_scheduled_backup_daily_at_02(tmp_path, monkeypatch):
@@ -259,25 +262,25 @@ def test_due_for_scheduled_backup_daily_at_02(tmp_path, monkeypatch):
     seed_capture(root)
     dest = tmp_path / "backups"
     backup.create_snapshot(backup.BackupOptions(destination=dest))
-    config.save_setting(backup.SETTING_AUTO, True)
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(dest), auto=True)
 
     today_0200 = datetime.now().replace(hour=2, minute=0, second=0, microsecond=0)
 
     # Stale snapshot (2 days old), clock past 02:00 → due.
     _age_newest(dest, today_0200 - timedelta(days=2))
-    assert backup.due_for_scheduled_backup(dest, now=today_0200 + timedelta(hours=1)) is True
+    assert backup.due_for_scheduled_backup(backup.SLOT_LOCAL, now=today_0200 + timedelta(hours=1)) is True
 
     # Before the scheduled hour → not due.
-    assert backup.due_for_scheduled_backup(dest, now=today_0200 - timedelta(hours=1)) is False
+    assert backup.due_for_scheduled_backup(backup.SLOT_LOCAL, now=today_0200 - timedelta(hours=1)) is False
 
     # Already backed up since 02:00 today → not due (once per day).
     _age_newest(dest, today_0200 + timedelta(minutes=10))
-    assert backup.due_for_scheduled_backup(dest, now=today_0200 + timedelta(hours=5)) is False
+    assert backup.due_for_scheduled_backup(backup.SLOT_LOCAL, now=today_0200 + timedelta(hours=5)) is False
 
     # Launch backup 30 min before 02:00 → min-age (interval) guard skips 02:00.
     _age_newest(dest, today_0200 - timedelta(minutes=30))
-    assert backup.due_for_scheduled_backup(dest, now=today_0200 + timedelta(minutes=30)) is False
+    assert backup.due_for_scheduled_backup(backup.SLOT_LOCAL, now=today_0200 + timedelta(minutes=30)) is False
 
     # Disabled → never due.
-    config.save_setting(backup.SETTING_AUTO, False)
-    assert backup.due_for_scheduled_backup(dest, now=today_0200 + timedelta(hours=1)) is False
+    backup.update_slot(backup.SLOT_LOCAL, auto=False)
+    assert backup.due_for_scheduled_backup(backup.SLOT_LOCAL, now=today_0200 + timedelta(hours=1)) is False

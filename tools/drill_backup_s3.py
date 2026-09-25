@@ -159,7 +159,10 @@ def main() -> int:
         config.save_setting(backup.SETTING_S3_ENDPOINT, ENDPOINT)
         config.save_setting(backup.SETTING_S3_REGION, "us-east-1")
         config.save_setting(backup.SETTING_S3_ACCESS_KEY, KEY)
-        config.save_setting(backup.SETTING_DEST, DEST)
+        # The cloud slot, at Everything (its default is Essentials) so the full
+        # run is measured first and the Essentials section narrows from it.
+        backup.update_slot(backup.SLOT_CLOUD, destination=DEST,
+                           scope=backup.SCOPE_EVERYTHING)
         secrets = {KEY: SECRET}
         s3backend.get_secret = lambda access: secrets.get(access)
         settings = json.loads(config.SETTINGS_FILE.read_text())
@@ -200,7 +203,7 @@ def main() -> int:
 
         # ── first backup — everything ────────────────────────────────────────
         section("Back up now — everything")
-        opts = backup.options_from_settings(DEST)
+        opts = backup.options_from_settings(backup.SLOT_CLOUD)
         check("scope defaults to everything", opts.scope == backup.SCOPE_EVERYTHING)
         t0 = time.time()
         r1 = backup.create_snapshot(opts)
@@ -230,7 +233,7 @@ def main() -> int:
               len(snaps) == 1 and snaps[0].path is None and snaps[0].ref is not None)
         check("snapshot carries its scope", snaps[0].scope == backup.SCOPE_EVERYTHING)
         before = objects()
-        r2 = backup.create_snapshot(backup.options_from_settings(DEST))
+        r2 = backup.create_snapshot(backup.options_from_settings(backup.SLOT_CLOUD))
         check("second backup uploads ~nothing", r2["objects_new"] == 0 and r2["bytes_new"] == 0,
               f"objects_new={r2['objects_new']} bytes_new={r2['bytes_new']}")
         check("no new objects in the bucket", objects() == before)
@@ -281,8 +284,8 @@ def main() -> int:
 
         # ── Essentials scope ─────────────────────────────────────────────────
         section("Essentials scope")
-        config.save_setting(backup.SETTING_SCOPE, backup.SCOPE_ESSENTIALS)
-        r3 = backup.create_snapshot(backup.options_from_settings(DEST))
+        backup.update_slot(backup.SLOT_CLOUD, scope=backup.SCOPE_ESSENTIALS)
+        r3 = backup.create_snapshot(backup.options_from_settings(backup.SLOT_CLOUD))
         check("essentials backs up fewer files", r3["file_count"] < r1["file_count"],
               f"{r3['file_count']} vs {r1['file_count']}")
         newest = backup.list_snapshots(DEST)[0]
@@ -358,7 +361,7 @@ def main() -> int:
 
         # ── server disappears mid-run ────────────────────────────────────────
         section("server disappears mid-run")
-        config.save_setting(backup.SETTING_SCOPE, backup.SCOPE_EVERYTHING)
+        backup.update_slot(backup.SLOT_CLOUD, scope=backup.SCOPE_EVERYTHING)
         manifests_before = {k for k in keys() if "/snapshots/" in k}
         real_put = s3backend.S3Backend.put_file
 
@@ -371,7 +374,7 @@ def main() -> int:
 
         def run():
             try:
-                outcome["res"] = backup.create_snapshot(backup.options_from_settings(DEST))
+                outcome["res"] = backup.create_snapshot(backup.options_from_settings(backup.SLOT_CLOUD))
             except Exception as e:                  # noqa: BLE001 — that's the point
                 outcome["exc"] = e
 
@@ -392,7 +395,7 @@ def main() -> int:
         check("MinIO restarted", wait_up(minio))
         check("no snapshot manifest left behind by the failed run",
               {k for k in keys() if "/snapshots/" in k} == manifests_before)
-        r4 = backup.create_snapshot(backup.options_from_settings(DEST))
+        r4 = backup.create_snapshot(backup.options_from_settings(backup.SLOT_CLOUD))
         check("re-run completes and resumes", not r4.get("cancelled") and r4["file_count"] == r1["file_count"]
               and r4["objects_new"] < r1["objects_new"],
               f"objects_new={r4['objects_new']} of {r4['file_count']} files")

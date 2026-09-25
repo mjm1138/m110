@@ -17,6 +17,7 @@ it never changes the on-disk store layout (no `.store_version` impact).
     retention   prune oldest snapshots; sweep unreferenced objects
     formats     which format a destination gets; dispatch by snapshot
     probe       pre-flight inspection of a destination
+    slots       the local + cloud slots and their saved settings
     schedule    when an automatic backup is due
 
 Two formats, both always readable at the same destination — see `formats.py` for
@@ -51,6 +52,10 @@ from .options import (
 from .probe import probe_destination
 from .retention import apply_retention, list_snapshots, sweep_objects
 from .schedule import due_for_auto_backup, due_for_scheduled_backup, options_from_settings
+from .slots import (DEFAULTS as SLOT_DEFAULTS, SETTING_DESTINATIONS, SLOT_CLOUD,
+                    SLOT_LABELS, SLOT_LOCAL, SLOTS, SlotSettings,
+                    check_slot_destination, configured_slots, load_slot, load_slots,
+                    record_backup, save_slot, slot_for_destination, update_slot)
 from .scope import (DEFAULT_SCOPE, SCOPE_BLURBS, SCOPE_ESSENTIALS, SCOPE_EVERYTHING,
                     SCOPE_LABELS, SCOPES, is_excluded, iter_source_files)
 
@@ -68,7 +73,10 @@ def create_snapshot(options: BackupOptions, should_cancel=None, progress=None) -
     if not _RUN_LOCK.acquire(blocking=False):
         raise BackupError("A backup is already running.")
     try:
-        return _create_snapshot(options, should_cancel=should_cancel, progress=progress)
+        res = _create_snapshot(options, should_cancel=should_cancel, progress=progress)
+        if options.slot and not res.get("cancelled"):
+            record_backup(options.slot)
+        return res
     finally:
         _RUN_LOCK.release()
 
@@ -84,7 +92,11 @@ __all__ = [
     "SCOPE_EVERYTHING", "SCOPE_LABELS", "SETTING_AUTO", "SETTING_DAILY_HOUR",
     "SETTING_DEST", "SETTING_FORMAT", "SETTING_INTERVAL", "SETTING_KEEP",
     "SETTING_MIN_FREE", "SETTING_S3_ACCESS_KEY", "SETTING_S3_ENDPOINT",
-    "SETTING_S3_REGION", "SETTING_SCOPE", "STATE_NAME", "SnapshotInfo",
+    "SETTING_DESTINATIONS", "SETTING_S3_REGION", "SETTING_SCOPE", "SLOTS",
+    "SLOT_CLOUD", "SLOT_DEFAULTS", "SLOT_LABELS", "SLOT_LOCAL", "STATE_NAME",
+    "SlotSettings", "check_slot_destination", "configured_slots", "load_slot",
+    "load_slots", "record_backup", "save_slot", "slot_for_destination",
+    "update_slot", "SnapshotInfo",
     "SnapshotRef", "TIMESTAMP_FMT", "apply_retention", "backend_for",
     "backup_root_key", "create_snapshot", "detect_format", "due_for_auto_backup",
     "due_for_scheduled_backup", "format_of", "is_excluded", "iter_source_files",

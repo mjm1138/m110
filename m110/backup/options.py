@@ -25,9 +25,11 @@ DEFAULT_DAILY_HOUR = 2          # 02:00 local — the while-running daily backup
 # "mirrored" | "pooled" — see formats.py. Mirrored is the default; a destination
 # that can't hardlink flips this to pooled and the app persists that.
 SETTING_FORMAT = "backup_format"
-# How much of the library goes to this destination — see scope.py. One setting
-# rather than a map keyed by destination: there is exactly one destination today,
-# and it becomes a per-row field when destinations become a list (issue #93).
+# How much of the library goes to this destination — see scope.py.
+#
+# Everything above except the daily hour is a *legacy* flat key: settings are now
+# per slot, under `slots.SETTING_DESTINATIONS`. They are still read when that key
+# is absent and are never deleted, so a downgrade finds its settings.
 SETTING_SCOPE = "backup_scope"
 
 # S3-compatible cloud destinations (issue #93). The **secret** access key is NOT
@@ -45,6 +47,9 @@ class BackupOptions:
     retention_keep: int | None = None       # keep N newest snapshots (None = all)
     min_free_gb: float | None = None         # delete oldest until ≥ this free
     scope: str | None = None                 # None = the "everything" default
+    # Which slot (see slots.py) this run is for. A successful run stamps that
+    # slot's last-backup time; None = an ad-hoc run with nothing to stamp.
+    slot: str | None = None
 
 
 @dataclass(frozen=True)

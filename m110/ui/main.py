@@ -62,16 +62,16 @@ class _BackupBgWorker(QThread):
     done = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, dest, cancel_event, parent=None):
+    def __init__(self, slot, cancel_event, parent=None):
         super().__init__(parent)
-        self._dest = dest
+        self.slot = slot
         self._cancel = cancel_event
 
     def run(self):
         try:
             from m110 import backup
             self.done.emit(backup.create_snapshot(
-                backup.options_from_settings(self._dest),
+                backup.options_from_settings(self.slot),
                 should_cancel=self._cancel.is_set))
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -138,6 +138,8 @@ class MainWindow(QMainWindow):
         self._prep_feedback = False
         self._backup_worker = None
         self._backup_cancel = None
+        self._backup_queue: list[str] = []      # slots due, run one at a time
+        self._backup_notes: list[str] = []      # this round's results so far
         self._auto_backup_checked = False
         self._update_worker = None
         self._banner = None
@@ -504,49 +506,74 @@ class MainWindow(QMainWindow):
             return
         from m110 import backup
         from m110.ui.restore_dialog import RestoreDialog
-        RestoreDialog(config.get_setting(backup.SETTING_DEST, ""), self).exec()
+        slots = backup.load_slots()
+        RestoreDialog([(backup.SLOT_LABELS[n], slots[n].destination)
+                       for n in backup.SLOTS], self).exec()
 
     # ---- auto backup (opt-in; background; unobtrusive) ----
     # Two triggers, both off the UI thread and cancel-on-quit: a launch check
     # (back up if the last snapshot is older than the interval) and an hourly tick
     # that fires the daily 02:00 backup so a long-running session still gets daily
-    # snapshots. Both share the single worker (guarded below).
+    # snapshots. Each checks both slots; the due ones queue and run **one at a
+    # time** — the engine allows a single run per process (`backup._RUN_LOCK`), so
+    # starting the cloud run beside the local one would just fail it.
     def _maybe_auto_backup(self, *, scheduled: bool = False):
-        if self._backup_worker is not None:
+        if self._backup_worker is not None or self._backup_queue:
             return
         from m110 import backup
-        dest = config.get_setting(backup.SETTING_DEST)
-        if not dest:
-            return
         check = (backup.due_for_scheduled_backup if scheduled
                  else backup.due_for_auto_backup)
-        try:
-            # NOT Path(dest): `Path("s3://bucket/x")` collapses the double slash
-            # to `s3:/bucket/x`, which then parses as a *local* folder — so a
-            # scheduled backup to a bucket would have silently written to a
-            # directory of that name instead. The engine parses the string.
-            if not check(dest):
-                return
-        except Exception:
+        due = []
+        for slot in backup.configured_slots():
+            try:
+                if check(slot):
+                    due.append(slot)
+            except Exception:
+                continue
+        self._backup_queue = due
+        self._backup_notes = []
+        self._run_next_auto_backup()
+
+    def _run_next_auto_backup(self):
+        if not self._backup_queue:
             return
+        from m110 import backup
+        slot = self._backup_queue.pop(0)
         self._backup_cancel = threading.Event()
-        self._update_status(extra="  ·  Backing up…")
-        self._backup_worker = _BackupBgWorker(dest, self._backup_cancel, self)
+        self._show_backup_status(f"Backing up to {backup.SLOT_LABELS[slot]}…")
+        self._backup_worker = _BackupBgWorker(slot, self._backup_cancel, self)
         self._backup_worker.done.connect(self._on_auto_backup_done)
         self._backup_worker.failed.connect(self._on_auto_backup_failed)
         self._backup_worker.start()
 
     def _on_auto_backup_done(self, res: dict):
+        from m110 import backup
+        label = backup.SLOT_LABELS.get(self._backup_worker.slot, "")
         self._clear_backup_worker()
         if res.get("cancelled"):
+            self._backup_queue = []
             self._update_status()
             return
-        self._update_status(
-            extra=f"  ·  Backed up {res.get('file_count', 0)} files")
+        self._backup_notes.append(
+            f"Backed up {res.get('file_count', 0)} files to {label}")
+        self._show_backup_status()
+        self._run_next_auto_backup()
 
     def _on_auto_backup_failed(self, msg: str):
+        from m110 import backup
+        label = backup.SLOT_LABELS.get(self._backup_worker.slot, "")
         self._clear_backup_worker()
-        self._update_status(extra="  ·  Backup skipped")
+        self._backup_notes.append(f"{label} backup skipped")
+        self._show_backup_status()
+        # One slot failing (a bucket unreachable offline) says nothing about the
+        # other; carry on with the queue.
+        self._run_next_auto_backup()
+
+    def _show_backup_status(self, running: str = ""):
+        """This round's results so far, then what's running — so "Local backup
+        skipped" isn't overwritten the instant the cloud run starts."""
+        parts = self._backup_notes + ([running] if running else [])
+        self._update_status(extra="".join(f"  ·  {p}" for p in parts))
 
     def _clear_backup_worker(self):
         if self._backup_worker is not None:
@@ -798,7 +825,7 @@ class MainWindow(QMainWindow):
         if config.get_setting("backup_nudge_seen", False):
             return
         from m110 import backup
-        if config.get_setting(backup.SETTING_DEST):   # backups already set up → no nudge
+        if backup.configured_slots():           # backups already set up → no nudge
             return
         if not derived.totals_by_slug():        # nothing captured yet → nothing to lose
             return
@@ -807,7 +834,7 @@ class MainWindow(QMainWindow):
             self, "Back up your library",
             "M110 is beta software, and your captures are irreplaceable.\n\n"
             "Set up a backup of your library now? (You can also do this any time "
-            "from the Library menu.)",
+            "from Tools → Back up….)",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if resp == QMessageBox.Yes:
             self._open_backup()
@@ -828,6 +855,7 @@ class MainWindow(QMainWindow):
             w.wait()
         # Cancel + drain a background backup so teardown never destroys a live
         # QThread (create_snapshot aborts promptly and cleans up its temp dir).
+        self._backup_queue = []                 # no next slot after quit
         bw = self._backup_worker
         if bw is not None and bw.isRunning():
             if self._backup_cancel is not None:

@@ -106,7 +106,7 @@ def test_both_formats_honour_the_scope(tmp_path, monkeypatch, fmt):
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
     objects.write_journal(slug, "# notes\nAuthored.\n")
-    config.save_setting(backup.SETTING_FORMAT, fmt)
+    backup.update_slot(backup.SLOT_LOCAL, format=fmt)
     dest = tmp_path / "backups"
 
     everything = backup.create_snapshot(backup.BackupOptions(

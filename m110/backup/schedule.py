@@ -7,75 +7,61 @@ from datetime import datetime
 
 from .. import config
 from .destination import parse_destination
-from .options import (
-    DEFAULT_DAILY_HOUR, DEFAULT_INTERVAL_HOURS, DEFAULT_MIN_FREE_GB, SETTING_AUTO,
-    SETTING_DAILY_HOUR, SETTING_INTERVAL, SETTING_KEEP, SETTING_MIN_FREE,
-    SETTING_SCOPE, BackupOptions,
-)
+from .options import DEFAULT_DAILY_HOUR, SETTING_DAILY_HOUR, BackupOptions
 from .retention import list_snapshots
-from .scope import DEFAULT_SCOPE, SCOPES
+from .slots import SLOT_CLOUD, load_slot
 
 
-def options_from_settings(destination) -> BackupOptions:
-    """Build BackupOptions with the saved retention policy for a destination."""
-    def _int(key):
-        v = config.get_setting(key)
-        return int(v) if v not in (None, "", 0) else None
-
-    # Min-free defaults to 100 GB when never configured; an explicit 0 means "off".
-    # (Only an absent key gets the default — a stored 0/null is an intentional off.)
-    mf = config.get_setting(SETTING_MIN_FREE, DEFAULT_MIN_FREE_GB)
-    try:
-        min_free = float(mf)
-    except (TypeError, ValueError):
-        min_free = DEFAULT_MIN_FREE_GB
-    scope = config.get_setting(SETTING_SCOPE, DEFAULT_SCOPE)
+def options_from_settings(slot: str) -> BackupOptions:
+    """Build BackupOptions from one slot's saved destination and policy."""
+    s = load_slot(slot)
     return BackupOptions(
-        destination=destination,
-        retention_keep=_int(SETTING_KEEP),
-        min_free_gb=min_free if min_free > 0 else None,
-        scope=scope if scope in SCOPES else DEFAULT_SCOPE,
+        destination=s.destination,
+        retention_keep=s.retention_keep or None,
+        # A bucket has no volume to fill; the engine ignores it there anyway.
+        min_free_gb=(s.min_free_gb or None) if slot != SLOT_CLOUD else None,
+        scope=s.scope,
+        slot=slot,
     )
 
 
-def _auto_enabled_and_reachable(destination):
-    """The destination iff auto-backup is on and it's reachable, else None
-    (missing/unreachable → not due, no nag). Shared by both auto triggers.
+def _auto_enabled_and_reachable(s):
+    """The slot's destination iff it has auto-backup on and is reachable, else
+    None (unset/unreachable → not due, no nag). Shared by both auto triggers.
 
     A cloud destination is taken on trust rather than probed: reachability there
     costs a network round-trip, and this runs at launch and on every hourly tick —
     on a laptop that is offline it would be a timeout, not an answer. Due-ness is
     a question about *time*; if the bucket turns out to be unreachable, the run
-    itself reports it through the normal error path."""
-    if not config.get_setting(SETTING_AUTO, False):
+    itself reports it through the normal error path.
+
+    The raw string goes to `parse_destination`, never `Path(dest)` first —
+    `Path("s3://bucket/x")` collapses to `s3:/bucket/x`, a local folder."""
+    if not (s.auto and s.destination):
         return None
-    dest = parse_destination(destination)
+    dest = parse_destination(s.destination)
     if not dest.is_local:
         return dest
     return dest if dest.path.is_dir() else None
 
 
-def _interval_hours() -> float:
-    return float(config.get_setting(SETTING_INTERVAL, DEFAULT_INTERVAL_HOURS) or
-                 DEFAULT_INTERVAL_HOURS)
-
-
-def due_for_auto_backup(destination) -> bool:
-    """True iff auto-backup is enabled, the destination is reachable, and it's been
-    at least the configured interval since the newest snapshot (drives the
-    launch-time trigger). Missing/unreachable destination → not due (no nag)."""
-    dest = _auto_enabled_and_reachable(destination)
+def due_for_auto_backup(slot: str) -> bool:
+    """True iff this slot has auto-backup on, its destination is reachable, and
+    it's been at least the slot's interval since the newest snapshot there
+    (drives the launch-time trigger)."""
+    s = load_slot(slot)
+    dest = _auto_enabled_and_reachable(s)
     if dest is None:
         return False
     snaps = list_snapshots(dest)
     if not snaps:
         return True
     age_hours = (datetime.now() - snaps[0].created).total_seconds() / 3600.0
-    return age_hours >= _interval_hours()
+    return age_hours >= s.interval_hours
 
 
-def due_for_scheduled_backup(destination, now: datetime | None = None) -> bool:
-    """True iff auto-backup is enabled, the destination is reachable, the local clock
+def due_for_scheduled_backup(slot: str, now: datetime | None = None) -> bool:
+    """True iff the slot has auto-backup on, its destination is reachable, the local clock
     has reached the daily backup hour (default 02:00), we haven't already backed up
     since that hour today, and the newest snapshot is at least `interval` hours old.
 
@@ -84,7 +70,8 @@ def due_for_scheduled_backup(destination, now: datetime | None = None) -> bool:
     launch. The interval acts as a min-age guard here so a fresh launch backup
     doesn't immediately re-fire at 02:00; the once-per-day guard keeps it from
     repeating through the rest of the day."""
-    dest = _auto_enabled_and_reachable(destination)
+    s = load_slot(slot)
+    dest = _auto_enabled_and_reachable(s)
     if dest is None:
         return False
     now = now or datetime.now()
@@ -100,4 +87,4 @@ def due_for_scheduled_backup(destination, now: datetime | None = None) -> bool:
     if newest >= scheduled_today:
         return False                        # already backed up since 02:00 today
     age_hours = (now - newest).total_seconds() / 3600.0
-    return age_hours >= _interval_hours()
+    return age_hours >= s.interval_hours

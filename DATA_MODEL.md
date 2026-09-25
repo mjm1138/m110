@@ -391,15 +391,29 @@ those. The disappearance is real but deferred.
 There are **two snapshot formats**, and both are always listable, verifiable and
 restorable at the same destination. Which one a new backup uses is resolved from
 the destination itself (`backup.resolve_format`): what's already there wins, else
-the `backup_format` preference, unless the filesystem can't hardlink — then pooled,
-necessarily. Their namespaces are provably disjoint (mirrored snapshots are
+the local slot's format preference, unless the filesystem can't hardlink — then
+pooled, necessarily. Their namespaces are provably disjoint (mirrored snapshots are
 directories whose *names* parse as a timestamp; `objects/`, `snapshots/`, `latest/`
 never will), so they coexist with no flag day and no conversion.
 
 Object storage resolves to pooled unconditionally — mirrored is directories and
 hardlinks by definition, so it isn't a choice being declined there. That forcing is
-deliberately **not** persisted to `backup_format`, which is global: a bucket says
-nothing about the user's external drive.
+deliberately **not** persisted: the format preference belongs to the local slot, and
+a bucket says nothing about the user's external drive.
+
+**Two slots.** Backup settings live in `~/.m110/settings.json` (outside the store,
+so no `.store_version` impact) as `backup_destinations = {"local": {...}, "cloud":
+{...}}` (`backup/slots.py`). Each slot has `destination, scope, auto, interval_hours,
+retention_keep, min_free_gb, format, last_backup_at`. Local defaults to Everything,
+mirrored, 100 GB min-free. Cloud defaults to Essentials, pooled, no min-free, keep
+every backup. `last_backup_at` is stamped by a successful run of that slot (the
+façade's `create_snapshot` when `BackupOptions.slot` is set), so the dialog can
+summarise a cloud slot without a network LIST. Pre-slot settings were flat
+`backup_*` keys: when the dict is absent they're read into the slot the saved
+destination's kind names (format and min-free always go to local), the new shape is
+written on the next save, and the flat keys are never deleted, so a downgrade still
+works. The S3 endpoint/region/access-key keys stay flat; only the cloud slot uses
+them.
 
 **Mirrored** (default) — `<dest>/M110-Backups/<store-name>/<timestamp>/` mirrors the
 store, with files unchanged since the previous snapshot hardlinked to it (immutable

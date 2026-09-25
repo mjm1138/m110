@@ -27,11 +27,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import config
 from . import mirrored, pooled
 from .destination import parse_destination, store_backup_root, supports_hardlinks
-from .options import SETTING_FORMAT, SnapshotInfo
+from .options import SnapshotInfo
 from .retention import list_snapshots
+from .slots import SLOT_LOCAL, load_slot, update_slot
 
 FORMAT_MIRRORED = mirrored.FORMAT
 FORMAT_POOLED = pooled.FORMAT
@@ -58,7 +58,9 @@ FORMAT_BLURBS = {
 
 
 def preferred_format() -> str:
-    value = config.get_setting(SETTING_FORMAT, DEFAULT_FORMAT)
+    """The local slot's format preference. Only a local destination has a
+    choice to make — a bucket is always pooled — so it lives on that slot."""
+    value = load_slot(SLOT_LOCAL).format
     return value if value in FORMATS else DEFAULT_FORMAT
 
 
@@ -118,12 +120,12 @@ def create_snapshot(options, should_cancel=None, progress=None) -> dict:
     dest = parse_destination(options.destination)
     fmt, forced = resolve_format(dest)
     # Persist a *discovered* limitation (this filesystem can't hardlink) so the
-    # choice sticks. Don't persist the inherent one: a bucket being pooled says
-    # nothing about the user's local drive, and `backup_format` is global — this
-    # is where backing up to S3 once would otherwise have silently converted the
+    # choice sticks — on the local slot, whose preference it is. Don't persist
+    # the inherent one: a bucket being pooled says nothing about the user's local
+    # drive; this is where backing up to S3 once used to silently convert the
     # next backup to the external disk.
     if forced and dest.is_local:
-        config.save_setting(SETTING_FORMAT, fmt)
+        update_slot(SLOT_LOCAL, format=fmt)
     return _module(fmt).create_snapshot(options, should_cancel=should_cancel,
                                         progress=progress)
 

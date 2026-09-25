@@ -69,6 +69,129 @@ def test_backup_nudge_silent_when_backups_configured(tmp_path, monkeypatch, qapp
         win.deleteLater(); qapp.processEvents()
 
 
+def test_backup_nudge_silent_when_only_cloud_is_configured(tmp_path, monkeypatch, qapp):
+    """A cloud-only user has backups too — "configured" means either slot."""
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110 import backup
+    backup.update_slot(backup.SLOT_CLOUD, destination="s3://bucket/m110")
+    from PySide6.QtWidgets import QMessageBox
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: asked.append(1) or QMessageBox.No)
+    win = _window(qapp)
+    try:
+        win._maybe_backup_nudge()
+        assert asked == []
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+class _FakeBgWorker:
+    """Stands in for `_BackupBgWorker`: records which slot it was started for
+    and lets the test deliver the result itself."""
+    started: list = []
+
+    def __init__(self, slot, cancel_event, parent=None):
+        self.slot = slot
+        self.done = self.failed = type("Sig", (), {"connect": lambda *_: None})()
+
+    def start(self):
+        _FakeBgWorker.started.append(self.slot)
+
+    def isRunning(self):
+        return False
+
+    def deleteLater(self):
+        pass
+
+
+def _auto_window(qapp, monkeypatch, due):
+    from m110 import backup
+    import m110.ui.main as main_mod
+    _FakeBgWorker.started = []
+    monkeypatch.setattr(main_mod, "_BackupBgWorker", _FakeBgWorker)
+    monkeypatch.setattr(backup, "due_for_auto_backup", lambda slot: slot in due)
+    monkeypatch.setattr(backup, "due_for_scheduled_backup",
+                        lambda slot, now=None: slot in due)
+    return _window(qapp)
+
+
+def test_auto_backup_runs_due_slots_one_at_a_time(tmp_path, monkeypatch, qapp):
+    """Both slots due: local first, and cloud only once local has finished —
+    the engine allows one run per process, so starting both would fail one."""
+    seed_root(tmp_path, monkeypatch)
+    from m110 import backup
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(tmp_path), auto=True)
+    backup.update_slot(backup.SLOT_CLOUD, destination="s3://b/c", auto=True)
+    win = _auto_window(qapp, monkeypatch, due={"local", "cloud"})
+    try:
+        win._maybe_auto_backup()
+        assert _FakeBgWorker.started == ["local"]
+        assert "Backing up to Local" in win.statusBar().currentMessage()
+
+        win._maybe_auto_backup(scheduled=True)     # a tick mid-run starts nothing
+        assert _FakeBgWorker.started == ["local"]
+
+        win._on_auto_backup_done({"file_count": 7})
+        assert _FakeBgWorker.started == ["local", "cloud"]
+
+        win._on_auto_backup_done({"file_count": 3})
+        assert "Backed up 3 files to Cloud" in win.statusBar().currentMessage()
+        assert win._backup_worker is None and win._backup_queue == []
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_one_slot_failing_does_not_stop_the_other(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    from m110 import backup
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(tmp_path), auto=True)
+    backup.update_slot(backup.SLOT_CLOUD, destination="s3://b/c", auto=True)
+    win = _auto_window(qapp, monkeypatch, due={"local", "cloud"})
+    try:
+        win._maybe_auto_backup()
+        win._on_auto_backup_failed("offline")
+        assert _FakeBgWorker.started == ["local", "cloud"]
+        assert "Local backup skipped" in win.statusBar().currentMessage()
+        win._on_auto_backup_done({"file_count": 1})
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_only_the_due_slot_runs(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    from m110 import backup
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(tmp_path), auto=True)
+    backup.update_slot(backup.SLOT_CLOUD, destination="s3://b/c", auto=True)
+    win = _auto_window(qapp, monkeypatch, due={"cloud"})
+    try:
+        win._maybe_auto_backup(scheduled=True)
+        assert _FakeBgWorker.started == ["cloud"]
+        win._on_auto_backup_done({"file_count": 1})
+        assert _FakeBgWorker.started == ["cloud"]
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_restore_offers_both_configured_slots(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    from m110 import backup
+    import m110.ui.restore_dialog as rd
+    backup.update_slot(backup.SLOT_LOCAL, destination=str(tmp_path / "l"))
+    backup.update_slot(backup.SLOT_CLOUD, destination="s3://b/c")
+    seen = []
+    monkeypatch.setattr(rd, "RestoreDialog",
+                        lambda sources, parent=None: seen.append(sources) or
+                        type("D", (), {"exec": lambda self: None})())
+    win = _window(qapp)
+    try:
+        win._open_restore()
+        assert seen == [[("Local", str(tmp_path / "l")), ("Cloud", "s3://b/c")]]
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
 def test_backup_nudge_silent_without_captures(tmp_path, monkeypatch, qapp):
     seed_root(tmp_path, monkeypatch)            # empty store — nothing captured
     from PySide6.QtWidgets import QMessageBox

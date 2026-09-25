@@ -136,7 +136,7 @@ DONE.md's archived reference — grep the module name there.
 | `logsetup.py` | rotating log at `~/.m110/logs/m110.log` |
 | `media.py` | recursive non-catalog media listing, poster resolution, sidecar cleanup |
 | `webexport.py` | size-budgeted PNG/JPEG export for sharing |
-| `backup/` | snapshot engine: `destination` (folder or `s3://`), `backends/` (local, memory, S3), `mirrored` + `pooled` formats, `scope` (denylist + `essentials` tier), `retention` (24h-grace GC), `probe`, `schedule`, `recovery`; façade in `__init__` |
+| `backup/` | snapshot engine: `destination` (folder or `s3://`), `backends/` (local, memory, S3), `mirrored` + `pooled` formats, `scope` (denylist + `essentials` tier), `slots` (Local + Cloud, each its own settings; `update_slot` is the writer), `retention` (24h-grace GC), `probe`, `schedule` (per slot), `recovery`; façade in `__init__` |
 | `planning.py` | twilight (memoized), `observability`, `night_track`, `plan_night`, `sequence_plan`, moon impact (topocentric AltAz) |
 | `fieldguide.py` | printable observing plan markdown; saved under `Plans/` |
 | `planning_config.py` | site/device profiles (`profiles/*.toml`), glow layer, `DEVICE_PRESETS`, active-profile selection, `geocode` |
@@ -163,7 +163,7 @@ DONE.md's archived reference — grep the module name there.
 | `pages/import_page.py` · `ingest_dialog.py` · `holding_inspect_dialog.py` | import flow: preview-then-confirm, holding area, bulk assign |
 | `import_dialog.py` · `handoff_dialog.py` · `export_dialog.py` · `add_object_dialog.py` · `image_viewer.py` | import finished work · send stack to a workflow · export for sharing · add object · gallery viewer |
 | `media_detail.py` · `media_cleanup_dialog.py` | media detail pane · sidecar cleanup |
-| `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (folder or S3) · restore · MCP connection details |
+| `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (summary + Local drive / Cloud tabs, one `_SlotPanel` each) · restore (From: picker across slots) · MCP connection details |
 | `about_dialog.py` · `update_notice.py` · `error_report.py` · `first_run_dialog.py` | about + update status · update banner/worker · crash dialog + excepthook · first-launch prompt |
 | `theme/` | design system: `tokens` (light/dark), `qss.build_qss`, `manager.ThemeManager` (follows OS), bundled JetBrains Mono, `brand` (recolored logo, fixed app icon). **Pull colors/spacing from tokens, never hardcode hex** |
 

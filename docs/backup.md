@@ -2,9 +2,17 @@
 
 ← [Back to the guide](README.md)
 
-M110 has a built-in backup system that makes **dated snapshots** of your library to a
-destination you choose — an external or network drive separate from your working
-disk, or cloud storage. Open it from **Library → Back up / Restore**.
+M110 has a built-in backup system that makes **dated snapshots** of your library.
+Open it from **Tools → Back up…**.
+
+It has two backups you can set up side by side, each on its own tab:
+
+- **Local drive** — an external or network drive separate from your working disk.
+- **Cloud** — offsite, in Amazon S3, Backblaze B2, Cloudflare R2, Wasabi, or any
+  S3-compatible storage.
+
+The top of the window shows both at a glance: where each one goes, when it last ran,
+and whether it runs automatically. You can use either one, or — best — both.
 
 Whatever the details below, two things are always true:
 
@@ -92,7 +100,8 @@ that can't share files, where mirrored isn't a real option.
 
 ## Backing up to cloud storage
 
-Instead of choosing a folder, you can type a bucket address as the destination:
+Open the **Cloud** tab (or click **Set up cloud backup…** at the top of the window)
+and enter a bucket address as the destination:
 
 ```
 s3://your-bucket/m110-backups
@@ -103,7 +112,7 @@ That works with **Amazon S3** and with anything that speaks the same protocol �
 providers are usually the point, which is why the **Endpoint URL** field matters:
 it's the address of your provider's API. Leave it blank for Amazon S3.
 
-A **Cloud storage** section appears as soon as the destination starts with `s3://`:
+Then fill in the **Cloud storage** section below it:
 
 | Field | What to put in it |
 |---|---|
@@ -132,17 +141,24 @@ Your light frames are usually around **99% of your library's size**. Backing all
 them up to metered storage can take days and cost real money, and for many people
 that's not what "offsite" needs to mean.
 
-The **Back up:** setting offers two choices:
+Each tab has its own **Back up:** setting, with two choices:
 
 - **Everything** — the whole library, light frames included. The right choice for a
-  drive or network share, and the default.
+  drive or network share, and the default on the Local drive tab.
 - **Essentials** — everything *except* your raw light frames and archived
   processing runs. Your journals, finished images, stacks, plans, presets and
-  settings all still go. This is typically a few percent of the size.
+  settings all still go. This is typically a few percent of the size, and it's the
+  default on the Cloud tab.
 
-A good pattern is Everything to a local drive, and Essentials to the cloud: the
-frames stay where there's room for them, and the work you can't recapture is
-offsite.
+That makes the recommended setup the default one: **Everything to a local drive,
+Essentials to the cloud**. The frames stay where there's room for them, and the work
+you can't recapture is offsite. To set it up:
+
+1. On the **Local drive** tab, choose your drive and tick **Back up automatically**.
+2. On the **Cloud** tab, enter your bucket and keys, press **Test connection**, and
+   tick **Back up automatically** there too.
+3. Press **Save**. Each backup now runs on its own schedule; when both are due,
+   M110 does the local one first, then the cloud one.
 
 **Changing to Essentials doesn't delete anything.** Backups you already made keep
 their light frames until they're eventually pruned by your retention settings, so
@@ -177,18 +193,21 @@ Practical consequences:
 
 ## Automation & retention
 
+Each tab has its own settings, so the local drive and the cloud can run on
+different schedules and keep different numbers of backups.
+
 - **Automatic backups** run on a schedule (default: at most one every 12 hours), so a
   fresh capture session gets protected without you thinking about it.
 - **Retention** lets you keep the *N* newest backups; older ones are pruned. The
   default keeps everything — there is deliberately no "delete anything older than *X*
   days" rule, so a gap in use can never silently wipe your history.
 - **A minimum-free-space guard** prunes old backups rather than filling the
-  destination. (Not applicable to cloud storage, which has no volume to fill — the
-  setting is greyed out for a bucket.)
+  destination. (Local drive only — cloud storage has no volume to fill.)
 
 ## Restoring
 
-**Library → Back up / Restore → Restore…** lets you pick a backup by date, choose
+**Tools → Restore…** (or **Restore…** in the Back up window) lets you pick a backup
+by date — from either your local drive or the cloud, if you use both — choose
 specific files or the whole tree, and either **extract to a folder** (safe default)
 or restore **into your library** (with a conflict preview and confirmation first).
 There's also a **Verify integrity** action that re-checks a backup against its

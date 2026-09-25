@@ -849,14 +849,14 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        dlg._dest.setText(str(dest))
+        dlg._local._dest.setText(str(dest))
         # Typing must NOT probe (it used to walk the destination on the GUI
         # thread on every keystroke — a freeze on a slow share).
-        assert dlg._probe_worker is None
-        dlg._refresh_status()
-        _settle_probe(dlg, qapp)
-        assert "backup" in dlg._status.text()
-        assert "shared between backups" in dlg._status.text()
+        assert dlg._local._probe_worker is None
+        dlg._local._refresh_status()
+        _settle_probe(dlg._local, qapp)
+        assert "backup" in dlg._local._status.text()
+        assert "shared between backups" in dlg._local._status.text()
     finally:
         dlg.close()
         dlg.deleteLater()
@@ -878,13 +878,14 @@ def test_backup_dialog_exit_button_says_close_until_something_changes(
         assert dlg._reject_btn.text() == "Close"
         assert dlg._save_btn.isEnabled() is False      # nothing to save either
 
-        dlg._interval.setValue(dlg._interval.value() + 1)
+        dlg._local._interval.setValue(dlg._local._interval.value() + 1)
         assert dlg._reject_btn.text() == "Cancel"      # now it can discard an edit
         assert dlg._save_btn.isEnabled() is True
 
         # Persisting is what makes the widgets and the stored settings agree —
         # whether it came from Save or from "Back up now".
-        dlg._persist_settings(str(tmp_path / "dest"))
+        dlg._local._dest.setText(str(tmp_path / "dest"))
+        dlg._local.persist()
         assert dlg._reject_btn.text() == "Close"
         assert dlg._save_btn.isEnabled() is False
 
@@ -893,7 +894,7 @@ def test_backup_dialog_exit_button_says_close_until_something_changes(
         # change worth saving. (An earlier version listened to `textEdited` to skip
         # programmatic writes; that left Save greyed out after Browse. Nothing else
         # writes this field — the destination probe updates the status label.)
-        dlg._dest.setText(str(tmp_path / "elsewhere"))
+        dlg._local._dest.setText(str(tmp_path / "elsewhere"))
         assert dlg._reject_btn.text() == "Cancel"
         assert dlg._save_btn.isEnabled() is True
     finally:
@@ -917,10 +918,10 @@ def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monke
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        dlg._dest.setText(str(dest))
-        dlg._refresh_status()
-        _settle_probe(dlg, qapp)
-        text = dlg._status.text()
+        dlg._local._dest.setText(str(dest))
+        dlg._local._refresh_status()
+        _settle_probe(dlg._local, qapp)
+        text = dlg._local._status.text()
         assert "No backups here yet." in text          # nothing written yet…
         assert "can't share files between backups" in text   # …and we still warn
     finally:
@@ -938,18 +939,18 @@ def test_backup_dialog_offers_the_format_choice_and_explains_it(tmp_path, monkey
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        assert dlg._current_format() == backup.FORMAT_MIRRORED     # the default
-        dlg._dest.setText(str(dest))
-        dlg._refresh_status()
-        _settle_probe(dlg, qapp)
-        assert dlg._format.isEnabled()                             # a real choice
-        assert "browsable copy" in dlg._format_note.text()
+        assert dlg._local._current_format() == backup.FORMAT_MIRRORED     # the default
+        dlg._local._dest.setText(str(dest))
+        dlg._local._refresh_status()
+        _settle_probe(dlg._local, qapp)
+        assert dlg._local._format.isEnabled()                             # a real choice
+        assert "browsable copy" in dlg._local._format_note.text()
 
-        dlg._select_format(backup.FORMAT_POOLED)
-        dlg._on_format_changed()
-        assert "stored once" in dlg._format_note.text()
+        dlg._local._select_format(backup.FORMAT_POOLED)
+        dlg._local._on_format_changed()
+        assert "stored once" in dlg._local._format_note.text()
         dlg._save_and_close()
-        assert config.get_setting(backup.SETTING_FORMAT) == backup.FORMAT_POOLED
+        assert backup.load_slot("local").format == backup.FORMAT_POOLED
     finally:
         dlg.close()
         dlg.deleteLater()
@@ -971,15 +972,57 @@ def test_backup_dialog_forces_pooled_where_files_cannot_be_shared(tmp_path, monk
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        dlg._dest.setText(str(dest))
-        dlg._refresh_status()
-        _settle_probe(dlg, qapp)
-        assert dlg._current_format() == backup.FORMAT_POOLED
-        assert not dlg._format.isEnabled()
-        assert "can't share files" in dlg._format_note.text()
-        assert config.get_setting(backup.SETTING_FORMAT) == backup.FORMAT_POOLED
+        dlg._local._dest.setText(str(dest))
+        dlg._local._refresh_status()
+        _settle_probe(dlg._local, qapp)
+        assert dlg._local._current_format() == backup.FORMAT_POOLED
+        assert not dlg._local._format.isEnabled()
+        assert "can't share files" in dlg._local._format_note.text()
+        assert backup.load_slot("local").format == backup.FORMAT_POOLED
     finally:
         dlg.close()
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_restore_dialog_switches_between_backup_slots(tmp_path, monkeypatch, qapp):
+    """With both slots configured, "From:" picks which destination's snapshots
+    are listed — the other slot's backups are one combo away, not unreachable."""
+    from m110 import backup
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    a, b = tmp_path / "a", tmp_path / "b"
+    backup.create_snapshot(backup.BackupOptions(destination=a))
+
+    from m110.ui.restore_dialog import RestoreDialog
+    dlg = RestoreDialog([("Local", str(a)), ("Cloud", str(b)), ("None", "")])
+    try:
+        assert dlg._source_combo.count() == 2          # blank sources are dropped
+        assert dlg._snap_combo.count() == 1
+        assert dlg._restore_btn.isEnabled()
+
+        dlg._source_combo.setCurrentIndex(1)
+        assert dlg._snap_combo.count() == 0
+        assert not dlg._restore_btn.isEnabled()
+        assert dlg._empty.isVisibleTo(dlg)
+
+        dlg._source_combo.setCurrentIndex(0)
+        assert dlg._snap_combo.count() == 1
+        assert dlg._tree.topLevelItemCount() > 0
+    finally:
+        dlg.deleteLater()
+        qapp.processEvents()
+
+
+def test_restore_dialog_with_one_destination_has_no_source_picker(
+        tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    from m110.ui.restore_dialog import RestoreDialog
+    dlg = RestoreDialog(str(tmp_path / "nothing"))
+    try:
+        assert dlg._source_combo is None
+        assert dlg._empty.isVisibleTo(dlg)
+    finally:
         dlg.deleteLater()
         qapp.processEvents()
 
@@ -991,9 +1034,9 @@ def test_restore_dialog_lists_both_formats_and_restores_a_pooled_snapshot(
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
     dest = tmp_path / "backups"
-    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_MIRRORED)
+    backup.update_slot(backup.SLOT_LOCAL, format=backup.FORMAT_MIRRORED)
     backup.create_snapshot(backup.BackupOptions(destination=dest))
-    config.save_setting(backup.SETTING_FORMAT, backup.FORMAT_POOLED)
+    backup.update_slot(backup.SLOT_LOCAL, format=backup.FORMAT_POOLED)
     backup.create_snapshot(backup.BackupOptions(destination=dest))
 
     from m110.ui.restore_dialog import RestoreDialog
@@ -1032,15 +1075,17 @@ def test_backup_dialog_save_persists_settings_without_backup(tmp_path, monkeypat
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        dlg._dest.setText(str(dest))
-        dlg._auto.setChecked(True)
-        dlg._interval.setValue(6)
+        dlg._local._dest.setText(str(dest))
+        dlg._local._auto.setChecked(True)
+        dlg._local._interval.setValue(6)
         dlg._save_and_close()                     # Save, not "Back up now"
         qapp.processEvents()
         # Settings persisted…
-        assert config.get_setting(backup.SETTING_AUTO) is True
-        assert int(config.get_setting(backup.SETTING_INTERVAL)) == 6
-        assert config.get_setting(backup.SETTING_DEST) == str(dest)
+        local = backup.load_slot("local")
+        assert local.auto is True
+        assert int(local.interval_hours) == 6
+        assert local.destination == str(dest)
+        assert backup.load_slot("cloud").destination == ""
         # …but no snapshot was written.
         assert backup.list_snapshots(dest) == []
     finally:
@@ -2018,8 +2063,8 @@ def test_backup_dialog_browse_enables_save(tmp_path, monkeypatch, qapp):
         monkeypatch.setattr(
             "PySide6.QtWidgets.QFileDialog.getExistingDirectory",
             lambda *a, **k: str(chosen))
-        dlg._browse()
-        assert dlg._dest.text() == str(chosen)
+        dlg._local._browse()
+        assert dlg._local._dest.text() == str(chosen)
         assert dlg._save_btn.isEnabled() is True
         assert dlg._reject_btn.text() == "Cancel"
     finally:
@@ -2042,10 +2087,10 @@ def test_backup_dialog_never_erases_a_configured_destination(
     from m110.ui.backup_dialog import BackupDialog
     dlg = BackupDialog()
     try:
-        assert dlg._dest.text() == "/Volumes/Archive/M110-backup"   # loads it back
-        dlg._dest.setText("")
+        assert dlg._local._dest.text() == "/Volumes/Archive/M110-backup"   # loads it back
+        dlg._local._dest.setText("")
         dlg._save_and_close()
-        assert config.get_setting(backup.SETTING_DEST) == "/Volumes/Archive/M110-backup"
+        assert backup.load_slot("local").destination == "/Volumes/Archive/M110-backup"
     finally:
         dlg.deleteLater()
         qapp.processEvents()
@@ -2065,7 +2110,7 @@ def test_backup_dialog_round_trips_the_destination_untouched(
     dlg = BackupDialog()
     try:
         dlg._save_and_close()
-        assert config.get_setting(backup.SETTING_DEST) == original
+        assert backup.load_slot("local").destination == original
     finally:
         dlg.deleteLater()
         qapp.processEvents()

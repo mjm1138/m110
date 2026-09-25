@@ -10,6 +10,24 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **Back up to a local drive and the cloud at the same time.** The Back up window
+  (Tools → Back up…) now has two tabs, **Local drive** and **Cloud**. Each has its own
+  destination, what to back up, schedule and retention, and both can run
+  automatically. When both are due, the local backup runs first and the cloud one
+  right after. A summary at the top shows where each backup goes and when it last
+  ran. Cloud backup used to be hidden behind typing an `s3://` address into the one
+  destination field; the Cloud tab now names the providers it works with (Amazon S3,
+  Backblaze B2, Cloudflare R2, Wasabi) and defaults to **Essentials**, which is
+  everything except your raw light frames. Your existing backup setup carries over
+  unchanged: a folder moves to the Local drive tab, a bucket to the Cloud tab.
+- **Restore can read from either backup.** With both set up, Restore has a **From:**
+  picker to switch between the local and cloud copies.
+
+### Fixed
+- The user guide and the first-run backup prompt pointed to a Library menu entry
+  for Back up / Restore. It's under **Tools**.
+
 ## [0.3.0-beta.7] - 2026-09-21
 
 ### Added
