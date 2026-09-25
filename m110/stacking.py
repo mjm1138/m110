@@ -44,7 +44,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import config, launch, siril as siril_mod
+from . import calibration, config, launch, siril as siril_mod
 
 PRESET_NAME = siril_mod.PRESET_NAME
 
@@ -228,6 +228,7 @@ class Frame:
     date: str = ""
     ra: float | None = None
     dec: float | None = None
+    binning: int | None = None      # XBINNING — calibration masters are per binning
 
 
 def read_frames(lights: Path) -> tuple[list[Frame], dict]:
@@ -253,20 +254,27 @@ def read_frames(lights: Path) -> tuple[list[Frame], dict]:
             frames.append(Frame(name=p.name))
             continue
         exp = h.get("EXPTIME") or h.get("EXPOSURE")
+        # Sensor temperature: CCD-TEMP is the convention; the DwarfLab Draco
+        # writes DET-TEMP on its lights.
+        temp = h.get("CCD-TEMP")
+        if temp is None:
+            temp = h.get("DET-TEMP")
         frames.append(Frame(
             name=p.name,
             exposure=float(exp) if exp is not None else None,
             filter=(h.get("FILTER") or "").strip() or "UNKNOWN",
             gain=int(h["GAIN"]) if h.get("GAIN") is not None else None,
-            temp=float(h["CCD-TEMP"]) if h.get("CCD-TEMP") is not None else None,
+            temp=float(temp) if temp is not None else None,
             date=str(h.get("DATE-OBS") or "")[:10],
             ra=float(h["RA"]) if h.get("RA") is not None else None,
             dec=float(h["DEC"]) if h.get("DEC") is not None else None,
+            binning=int(h["XBINNING"]) if h.get("XBINNING") is not None else None,
         ))
         if not geom:
             geom = {"naxis1": h.get("NAXIS1"), "naxis2": h.get("NAXIS2"),
                     "xpixsz": h.get("XPIXSZ"), "focal": h.get("FOCALLEN"),
-                    "object": str(h.get("OBJECT", "")).strip()}
+                    "object": str(h.get("OBJECT", "")).strip(),
+                    "telescop": str(h.get("TELESCOP", "")).strip()}
     return frames, geom
 
 
@@ -932,12 +940,31 @@ def build_ssf_solve(lights_name: str, p: Proposal,
             "",
         ]
 
+    # Master calibration frames, when the plan found some (see
+    # `calibration_for_stack`). Mirrors the Naztronomy script's calibrate line:
+    # -cc=dark enables cosmetic correction from the dark, -equalize_cfa evens the
+    # CFA channels of the flat, -cfa tells Siril the frames are colour-filter-array.
+    # Paths are absolute and double-quoted (Siril's tokenizer honours quotes; a
+    # target name can contain spaces).
+    cal = p.get("calibration") or {}
+    cal_flags: list[str] = []
+    if cal.get("darks"):
+        cal_flags += [f'-dark="{cal["darks"]}"', "-cc=dark"]
+    if cal.get("flats"):
+        cal_flags += [f'-flat="{cal["flats"]}"', "-equalize_cfa"]
+    if cal.get("biases"):
+        cal_flags += [f'-bias="{cal["biases"]}"']
+    if cal_flags:
+        cal_flags.append("-cfa")
+        L.append("# Calibrate against the master frames the plan matched "
+                 f"({', '.join(t[:-1] for t in calibration.TIERS if cal.get(t))}).")
+    tail = (" " + " ".join(cal_flags)) if cal_flags else ""
     if p.get("debayer"):
         L += ["# -debayer because drizzle is off; without it the stack is monochrome.",
-              f"calibrate {seq} -debayer", ""]
+              f"calibrate {seq}{tail} -debayer", ""]
     else:
         L += ["# No -debayer: drizzle needs raw CFA and demosaics as it resamples.",
-              f"calibrate {seq}", ""]
+              f"calibrate {seq}{tail}", ""]
     seq = f"pp_{seq}"
 
     if p.get("bg_extract"):
@@ -1242,6 +1269,10 @@ def format_report(s: Survey, p: Proposal, siril: str, working: Path,
         ("bg extraction", "on" if p.get("bg_extract") else "off"),
         ("quality filters", "98% round/wfwhm/bkg/stars" if p.get("filters") else "off"),
         ("compression", f"rice q{p.get('compress_quant')}" if p.get("compress") else "off"),
+        ("calibration", " · ".join(
+            f"{t[:-1]} {'✓' if (p.get('calibration') or {}).get(t) else '—'}"
+            for t in ("darks", "flats", "biases"))
+            if p.get("calibration") else "off"),
     ]
     for k, v in rows:
         why = p.settings[{"overlap norm": "overlap_norm", "bg extraction": "bg_extract",
@@ -1429,6 +1460,7 @@ class Overrides:
     only_exposure: list | None = None
     only_night: list | None = None
     exclude_night: list | None = None
+    no_calibration: bool = False
 
 
 @dataclass
@@ -1468,6 +1500,67 @@ class StackPlan:
             "register_script": self.register_ssf,
             "stack_script": self.stack_ssf,
         }
+
+
+def calibration_for_stack(working: Path, frames: list, geom: dict
+                          ) -> tuple[dict | None, str, list[str]]:
+    """The master per tier `calibrate` should use, as ({tier: abs path} | None,
+    why, notes). Two sources, in order:
+
+    1. **The job folder itself** — `darks/`/`flats/`/`biases/` beside `lights/`,
+       which is where processing prep hardlinks the target's own frames or the
+       library match. A folder holding exactly ONE FITS is a master (the same
+       rule the Naztronomy script applies); a folder of raw calibration subs is
+       reported and skipped — this stacker consumes masters, it does not build
+       them (Siril's GUI script does).
+    2. **The device library** — `Calibration/<TELESCOP>/`, matched on the
+       selected frames' exposure/gain/binning and nearest temperature
+       (calibration.py). Only when the job folder has nothing.
+    """
+    found: dict[str, str] = {}
+    notes: list[str] = []
+    for tier in calibration.TIERS:
+        d = working / tier
+        if not d.is_dir():
+            continue
+        fs = sorted(f for f in d.iterdir()
+                    if f.is_file() and config.is_fits_file(f.name))
+        if len(fs) == 1:
+            found[tier] = str(fs[0].resolve())
+        elif len(fs) > 1:
+            notes.append(
+                f"{len(fs)} raw frames in {tier}/ — m110-stack calibrates with "
+                "masters only. Stack them into one master in Siril (the "
+                "Naztronomy script does this) or leave calibration off.")
+    if found:
+        return found, ("masters found beside lights/ in the job folder (linked "
+                       "there by processing prep)"), notes
+
+    facts = calibration.facts_from_frames([
+        {"exptime": f.exposure, "gain": f.gain, "binning": f.binning,
+         "temp_c": f.temp, "filter": None if f.filter == "UNKNOWN" else f.filter,
+         "telescop": geom.get("telescop") or None}
+        for f in frames])
+    tel = facts.get("telescop")
+    device = None
+    if tel:
+        from . import devices
+        device = devices.folder_name(tel)
+    else:
+        target = target_for(working)
+        if target:
+            device = calibration.device_for_target(target)
+    match = calibration.match_for_facts(facts, device)
+    notes.extend(f"calibration: {n}" for n in match.notes)
+    if match:
+        got = match.as_dict()
+        return ({t: str(p.resolve()) for t, p in got.items()},
+                f"matched from Calibration/{match.device}/ on the selected frames' "
+                "exposure, gain and binning (darks: nearest sensor temperature)",
+                notes)
+    return None, ("no master darks/flats/biases: nothing beside lights/ and no "
+                  "library match — Siril will register and stack uncalibrated "
+                  "frames"), notes
 
 
 def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = None,
@@ -1543,6 +1636,16 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
         p.set("compress_quant", ov.compress_quant, "set on the command line")
     if ov.out:
         p.set("out", ov.out, "")
+
+    # -- calibration masters (after selection: the match is on the frames that
+    #    will actually be stacked, so --only-exposure makes a mixed target
+    #    calibratable) ------------------------------------------------------
+    if ov.no_calibration:
+        p.set("calibration", None, "disabled on the command line")
+    else:
+        cal, why, notes = calibration_for_stack(working, kept, geom)
+        p.set("calibration", cal, why)
+        p.warnings.extend(notes)
 
     # After overrides, so a hand-picked combination is checked too.
     reconcile(p)
@@ -1837,6 +1940,9 @@ def main() -> int:
     g.add_argument("--no-compress", action="store_true")
     g.add_argument("--compress-quant", type=int, metavar="Q",
                    help="Rice quantisation 0-256 (default 16; higher = less loss)")
+    g.add_argument("--no-calibration", action="store_true",
+                   help="ignore master darks/flats/biases (the job folder's or the "
+                        "telescope's Calibration/ library) and stack raw frames")
 
     a = ap.parse_args()
 

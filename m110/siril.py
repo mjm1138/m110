@@ -27,7 +27,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, roundtrip
+from . import calibration, config, roundtrip
 
 _log = logging.getLogger("m110")
 
@@ -171,10 +171,16 @@ class PrepPlan:
     total_bytes: int = 0
     multi_filter: bool = False
     filters: list = field(default_factory=list)
-    # (src, dst) hardlinks for darks/flats/biases → the sandbox root (calibration
-    # is shared across filters). Empty when the target has no calibration frames.
+    # (src, dst) hardlinks for darks/flats/biases → **each job dir** (the
+    # Naztronomy script resolves `darks/` against Siril's working directory,
+    # which for a mixed-filter target is the per-filter job folder, not the
+    # sandbox root). Empty when the target has no calibration frames.
     calib_links: list = field(default_factory=list)
     calib_kinds: list = field(default_factory=list)   # ["darks", …] present
+    # "target" (the target's own darks/flats/biases), "library" (one master per
+    # tier matched from Calibration/<device>/), or "" (none)
+    calib_source: str = ""
+    calib_notes: list = field(default_factory=list)   # what the library match said
 
 
 def _lights(target: str) -> list[Path]:
@@ -220,13 +226,22 @@ def plan_prep(target: str, usable_frames: int | None = None,
     `usable_frames` (post-rejection, single-filter only) overrides the raw count
     for the drizzle preset. Reads only."""
     lights = _lights(target)
-    # Calibration is shared across filters → hardlinked once at the sandbox root
-    # (`siril/darks`, `siril/flats`, `siril/biases`). For a single-filter target the
-    # sandbox root *is* the job dir, so they sit right beside `lights/`.
+    # Calibration: the target's own darks/flats/biases win (a user's per-project
+    # frames); otherwise ONE matched master per tier from the device library
+    # (calibration.py — exposure/gain/binning, nearest temperature). Either way
+    # the frames are hardlinked into **every job dir** below, because the
+    # Naztronomy script looks for `darks/` next to the `lights/` it is run on.
     calib = _calib_frames(target)
+    calib_source = "target" if calib else ""
+    calib_notes: list[str] = []
+    if not calib and lights:
+        match = calibration.match_for_target(target)
+        calib_notes = list(match.notes)
+        if match:
+            calib = {tier: [p] for tier, p in match.as_dict().items()}
+            calib_source = "library"
     calib_kinds = list(calib)
-    calib_links = [(str(f), str(config.siril_dir(target) / kind / f.name))
-                   for kind, frames in calib.items() for f in frames]
+    calib_links: list[tuple[str, str]] = []
     by_filter: dict[str, list[Path]] = {}
     total_bytes = 0
     for f in lights:
@@ -248,6 +263,8 @@ def plan_prep(target: str, usable_frames: int | None = None,
         job_usable = (usable_frames if (usable_frames is not None and not multi)
                       else len(files))
         links = [(str(f), str(job_dir / "lights" / f.name)) for f in files]
+        calib_links += [(str(f), str(job_dir / kind / f.name))
+                        for kind, frames in calib.items() for f in frames]
         jobs.append(PrepJob(
             filt=filt if multi else "",
             job_dir=str(job_dir),
@@ -271,6 +288,8 @@ def plan_prep(target: str, usable_frames: int | None = None,
         filters=filters,
         calib_links=calib_links,
         calib_kinds=calib_kinds,
+        calib_source=calib_source,
+        calib_notes=calib_notes,
     )
 
 
@@ -299,11 +318,17 @@ def _next_steps_md(plan: PrepPlan) -> str:
         lines.append(f"- **{label}** → open Siril in `{where}` "
                      f"({len(job.links)} subs, {drizz})")
     if plan.calib_kinds:
+        src = ("this object's own frames" if plan.calib_source == "target"
+               else "one matching master per tier from the telescope's "
+                    "calibration library (`Calibration/<device>/`)")
         lines += [
             "",
-            f"Calibration frames were hardlinked in ({', '.join(plan.calib_kinds)}/ "
-            "at the sandbox root) and the preset's matching toggles are on.",
+            f"Calibration ({', '.join(plan.calib_kinds)}/) was hardlinked into each "
+            f"job folder — {src} — and the preset's matching toggles are on. A "
+            "folder holding a single file is treated by the script as a master.",
         ]
+    if plan.calib_notes:
+        lines += [""] + [f"- Calibration note: {n}" for n in plan.calib_notes]
     lines += [
         "",
         "## Steps",

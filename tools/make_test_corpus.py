@@ -189,6 +189,129 @@ def _dwarf_fits(path: Path, obj: str, ra: float, dec: float, exp: float,
     hdu.writeto(path, overwrite=True)
 
 
+# ── DwarfLab Draco helpers (2026 pre-release sample; feature/draco) ───────────
+# Same on-device layout as the Dwarf 3 with its own folder prefix, 300 s subs,
+# BGGR, TELESCOP='Draco', DET-TEMP on every light — and a CALI_FRAME/ tree of
+# calibration MASTERS whose headers are EMPTY (facts in the filename only).
+
+def _draco_fits(path: Path, obj: str, ra: float, dec: float, exp: float,
+                filt: str, when: datetime, seed: int, gain: int = 60,
+                temp: int = 13, rgb: bool = False):
+    _dwarf_fits(path, obj, ra, dec, exp, filt, when, seed, gain, rgb=rgb)
+    with fits.open(path, mode="update") as hdul:
+        h = hdul[0].header
+        h["TELESCOP"] = "Draco"
+        h["INSTRUME"] = "Draco"
+        h["ORIGIN"] = "DWARFLAB"
+        h["BAYERPAT"] = "BGGR"
+        h["XBINNING"] = 1
+        h["YBINNING"] = 1
+        h["DET-TEMP"] = temp
+        h["EQMODE"] = 0
+
+
+def _draco_lights(folder: str, obj: str, ra: float, dec: float, exp: int,
+                  filt: str, start: datetime, n: int, seed0: int, gain: int = 60):
+    """n Draco `.fits` subs → Images/<folder>/lights/ (Draco filename form)."""
+    d = config.lights_dir(folder)
+    for i in range(n):
+        when = start + timedelta(seconds=(exp + 5) * i)
+        temp = 11 + (i % 4)
+        name = (f"{obj}_{exp}s{gain}_{filt}_"
+                f"{when.strftime('%Y%m%d-%H%M%S')}{i:03d}_{temp}C.fits")
+        _draco_fits(d / name, obj, ra, dec, exp, filt, when, seed0 + i, gain, temp)
+
+
+# The masters the Draco sample ships, as `CALI_FRAME/<tier>/cam_0/<name>`: darks
+# across temperature (one at the wrong exposure, one bin 2), two flats by filter
+# index, one bias. The 13C dark is the one prep should pick for the lights above.
+_DRACO_MASTERS = {
+    "dark": ["dark_exp_300.000000_gain_60_bin_1_13C_stack_10.fits",
+             "dark_exp_300.000000_gain_60_bin_1_8C_stack_4.fits",
+             "dark_exp_300.000000_gain_60_bin_1_26C_stack_1.fits",
+             "dark_exp_10.000000_gain_80_bin_1_14C_stack_2.fits",
+             "dark_exp_300.000000_gain_0_bin_2_40C_stack_4.fits"],
+    "flat": ["flat_gain_2_bin_1_ir_1.fits", "flat_gain_2_bin_1_ir_2.fits"],
+    "bias": ["bias_gain_2_bin_1.fits"],
+}
+
+# What the import source's CALI_FRAME/ offers: darks the store's library does NOT
+# have yet (new temperatures), plus the same flats + bias — those are skipped as
+# already present, which is the dedupe a re-sync from the device relies on.
+_DRACO_IMPORT_MASTERS = {
+    "dark": ["dark_exp_300.000000_gain_60_bin_1_6C_stack_9.fits",
+             "dark_exp_300.000000_gain_60_bin_1_10C_stack_60.fits",
+             "dark_exp_300.000000_gain_60_bin_1_16C_stack_1.fits",
+             "dark_exp_300.000000_gain_60_bin_1_20C_stack_1.fits",
+             "dark_exp_10.000000_gain_80_bin_1_15C_stack_1.fits"],
+    "flat": _DRACO_MASTERS["flat"],
+    "bias": _DRACO_MASTERS["bias"],
+}
+
+
+def _headerless_master(path: Path, seed: int):
+    """A DwarfLab master exactly as the sample writes it: uint16, BAYERPAT, nothing
+    else — every fact is in the filename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = (_blob(seed=seed) * 4).astype("uint16") + 64
+    hdu = fits.PrimaryHDU(data=data)
+    hdu.header["BAYERPAT"] = "BGGR"
+    hdu.writeto(path, overwrite=True)
+
+
+def _draco_cali_frame(where: Path, seed0: int, masters=None):
+    """The sample's `CALI_FRAME/{dark,flat,bias}/cam_0/` tree, headerless."""
+    root = where / "CALI_FRAME"
+    i = 0
+    for tier, names in (masters or _DRACO_IMPORT_MASTERS).items():
+        for n in names:
+            _headerless_master(root / tier / "cam_0" / n, seed0 + i)
+            i += 1
+    (root / "dark" / "cam_2").mkdir(parents=True, exist_ok=True)   # empty, as shipped
+
+
+def _draco_calibration_library(seed0: int):
+    """The same masters as they look INSIDE a store after import: under
+    `Calibration/Draco/<tier>/`, with the ingest shim's stamped header cards —
+    written by the very same shim, so the corpus can't drift from it."""
+    from m110 import ingest
+    tiers = {"dark": "darks", "flat": "flats", "bias": "biases"}
+    i = 0
+    for tier, names in _DRACO_MASTERS.items():
+        for n in names:
+            p = config.calibration_dir("Draco", tiers[tier]) / n
+            _headerless_master(p, seed0 + i)
+            parsed = ingest.parse_dwarflab_master_name(n)
+            ingest._write_stamp(str(p), ingest._stamp_cards(parsed, "Draco"))
+            i += 1
+
+
+def _draco_import_session(src, folder, ra, dec, exp=300, gain=60,
+                          filt="Duo-Band", n=3, obj="Unknown"):
+    """A Draco on-device session in the external source, as the sample ships it:
+    OBJECT is the placeholder `Unknown` (the device was never told a target), so
+    the importer names it from the pointing; the stack + previews + aux files sit
+    beside the subs."""
+    d = src / folder
+    d.mkdir(parents=True, exist_ok=True)
+    start = datetime(2026, 9, 19, 22, 5, 35)
+    for i in range(n):
+        when = start + timedelta(seconds=(exp + 5) * i)
+        _draco_fits(d / f"{obj}_{exp}s{gain}_{filt}_{when.strftime('%Y%m%d-%H%M%S')}997_{13 - i}C.fits",
+                    obj, ra, dec, exp, filt, when, 7400 + i, gain, 13 - i)
+    when = start + timedelta(days=1)
+    stem = f"stacked-16_{obj}_{filt}_{when.strftime('%Y%m%d-%H%M%S')}037"
+    _draco_fits(d / f"{stem}.fits", obj, ra, dec, exp * n, filt, when, 7450, gain, rgb=True)
+    (d / f"{stem}.png").write_bytes(b"png")
+    _png(d / "stacked.jpg", 7460)
+    (d / "stacked_thumbnail.jpg").write_bytes(b"t")
+    _png(d / "img_reference.png", 7461)
+    (d / "shotsInfo.json").write_text(
+        '{"DEC": %.5f, "RA": %.5f, "binning": "1*1", "ir": "%s", "shotsDiscard": 0, '
+        '"shotsStacked": %d, "shotsToStack": %d, "target": "%s"}\n'
+        % (dec, ra / 15.0, filt, n, n, obj))
+
+
 def _dwarf_lights(folder: str, obj: str, ra: float, dec: float, exp: int,
                   filt: str, start: datetime, n: int, seed0: int, gain: int = 60):
     """n Dwarf `.fits` subs → Images/<folder>/lights/ (Dwarf filename form; header
@@ -346,6 +469,19 @@ def build(out: Path):
     _dwarf_lights("M42", "M42", ra, dec, 15, "Duo-Band", base + timedelta(days=10), 14, 5000)
     _dwarf_stack("M42", "M42", ra, dec, 60, 15, "Duo-Band",
                  base + timedelta(days=10, hours=1), 5100)
+
+    # NGC 6960 (Western Veil) — captured with a **DwarfLab Draco** (pre-release):
+    # 300 s BGGR `.fits` subs with DET-TEMP, TELESCOP='Draco'. Together with the
+    # device-level `Calibration/Draco/` library below (stamped masters, exactly what
+    # import produces from the sample's CALI_FRAME/), processing prep visibly links
+    # ONE matching master dark — the 13C one — beside the lights. A Draco-only
+    # target on purpose: NGC 6992 above is Seestar-captured, and a target shot on
+    # two devices is refused calibration (mixed settings) — which the import
+    # source's Veil session demonstrates once imported.
+    ra, dec = C("ngc-6960")
+    _draco_lights("NGC 6960", "NGC 6960", ra, dec, 300, "Duo-Band",
+                  base + timedelta(days=12), 6, 7000)
+    _draco_calibration_library(7100)
 
     # M13 (Hercules Cluster) — a captured globular, for object-type variety (the
     # corpus is otherwise galaxies + nebulae; the prioritizer type-weights + the
@@ -517,6 +653,16 @@ def _build_import_source(src: Path):
                           "M 1", *C("m1"))
     _dwarf_startrails(src, "STARTRAILS_DWARF_RAW_WIDE_EXP_10_GAIN_0_2026-06-19-23-00-00")
     _dwarf_unknown(src, "DWARF_RAW_WIDE_Unknown_EXP_10_GAIN_0_2026-06-19-23-30-00")
+
+    # DwarfLab Draco (pre-release sample, feature/draco), in its own folder as the
+    # sample shipped: an `Unknown`-object session whose frames point at NGC 6992 →
+    # **named by pointing** in the preview (unlike the Dwarf `Unknown` above, which
+    # points at nothing in the catalog and is held), beside a `CALI_FRAME/` tree of
+    # headerless masters → `Calibration/Draco/` (device inferred from the session).
+    veil = src / "Veil_nebula"
+    _draco_import_session(veil, "Draco_RAW_TELE_Unknown_EXP_300_GAIN_60_2026-09-19-21-59-48-480",
+                          *C("ngc-6992"))
+    _draco_cali_frame(veil, 7500)
 
 
 def _build_device_mount(dev: Path):
@@ -744,6 +890,35 @@ def verify(out: Path):
     print(f"  Dwarf import: {len(dwarf_lights)} lights, "
           f"{sum(o.kind == 'media' for o in dwarf_ops)} media, "
           f"{len(unknown_held)} → holding")
+
+    # Draco (feature/draco): the `Unknown` session is NAMED BY POINTING, its
+    # masters route into the device library with the shim's stamp, nothing held.
+    draco_ops = [o for o in src_ops if "Veil_nebula" in o.src]
+    draco_lights = [o for o in draco_ops if o.kind == "light"]
+    assert draco_lights and all(o.dest_rel.startswith("Images/NGC 6992/lights/")
+                                for o in draco_lights), \
+        "Draco `Unknown` subs should be named NGC 6992 from their pointing"
+    assert all(o.note.startswith("identified by pointing") for o in draco_lights), \
+        "pointing-named ops must carry the provenance note"
+    assert any(o.kind == "stack" and o.dest_rel.startswith("Images/NGC 6992/seestar-stacks/")
+               for o in draco_ops), "the Draco stacked-16 stack should reach the stack tier"
+    cal_ops = [o for o in draco_ops if o.kind.startswith("cal-")]
+    assert sorted(Path(o.src).name for o in cal_ops) == sorted(_DRACO_IMPORT_MASTERS["dark"]), \
+        ("the CALI_FRAME darks the store lacks should route into Calibration/Draco/; "
+         "its flats + bias are already there and must be skipped")
+    assert all(o.kind == "cal-dark" and o.dest_rel.startswith("Calibration/Draco/darks/")
+               and o.stamp for o in cal_ops), "headerless masters must be stamped on import"
+    assert not [o for o in draco_ops if o.kind == "unassigned"], "nothing Draco should be held"
+    from m110 import siril
+    prep = siril.plan_prep("NGC 6960")
+    assert prep.calib_source == "library", "NGC 6960 should calibrate from Calibration/Draco/"
+    assert any(dst.endswith("_13C_stack_10.fits") for _src, dst in prep.calib_links), \
+        "the 13C master dark should be the one linked for 11–14 °C lights"
+    assert not any("flats" == k for k in prep.calib_kinds), \
+        "no flat may be chosen while the Draco filter-index map is unverified"
+    print(f"  Draco import: {len(draco_lights)} lights named by pointing, "
+          f"{len(cal_ops)} masters → Calibration/Draco/; prep links "
+          f"{', '.join(prep.calib_kinds)} from the library")
 
     # 6c: the Inbox holding area carries unclassifiable files for the manual-assign demo
     held_ops = ingest.scan_holding()

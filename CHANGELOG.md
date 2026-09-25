@@ -34,9 +34,25 @@ changes a **user** would notice, per release.
   writes the exposure, gain, binning, temperature and frame count from the
   filename into *its own copy* (marked with an `M110STMP` header card); the files
   on your device are never modified. Backups keep the library at every tier.
-  Using the masters when you prepare or stack a target is the next step.
+- **Processing uses the right master automatically.** When an object has no
+  calibration frames of its own, preparing it for Siril now picks one master per
+  kind from its telescope's library: the dark with the same exposure, gain and
+  binning and the nearest sensor temperature, the bias for that binning, and a
+  flat only when exactly one fits the filter. The chosen files are linked beside
+  the lights and the Naztronomy preset's calibration switches are turned on; the
+  `next-steps.md` in the sandbox says which were used and why any were skipped
+  (for the Draco, the flats' filter indexes are not yet mapped to filter names,
+  so no flat is chosen). `m110-stack` does the same for the frames it is about to
+  stack, calibrating with `-dark`/`-flat`/`-bias`; `--no-calibration` turns it
+  off, and a folder of *raw* darks beside the lights is reported rather than
+  stacked. Your own `darks/`, `flats/` or `biases/` on an object always win.
 
 ### Fixed
+- **Calibration frames now reach every Siril job on a mixed-filter object.** They
+  were linked once at the top of the sandbox, but the Naztronomy script looks for
+  `darks/` next to the `lights/` it is run on, which for an object shot through
+  two filters is a per-filter folder underneath. Each job folder now gets its own
+  links.
 - **Same-named folders no longer merge in the holding area.** Files from two
   source folders that share a name (the Draco's `dark/cam_0` and `flat/cam_0`)
   used to be held together under one name, and a file with the same name in the

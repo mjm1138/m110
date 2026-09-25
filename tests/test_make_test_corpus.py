@@ -67,7 +67,9 @@ def test_harness_script_points_at_the_generator():
     "refresh.run_refresh", "scan_sessions.scan",
     "ingest.scan_directory_plan", "ingest.scan_holding", "ingest.group_ops",
     "objects.write_journal", "objects.set_curation", "objects.get_curation",
-    "siril.has_unimported_output", "siril.prune_rejected",
+    "siril.has_unimported_output", "siril.prune_rejected", "siril.plan_prep",
+    "ingest.parse_dwarflab_master_name", "ingest._stamp_cards", "ingest._write_stamp",
+    "config.calibration_dir",
     "catalog.load_coords", "catalog.load_library", "catalog.load_bundled_catalog",
     "goals.set_active_goals", "goals.active_goal_ids",
 ])

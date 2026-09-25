@@ -783,10 +783,16 @@ remaining device-source gaps collect here:
   cam_<n>/` tree (device inferred from a sibling session's `TELESCOP`) and for
   another store's library; headerless pre-release masters get their facts
   **stamped into M110's copy** (`IngestOp.stamp`, `M110STMP`) — a TEMPORARY SHIM
-  to delete once production units write headers. Open for the Draco: **using the
-  masters** (match per target on EXPTIME/GAIN/XBINNING/nearest CCD-TEMP, link one
-  per tier into the Siril job dir, `-dark=`/`-flat=`/`-bias=` in the stacker —
-  the next phase on the branch), assigning a *held* master from the holding area
+  to delete once production units write headers. **Using the masters** landed too:
+  `calibration.py` (header-only: `library`, `match_masters` on EXPTIME/GAIN/
+  XBINNING + nearest CCD-TEMP, `match_for_target`, mixed settings refused per
+  BUGS.md), `siril.plan_prep` falls back to the library when the target has no
+  frames of its own and links **one master per tier into each job dir** (the
+  root-only placement was a bug for mixed-filter targets), and `m110-stack`
+  matches on the *selected* frames and emits `calibrate … -dark= -cc=dark
+  -flat= -equalize_cfa -bias= -cfa` (`--no-calibration` to opt out; raw
+  calibration subs beside lights are reported, not stacked). Open for the Draco:
+  assigning a *held* master from the holding area
   (needs a device picker; `ASSIGNABLE_KINDS` untouched), volume auto-detection
   (its mount layout is unknown), whether `DATE-OBS` is UTC or local (filename ==
   header on both DwarfLab devices, unlike the Seestar), the `ir_N` flat index ↔

@@ -462,6 +462,116 @@ def test_as_json_is_serialisable_and_carries_the_proposal(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# calibration masters (feature/draco)
+# --------------------------------------------------------------------------
+
+
+def _draco_job(tmp_path, n=3, **extra):
+    d = tmp_path / "siril"
+    for i in range(n):
+        _sub(d / "lights" / f"Unknown_300s60_Duo-Band_2026091{i}-220535997_13C.fits",
+             EXPTIME=300.0, GAIN=60, XBINNING=1, DET_TEMP=11 + i, FILTER="Duo-Band",
+             TELESCOP="Draco", OBJECT="NGC 6992", **extra)
+    return d
+
+
+def _calibrate_line(ssf: str) -> str:
+    return next(l for l in ssf.splitlines() if l.startswith("calibrate "))
+
+
+def test_masters_beside_lights_go_onto_the_calibrate_line(tmp_path):
+    d = _draco_job(tmp_path)
+    dark = _sub(d / "darks" / "d13.fits", IMAGETYP="Master Dark", EXPTIME=300.0)
+    bias = _sub(d / "biases" / "b.fits", IMAGETYP="Master Bias")
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    cal = plan.proposal.get("calibration")
+    assert cal == {"darks": str(dark.resolve()), "biases": str(bias.resolve())}
+    line = _calibrate_line(plan.solve_ssf)
+    assert line == (f'calibrate lights_ -dark="{dark.resolve()}" -cc=dark '
+                    f'-bias="{bias.resolve()}" -cfa -debayer')
+    assert "-flat=" not in line and "-equalize_cfa" not in line
+    # drizzle on → no -debayer, the masters stay
+    line = _calibrate_line(build_plan(d, Overrides(drizzle=2.0), deep_measure=False).solve_ssf)
+    assert line.endswith("-cfa") and "-dark=" in line
+    payload = plan.as_json()
+    json.loads(json.dumps(payload))
+    assert payload["settings"]["calibration"] == cal
+    assert "beside lights/" in payload["justifications"]["calibration"]
+
+
+def test_a_flat_adds_equalize_cfa(tmp_path):
+    d = _draco_job(tmp_path)
+    flat = _sub(d / "flats" / "f.fits", IMAGETYP="Master Flat")
+    line = _calibrate_line(build_plan(d, Overrides(), deep_measure=False).solve_ssf)
+    assert f'-flat="{flat.resolve()}" -equalize_cfa -cfa' in line
+
+
+def test_no_calibration_override_stacks_raw(tmp_path):
+    d = _draco_job(tmp_path)
+    _sub(d / "darks" / "d13.fits", IMAGETYP="Master Dark")
+    plan = build_plan(d, Overrides(no_calibration=True), deep_measure=False)
+    assert plan.proposal.get("calibration") is None
+    assert _calibrate_line(plan.solve_ssf) == "calibrate lights_ -debayer"
+    assert "disabled on the command line" in plan.proposal.settings["calibration"].why
+
+
+def test_raw_calibration_subs_beside_lights_are_reported_not_stacked(tmp_path):
+    """m110-stack consumes masters; a folder of raw darks is the GUI script's job."""
+    d = _draco_job(tmp_path)
+    for i in range(3):
+        _sub(d / "darks" / f"Dark_{i}.fit")
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    assert plan.proposal.get("calibration") is None
+    assert any("3 raw frames in darks/" in w and "masters only" in w
+               for w in plan.proposal.warnings)
+    assert _calibrate_line(plan.solve_ssf) == "calibrate lights_ -debayer"
+
+
+def test_the_library_is_matched_on_the_selected_frames(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CALIBRATION_DIR", tmp_path / "Calibration")
+    d = _draco_job(tmp_path)
+    lib = config.calibration_dir("Draco", "darks")
+    d13 = _sub(lib / "d13.fits", IMAGETYP="Master Dark", EXPTIME=300.0, GAIN=60,
+               XBINNING=1, CCD_TEMP=13, NCOMBINE=10)
+    _sub(lib / "d26.fits", IMAGETYP="Master Dark", EXPTIME=300.0, GAIN=60,
+         XBINNING=1, CCD_TEMP=26, NCOMBINE=1)
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    assert plan.proposal.get("calibration") == {"darks": str(d13.resolve())}
+    assert "Calibration/Draco/" in plan.proposal.settings["calibration"].why
+    assert any("calibration: no master bias" in w for w in plan.proposal.warnings)
+    assert f'-dark="{d13.resolve()}"' in _calibrate_line(plan.solve_ssf)
+
+    # A second exposure population → refused … until the selection removes it.
+    for i in range(4):
+        _sub(d / "lights" / f"Unknown_10s80_Duo-Band_20260919-23000{i}000_13C.fits",
+             EXPTIME=10.0, GAIN=80, XBINNING=1, DET_TEMP=13, TELESCOP="Draco")
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    assert plan.proposal.get("calibration") is None
+    assert any("mixed capture settings" in w for w in plan.proposal.warnings)
+    plan = build_plan(d, Overrides(only_exposure=[300.0]), deep_measure=False)
+    assert plan.proposal.get("calibration") == {"darks": str(d13.resolve())}
+
+
+def test_frames_without_a_telescope_get_no_library_and_say_why(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CALIBRATION_DIR", tmp_path / "Calibration")
+    d = tmp_path / "siril"
+    for i in range(3):
+        _sub(d / "lights" / f"Light_{i}.fit", OBJECT="M27", FILTER="LP")
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    assert plan.proposal.get("calibration") is None
+    assert any("no TELESCOP" in w for w in plan.proposal.warnings)
+    assert "no master darks/flats/biases" in plan.proposal.settings["calibration"].why
+
+
+def test_det_temp_and_binning_are_read_off_the_frames(tmp_path):
+    d = _draco_job(tmp_path, n=1)
+    from m110.stacking import read_frames
+    frames, geom = read_frames(d / "lights")
+    assert frames[0].temp == 11.0 and frames[0].binning == 1
+    assert geom["telescop"] == "Draco"
+
+
+# --------------------------------------------------------------------------
 # surviving a partial plate solve
 # --------------------------------------------------------------------------
 

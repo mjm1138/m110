@@ -2,9 +2,12 @@
 import json
 import os
 
+import numpy as np
 import pytest
+from astropy.io import fits
 
 from m110 import config, objects, siril
+from tests._helpers import seed_root
 
 
 def _make_target(tmp_path, monkeypatch, ircut=120, lp=0, name="M101"):
@@ -180,6 +183,111 @@ def test_import_archive_keeps_calibration(tmp_path, monkeypatch):
     siril.apply_import(target, [it.src for it in plan.items], cleanup="archive")
     for kind in ("lights", "darks", "flats", "biases"):
         assert (sb / kind).is_dir() and any((sb / kind).glob("*.fit"))
+
+
+# ── prepare: the device calibration library (feature/draco) ──────────────────
+
+def _real_light(path, *, telescop="Draco", exptime=300.0, gain=60, temp=13):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    h.header["EXPTIME"] = exptime
+    h.header["GAIN"] = gain
+    h.header["XBINNING"] = 1
+    h.header["DET-TEMP"] = temp
+    h.header["FILTER"] = "LP"
+    h.header["TELESCOP"] = telescop
+    h.header["DATE-OBS"] = "2026-09-19T22:05:35.997"
+    h.writeto(path)
+
+
+def _library_master(device, tier, name, **cards):
+    p = config.calibration_dir(device, tier) / name
+    p.parent.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    for k, v in cards.items():
+        h.header[k.replace("_", "-")] = v
+    h.writeto(p)
+    return p
+
+
+def _draco_target(name="NGC 6992", n=4):
+    lights = config.lights_dir(name)
+    for i in range(n):
+        _real_light(lights / f"Light_{name}_300.0s_LP_20260919-22053{i}.fit", temp=11 + i)
+    return name
+
+
+def test_prep_falls_back_to_the_device_library(tmp_path, monkeypatch):
+    """No per-target darks/flats/biases → ONE matched master per tier from
+    Calibration/<TELESCOP>/, hardlinked beside lights/ and the toggles set; the
+    Naztronomy script treats a one-file folder as a master."""
+    seed_root(tmp_path, monkeypatch)
+    target = _draco_target()
+    d13 = _library_master("Draco", "darks", "d13.fits", IMAGETYP="Master Dark",
+                          EXPTIME=300.0, GAIN=60, XBINNING=1, CCD_TEMP=13, NCOMBINE=10)
+    _library_master("Draco", "darks", "d26.fits", IMAGETYP="Master Dark",
+                    EXPTIME=300.0, GAIN=60, XBINNING=1, CCD_TEMP=26, NCOMBINE=1)
+    bias = _library_master("Draco", "biases", "b.fits", IMAGETYP="Master Bias",
+                           GAIN=60, XBINNING=1)
+    plan = siril.plan_prep(target)
+    assert plan.calib_source == "library"
+    assert plan.calib_kinds == ["darks", "biases"]
+    sb = config.siril_dir(target)
+    assert sorted(plan.calib_links) == sorted([
+        (str(d13), str(sb / "darks" / "d13.fits")),      # nearest to the 11–14 °C lights
+        (str(bias), str(sb / "biases" / "b.fits"))])
+    assert any("no master flats" in n for n in plan.calib_notes)
+
+    siril.apply_prep(plan)
+    assert [p.name for p in (sb / "darks").iterdir()] == ["d13.fits"]
+    assert (sb / "darks" / "d13.fits").stat().st_nlink > 1          # hardlinked
+    assert not (sb / "flats").exists()
+    preset = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
+    assert (preset["darks"], preset["flats"], preset["biases"]) == (True, False, True)
+    steps = (sb / "next-steps.md").read_text()
+    assert "calibration library" in steps and "Calibration note: no master flats" in steps
+
+
+def test_prep_per_target_calibration_wins_over_the_library(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    target = _draco_target()
+    _library_master("Draco", "darks", "d13.fits", IMAGETYP="Master Dark",
+                    EXPTIME=300.0, GAIN=60, XBINNING=1, CCD_TEMP=13)
+    _add_calibration(target, darks=3)                      # the user's own frames
+    plan = siril.plan_prep(target)
+    assert plan.calib_source == "target" and plan.calib_kinds == ["darks"]
+    assert len(plan.calib_links) == 3 and plan.calib_notes == []
+    assert all("Dark_" in src for src, _dst in plan.calib_links)
+
+
+def test_prep_without_lights_or_library_stays_quiet(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    target = _draco_target()                               # Draco lights, empty library
+    plan = siril.plan_prep(target)
+    assert plan.calib_source == "" and plan.calib_kinds == []
+    assert any("no calibration library for Draco" in n for n in plan.calib_notes)
+    siril.apply_prep(plan)
+    assert "Calibration note" in (config.siril_dir(target) / "next-steps.md").read_text()
+
+
+def test_prep_multi_filter_links_calibration_into_each_job_dir(tmp_path, monkeypatch):
+    """The Naztronomy script resolves darks/ against Siril's working directory —
+    the per-filter job folder on a mixed target — so links at the sandbox root
+    were invisible to every job. One copy per job dir, none at the root."""
+    target = _make_target(tmp_path, monkeypatch, ircut=5, lp=5)
+    _add_calibration(target, darks=2, biases=1)
+    plan = siril.plan_prep(target)
+    assert plan.multi_filter and plan.filters == ["IRCUT", "LP"]
+    sb = config.siril_dir(target)
+    dsts = sorted(dst for _src, dst in plan.calib_links)
+    assert dsts == sorted(
+        [str(sb / f / "darks" / f"Dark_{i:03d}.fit") for f in ("IRCUT", "LP") for i in range(2)]
+        + [str(sb / f / "biases" / "Bias_000.fit") for f in ("IRCUT", "LP")])
+    siril.apply_prep(plan)
+    for f in ("IRCUT", "LP"):
+        assert len(list((sb / f / "darks").glob("*.fit"))) == 2
+        assert len(list((sb / f / "biases").glob("*.fit"))) == 1
+    assert not (sb / "darks").exists() and not (sb / "biases").exists()
 
 
 # ── autoprep (ingest hook) ───────────────────────────────────────────────────

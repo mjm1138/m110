@@ -165,6 +165,7 @@ What it contains (and what each fixture exercises):
 | `M81` (lights + stack + notes) | captured-with-stack vs captured-lights-only (no gallery) | §2.3 |
 | **`M101`** (18 lights, a `siril/` sandbox hardlinking **all 18**, then **2 moved to `rejected/`**) | the **#110 exclusion tier**, shipped mid-rejection: the sandbox pre-dates the rejection, so the first Refresh has real work to do (`processing.reconcile_rejected` prunes exactly those 2 links). Integration/sessions already exclude the pair; the frames are still on disk | §2.4 |
 | **`M42`** (**DwarfLab Dwarf 3**: Duo-Band **`.fits`** lights + an in-app `stacked-16_*.fits` stack + `stacked.jpg`) | the **`.fits`** extension end-to-end (sessions + rendering), a **narrowband** filter, a 2nd device in the store; `stacked.jpg` is force-curated **finished** → the detail **Finished / Working** split (#17) | §2.2, §2.3 |
+| **`NGC 6960`** (**DwarfLab Draco**, pre-release: 300 s BGGR `.fits` lights with `DET-TEMP` 11–14 °C, `TELESCOP='Draco'`) + the store's **`Calibration/Draco/`** library (5 darks across temperature/exposure/binning, 2 flats, 1 bias — stamped exactly as import stamps them) | the device-level calibration library: prep links **one** matched master per tier (the 13C dark, the bias; no flat — filter map unverified) into `siril/`, `next-steps.md` explains; `m110-stack` calibrates with them. (`NGC 6992` stays Seestar-captured: importing the Draco `Veil_nebula` session onto it makes a **two-device** target, which prep refuses to calibrate, with a note) | §2.2 (Draco block) |
 | **`M13`** (globular cluster: lights + Seestar stack) | object-**type** variety (the corpus is otherwise galaxies + nebulae) — the prioritizer type-weights + a non-galaxy hero | §2.6 |
 | `M63` (+ `finished/` render + `stacks/` stack, one linear `_og` + one stretched `_processed`) | "up to date" processing status, an imported deliverable in the gallery, and the **AstroWizard picker's** linear-vs-stretched choice | §2.4 |
 | `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) | §2.4 |
@@ -173,7 +174,7 @@ What it contains (and what each fixture exercises):
 | `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Tools → Clean up imported sidecars** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster | §2.3 |
 | `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced | §2.2 |
 | **AppleDouble `._` sidecars** beside one M51 light, the M51 Seestar stack, the M63 finished render, `profiles/default.toml` and the M51 journal (the real 48-byte header) | **#161 — a data root on NFS/SMB from a Mac**: the app must start (the `._default.toml` is not a profile), sessions count M51's real subs only, Siril prep links no `._` file, the gallery shows no `._` render, and a backup copies none of them. A tester on a real NFS mount gets these for free; a local-disk tester gets them from the corpus | §2.1, §2.4 |
-| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
+| **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) + a **Draco** `Veil_nebula/` folder (an `Unknown` session that points at NGC 6992, beside a headerless `CALI_FRAME/` tree: 5 darks the store lacks + the flats/bias it already has) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
 | **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one | §2.2, §2.4 |
 
 The generator is covered by `tests/test_make_test_corpus.py`, which builds and
@@ -362,19 +363,20 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
       (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
 
-#### Import — DwarfLab Draco  (6d, pre-release)  ⚙ *(classification automated — `test_ingest_dwarf.py` Draco block; needs the real sample at `~/Documents/M110-test-import-source/Veil_nebula` until the corpus grows a Draco session)*
-- [ ] Browse the **`Veil_nebula/`** sample. Its `Draco_RAW_TELE_Unknown_…` session
-      (OBJECT = `Unknown`, 300 s BGGR subs) is **not** held: the preview shows
-      **lights → `Images/NGC 6992/lights/`** (17) and the `stacked-16` stack + previews →
+#### Import — DwarfLab Draco  (6d, pre-release)  ⚙ *(classification automated — `test_ingest_dwarf.py` Draco block, `test_calibration_ingest.py`; the corpus import source's `Veil_nebula/` mirrors the real sample at `~/Documents/M110-test-import-source/Veil_nebula`, counts below are the real sample's / the corpus's)*
+- [ ] Browse **`Veil_nebula/`**. Its `Draco_RAW_TELE_Unknown_…` session (OBJECT =
+      `Unknown`, 300 s BGGR subs) is **not** held: the preview shows
+      **lights → `Images/NGC 6992/lights/`** (17 / 3) and the `stacked-16` stack + previews →
       the **stack tier** (3), both with the Pointing column reading
-      **"identified by pointing — 0.36° from NGC 6992"** and the Object cell offering
-      the retarget combo. `stacked_thumbnail.jpg`, `img_reference.png`, `shotsInfo.json`
-      are not surfaced.
+      **"identified by pointing — 0.36° from NGC 6992"** (corpus: 0.00°) and the Object
+      cell offering the retarget combo. `stacked_thumbnail.jpg`, `img_reference.png`,
+      `shotsInfo.json` are not surfaced.
 - [ ] Retarget the lights row to NGC 6960 → the note clears and the destination follows.
-- [ ] The `CALI_FRAME/{dark,flat,bias}/cam_0/` tree shows as three **master darks /
-      master flats / master biases** rows whose Object is **Draco** (28 · 2 · 1), Pointing
-      "—", destination `Calibration/Draco/<tier>/`; the empty `dark/cam_2/` is silent;
-      the holding count is **0**. *(`test_calibration_ingest.py`.)*
+- [ ] The `CALI_FRAME/{dark,flat,bias}/cam_0/` tree shows as **master darks / master
+      flats / master biases** rows whose Object is **Draco** (real sample 28 · 2 · 1;
+      corpus: **5 darks only** — its flats + bias are already in the store and are
+      skipped), Pointing "—", destination `Calibration/Draco/<tier>/`; the empty
+      `dark/cam_2/` is silent; the holding count is **0**.
 - [ ] Confirm the import. `Calibration/Draco/darks/…_13C_stack_10.fits` in the store
       has `IMAGETYP = 'Master Dark'`, `EXPTIME 300`, `GAIN 60`, `CCD-TEMP 13`,
       `NCOMBINE 10`, `TELESCOP 'Draco'`, `M110STMP 'filename'`; the **source** file on
@@ -385,6 +387,26 @@ re-run when its area changes and you want eyes on the visuals).
       `bias_cam_0`; Inspect says *"Held: calibration frames from an unidentified
       device…"* and the Kind combo is pre-filled (dark/flat/bias).
 - [ ] Planning → device: a **DwarfLab Draco** preset exists (300 s, gain 60, soft 80°).
+- [ ] **Prep from the library** (corpus: `NGC 6960` is Draco-captured and the store
+      ships `Calibration/Draco/`): after Refresh, `Images/NGC 6960/siril/darks/` holds
+      exactly **one** file — the `…_13C_stack_10.fits` master (the lights run 11–14 °C)
+      — and `biases/` the one bias; **no** `flats/` (the `ir_1`/`ir_2` filter map is
+      unverified). `next-steps.md` says the frames came from the *calibration library*
+      and lists two *Calibration note* lines (bias gain scale; flats unmapped). The
+      preset has `darks`/`biases` on, `flats` off. *(`test_siril.py` library tests.)*
+- [ ] Give NGC 6960 its own `darks/` (any FITS) and re-prep: the target's frames win
+      (`calib_source` target), the library master is not linked.
+- [ ] `m110-stack "NGC 6960"` (read-only) reports **calibration: dark ✓ · flat — ·
+      bias ✓** and the phase-1 script's `calibrate` line carries `-dark="…13C…"
+      -cc=dark -bias="…" -cfa`; `--no-calibration` gives a plain `calibrate lights_`.
+      *(`test_stacking.py` calibration block.)*
+- [ ] Import the `Veil_nebula` session onto the Seestar-captured `NGC 6992` and re-prep:
+      prep links **nothing** and `next-steps.md` carries a *mixed capture settings*
+      note naming both populations (30 s Seestar + 300 s Draco) and the
+      `--only-exposure` way out. `m110-stack "NGC 6992" --only-exposure 300` matches
+      the Draco dark again.
+- [ ] Multi-filter object with calibration (corpus `M101` + any `darks/`): the links
+      land in **each** `siril/<FILTER>/darks/`, none at the sandbox root.
 
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.

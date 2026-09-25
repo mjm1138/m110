@@ -129,16 +129,17 @@ def mount_seestar(tmp_path, monkeypatch, obj="M51", *, count=3, exp=30,
 
 
 def mount_dwarf(tmp_path, obj="M 1", *, count=3, exp=15, gain=60,
-                filt="Duo-Band", volume="DWARF3"):
+                filt="Duo-Band", volume="DWARF3", prefix="DWARF", telescop="Dwarf3"):
     """Create a scratch volume shaped like a **mounted DwarfLab Dwarf 3**:
     ``<tmp>/Volumes/<volume>/Astronomy/DWARF_RAW_TELE_<obj>_EXP_…/<obj>_…fits``.
+    ``prefix="Draco", telescop="Draco", exp=300`` gives the Draco's shape.
 
     Returns (astronomy_dir, [sub filenames]). There is no Dwarf mount *probe* yet
     (ROADMAP 6d) — the user browses to the volume — so callers scan the returned
     directory directly, which is exactly what the Import page does."""
     from datetime import datetime, timedelta
     session = (tmp_path / "Volumes" / volume / "Astronomy"
-               / f"DWARF_RAW_TELE_{obj}_EXP_{exp}_GAIN_{gain}_2026-06-19-22-00-00")
+               / f"{prefix}_RAW_TELE_{obj}_EXP_{exp}_GAIN_{gain}_2026-06-19-22-00-00")
     start = datetime(2026, 6, 19, 22, 0, 0)
     names = []
     for i in range(count):
@@ -148,7 +149,7 @@ def mount_dwarf(tmp_path, obj="M 1", *, count=3, exp=15, gain=60,
         # Dwarf DATE-OBS is end-of-exposure and the object comes from the header,
         # not the filename — the two facts the importer keys on for this device.
         _device_fits(session / name, obj, when, exp=float(exp), filt=filt,
-                     eqmode=0, extra={"GAIN": gain, "TELESCOP": "Dwarf3"})
+                     eqmode=0, extra={"GAIN": gain, "TELESCOP": telescop})
         names.append(name)
     return tmp_path / "Volumes" / volume / "Astronomy", names
 

@@ -10,6 +10,17 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **Siril prep linked calibration frames where a mixed-filter job never
+  looks** (done — `feature/draco`). `plan_prep` hardlinked darks/flats/biases
+  once, at the sandbox root, while the Naztronomy script resolves `darks/`
+  against Siril's working directory — the per-filter job folder
+  (`siril/<FILTER>/`) on a mixed-filter target — so every such job ran
+  uncalibrated with the preset's toggles on. Never caught because every
+  calibration test used a single-filter target, where root and job dir coincide.
+  Fix: `calib_links` are built per job inside the filter loop (`archive_keep` and
+  `backup.scope` already handled `<FILTER>/darks`).
+  `tests/test_siril.py::test_prep_multi_filter_links_calibration_into_each_job_dir`.
+
 - [ ] **`m110-stack` heartbeat repeats a stale "100.00%" through the whole stack
   pass.** Seen on NGC 6543/IRCUT (1360 frames, 2.0× drizzle, `-vv`,
   2026-09-24): after `Computing normalization...` finished, every 10 s line read
