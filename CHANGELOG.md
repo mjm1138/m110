@@ -10,6 +10,15 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **Importing a StackingWizard/AstroWizard finish now updates the object's
+  processing status.** The stack StackingWizard made stayed in the `astrowizard`
+  working folder, so an object like M32 kept showing "out of date" against an older
+  stack, with the wrong frame counts. Importing a finish now also files that stack
+  under `stacks/`, and M110 reads StackingWizard's frame count and write time, so
+  the status, "in stack" and "+ new" numbers reflect it. (Objects you already
+  imported need one more import to pick it up.)
+
 ## [0.3.0-beta.8] - 2026-09-25
 
 ### Added

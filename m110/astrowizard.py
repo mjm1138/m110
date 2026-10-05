@@ -163,6 +163,17 @@ def _archive_keep(child: Path) -> bool:
 #: the tool walks whatever folder it is given and sorts frames by header.
 LIGHTS_DIRNAME = "lights"
 
+def masters(target: str):
+    """StackingWizard masters sitting in the sandbox root — what
+    `roundtrip.finished_outputs` files into `stacks/` beside a finish."""
+    base = config.astrowizard_dir(target)
+    if not base.is_dir():
+        return
+    for child in sorted(base.iterdir()):
+        if child.is_file() and is_master(child) and not is_handoff(child):
+            yield child
+
+
 SANDBOX = roundtrip.Sandbox(
     id="astrowizard",
     skip_dirs=frozenset({"archive", LIGHTS_DIRNAME}),
@@ -171,6 +182,7 @@ SANDBOX = roundtrip.Sandbox(
     archive_keep=_archive_keep,
     loose_fits_kind="render",
     skip_file=_not_output,
+    companions=masters,
 )
 
 
