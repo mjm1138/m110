@@ -10,6 +10,14 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Fixed
+- **Night plans no longer come up short or start late.** The planner chose its 30
+  candidates from the ranking *before* checking what was up that night, so with the
+  "Capture many" strategy (which ranks never-captured targets highest) the pool filled
+  with out-of-season targets and the plan scheduled only a few late ones. It now picks
+  from targets that are actually observable that night, so shallow in-season targets
+  fill the time.
+
 ## [0.3.0-beta.8] - 2026-09-25
 
 ### Added

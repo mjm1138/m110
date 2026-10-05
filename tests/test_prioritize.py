@@ -337,6 +337,17 @@ def test_filter_visible_tonight_hides_only_explicit_false():
     assert kept == ["up", "unknown"]        # False hidden; None (degraded) kept
 
 
+def test_plan_candidates_filters_visibility_before_capping():
+    # Out-of-season rows outrank the in-season ones (capture-many favours the
+    # uncaptured); the cap must apply to what's *visible*, not to the raw ranking.
+    rows = ([{"slug": f"out{i}", "observable": False} for i in range(5)]
+            + [{"slug": "up1", "observable": True},
+               {"slug": "unk", "observable": None},
+               {"slug": "up2", "observable": True}])
+    assert pr.plan_candidates(rows, limit=3) == ["up1", "unk", "up2"]
+    assert pr.plan_candidates(rows, limit=2) == ["up1", "unk"]
+
+
 # ── per-type group weights (the Planning "Object types" controls) ──────────────
 
 def test_type_group_weight_roundtrip():
