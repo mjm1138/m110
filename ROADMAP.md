@@ -322,6 +322,10 @@ pursued further. Revisit only if ZWO publishes an open plan format or a sanction
 integration path, or grants written permission for one. Until then M110's planning
 output stops at the field guide, which is unaffected.
 
+**Permission requested 2026-09-28** — asked ZWO whether a supported plan-import
+interface already exists or is planned and, if not, whether they would publish
+one or grant written permission on terms they set. Awaiting a reply.
+
 
 ### 1 — Session-planning follow-ups (non-blocking refinements)
 
@@ -855,7 +859,7 @@ when extending an existing subsystem).
 | Native SwiftUI Mac wrapper on the same engine | deferred option |
 | Port `build_site`'s Jinja static-site rendering | **not** ported as the app's UI (the app *is* the UI; only the image pipeline was ported). Its capability **returns, generalized, as the Publishing phase** (item 8) — optional, selective, multi-target export |
 | Cross-platform packaging (notarize / Homebrew cask / Windows / Linux) | future |
-| Seestar-native plan hand-off | ⏸ **shelved** — no open or sanctioned import method exists, and ZWO's software/services agreement reserves third-party integration to its express written permission. Revisit only if an open method emerges. See item **2b** |
+| Seestar-native plan hand-off | ⏸ **shelved** — no open or sanctioned import method exists, and ZWO's software/services agreement reserves third-party integration to its express written permission. Permission requested 2026-09-28; awaiting reply. See item **2b** |
 | Rendering HTML in-app (QtWebEngine) | ❌ **no** — the packaging specs exclude `QtWebEngineCore`/`QtWebEngineWidgets` on purpose; a Chromium adds ~150–300 MB per bundle plus a separately-signed helper for notarization. In-app visuals render natively (`QtSvg` / `QPainter`); HTML output belongs in the browser or on a published site (item 12) |
 
 ---
