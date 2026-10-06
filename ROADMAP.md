@@ -326,6 +326,30 @@ output stops at the field guide, which is unaffected.
 interface already exists or is planned and, if not, whether they would publish
 one or grant written permission on terms they set. Awaiting a reply.
 
+**2c — Dwarf plan hand-off** — *surveyed 2026-09-29; same deferral as the SSC
+option above.* The equivalent question for DwarfLab, asked because the answer
+frames 2b. The DWARF app has its own scheduling feature, but publishes no plan
+import, export, share or backup surface — so there is nothing in their app to
+hand a plan to, and no analogue of the route 2b concerned.
+
+The licensing posture is the opposite of ZWO's, though: the DWARFLAB app
+agreement restricts reverse-engineering the app itself and building competing
+services, but places no restriction on third-party software communicating with
+the telescope, and there is no permission gate to clear. The realistic target is
+therefore the community tooling rather than the vendor's app:
+`astro_dwarf_session`, an actively maintained MIT-licensed **controller** that
+pairs with the scope and drives it live over the same protocol the official app
+uses — exactly as SSC does for the Seestar. Its plan queue is file-based,
+though, so M110's own surface would be writing JSON into a watched directory and
+nothing more: the controller does the driving, and M110 stays a planner, per
+*Phase ruthlessly; control last* below.
+
+That puts it on the same footing as SSC, because architecturally it is the same
+thing: third-party tooling, worth building when there is real user demand rather
+than speculatively. The one asymmetry worth recording is that, unlike 2b, it
+needs nobody's permission — so if demand does appear, it is the cheaper of the
+two to start.
+
 
 ### 1 — Session-planning follow-ups (non-blocking refinements)
 
