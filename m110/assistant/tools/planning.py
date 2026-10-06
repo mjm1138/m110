@@ -25,7 +25,7 @@ from m110.assistant.store import require_store
 # track. They drive the timeline widget and are pure bloat to a reader.
 _CHART_KEYS = frozenset({"samples", "track"})
 
-MAX_CANDIDATES = 30      # matches the UI's cap on the astropy work
+MAX_CANDIDATES = prioritize.PLAN_CANDIDATE_LIMIT   # matches the UI's cap on the astropy work
 MAX_SLUGS = 5
 
 
@@ -210,7 +210,7 @@ def plan_night(date: str | None = None, count: int = 4, targets: list | None = N
             )
     else:
         missing = []
-        candidates = [r["slug"] for r in ranked][:MAX_CANDIDATES]
+        candidates = prioritize.plan_candidates(ranked, MAX_CANDIDATES)
 
     plan = planning_engine.plan_night(site, day, candidates, scores=scores,
                                       filters=filters)
