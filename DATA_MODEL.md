@@ -136,7 +136,9 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       `<object>_wizardstack.fits` into the root itself. Either way the master is
       this sandbox's **input**: `archive_keep` spares it (and `lights/`), which is
       what lets one dir hold both halves without the lifetime problem above — the
-      stack is never treated as output. Lazily created, additive → no
+      stack is never treated as a *deliverable*. It is, however, copied into
+      `stacks/` (source mtime preserved) when a finish is imported — never on its
+      own — so the status read sees it as the target's newest stack. Lazily created, additive → no
       .store_version bump                                        [output]
     ⚠ Every sandbox dirname above is a key of **`config.SANDBOX_LINKED_INPUTS`**, the
       single authority; `SANDBOX_DIRNAMES` is derived from it and read by

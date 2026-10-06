@@ -100,6 +100,10 @@ class Sandbox:
     #: file sitting loose in the sandbox root, so it needs naming at file level
     #: or the importer offers the user their own stack back.
     skip_file: Callable | None = None
+    #: Files that are *input* to the workflow but belong in `stacks/` once a run
+    #: has produced something: `companions(target)` yields them. Offered only
+    #: alongside real output (see `finished_outputs`), never on their own.
+    companions: Callable | None = None
 
     def dir(self, target: str) -> Path:
         return config.target_dir(target) / self.id
@@ -275,11 +279,21 @@ def finished_outputs(target: str, sandbox: Sandbox):
     sources = [lambda t: sandbox_outputs(t, sandbox)]
     if sandbox.scan_root:
         sources.append(root_outputs)
+    found = False
     for source in sources:
         for p, kind, dest in source(target):
             if p == dest:
                 continue
+            found = True
             yield p, kind, dest
+    # A workflow's master is its input, but the stack is still the newest stack of
+    # this target — filed into `stacks/` so the status read sees it. Only beside
+    # real output: a master sitting alone is mid-run, not "ready to import".
+    if found and sandbox.companions:
+        for p in sandbox.companions(target):
+            dest = config.stacks_dir(target) / p.name
+            if p != dest:
+                yield p, "stack", dest
 
 
 # ── collision handling ───────────────────────────────────────────────────────
@@ -420,6 +434,11 @@ def apply_import(target: str, sandbox: Sandbox, selected_srcs,
             skipped += 1
         else:
             shutil.copyfile(it.src, final)   # bytes only (mirrors ingest)
+            if it.kind == "stack":
+                # A stack's age is when its stacker wrote it; the copy time says
+                # nothing. Keep it so a header with no DATE can still be dated.
+                st = Path(it.src).stat()
+                os.utime(final, (st.st_atime, st.st_mtime))
             imported += 1
         if hero_src and it.src == hero_src:
             hero_name = final.name           # the name it ACTUALLY landed under

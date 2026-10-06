@@ -264,7 +264,8 @@ def test_a_token_carrying_export_is_not_mistaken_for_a_wizardstack_master(
     assert not astrowizard.is_master(export)
     assert not astrowizard.is_autosave(export)
     items = {i.name: i.kind for i in astrowizard.scan_finished(target).items}
-    assert items == {export.name: "render"}
+    # (the real master beside it rides along into stacks/ — that is not the export)
+    assert items == {export.name: "render", "M_15_wizardstack.fits": "stack"}
     assert astrowizard._archive_keep(master)
     assert not astrowizard._archive_keep(export)
 
@@ -491,19 +492,52 @@ def test_the_importer_never_offers_the_linked_subs(tmp_path, monkeypatch):
     assert not astrowizard.has_unimported_output(target)
 
 
-def test_a_stackingwizard_master_is_input_not_output(tmp_path, monkeypatch):
+def test_a_stackingwizard_master_is_input_not_a_deliverable(tmp_path, monkeypatch):
     """It is what AstroWizard works *from*. Offering it back as a deliverable
-    would file the user's own stack into finished/."""
+    would file the user's own stack into finished/ — and a master alone is
+    mid-run, so it is not "ready to import" either."""
     target, base, _ = _with_raw_lights(tmp_path, monkeypatch)
     (base / MASTER).write_text("the stack")
     assert astrowizard.is_master(base / MASTER)
     assert not astrowizard.scan_finished(target).items
+    assert not astrowizard.has_unimported_output(target)
     # combined-nights variant too
     assert astrowizard.is_master(base / "M_15_combined_wizardstack.fits")
     # …but a normal export is still a deliverable
     (base / "M27 final.fits").write_text("a finish")
-    assert {i.name for i in astrowizard.scan_finished(target).items} == {
-        "M27 final.fits"}
+    items = {i.name: i for i in astrowizard.scan_finished(target).items}
+    assert items["M27 final.fits"].kind == "render"
+
+
+def test_a_master_rides_along_into_stacks_beside_a_finish(tmp_path, monkeypatch):
+    """The finish is made from the master, so importing it files the master as the
+    target's newest *stack* — the status read looks in stacks/, not astrowizard/.
+    Source mtime is preserved: it is when the stacker wrote it."""
+    import os
+    target, base, _ = _with_raw_lights(tmp_path, monkeypatch)
+    (base / MASTER).write_text("the stack")
+    os.utime(base / MASTER, (1_700_000_000, 1_700_000_000))
+    (base / "M27 final.png").write_text("a finish")
+
+    plan = astrowizard.scan_finished(target)
+    assert {(i.name, i.kind) for i in plan.items} == {
+        ("M27 final.png", "render"), (MASTER, "stack")}
+    astrowizard.apply_import(target, [i.src for i in plan.items], cleanup="archive")
+
+    landed = config.stacks_dir(target) / MASTER
+    assert landed.read_text() == "the stack"
+    assert int(landed.stat().st_mtime) == 1_700_000_000
+    assert (base / MASTER).is_file(), "the master stays: it is still the input"
+    # idempotent: nothing left to import, and the master is not offered again
+    assert not astrowizard.has_unimported_output(target)
+
+
+def test_a_handed_off_stack_is_not_re_imported_as_a_master(tmp_path, monkeypatch):
+    target, base = _make_sandbox(tmp_path, monkeypatch)
+    (base / MASTER).write_text("x")
+    (base / (MASTER + ".src.json")).write_text("{}")      # a handoff, by sidecar
+    assert not any(i.name == MASTER
+                   for i in astrowizard.scan_finished(target).items)
 
 
 def test_the_sweep_spares_the_master_and_the_linked_frames(tmp_path, monkeypatch):
