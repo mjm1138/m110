@@ -26,6 +26,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
 | 4 | **In-app assistant** (bring-your-own LLM) — MCP server over a read-only tool registry | ✅ M0 shipped *(M1 in-app transport + safe-writes open [↓](#4--in-app-assistant-bring-your-own-llm--m0-shipped))* | [`DONE.md`](DONE.md) |
 | 14 | **AstroWizard support** — a second processing workflow: hand a stack off, launch, import the finish back | 🔶 14a + 14b shipped (send-stack, and import the finish back); 14c open [↓](#14--astrowizard-support) | [`DONE.md`](DONE.md), [↓](#14--astrowizard-support) |
+| 15 | **Process with me** — guided Siril post-processing: the agent runs every deterministic step in the sandbox, the user does the judgment steps in the GUI | ⬜ open — brief written 2026-10-14; needs the processing-model decision first | [↓](#15--process-with-me-guided-siril-post-processing) |
 | 2 | **Plan-file generation** (SSC / NINA device schedules) | ⬜ open | [↓](#2--plan-file-generation-device-schedules) |
 | 11 | **Lights Table** (bulk sub inspection/culling) | 🔶 the `rejected/` exclusion tier shipped (#110); the view is open [↓](#11--lights-table) | [↓](#11--lights-table) |
 | 12 | **Sky map** (uranometria integration — Library Map view + publish page) | 🔶 12a/12b shipped — Library **Map** view + goal progress; 12c–12e open [↓](#12--sky-map-uranometria-integration) | [`DONE.md`](DONE.md) |
@@ -304,6 +305,217 @@ artifact every time a cheap one is redone.
   "needs finishing" as separate states in `build_processing`, so Processing tells
   the user what to do next rather than only what to open.
 
+
+### 15 — Process with me: guided Siril post-processing
+
+*Brief written 2026-10-14 from the Astronomy session, for the M110 dev session to
+pick up. Placed after #14 because it is the next processing workflow; reorder
+freely.*
+
+**The idea.** A skill, plus the engine and tools behind it, that runs a Siril
+post-processing session *with* the user. The agent does every step that is
+deterministic and can run on the command line, inside the object's sandbox.
+It hands the user the GUI steps that need aesthetic judgment, one at a time,
+with exact instructions. Then it measures the result before moving on. The
+target is the complex, multi-input workflows where most of the work lies in
+object-specific inputs: combining two filter stacks, choosing a crop, fixing
+what a star remover broke. A single-filter "stack → stretch → done" run gets
+little from this.
+
+**Provenance: proved by hand on C6 (NGC 6543), 2026-10-13/14.**
+- **Data:** LP 725 × 20 s and IRCUT 1360 × 20 s, both 2× drizzle, produced
+  with `m110-stack` per filter.
+- **Recipe:** LP nebula + IRCUT stars (star replacement). The LP starless
+  carries the nebula, the IRCUT star layer supplies broadband-coloured stars,
+  and StarComposer recombines them.
+- **How it went:** that session was not allowed to write to the M110 store
+  (different project). So it tested every command on clone copies, then wrote
+  a step-by-step guide, and the user re-typed each command into Siril. The
+  agent still did most of the real work: registration, the crop box, SPCC, the
+  catalogue diagnosis, the core-repair arithmetic and every verification. The
+  user's GUI time went on the steps only a human can judge, plus a lot of
+  transcription. This item removes the transcription.
+
+**Why it belongs here rather than in the Astronomy repo:**
+- **The sandbox:** the agent's value is writing intermediates in
+  `Images/<target>/siril/` and verifying them, and M110 owns that sandbox.
+- **The object-specific inputs:** M110 already holds them — coordinates, the
+  per-filter split, stack drizzle and dimensions, filter labels (including the
+  Caldwell/IRCUT app-default problem).
+- **The pattern:** `siril-stacking` already does measure → propose → agree →
+  run. This continues it past the stack.
+- **The finish:** **Import finished work** closes the loop.
+
+#### The decision it needs: amending "prepare-and-guide"
+
+The foundational processing-model decision allows M110 to *run* Siril for
+stacking only, and says post-processing "stays firmly prepare-and-guide". This
+item proposes widening that exception to **deterministic post-processing
+steps**, on the same reasoning that justified stacking:
+
+- **Stock commands only:** every command is stock Siril 1.4 (`register`,
+  `crop`, `platesolve`, `spcc`, `pm`, …) or a script's own documented CLI.
+- **Ours is the choice of settings:** only the parameters come from M110,
+  measured and shown with reasons before anything runs.
+- **Nothing runs unagreed.**
+- **Judgment stays human:** stretch, HDR, tone, sharpening, saturation, star
+  recombination and the final look are never automated, only guided.
+
+**Decide this with the user before building.** It is a real change to a
+guiding principle ("don't wrap volatile external tools"). The RC-Astro and
+VeraLux scripts *are* volatile; see trap 8 below. The MCP side can stay
+read-only, like `plan_stack`, with a separate runner that writes, like
+`m110-stack`.
+
+#### Division of labour, as it fell out on C6
+
+| Agent, headless (`siril-cli` in the sandbox) | User, in the Siril GUI | Agent, measured checks (not eyeballed) |
+|---|---|---|
+| Register the filter stacks (`convert`, `setref`, single-pass `register -transf=similarity`), with the subject-carrying layer as reference | Stretch: VeraLux HMS, or GHT | Registration: star-pair count, rotation/shift, identical output dimensions |
+| A common crop **chosen by measuring** edge noise in every frame | HDR compression (`HDR_multiscale.py`, which has no CLI) | Crop: outer-band noise ÷ centre noise, empty-pixel count |
+| `platesolve -force -order=3`, `spcc` with exact sensor/filter names | Tone (Lighthouse, Curves) and Revela | Colour cast before and after SPCC (background ratio per channel) |
+| AutoGradientRemoval (CLI mode works under `siril-cli`) | Saturation | Core survival: fraction of nebula flux in the star image vs radius |
+| BlurX/StarX/NoiseXTerminator via their `pyscript` CLIs | StarComposer recombination (no undo) | Range guard: `stat` Max before any VeraLux script |
+| Core-repair mask + `pm` arithmetic, `stat` guards, file naming | Approving denoise strength visually (the agent proposes and measures) | Repair exactness: restored region vs the pre-removal original |
+
+**Handoff by files on disk** worked and is the recommended first mechanism:
+1. The agent writes named intermediates.
+2. The user opens one in the GUI, does the judgment step, and saves under an
+   agreed name.
+3. The agent picks up from that file and verifies it.
+
+A per-session state file in the sandbox (steps done, files, parameters,
+measurements) would make the session resumable, and becomes the record
+attached to Import finished work. Driving the *running* Siril GUI directly
+(a bridge script inside Siril polling for commands) would be smoother. Defer
+it until file handoff proves limiting.
+
+#### Architecture sketch (a proposal; the M110 session decides)
+
+- **Engine module** (e.g. `m110/postprocess.py`):
+  - *recipes* are ordered steps, each tagged `auto` (emits a Siril script and
+    runs it with `siril-cli` in a dedicated workspace) or `human` (emits exact
+    instructions plus the expected output filename);
+  - *measure* functions use numpy/astropy and are unit-tested on small
+    fixtures.
+- **Runner CLI** `m110-process <target> <recipe> [--step ID] [--run]`, shaped
+  like `m110-stack`: dry-run by default prints the exact commands.
+- **Read-only MCP tools:**
+  - `plan_process`: inspects the sandbox and proposes a recipe with its
+    object-specific parameters (crop box, SPCC filter names, mask centre and
+    radii);
+  - `check_process`: runs the measured checks on an intermediate.
+- **Skill** `process-with-me`: measure → propose → agree → run the auto steps
+  → guide the human step → verify → next.
+- **First recipes:**
+  1. *LP nebula + IRCUT stars* (emission target in both filters; the C6
+     acceptance case).
+  2. *LP Hα blend onto a broadband galaxy*. `ContinuumSubtraction.py` is
+     GUI-only, so either it's a human step or the engine implements the
+     `CS = Hα − c·R` fit itself.
+  3. The standard single-filter run.
+- **Wording to revise:** `siril-stacking` currently says combining filters "is
+  not something M110 or this skill does". Revise that wording when this ships.
+
+#### Traps the engine must handle (all hit on C6)
+
+1. **Global compression preference.** Siril's prefs had Rice q64 on, so every
+   write became a lossy `.fit.fz`. Start every session with `setcompress 0`.
+2. **The Registration tab's two-pass mode chooses its own reference** by image
+   quality. On C6 it picked the IRCUT and resampled the LP, which carries the
+   subject. Use `setref <seq> 1` then single-pass `register`.
+3. **`convert` sequences every image in the CWD.** Use a dedicated workspace
+   holding exactly the inputs.
+4. **`crop x y w h` counts `y` from the displayed top**, which is the *last*
+   FITS row (verified on a copy). Measurements made in FITS array order must be
+   converted.
+5. **Edge noise band.** Rotated multi-night drizzle stacks have a 200–400 px
+   band inside the ragged border with noise up to 2–5× the centre. A crop to
+   non-zero pixels is not enough. The accepted C6 box kept only area within 10%
+   of centre noise in **both** frames, and the IRCUT's worst edge (380 px)
+   decided it.
+6. **SPCC names must match the combo strings exactly.**
+   - Sensor: `ZWO Seestar S50`.
+   - OSC filter for LP data: `ZWO Seestar LP`, Siril's measured duo-band curve
+     (~480–505 / ~648–666 nm), better than narrowband mode.
+   - OSC filter for IRCUT data: `UV/IR Block`.
+   - The existing `plan_stack` warning about the preset labelling LP frames as
+     broadband belongs here too.
+7. **A local Gaia SPCC catalogue with a missing chunk fails hard,** with no
+   online fallback: `Chunk file not found …` / `Catalog error, no stars
+   identified!`.
+   - *Cause on this machine:* `Siril_Catalog_Installer.py` had skipped the four
+     north-polar level-1 chunks (3, 7, 11, 15) on a checksum error at install.
+     That broke SPCC for anything near the pole (C6, M81/M82, NGC 7023)
+     *intermittently*, depending on the target.
+   - *Pre-flight:* compute the HEALPix level-1 chunks a field's SPCC cone
+     touches and check they exist.
+   - *Repair:* fetch the `.bz2` + `.sha256sum` from Zenodo record 14738271.
+   - *Integrity reference:* don't use record 17988559, the uncompressed one
+     behind remote access. Its chunk 5 is truncated (28.8 MB against ~111 MB).
+8. **RC-Astro script CLIs drift and carry hidden state.**
+   - *Labels change with the version:* StarXTerminator's star output is
+     "Generate Star Image" / `--stars` in the installed build, while the
+     script's fallback schema says rc-astro 2.5 renamed it `--difference`.
+     Read the live schema with `rc-astro sxt --json`.
+   - *Saved GUI toggles filter CLI flags:* a saved `csep`/`fsep` (NXT) or
+     `ansp` (BXT) silently drops flags that don't apply, so pass every toggle
+     explicitly.
+   - *Defaults are strong:* NXT defaults every strength to 0.90.
+   - *Where outputs go:* SXT writes `stars_<loaded basename>` to the Siril WD
+     and leaves the starless only in memory.
+   - *Linear data:* keep Unscreen off.
+9. **Star removers eat compact, bright cores.** At 1.19″/px, StarXTerminator
+   and StarNet both took C6's *whole bright nebula* as one bloated star: 100%
+   removed within 20 px, ~80% at 45 px, ~50% at 45–70 px.
+   - *The repair is exact:* the star image is original − starless, so restore
+     with `starless + mask × stars` and blank the same circle in the
+     replacement star layer (`stars × (1 − mask)`).
+   - *The mask:* PixelMath has no pixel-coordinate variables, so the engine
+     must generate a soft disk centred from RA/Dec via the WCS (full weight to
+     60 px, cosine to 0 at 85 px on C6). Verified: the restored core matches
+     the original to float precision.
+   - *Expect it again:* likely on C22, C55 and M57's inner ring.
+10. **`pm` sums LIVETIME/STACKCNT across its inputs** unless given `-nosum`.
+11. **Script quirks the instructions must override.**
+    - VeraLux HMS defaults to the *Rec.709* sensor profile and Target Bg 0.20.
+    - StarComposer has no undo, closes itself, and saves
+      `VeraLux_StarComposer_result.fit` next to the last-loaded input.
+    - AutoGradientRemoval's CLI only runs under `siril-cli`; in the GUI it
+      opens its dialog.
+12. **VeraLux range guard:** Max above 65535 in display units makes Curves,
+    Revela and StarComposer load black. HMS tolerates up to 1.1×.
+13. **Pre-SPCC casts are expected** (C6: LP blue, IRCUT red, from how each
+    filter passes skyglow). Measure that the background is neutral *after*
+    SPCC; don't alarm the user before it.
+
+#### Open questions
+
+- **The processing-model amendment** (above): the user's call.
+- **Where the human instructions live:** in chat (the skill), a
+  regenerated per-step `next-steps.md` in the sandbox (an existing M110
+  pattern), or an in-app pane.
+- **Keeping GUI instructions honest** as scripts update. Read labels from the
+  installed script source? Pin versions and warn on mismatch?
+- **Recipe format:** data (TOML) or code. How far to generalise beyond the
+  first two recipes.
+- **Relationship to #14 / the #19 launcher seam:** this is a third
+  processing workflow beside "process in Siril" and AstroWizard.
+
+#### Phasing
+
+- **P0:** the C6 recipe as engine steps + `m110-process` (dry-run prints
+  commands), with measure functions unit-tested on small fixtures.
+- **P1:** `plan_process` / `check_process` MCP tools + the `process-with-me`
+  skill.
+- **P2:** the galaxy Hα-blend recipe to prove the recipe abstraction
+  generalises, then the single-filter standard.
+- **Later:** a live bridge into the running Siril GUI.
+
+**Acceptance:** C6 end to end from the two per-filter stacks, with the user
+touching only the judgment steps. The agent's restored-core file should match
+`starless + mask × stars` to float precision, and its crop should measure
+within 10% of centre noise at every edge in both frames.
 
 ### 2 — Plan-file generation (device schedules)
 
