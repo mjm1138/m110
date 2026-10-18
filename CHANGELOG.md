@@ -59,6 +59,12 @@ changes a **user** would notice, per release.
   held together under one name, and a file with the same name in the second
   folder was silently skipped. Each now gets its own group, named after its
   parent folder too (`dark_cam_0`, `flat_cam_0`).
+- **No more sudden crashes when running M110 from source on Python 3.11.** The
+  newest PySide6 (6.12.0, the Qt toolkit M110 is built on) has a bug that, on
+  Python 3.11 only, slowly corrupts the interpreter until it aborts — sooner the
+  more images it handles. M110 now refuses that PySide6 release on Python 3.11 and
+  installs the previous one. The downloadable apps were never affected (they ship
+  their own Python 3.12).
 - **Importing a StackingWizard/AstroWizard finish now updates the object's
   processing status.** The stack StackingWizard made stayed in the `astrowizard`
   working folder, so an object like M32 kept showing "out of date" against an older

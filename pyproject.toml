@@ -17,7 +17,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
-    "PySide6>=6.6",
+    # PySide6 6.12.0 drops a reference to None on every void Qt call (e.g.
+    # QImage.setPixel); on Python 3.11, where None is still refcounted, a few hundred
+    # thousand calls deallocate it and the interpreter aborts ("none_dealloc"). 3.12+
+    # made None immortal (PEP 683), so only 3.11 needs the exclusion.
+    # tests/test_qt_refcount.py guards it; widen again once a fixed PySide6 ships.
+    "PySide6>=6.6,!=6.12.0; python_version < '3.12'",
+    "PySide6>=6.6; python_version >= '3.12'",
     "astropy>=6.0",     # build_derived reads FITS stack-metadata headers
     "numpy>=1.26",      # image stretching
     "pillow>=12.3",     # thumbnails + heroes — decodes UNTRUSTED imported images, so

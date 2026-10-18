@@ -8,6 +8,23 @@ Legend: `[ ]` open · `[~]` partially done
 
 ---
 
+## Build, CI & dependencies
+
+- [x] **CI's Python 3.11 leg core-dumped mid-suite (PySide6 6.12.0 leaks `None`)**
+  (done — `fix/ci-311-abort`). From 2026-10-14 every `test (3.11)` run died with
+  `Aborted (core dumped)` (exit 134) around 76–80%, naming no test; 3.14 passed and
+  `main` had only a docs commit since the last green run. The installed-package diff
+  between the green and red runs pointed at PySide6 6.11.2 → 6.12.0, and a diagnostic
+  run (`python -X faulthandler -m pytest -v --capture=sys`) caught
+  `Fatal Python error: none_dealloc: deallocating None` inside
+  `test_thumbnail_aspect.py`'s per-pixel `QImage.setPixel` loop. 6.12.0 returns `None`
+  from void calls without a reference; ~400k calls exhaust `None`'s refcount. Only
+  3.11 is hit because 3.12+ made `None` immortal (PEP 683) — which also hid it from
+  the macOS dev venv (3.14) and the release builds (3.12). Fix: `pyproject.toml`
+  excludes `PySide6==6.12.0` on Python < 3.12; `tests/test_qt_refcount.py` counts
+  `None`'s refcount across 10k void calls on 3.11, so a recurrence fails cleanly
+  instead of aborting pytest. Widen the pin once a fixed PySide6 ships.
+
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
 - [x] **Siril prep linked calibration frames where a mixed-filter job never
