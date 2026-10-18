@@ -64,12 +64,22 @@ jobs:
         run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
 
       - name: Run the test suite
-        env:
-          PYTHONUNBUFFERED: "1"
-          QT_FATAL_WARNINGS: "0"
-        # DIAGNOSTIC (temporary): name every test and let native stderr through, so
-        # the 3.11 SIGABRT shows which test and what Qt said before it died.
-        run: python -X faulthandler -m pytest -v --capture=sys -p no:cacheprovider
+        run: pytest -q
+
+      # TEMPORARY: prove the diagnosis — on 3.11, PySide6 6.12.0 must make the
+      # refcount guard FAIL (cleanly), and the excluded version must not be what
+      # the suite above ran on.
+      - name: Confirm PySide6 6.12.0 leaks None on 3.11 (temporary)
+        if: ${{ !cancelled() && matrix.python-version == '3.11' }}
+        run: |
+          python -c "import PySide6; print('suite ran on PySide6', PySide6.__version__)"
+          python -m venv /tmp/v612 && /tmp/v612/bin/pip -q install "PySide6==6.12.0" pytest
+          /tmp/v612/bin/python -c "import PySide6; print('probe on PySide6', PySide6.__version__)"
+          if /tmp/v612/bin/python -m pytest -q -p no:cacheprovider --noconftest tests/test_qt_refcount.py; then
+            echo "::error::6.12.0 did NOT trip the guard — diagnosis wrong"; exit 1
+          else
+            echo "6.12.0 trips the guard as expected"
+          fi
 
       # The suite does NOT import `mcp`. The assistant tests are deliberately AST
       # and text checks (that is what makes the "nothing the server can reach can
