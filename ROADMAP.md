@@ -1020,7 +1020,12 @@ device-profiles (`planning_config.load_device`). This is the phase that bumps
 
 Dwarf 3 core support **shipped 2026-07-09** (see [`DONE.md`](DONE.md)); the
 remaining device-source gaps collect here:
-- **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers.
+- **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers. The
+  device-level library they route into **landed on `main` 2026-10-18**
+  (`feature/calibration-library`): `Calibration/<TELESCOP>/{darks,flats,biases}/`,
+  header-only matching (`calibration.py`), Siril prep + `m110-stack` use it, and a
+  store-shaped `Calibration/` imports as itself. The DwarfLab `CALI_FRAME/`
+  recognizer and its header-stamp shim stay on `feature/draco`.
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +

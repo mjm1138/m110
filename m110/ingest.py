@@ -90,6 +90,7 @@ LAYOUTS = [
     Layout("seestar",         "Seestar",         True),   # folder-name conventions (_sub/Stacked_/_photo)
     Layout("dwarf",           "DwarfLab Dwarf",  True),    # DWARF_RAW_*/STARTRAILS_* session folders
     Layout("m110-store",      "M110 store",      True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
+    Layout("calibration",     "Calibration masters", True), # a store's Calibration/<device>/<tier>/
     Layout("raw-fits",        "Raw FITS",        True),    # loose FITS sorted by header
     Layout("finished-render", "Finished render", True),    # a loose *_processed/final raster in an object folder
     Layout("asiair",          "ZWO ASIAIR",      False),   # registered placeholder
@@ -388,12 +389,14 @@ def frame_info(path: str) -> dict | None:
     except (ValueError, TypeError):
         ra_deg = dec_deg = None
     obj = hdr.get("OBJECT")
+    tel = hdr.get("TELESCOP")
     return {
         "object": str(obj).strip() if obj not in (None, "") else None,
         "imagetyp": _normalize_imagetyp(hdr.get("IMAGETYP")),
         "filter": (str(hdr.get("FILTER")).strip() or None) if hdr.get("FILTER") else None,
         "ra_deg": ra_deg,
         "dec_deg": dec_deg,
+        "telescop": str(tel).strip() if tel not in (None, "") else None,
     }
 
 
@@ -451,7 +454,8 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
             break
         if progress:
             progress(i, g.object)
-        if g.kind in ("media", "dark", "flat", "bias", "finished") or not g.ops:
+        if (g.kind in ("media", "dark", "flat", "bias", "finished")
+                or g.kind in _CAL_KINDS or not g.ops):
             continue
         radec = frame_radec(g.ops[0].src)
         if radec is None:
@@ -496,12 +500,20 @@ def staging_available() -> bool:
     return _staging().is_dir()
 
 
+# Device-level calibration masters (Calibration/<device>/<tier>): the "object" of
+# such an op is the device name, and the dir is never a capture target.
+_CAL_KINDS = {"cal-dark": "darks", "cal-flat": "flats", "cal-bias": "biases"}
+_CAL_KIND_BY_TIER = {tier: kind for kind, tier in _CAL_KINDS.items()}
+
 # kind → per-target destination dir (media routes to MEDIA_DIR, handled separately)
 _KIND_DIR = {
     "light": config.lights_dir,
     "dark": config.darks_dir,
     "flat": config.flats_dir,
     "bias": config.biases_dir,
+    "cal-dark": lambda dev: config.calibration_dir(dev, "darks"),
+    "cal-flat": lambda dev: config.calibration_dir(dev, "flats"),
+    "cal-bias": lambda dev: config.calibration_dir(dev, "biases"),
     "stack": config.seestar_stacks_dir,
     "siril-stack": config.stacks_dir,
     "finished": config.finished_dir,
@@ -613,7 +625,7 @@ def _emit_one_kind(src_dir: Path, files, kind: str, obj: str, group: str,
     dst_dir = _KIND_DIR[kind](obj)
     existing = (_light_tier_names(obj) if kind in _LIGHT_TIERS
                 else set(_all_files(dst_dir)))
-    new_object = not config.target_dir(obj).is_dir()
+    new_object = kind not in _CAL_KINDS and not config.target_dir(obj).is_dir()
     ops: list[IngestOp] = []
     for f in files:
         if f in existing:
@@ -629,6 +641,11 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     """Which LAYOUTS recognizer claims this directory (or None to skip it)."""
     if name.lower() in _SKIP_DIRS:
         return None
+    # Device-level calibration masters — checked FIRST: a store's
+    # `Calibration/<device>/darks/` would otherwise match the `darks` store-subdir
+    # rule below and import as a capture target named after the device.
+    if _is_store_calibration_dir(src_dir, name):
+        return "calibration"
     # M110-store-shaped (precursor like ~/Astronomy/Images): a known content
     # subdir under an <object>, or an <object> under a known container.
     if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
@@ -897,6 +914,28 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
     return ops
 
 
+# ── device-level calibration masters (Calibration/<device>/<tier>) ─────────────
+def _is_store_calibration_dir(src_dir: Path, name: str) -> bool:
+    """``Calibration/<device>/<darks|flats|biases>/`` holding FITS — another M110
+    store's (a backup, a second machine) device library, imported as itself."""
+    return bool(name.lower() in config.CALIBRATION_TIERS
+                and src_dir.parent.parent.name == config.CALIBRATION_DIR.name
+                and _fit_files(src_dir))
+
+
+def _classify_calibration_dir(src_dir: Path, name: str, action: str,
+                              handled: set) -> list[IngestOp]:
+    """Route another store's ``Calibration/<device>/<tier>/`` into this store's
+    ``Calibration/<device>/<tier>/`` (both are in the path). Ops carry the device
+    as their `object` — never a capture target, so `new_object` stays False."""
+    tier = name.lower()
+    dev = _safe_segment(src_dir.parent.name)
+    files = _fit_files(src_dir)
+    handled.update(files)
+    return _emit_one_kind(src_dir, files, _CAL_KIND_BY_TIER[tier], dev,
+                          f"{dev} calibration masters", action, "calibration")
+
+
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
                       handled: set, should_cancel=None) -> list[IngestOp]:
     """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
@@ -956,7 +995,7 @@ def _emit_unassigned(src_dir: Path, files, name: str, action: str,
 
 
 def _classify_dir(src_dir: Path, name: str, action: str,
-                  should_cancel=None) -> list[IngestOp]:
+                  should_cancel=None, *, hold_name: str | None = None) -> list[IngestOp]:
     """Classify ONE source directory and return the ops for its NEW files. Picks a
     layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
     raw-FITS header sort — delegates, then **sweeps any unclaimed content file into
@@ -964,13 +1003,22 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     this app's own store, or a sandbox (process/siril), is skipped. Reads only.
     `should_cancel` is threaded into the per-frame header-read loops so a slow scan
     (many FITS over a slow share) stays cancellable *within* a directory, not only at
-    directory boundaries."""
+    directory boundaries.
+
+    `name` is the bare leaf name — what layout detection and object resolution key
+    on. `hold_name` (default `name`) is the label the holding area files under; the
+    scan passes a parent-qualified one when two visited dirs share a leaf name, so
+    ``dark/cam_0`` and ``flat/cam_0`` don't merge into one ``Inbox/cam_0/`` group
+    (and a same-named file from the second dir isn't silently dropped as "already
+    held")."""
     if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
     handled: set[str] = set()      # files the recognizer claimed (new OR already-present)
     if layout == "m110-store":
         ops = _classify_store_dir(src_dir, name, action, handled)
+    elif layout == "calibration":
+        ops = _classify_calibration_dir(src_dir, name, action, handled)
     elif layout == "dwarf":
         ops = _classify_dwarf_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "seestar":
@@ -991,7 +1039,8 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     # (not the emitted ops) is the authority, so files skipped as already-present
     # don't get mistaken for unclassifiable and re-held.
     leftover = [f for f in _content_files(src_dir) if f not in handled]
-    ops += _emit_unassigned(src_dir, leftover, name, action, layout or "unknown")
+    ops += _emit_unassigned(src_dir, leftover, hold_name or name, action,
+                            layout or "unknown")
     return ops
 
 
@@ -1044,7 +1093,7 @@ def _in_own_store(src_dir: Path) -> bool:
         rp = src_dir.resolve()
     except OSError:
         rp = src_dir
-    for base in (config.IMAGES_DIR, config.INTERNAL_DIR):
+    for base in (config.IMAGES_DIR, config.INTERNAL_DIR, config.CALIBRATION_DIR):
         try:
             rp.relative_to(Path(base).resolve())
             return True
@@ -1075,11 +1124,44 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None,
     ops: list[IngestOp] = []
     scanned = 0                                   # files seen so far (for progress)
     dirs_visited = dirs_skipped = 0
+    visited = _walk(root, should_cancel)
+    hold_names = _hold_names([d for d, _files in visited])
+    for d, files in visited:
+        if should_cancel and should_cancel():
+            raise IngestCancelled()
+        if progress:
+            progress(scanned, d.name)             # announce the dir before scanning it
+        dir_ops = _classify_dir(d, d.name, action, should_cancel,
+                                hold_name=hold_names[d])
+        content = len(_content_files(d))
+        if content or dir_ops:
+            dirs_visited += 1
+            held = sum(1 for o in dir_ops if o.kind == "unassigned")
+            _log.debug("scan: %s → layout=%s content=%d ops=%d held=%d",
+                       d, _detect_layout(d, d.name), content, len(dir_ops), held)
+        else:
+            dirs_skipped += 1                     # a structural/empty dir (no content)
+        ops.extend(dir_ops)
+        scanned += len(files)
+    summ = scan_summary(ops)
+    _log.info("scan: done dirs_with_content=%d structural_dirs=%d files_seen=%d "
+              "→ %d object(s), %d file(s) to import, %d to holding",
+              dirs_visited, dirs_skipped, scanned,
+              summ["objects"], summ["to_import"], summ["to_holding"])
+    return ops
+
+
+def _walk(root: Path, should_cancel=None) -> list[tuple[Path, list[str]]]:
+    """The directories `scan_directory_plan` will classify, in walk order, each with
+    its non-hidden file names. Pruning happens here: hidden dirs + app sandboxes
+    (process/siril/thumbnail) are never descended, and the reason a subtree wasn't
+    scanned is logged. Collected up front (rather than classified inline) so the
+    holding-area names can be made unique across the whole walk before any dir is
+    classified."""
+    out: list[tuple[Path, list[str]]] = []
     for dirpath, dirnames, files in os.walk(root):
         if should_cancel and should_cancel():
             raise IngestCancelled()
-        # Prune traversal: hidden dirs + app sandboxes (process/siril/thumbnail) are
-        # never descended. Logged so the reason a subtree wasn't scanned is visible.
         pruned = [d for d in dirnames
                   if d.startswith(".") or d.lower() in _SKIP_DIRS]
         if pruned:
@@ -1089,25 +1171,32 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None,
         d = Path(dirpath)
         if d.name.startswith("."):
             continue
-        if progress:
-            progress(scanned, d.name)             # announce the dir before scanning it
-        dir_ops = _classify_dir(d, d.name, action, should_cancel)
-        content = len(_content_files(d))
-        if content or dir_ops:
-            dirs_visited += 1
-            held = sum(1 for o in dir_ops if o.kind == "unassigned")
-            _log.debug("scan: %s → layout=%s content=%d ops=%d held=%d",
-                       dirpath, _detect_layout(d, d.name), content, len(dir_ops), held)
-        else:
-            dirs_skipped += 1                     # a structural/empty dir (no content)
-        ops.extend(dir_ops)
-        scanned += sum(1 for f in files if not f.startswith("."))
-    summ = scan_summary(ops)
-    _log.info("scan: done dirs_with_content=%d structural_dirs=%d files_seen=%d "
-              "→ %d object(s), %d file(s) to import, %d to holding",
-              dirs_visited, dirs_skipped, scanned,
-              summ["objects"], summ["to_import"], summ["to_holding"])
-    return ops
+        out.append((d, [f for f in files if not f.startswith(".")]))
+    return out
+
+
+def _hold_names(dirs: list[Path]) -> dict[Path, str]:
+    """A unique holding-area label per visited dir. The leaf name, as before, unless
+    two visited dirs share it — then each is qualified with its parent
+    (``dark_cam_0`` / ``flat_cam_0``), and with the next ancestor while still
+    colliding. Only dirs that actually collide change name, so the holding groups
+    of an ordinary import keep the labels they always had (and their
+    already-held detection)."""
+    names: dict[Path, str] = {}
+    depth: dict[Path, int] = {d: 1 for d in dirs}
+    while True:
+        for d in dirs:
+            parts = d.parts[-depth[d]:] if depth[d] <= len(d.parts) else d.parts
+            names[d] = "_".join(parts)
+        counts: dict[str, int] = {}
+        for n in names.values():
+            counts[n] = counts.get(n, 0) + 1
+        clashing = [d for d in dirs if counts[names[d]] > 1
+                    and depth[d] < len(d.parts)]
+        if not clashing:
+            return names
+        for d in clashing:
+            depth[d] += 1
 
 
 def scan_summary(ops: list[IngestOp]) -> dict:
@@ -1119,8 +1208,8 @@ def scan_summary(ops: list[IngestOp]) -> dict:
     objects: set[str] = set()
     for o in ops:
         by_kind[o.kind] = by_kind.get(o.kind, 0) + 1
-        if o.kind != "unassigned" and o.object:
-            objects.add(o.object)
+        if o.kind != "unassigned" and o.kind not in _CAL_KINDS and o.object:
+            objects.add(o.object)      # a calibration op's "object" is a device
     return {
         "total": len(ops),
         "to_import": len(ops) - to_holding,

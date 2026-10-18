@@ -27,6 +27,30 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **Siril prep linked calibration frames where a mixed-filter job never
+  looks** (done — `feature/calibration-library`, ported from `feature/draco`).
+  `plan_prep` hardlinked darks/flats/biases once, at the sandbox root, while the
+  Naztronomy script resolves `darks/` against Siril's working directory — the
+  per-filter job folder (`siril/<FILTER>/`) on a mixed-filter target — so every
+  such job ran uncalibrated with the preset's toggles on. Never caught because
+  every calibration test used a single-filter target, where root and job dir
+  coincide. Fix: `calib_links` are built per job inside the filter loop.
+  `tests/test_siril.py::test_prep_multi_filter_links_calibration_into_each_job_dir`.
+
+- [ ] **A library re-match leaves the previous master linked in a Siril job.**
+  `apply_prep` is idempotent and never removes a link, so when the matched master
+  changes (new library darks arrive, or the lights' temperature shifts) the job's
+  `darks/` holds two files — the Naztronomy script then treats them as raw subs, and
+  `m110-stack` reports raw darks and calibrates nothing. Fix: on re-prep, replace a
+  `darks/`/`flats/`/`biases/` dir whose links all point into `Calibration/` with the
+  new match (never touch a user-placed file).
+
+- [ ] **The library flat is matched per target, not per filter job.** `plan_prep`
+  calls `calibration.match_for_target` once, so on a multi-filter target the flat
+  for the dominant filter is linked into every filter's job. Fix: match per job
+  (`facts_from_frames` over that job's lights). Latent until a device ships
+  library flats for more than one filter.
+
 - [ ] **`m110-stack` heartbeat repeats a stale "100.00%" through the whole stack
   pass.** Seen on NGC 6543/IRCUT (1360 frames, 2.0× drizzle, `-vv`,
   2026-09-24): after `Computing normalization...` finished, every 10 s line read
@@ -519,6 +543,17 @@ Legend: `[ ]` open · `[~]` partially done
 ---
 
 ## Import
+
+- [x] **Holding-area groups collided on the leaf folder name** (done —
+  `feature/calibration-library`, ported from `feature/draco`). `scan_directory_plan`
+  passed only `d.name` to the sweep, so two unclassifiable dirs sharing a leaf
+  (DwarfLab's `CALI_FRAME/dark/cam_0` + `flat/cam_0` + `bias/cam_0`) merged into one
+  `Inbox/cam_0/` group, and a same-named file in the second dir was skipped as
+  "already held" — dropped without a log line. Fix: the walk is collected first,
+  `_hold_names` qualifies only the colliding dirs with their parent (`dark_cam_0`),
+  and `_classify_dir` takes that as a separate `hold_name` so layout detection and
+  object resolution still key on the bare name.
+  `tests/test_ingest.py::test_holding_groups_do_not_collide_on_leaf_name`.
 
 - [x] **#161 — an NFS data root crashed startup and failed import: AppleDouble
   `._` sidecars were enumerated as content** (done — `fix/nfs-appledouble-sidecars`).

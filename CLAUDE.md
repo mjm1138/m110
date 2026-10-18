@@ -91,6 +91,8 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
     lights/ rejected/ stacks/ seestar-stacks/ finished/ previews/
     siril/  astrowizard/            per-workflow sandboxes (config.SANDBOX_LINKED_INPUTS)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
+  Calibration/<device>/             device-level master darks/flats/biases (device = TELESCOP)
+    darks/ flats/ biases/           per-target Images/<t>/darks/… overrides it
   Inbox/                            ingest holding area
   Plans/                            saved field guides
   .m110_internal_data/              library.toml goals.toml priorities.toml pins.toml
@@ -124,11 +126,13 @@ DONE.md's archived reference — grep the module name there.
 | `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path |
 | `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
-| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3) + gated `apply_ops` (the only writer); holding area + identification aids |
+| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
+| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`) and `preset_key` (→ `DEVICE_PRESETS`) |
+| `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry) |
 | `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor |
-| `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`, Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
+| `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else one library master per tier, linked **per job dir**; Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
 | `astrowizard.py` | the finishing round-trip (thin `roundtrip` consumer): `is_master`/`is_autosave`/`is_handoff` (sidecar-keyed, never filename), `prepare_lights` |
-| `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; three-phase solve·register·stack; `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
+| `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; three-phase solve·register·stack; `calibration_for_stack` (job-dir masters, else the device library on the *selected* frames → `calibrate -dark/-flat/-bias`; `--no-calibration`); `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
 | `launch.py` | external-app launcher (`_TOOLS` registry: Siril, AstroWizard, StackingWizard); `find_app`, `launch_processing`, `launch_with_file`, sanitized `_child_env()` |
 | `hints.py` | user-editable finished/intermediate filename vocabulary (`finished_hints` setting) |
 | `objects.py` | journal read/write, frontmatter upserts, per-image curation |
@@ -275,6 +279,10 @@ wrong) is under the same heading in DONE.md's archived reference.
   Library on refresh (`catalog.add_captured_objects`).
 - Processing-prep is automatic + idempotent (full on ingest, missing-only on refresh;
   hand-edited presets preserved). No manual "Prepare" button.
+- Calibration masters are matched from **headers only** (`calibration.py`); never
+  teach a downstream reader to parse a master's filename.
+- Siril calibration links go in **each job dir** (`siril/<FILTER>/darks/`), never only
+  the sandbox root: the Naztronomy script resolves `darks/` against Siril's cwd.
 
 **Qt lifetime & threading**
 - **Drop every worker reference through `widgets.drain_worker(w)`** (wait → deleteLater).

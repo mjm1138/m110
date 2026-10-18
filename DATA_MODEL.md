@@ -60,7 +60,9 @@ Catalog Object  (intrinsic: id, name, type, mag, size, coords, season, filter-ru
    ├─ has one  Journal   (Objects/<id>/journal.md)
    └─ captured under ≥1 →                          ── many-to-many ──┘
 Capture Target  (Images/<target>/ — what the scope pointed at; → ≥1 Object)
-   └─ [Device]   (future path level: Images/<target>/<device>/ — the telescope)
+   └─ [Device]   (future path level: Images/<target>/<device>/ — the telescope;
+                  today an implicit axis keyed by the FITS TELESCOP card, which
+                  already names the device-level Calibration/<device>/ library)
         └─ Session   (one night for a target/device — derived from frame headers)
              └─ Frame   (one sub: light/dark/flat/bias; atomic, immutable;
                          FITS header OBJECT/IMAGETYP/FILTER/RA/DEC/EXP/DATE)
@@ -117,7 +119,10 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     previews/                       optional per-sub JPG previews (#25; opt-in) [archive]
     working_files/                  processing by-products (starless/crop/…) [output]
     siril/                          contained processing-prep sandbox:
-      lights/ (hardlinks) · darks/ flats/ biases/ (hardlinks, shared, if present) ·
+      lights/ (hardlinks) · darks/ flats/ biases/ (hardlinks — the target's own
+      frames, else ONE matched master per tier from Calibration/<device>/; placed
+      in **each job dir**, i.e. under siril/<FILTER>/ on a mixed-filter target,
+      because the Naztronomy script resolves them against Siril's working dir) ·
       process/ (scratch) · presets/ · next-steps.md · archive/<ts>/ (past runs)
     astrowizard/                    contained AstroWizard sandbox (ROADMAP item 14):
       the handed-off stack + its `<stack>.src.json` provenance sidecar
@@ -152,9 +157,27 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       was `none` while the only input was a single handed-off file). Backup skips
       exactly those and keeps the rest — see *Backup* below for why each direction
       of getting this wrong is costly and silent.
-    (darks/ flats/ biases/ — calibration; preserved if present, and **import targets**
-                            for frames header-routed by IMAGETYP (ROADMAP item 6b);
-                            written by ingest, layout unchanged → no .store_version bump)
+    (darks/ flats/ biases/ — per-target calibration; preserved if present, and
+                            **import targets** for frames header-routed by IMAGETYP
+                            (ROADMAP item 6b); written by ingest, layout unchanged →
+                            no .store_version bump. An **override**: when present, prep
+                            uses these instead of the device library below)
+  Calibration/<device>/             device-level calibration MASTER library. A smart
+    darks/ flats/ biases/           telescope's calibration frames belong to the
+                                    *device*, not to one target: masters across
+                                    exposure × gain × binning × sensor temperature
+                                    (+ flats per filter, a bias), and the same master
+                                    serves every target shot at those settings.
+                                    `<device>` = the FITS `TELESCOP` string verbatim
+                                    (`devices.folder_name`, through `_safe_segment` on
+                                    both write and read: `DWARF 3`; a Seestar's is
+                                    per-unit, `S50_15e7e390` — a registry is ROADMAP
+                                    6d). Matching is header-only (`calibration.py`).
+                                    Ingest imports another store's
+                                    `Calibration/<device>/<tier>/` as itself (kinds
+                                    `cal-dark`/`cal-flat`/`cal-bias`); device-specific
+                                    recognizers feed it. Lazily populated, additive →
+                                    no .store_version bump                [immutable]
   Media/<Category>_photo|_video/    lunar/planetary/scenery media (e.g. Dwarf
                                     startrails → Startrails_video/ + _photo/).
                                     Scanned **recursively**, and each file's kind
@@ -229,13 +252,14 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Ingest aliases | `.m110_internal_data/ingest_aliases.toml` | TOML (`[alias]`) | Written by the ingest "remember" action (`ingest.add_alias`) | **Mutable** — app-written, user-editable | Persistent | Never auto-deleted |
 | Light frames | `Images/<target>/lights/*.fit`/`*.fits` | FITS | Ingested from device/staging (`ingest.apply_ops`) | **Immutable** — engine never writes into `lights/`; ingest writes bytes-only to `.part` then atomic `os.replace` (convention) | Persistent | Never auto-deleted |
 | Rejected subs | `Images/<target>/rejected/` | FITS | **User-created** — the user moves a sub here by hand to exclude it (#110); import routes one here only when the *source* store already filed it so (kind `rejected`) | **Immutable** — same posture as `lights/`; the engine only ever *reads* the names, and unlinks the sandbox hardlink that pointed at the frame (`siril.prune_rejected`), never the frame | Persistent | Never auto-deleted. Lazily created; every consumer of subs already read `lights/` and nothing else, so moving a frame here drops it from prep, sessions and integration for free. Import treats `lights/`+`rejected/` as **one population** (`ingest._light_tier_names`), which is what stops the telescope re-syncing it — the reason to move rather than delete. Additive → **no `.store_version` bump** |
-| Calibration frames | `Images/<target>/{darks,flats,biases}/` | FITS | Preserved if present | **Immutable** (convention) | Persistent | Never auto-deleted |
+| Calibration frames | `Images/<target>/{darks,flats,biases}/` | FITS | Preserved if present | **Immutable** (convention) | Persistent | Never auto-deleted. Per-target **override** of the device library |
+| Calibration library | `Calibration/<device>/{darks,flats,biases}/` | FITS (masters) | Ingested (`ingest._classify_calibration_dir` for a store-shaped library, kinds `cal-*`); `<device>` = `TELESCOP` | **Immutable** after import (convention) | Persistent | Never auto-deleted; kept at **every** backup tier. Identical bytes re-import as a no-op. Additive → **no `.store_version` bump** |
 | Siril stacks | `Images/<target>/stacks/` | FITS/TIFF | Imported from the siril sandbox (`siril.apply_import`) | **Output** — replaceable by re-import | Persistent | Never auto-deleted |
 | Device stacks | `Images/<target>/seestar-stacks/` | FITS (+ preview .jpg) | Ingested from device — the generic on-device/in-app stack tier (Seestar `Stacked_*`, Dwarf `stacked-16_*` + `stacked.jpg`) | **Output** | Persistent | Never auto-deleted |
 | Finished renders | `Images/<target>/finished/` | PNG/JPG/TIFF/FITS | Imported from the siril sandbox | **Output** — user's deliverables | Persistent | Never auto-deleted |
 | Working files | `Images/<target>/working_files/` | FITS (mostly) | Diverted here on import when a `.fit` in a lights source reads as a processing by-product, not a raw sub (`config.is_light_frame`/`is_processing_product`); `ingest.plan_lights_cleanup` relocates already-mis-filed ones | **Output** — kept, not raw | Persistent | Never auto-deleted | Keeps `lights/` sub-only (raw-integrity + correct filter detection) and `finished/` for final renders only |
 | Sub previews | `Images/<target>/previews/` | JPG | **Opt-in** (#25, `import_sub_previews` pref, default off): the Seestar's per-sub `.jpg` beside every raw sub, routed here by the `_sub` classifier (kind `preview`) instead of being ignored | **Archive** — user's copies, review-only | Persistent | Never auto-deleted | Lazily created (only when the pref is on + previews present); kept out of `lights/` and out of the gallery/hero tiers → **no `.store_version` bump** |
-| Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57) are hardlinks (no extra space); the preset's calibration toggles follow | Persistent (ready for re-runs) | `archive/<ts>/` pruned keep-N-latest (default 3, `processing_archive_keep`; "all" = never delete) — see Retention |
+| Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57 — the target's own, else one library master per tier via `calibration.match_for_target`, linked per job dir) are hardlinks (no extra space); the preset's calibration toggles follow; `next-steps.md` records the source + match notes | Persistent (ready for re-runs) | `archive/<ts>/` pruned keep-N-latest (default 3, `processing_archive_keep`; "all" = never delete) — see Retention |
 | Media | `Media/<Category>_photo\|_video/` | images/video | Ingested (`*_photo`/`*_video`) | **Content** | Persistent | Never auto-deleted | Import copies content files **plus** a video's `<stem>_thn.jpg` poster; photo-side `_thn.` duplicates and `.avi.idx`/`.avi.txt` are no longer copied (Tools → Clean up imported sidecars removes ones already on disk — never a live video poster) |
 | Media posters | `.m110_internal_data/renders/media/` | JPG | `media.poster_for` → `build_images.make_thumb`, for photo formats Qt can't decode (FITS) | **Derived** | Regenerable | Safe to delete. A **subdirectory** on purpose: `build_images._cleanup_orphaned_renders` reaps unreferenced `*.jpg` directly in `renders/`, and `images.json` never names Media files — the same protection `hero/` relies on |
 | Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below |
@@ -374,7 +398,8 @@ offsite storage is metered where a spare drive isn't:
 
 Light frames are ~99% of a library's bytes, so `essentials` is typically a few
 percent of the total; journals, `Plans/`, internal state, `finished/`, `stacks/`,
-`seestar-stacks/`, `Media/` and hand-edited presets all still go. Archived
+`seestar-stacks/`, `Media/`, the `Calibration/` master library and hand-edited
+presets all still go. Archived
 processing runs are dropped despite being authored output: they are bounded and
 disposable by the app's own keep-N policy (`roundtrip.prune_archives`), one real
 library reached 42 GB of them, and the deliverable that mattered was imported to
@@ -478,7 +503,7 @@ for integrity verification" noted under *Optional future hardening*.
 
 ## Versioning & migration
 
-`.store_version` (currently **4**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`; **v3→v4** purges capture targets that were wrongly promoted into the object axis — synthetic pseudo-objects like `m81-m82` from a combined `M81 M82` folder, see `migrate._prune_combined_target_objects` and #40c.)
+`.store_version` (currently **4**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`; **v3→v4** purges capture targets that were wrongly promoted into the object axis — synthetic pseudo-objects like `m81-m82` from a combined `M81 M82` folder, see `migrate._prune_combined_target_objects` and #40c. The top-level `Calibration/` library is **additive** — created by the skeleton on every launch, nothing moves — so, like `rejected/` and the per-target calibration dirs, it carries no bump.)
 `config.ensure_data_root()` runs `migrate.migrate_store()` on launch. Migrations
 are **idempotent, version-stamped, same-filesystem renames, resume-safe, and never
 destructive**. **Rule:** any change to the on-disk layout or file formats bumps the
