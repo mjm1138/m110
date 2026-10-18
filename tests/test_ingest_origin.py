@@ -77,14 +77,14 @@ def test_origin_session_routes_stamped_frames_stacks_and_sidecars(tmp_path, monk
     assert {op.layout for op in ops} == {"origin"}
     assert "unassigned" not in by_kind
     assert {
-        f"Images/{TARGET}/lights/Light0001_20260926-210108.fits",
-        f"Images/{TARGET}/lights/Light0002_20260926-210108.fits",
-        f"Images/{TARGET}/darks/dark0007_20260926-210108.fits",
-        f"Images/{TARGET}/biases/bias0007_20260926-210108.fits",
-        f"Images/{TARGET}/flats/flat_20260926-210108.fits",
-        f"Images/{TARGET}/seestar-stacks/20260926-210108_FinalStackedMaster.tiff",
-        f"Images/{TARGET}/seestar-stacks/20260926-210108_info.json",
-        f"Images/{TARGET}/seestar-stacks/20260926-210108_dark0007.json",
+        "Images/NGC 281/lights/Light0001_20260926-210108.fits",
+        "Images/NGC 281/lights/Light0002_20260926-210108.fits",
+        "Images/NGC 281/darks/dark0007_20260926-210108.fits",
+        "Images/NGC 281/biases/bias0007_20260926-210108.fits",
+        "Images/NGC 281/flats/flat_20260926-210108.fits",
+        "Images/NGC 281/seestar-stacks/20260926-210108_FinalStackedMaster.tiff",
+        "Images/NGC 281/seestar-stacks/20260926-210108_info.json",
+        "Images/NGC 281/seestar-stacks/20260926-210108_dark0007.json",
     } <= names
     assert all(op.action == "copy" for op in ops)
 
