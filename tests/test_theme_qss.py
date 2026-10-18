@@ -62,6 +62,21 @@ def test_table_check_indicator_is_stylesheet_drawn():
         assert "image: url(" in checked
 
 
+def test_table_selection_uses_the_muted_selection_tokens():
+    """A table cell selection must not fall back to the platform highlight.
+
+    Windows' current accent can be an intense cyan; that makes selected Library
+    rows difficult to read in the dark theme.  Apply the item state explicitly,
+    rather than relying on the view's palette hint.
+    """
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        rule = qss.split("QTableView::item:selected, QTableWidget::item:selected {", 1)[1] \
+                  .split("}", 1)[0]
+        assert f"background-color: {t.selection_bg}" in rule
+        assert f"color: {t.selection_text}" in rule
+
+
 def test_checkbox_and_radio_indicators_are_stylesheet_drawn():
     """Standalone QCheckBox / QRadioButton indicators need explicit ::indicator
     rules too. Left to QMacStyle, the *unchecked* box/circle renders near-invisibly

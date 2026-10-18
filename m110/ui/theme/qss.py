@@ -147,6 +147,13 @@ QTableView, QTableWidget {{
    cell *widget* out inside this padding and nothing else accounts for it.
    `tests/test_ui_cell_widgets.py` fails the build if the two ever disagree. */
 QTableView::item, QTableWidget::item {{ padding: {SPACE['xs'] // 2}px {SPACE['sm'] - 2}px; }}
+/* The view palette's selection-* properties are only hints for item cells on
+   current Windows Qt styles; without an explicit :selected rule they can use
+   the system's very bright accent instead. */
+QTableView::item:selected, QTableWidget::item:selected {{
+    background-color: {t.selection_bg};
+    color: {t.selection_text};
+}}
 /* Item check indicators are drawn by the stylesheet, not the platform style.
    QMacStyle only paints an item-view check indicator for the *current* row — every
    other checked row rendered blank (the model + click handling were fine, so the
