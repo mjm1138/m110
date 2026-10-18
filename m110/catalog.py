@@ -11,6 +11,7 @@ data.
 """
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 
@@ -811,6 +812,46 @@ def _normalize_designation(text: str) -> str:
     return "".join(ch for ch in str(text).lower() if ch.isalnum())
 
 
+_ORIGIN_OBJECT_NAME_RE = re.compile(
+    r"^\s*(?P<name>.+?)\s+-\s+(?P<designation>[A-Za-z]+\s*-?\s*\d+)\s*$"
+)
+
+
+def _origin_friendly_name(target_dir, canonical_id: str) -> str | None:
+    """Return an Origin-provided friendly name for this canonical target.
+
+    B1 preserves Origin's ``info.json`` beside the stack.  Its system-generated
+    ``StackedInfo.objectName`` commonly has the form ``Pacman Nebula - NGC 281``.
+    Use the descriptive part only if the trailing designation is this target, so
+    a copied or malformed sidecar cannot name a different catalog object.
+    """
+    stacks = target_dir / "seestar-stacks"
+    if not stacks.is_dir():
+        return None
+    paths = sorted({*stacks.glob("*_info.json"), stacks / "info.json"})
+    for path in paths:
+        if not path.is_file():
+            continue
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        info = raw.get("StackedInfo") if isinstance(raw, dict) else None
+        label = info.get("objectName") if isinstance(info, dict) else None
+        if not isinstance(label, str):
+            continue
+        match = _ORIGIN_OBJECT_NAME_RE.match(label)
+        if not match:
+            continue
+        if (_normalize_designation(match.group("designation"))
+                != _normalize_designation(canonical_id)):
+            continue
+        name = match.group("name").strip()
+        if name:
+            return name
+    return None
+
+
 def slug_for_designation(text: str) -> str | None:
     """The slug a designation names, or None. "C 34"/"C34"/"c-34" → ``ngc-6960``.
 
@@ -862,6 +903,10 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
                     continue
                 entry = dict(ref[m])
                 entry.setdefault("id", m.upper())
+                if _is_missing("name", entry.get("name")):
+                    friendly_name = _origin_friendly_name(d, entry["id"])
+                    if friendly_name:
+                        entry["name"] = friendly_name
                 new[m] = entry
             continue
         # Off-catalog target: no catalog object to credit, so the target doubles

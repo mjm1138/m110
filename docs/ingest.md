@@ -35,7 +35,10 @@ and Origin's dark sidecar JSON files are preserved together in `seestar-stacks/`
 Before copying, M110 resolves known Origin labels to the bundled catalog target —
 for example `Pacman Nebula - NGC 281` to `NGC 281`, `Heart Nebula - IC 1805` to
 the catalog's `Sh2-190`, and `Andromeda Galaxy` to `M31`. It keeps an unknown
-target label unchanged. Reimporting the same session offers no new files.
+target label unchanged. If that catalog record has no common name, M110 uses the
+friendly part of Origin's system-generated `StackedInfo.objectName` (for example,
+`Pacman Nebula`) to fill the Library Name column; it never replaces a curated name.
+Reimporting the same session offers no new files.
 
 ### The Seestar's dark library
 

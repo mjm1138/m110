@@ -164,19 +164,21 @@ def test_origin_resolves_json_fits_and_folder_target_sources(
 
 
 @pytest.mark.parametrize(
-    ("folder", "target", "slug", "object_id", "object_type"),
+    ("folder", "target", "slug", "object_id", "object_type", "object_name"),
     [
         ("Pacman_Nebula_-_NGC_281_2026-09-26_21-01-08",
-         "Pacman Nebula - NGC 281", "ngc-281", "NGC 281", "emission"),
+         "Pacman Nebula - NGC 281", "ngc-281", "NGC 281", "emission",
+         "Pacman Nebula"),
         ("Heart_Nebula_-_IC_1805_2026-09-26_21-01-08",
-         "Heart Nebula - IC 1805", "sh2-190", "Sh2-190", "emission"),
+         "Heart Nebula - IC 1805", "sh2-190", "Sh2-190", "emission",
+         "Heart Nebula"),
         ("Andromeda_Galaxy_2026-09-26_21-01-08",
-         "Andromeda Galaxy", "m31", "M31", "galaxy"),
+         "Andromeda Galaxy", "m31", "M31", "galaxy", "Andromeda Galaxy"),
     ],
 )
 def test_origin_canonical_target_promotes_the_seeded_catalog_details(
-        tmp_path, monkeypatch, folder, target, slug, object_id, object_type):
-    """A canonical Origin target adds the rich bundled record, not an unknown stub."""
+        tmp_path, monkeypatch, folder, target, slug, object_id, object_type, object_name):
+    """Origin adds catalog facts and fills a blank Library name from its JSON label."""
     seed_root(tmp_path, monkeypatch)
     src = tmp_path / "Origin"
     _origin_session(src, folder=folder, info_target=target)
@@ -188,3 +190,19 @@ def test_origin_canonical_target_promotes_the_seeded_catalog_details(
     entry = catalog.load_library()[slug]
     assert entry["id"] == object_id
     assert entry["type"] == object_type
+    assert entry.get("name") == object_name
+
+
+def test_origin_json_name_does_not_replace_a_curated_catalog_name(tmp_path, monkeypatch):
+    """A source label only fills the blank catalog-name field."""
+    seed_root(tmp_path, monkeypatch)
+    src = tmp_path / "Origin"
+    _origin_session(
+        src,
+        folder="Andromeda_Galaxy_2026-09-26_21-01-08",
+        info_target="Camera Label - M 31",
+    )
+
+    ingest.apply_ops(ingest.scan_directory_plan(src))
+    assert catalog.add_captured_objects(resolve_coords=False) == ["m31"]
+    assert catalog.load_library()["m31"]["name"] == "Andromeda Galaxy"
