@@ -64,7 +64,12 @@ jobs:
         run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
 
       - name: Run the test suite
-        run: pytest -q
+        env:
+          PYTHONUNBUFFERED: "1"
+          QT_FATAL_WARNINGS: "0"
+        # DIAGNOSTIC (temporary): name every test and let native stderr through, so
+        # the 3.11 SIGABRT shows which test and what Qt said before it died.
+        run: python -X faulthandler -m pytest -v --capture=sys -p no:cacheprovider
 
       # The suite does NOT import `mcp`. The assistant tests are deliberately AST
       # and text checks (that is what makes the "nothing the server can reach can
