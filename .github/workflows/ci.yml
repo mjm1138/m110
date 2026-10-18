@@ -66,21 +66,6 @@ jobs:
       - name: Run the test suite
         run: pytest -q
 
-      # TEMPORARY: prove the diagnosis — on 3.11, PySide6 6.12.0 must make the
-      # refcount guard FAIL (cleanly), and the excluded version must not be what
-      # the suite above ran on.
-      - name: Confirm PySide6 6.12.0 leaks None on 3.11 (temporary)
-        if: ${{ !cancelled() && matrix.python-version == '3.11' }}
-        run: |
-          python -c "import PySide6; print('suite ran on PySide6', PySide6.__version__)"
-          python -m venv /tmp/v612 && /tmp/v612/bin/pip -q install "PySide6==6.12.0" pytest
-          /tmp/v612/bin/python -c "import PySide6; print('probe on PySide6', PySide6.__version__)"
-          if /tmp/v612/bin/python -m pytest -q -p no:cacheprovider --noconftest tests/test_qt_refcount.py; then
-            echo "::error::6.12.0 did NOT trip the guard — diagnosis wrong"; exit 1
-          else
-            echo "6.12.0 trips the guard as expected"
-          fi
-
       # The suite does NOT import `mcp`. The assistant tests are deliberately AST
       # and text checks (that is what makes the "nothing the server can reach can
       # write" proof airtight), so nothing in pytest touches the MCP library — and
