@@ -185,6 +185,37 @@ class NumItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+def dark_gap_item(row: dict) -> QTableWidgetItem:
+    """A session's **Dark** cell: the dark its telescope subtracted on-device
+    (inferred, `calibration.applied_dark`) and the widest gap between a sub's
+    sensor temperature and it — "24.9 °C · Δ10.5 ⚠" — sortable by the gap. The ⚠
+    and the tooltip carry the warning, so it never rests on color alone."""
+    from m110 import calibration
+    from m110.ui import theme
+    if not row.get("dark_ref"):
+        it = NumItem("—", -1.0)
+        it.setToolTip("No dark link: this telescope doesn't subtract darks on board, "
+                      "or the capture predates its dark library.")
+        return it
+    gap, dt = row.get("dark_gap_c"), row.get("dark_temp_c")
+    warn = gap is not None and gap > calibration.DARK_GAP_WARN_C
+    text = (f"{dt:g} °C" if dt is not None else "?") + \
+           (f" · Δ{gap:.1f}" if gap is not None else "") + (" ⚠" if warn else "")
+    it = NumItem(text, gap if gap is not None else -1.0)
+    tmin, tmax = row.get("temp_min"), row.get("temp_max")
+    tip = [f"Dark the telescope applied on-device: {row['dark_ref']}",
+           f"Link: {row.get('dark_link')} (rule {row.get('dark_rule')})"]
+    if tmin is not None and tmax is not None:
+        tip.append(f"Sensor during the capture: {tmin:g}–{tmax:g} °C")
+    if warn:
+        tip.append(f"More than {calibration.DARK_GAP_WARN_C:g} °C off: hot pixels in "
+                   "the drifted subs are over- or under-subtracted. m110-stack "
+                   "--max-dark-gap can leave them out.")
+        it.setForeground(QColor(theme.active_tokens().warn))
+    it.setToolTip("\n".join(tip))
+    return it
+
+
 def make_numeric(item: QTableWidgetItem, mono: bool = True) -> QTableWidgetItem:
     """Right-align a numeric/data cell and (default) give it the bundled tabular
     monospace, so columns of numbers line up. Returns the item for chaining."""
@@ -469,6 +500,9 @@ class CollapsibleSection(QWidget):
         self.body.setContentsMargins(18, 2, 0, 6)
         lay.addWidget(self._body)
         self._body.setVisible(expanded)
+
+    def set_title(self, title: str):
+        self._btn.setText(title)
 
     def _on_toggled(self, on: bool):
         self._btn.setArrowType(Qt.DownArrow if on else Qt.RightArrow)

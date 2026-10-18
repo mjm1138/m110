@@ -178,6 +178,16 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                                     `cal-dark`/`cal-flat`/`cal-bias`); device-specific
                                     recognizers feed it. Lazily populated, additive →
                                     no .store_version bump                [immutable]
+                                    **Seestar:** the device's own `<volume>/darklibrary/
+                                    <exp>s/MasterDark_<N>_<exp>s_<T>C_<local stamp>.fit`
+                                    (+ its full `.jpg` preview; the `_thn.jpg` is skipped)
+                                    imports here byte-identical (layout `seestar-darks`;
+                                    the masters carry no TELESCOP, so the device is the
+                                    TELESCOP of the MyWorks subs on the same volume — none
+                                    → held). These darks are **never applied**: Seestar
+                                    subs are dark-subtracted on the device
+                                    (`devices.darks_applied_on_device`), so they are
+                                    reference data for the dark ↔ capture link below.
   Media/<Category>_photo|_video/    lunar/planetary/scenery media (e.g. Dwarf
                                     startrails → Startrails_video/ + _photo/).
                                     Scanned **recursively**, and each file's kind
@@ -262,7 +272,9 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57 — the target's own, else one library master per tier via `calibration.match_for_target`, linked per job dir) are hardlinks (no extra space); the preset's calibration toggles follow; `next-steps.md` records the source + match notes | Persistent (ready for re-runs) | `archive/<ts>/` pruned keep-N-latest (default 3, `processing_archive_keep`; "all" = never delete) — see Retention |
 | Media | `Media/<Category>_photo\|_video/` | images/video | Ingested (`*_photo`/`*_video`) | **Content** | Persistent | Never auto-deleted | Import copies content files **plus** a video's `<stem>_thn.jpg` poster; photo-side `_thn.` duplicates and `.avi.idx`/`.avi.txt` are no longer copied (Tools → Clean up imported sidecars removes ones already on disk — never a live video poster) |
 | Media posters | `.m110_internal_data/renders/media/` | JPG | `media.poster_for` → `build_images.make_thumb`, for photo formats Qt can't decode (FITS) | **Derived** | Regenerable | Safe to delete. A **subdirectory** on purpose: `build_images._cleanup_orphaned_renders` reaps unreferenced `*.jpg` directly in `renders/`, and `images.json` never names Media files — the same protection `hero/` relies on |
-| Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below |
+| Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below. Capture facts from a bounded header sample (first, last, ≤6 between): `telescop`, `gain`, `temp_first`/`temp_last`/`temp_min`/`temp_max`; and, for a device that dark-subtracts on board (Seestar), the **inferred** dark it applied — `dark_ref` (master filename in `Calibration/<device>/darks/`), `dark_temp_c`, `dark_gap_c` (widest \|sub − dark\| °C), `dark_link` (`confirmed`\|`inferred`), `dark_rule` (`v1`); all `null` otherwise or before the device had a library |
+| Session header cache | `.m110_internal_data/derived/session_headers.json` | JSON | `scan_sessions._HeaderCache` — per sampled sub, keyed `<target>/<file>` + size | **Derived** | Regenerable | Safe to delete; lets an unchanged store re-scan with no header reads |
+| Device rollup | `.m110_internal_data/derived/devices.json` (+ `master_stats.json` pixel-stat cache by content hash) | JSON | `build_derived` → `calibration.device_rollup` | **Derived** | Regenerable | Safe to delete. Per device: library masters (header facts, device-clock time, median/σ/hot-pixel count, captures served) and its captures with their dark link; feeds Tools → Devices… |
 | Rollups | `.m110_internal_data/derived/*.json` | JSON | `build_derived` (totals/summary/processing/priorities), `build_images` (images) | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh (`processing.json` stamps `generated_at` and is intentionally not byte-stable) |
 | Renders cache | `.m110_internal_data/renders/` | JPG/PNG | `build_images` (content-hash cached: mtime+size+ver) | **Derived** | Regenerable | Safe to delete; **orphans should be pruned** (open #14) |
 | Store version | `.m110_internal_data/.store_version` | text (`4`) | Written by `migrate.py`/bootstrap | **App-managed** | Persistent | Bumped on layout change |
@@ -500,6 +512,22 @@ Backup is an **external output** (like the published site): it reads the store a
 does not change its on-disk layout, so it has **no `.store_version` impact** and
 needs no `migrate.py` step. This partially realizes the "checksum manifest of raws
 for integrity verification" noted under *Optional future hardening*.
+
+## Dark ↔ capture affinity (Seestar, rule v1)
+
+A Seestar subtracts a dark on the telescope before it saves each sub, choosing from
+its own dark library, and records nothing about which. M110 **infers** it
+(`calibration.applied_dark`), from measurements on an S50 (2026-10-15…18, DONE.md):
+at a target run's start the device uses the library dark at the same
+exposure/gain/binning nearest the sensor temperature (taking a new one first when
+none is within ≈2 °C) and keeps it for the whole run. The masters have no
+`DATE-OBS`, so *which darks existed* is read from the **device's filename clock**
+(`calibration.device_clock` — the one parser for it) and compared only with the
+lights' filename clock: the same device, both local time, so no timezone arithmetic.
+That is the single place a filename feeds a computation; temperature corroborates
+it (`confirmed` = made ≤10 min before the run within 1 °C of the first sub). Every
+link records the rule version, so a revised rule (or ZWO documenting the real one)
+re-derives cleanly — the link is derived data, never stored as fact.
 
 ## Versioning & migration
 

@@ -47,6 +47,12 @@ def load_goals() -> list:
     return _load("goals.json") or []
 
 
+def load_devices() -> list:
+    """Per-device calibration library, captures and sensor health
+    (`calibration.device_rollup`); [] if absent."""
+    return (_load("devices.json") or {}).get("devices", [])
+
+
 def load_images() -> dict:
     """{slug: [ {name, label, viewable, thumb, full, ...} ]}.
 

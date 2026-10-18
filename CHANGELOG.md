@@ -11,6 +11,24 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Your Seestar's dark library comes in with your captures.** Recent Seestar
+  firmware keeps its master darks in a `darklibrary` folder next to `MyWorks`.
+  Importing from the Seestar now copies them into `Calibration/<your telescope>/darks/`
+  (named after your unit, e.g. `S50_15e7e390`); reconnecting copies only new ones.
+  M110 never applies them: the Seestar already subtracts a dark from every sub
+  before saving it, and doing it again would subtract twice. If you put darks on a
+  Seestar object yourself, Siril prep and `m110-stack` now warn about that.
+- **See which dark each capture got, and how far off it was.** The Sessions tables
+  have a new **Dark** column: the dark the Seestar most likely used for that capture
+  and how far the sensor's temperature drifted from it ("24.9 °C · Δ10.5 ⚠"). Over
+  3 °C, hot pixels in the drifted subs come out over- or under-subtracted;
+  `m110-stack` warns about those frames and `--max-dark-gap 3` (also available to
+  the assistant) leaves them out. The Seestar doesn't record which dark it used, so
+  M110 works it out from when each dark was made and the sensor temperature, and
+  says whether a link is confirmed or inferred.
+- **Tools → Devices…** shows each telescope's dark library (with previews), the
+  captures each dark served, and its sensor health over time: dark level and
+  hot-pixel count against temperature.
 - **A calibration library per telescope.** Your library now has a top-level
   `Calibration/<telescope>/` folder (`darks/`, `flats/`, `biases/`) for master
   calibration frames that belong to a telescope rather than to one object. The

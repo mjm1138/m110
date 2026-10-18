@@ -107,7 +107,7 @@ def _device_fits(path, obj, when, *, exp=30.0, filt="LP", ra=202.5, dec=47.2,
 
 
 def mount_seestar(tmp_path, monkeypatch, obj="M51", *, count=3, exp=30,
-                  filt="LP", volume="Seestar S50"):
+                  filt="LP", volume="Seestar S50", extra=None):
     """Create a scratch volume shaped like a **mounted Seestar** and point the real
     mount probe at it: ``<tmp>/Volumes/<volume>/MyWorks/<obj>_sub/Light_*.fit``.
 
@@ -123,7 +123,7 @@ def mount_seestar(tmp_path, monkeypatch, obj="M51", *, count=3, exp=30,
         when = start + timedelta(seconds=(exp + 3) * i)
         name = f"Light_{obj}_{exp}.0s_{filt}_{when.strftime('%Y%m%d-%H%M%S')}.fit"
         _device_fits(subs_dir / name, obj, when, exp=float(exp), filt=filt,
-                     eqmode=1)
+                     eqmode=1, extra=extra)
         names.append(name)
     return volumes / volume / "MyWorks", names
 
@@ -161,3 +161,34 @@ def seed_sandbox(target="M51"):
     (sb / f"{target}_x_processed.png").write_text("png")
     (sb / f"{target}_x_processed.fit").write_text("fit")
     return sb
+
+
+def seestar_master_dark(path, temp_c, *, exp=20.0, gain=80, stackcnt=5):
+    """A master dark exactly as the Seestar's ``darklibrary/`` writes one: uint16,
+    EXPTIME/GAIN/CCD-TEMP/XBINNING/STACKCNT, FILTER='dark' — and no IMAGETYP,
+    DATE-OBS or TELESCOP."""
+    import numpy as np
+    from astropy.io import fits
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.full((2, 2), 476, dtype="uint16"))
+    h.header["CREATOR"] = "ZWO Seestar S50"
+    h.header["XBINNING"] = 1
+    h.header["STACKCNT"] = stackcnt
+    h.header["EXPTIME"] = exp
+    h.header["CCD-TEMP"] = temp_c
+    h.header["FILTER"] = "dark"
+    h.header["GAIN"] = gain
+    h.writeto(path)
+    return path
+
+
+def mount_darklibrary(volume_dir, masters, *, exp=20):
+    """``<volume>/darklibrary/<exp>s/`` beside MyWorks: one master + its .jpg and
+    _thn.jpg per (temp_c, "YYYYMMDD-HHMMSS") in `masters`. Returns the dir."""
+    d = volume_dir / "darklibrary" / f"{exp}s"
+    for temp, stamp in masters:
+        stem = f"MasterDark_5_{float(exp):.1f}s_{temp}C_{stamp}"
+        seestar_master_dark(d / f"{stem}.fit", temp, exp=float(exp))
+        (d / f"{stem}.jpg").write_bytes(b"\xff\xd8preview")
+        (d / f"{stem}_thn.jpg").write_bytes(b"\xff\xd8thumb")
+    return d

@@ -111,6 +111,7 @@ def _resolve_dir(target: str, filt: str | None) -> Path:
 _CLI_FLAGS = {
     "only_exposure": lambda v: f" --only-exposure {v:g}",
     "exclude_night": lambda v: f" --exclude-night {v}",
+    "max_dark_gap": lambda v: f" --max-dark-gap {v:g}",
     "drizzle": lambda v: " --no-drizzle" if not v else f" --drizzle {v:g}",
     "pixfrac": lambda v: f" --pixfrac {v:g}",
     "rejection": lambda v: f' --rejection "{v}"',
@@ -164,6 +165,13 @@ _CLI_FLAGS = {
                               "description": ("Drop one night, YYYY-MM-DD. Use sparingly: "
                                               "the quality filters already drop poor "
                                               "frames individually, across every night.")},
+            "max_dark_gap": {"type": "number",
+                             "description": ("Drop frames whose sensor temperature "
+                                             "drifted more than this many °C from the "
+                                             "dark the telescope subtracted on-device "
+                                             "(Seestar). The proposal warns when any "
+                                             "selected frame is over 3 °C; pass 3 to "
+                                             "leave those out.")},
             "drizzle": {"type": "number",
                         "description": ("Force the drizzle scale, e.g. 2 for 2x, or 0 to "
                                         "turn drizzle off. Omit to let coverage depth "
@@ -219,7 +227,7 @@ _CLI_FLAGS = {
 )
 def plan_stack(target: str, filter: str | None = None,
                only_exposure: float | None = None, exclude_night: str | None = None,
-               drizzle: float | None = None, pixfrac: float | None = None,
+               max_dark_gap: float | None = None, drizzle: float | None = None, pixfrac: float | None = None,
                rejection: str | None = None, weight: str | None = None,
                overlap_norm: bool | None = None, feather: int | None = None,
                no_bg_extract: bool = False, no_filters: bool = False,
@@ -231,6 +239,7 @@ def plan_stack(target: str, filter: str | None = None,
     ov = stacking.Overrides(
         only_exposure=[only_exposure] if only_exposure is not None else None,
         exclude_night=[exclude_night] if exclude_night else None,
+        max_dark_gap=max_dark_gap,
         # A JSON schema has no tri-state number, so 0 is how the caller says
         # "off" — and the CLI spells that as its own `--no-drizzle` flag.
         drizzle=drizzle if drizzle else None,
@@ -265,7 +274,7 @@ def plan_stack(target: str, filter: str | None = None,
 
     applied = {k: v for k, v in (
         ("only_exposure", only_exposure), ("exclude_night", exclude_night),
-        ("drizzle", drizzle), ("pixfrac", pixfrac), ("rejection", rejection),
+        ("max_dark_gap", max_dark_gap), ("drizzle", drizzle), ("pixfrac", pixfrac), ("rejection", rejection),
         ("weight", weight), ("overlap_norm", overlap_norm), ("feather", feather),
         ("no_bg_extract", no_bg_extract or None),
         ("no_filters", no_filters or None), ("filter_pct", filter_pct),

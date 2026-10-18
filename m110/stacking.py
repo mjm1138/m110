@@ -44,7 +44,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import calibration, config, launch, siril as siril_mod
+from . import calibration, config, devices, launch, siril as siril_mod
 
 PRESET_NAME = siril_mod.PRESET_NAME
 
@@ -378,7 +378,8 @@ def _drop_stray_pointings(s: Survey) -> int:
 
 def select_frames(frames: list[Frame], only_exposure: list[float] | None,
                   exclude_night: list[str] | None,
-                  only_night: list[str] | None) -> tuple[list[Frame], list[int]]:
+                  only_night: list[str] | None, *, max_dark_gap: float | None = None,
+                  dark_gaps: dict | None = None) -> tuple[list[Frame], list[int]]:
     """(kept frames, 1-based indices to unselect).
 
     Indices are relative to the FULL sorted file list, because `link` ingests
@@ -394,6 +395,10 @@ def select_frames(frames: list[Frame], only_exposure: list[float] | None,
         if only_night and fr.date not in only_night:
             ok = False
         if exclude_night and fr.date in exclude_night:
+            ok = False
+        if (max_dark_gap is not None and dark_gaps
+                and (dark_gaps.get(fr.name) or (None,))[0] is not None
+                and dark_gaps[fr.name][0] > max_dark_gap):
             ok = False
         (kept if ok else dropped).append(fr if ok else i)
     return kept, dropped
@@ -1461,6 +1466,7 @@ class Overrides:
     only_night: list | None = None
     exclude_night: list | None = None
     no_calibration: bool = False
+    max_dark_gap: float | None = None
 
 
 @dataclass
@@ -1502,6 +1508,57 @@ class StackPlan:
         }
 
 
+def device_dark_gaps(frames: list[Frame], geom: dict) -> dict:
+    """{frame name: (gap °C, AppliedDark)} for frames from a telescope that
+    dark-subtracts on the device (calibration.applied_dark, rule v1): each target
+    run's dark is the library master nearest the run's starting temperature, and
+    a frame's gap is how far its own CCD-TEMP drifted from it. Empty when the
+    device doesn't, or its library holds no darks."""
+    tel = geom.get("telescop")
+    if not devices.darks_applied_on_device(tel):
+        return {}
+    masters = calibration.library(devices.folder_name(tel)).get("darks", [])
+    if not masters:
+        return {}
+    by_name = {f.name: f for f in frames}
+    out: dict = {}
+    for run in calibration.split_runs(list(by_name)):
+        first = by_name[run[0]]
+        ad = calibration.applied_dark(
+            calibration.device_clock(first.name), first.temp, exptime=first.exposure,
+            gain=first.gain, binning=first.binning, masters=masters)
+        if ad is None:
+            continue
+        for n in run:
+            out[n] = (ad.gap(by_name[n].temp), ad)
+    return out
+
+
+def _dark_gap_warning(kept: list[Frame], gaps: dict) -> str | None:
+    over = [(gaps[f.name][0], f) for f in kept
+            if f.name in gaps and gaps[f.name][0] is not None
+            and gaps[f.name][0] > calibration.DARK_GAP_WARN_C]
+    if not over:
+        return None
+    worst, wf = max(over, key=lambda o: o[0])
+    ad = gaps[wf.name][1]
+    return (f"{len(over)} of {len(kept)} selected frames were dark-subtracted on the "
+            f"telescope with a dark more than {calibration.DARK_GAP_WARN_C:g} °C from "
+            f"their own sensor temperature (worst {worst:.1f} °C: "
+            f"{ad.master.path.name}, {ad.link}). Their hot pixels are over- or "
+            "under-subtracted; --max-dark-gap "
+            f"{calibration.DARK_GAP_WARN_C:g} leaves them out.")
+
+
+def _darks_applied_on_device(working: Path, geom: dict) -> bool:
+    """Did the telescope behind these frames already subtract a dark on-device?"""
+    tel = geom.get("telescop")
+    if not tel:
+        target = target_for(working)
+        tel = calibration.device_for_target(target) if target else None
+    return devices.darks_applied_on_device(tel)
+
+
 def calibration_for_stack(working: Path, frames: list, geom: dict
                           ) -> tuple[dict | None, str, list[str]]:
     """The master per tier `calibrate` should use, as ({tier: abs path} | None,
@@ -1532,6 +1589,10 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
                 f"{len(fs)} raw frames in {tier}/ — m110-stack calibrates with "
                 "masters only. Stack them into one master in Siril (the "
                 "Naztronomy script does this) or leave calibration off.")
+    if "darks" in found and _darks_applied_on_device(working, geom):
+        notes.append("calibration: a master dark sits beside lights/, but this "
+                     "telescope already dark-subtracted the subs — it will be "
+                     "subtracted twice; remove it or pass --no-calibration")
     if found:
         return found, ("masters found beside lights/ in the job folder (linked "
                        "there by processing prep)"), notes
@@ -1544,7 +1605,6 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
     tel = facts.get("telescop")
     device = None
     if tel:
-        from . import devices
         device = devices.folder_name(tel)
     else:
         target = target_for(working)
@@ -1576,8 +1636,10 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
     working, lights = resolve_layout(resolve_input(directory))
 
     all_frames, geom = read_frames(lights)
+    gaps = device_dark_gaps(all_frames, geom)
     kept, dropped = select_frames(all_frames, ov.only_exposure, ov.exclude_night,
-                                  ov.only_night)
+                                  ov.only_night, max_dark_gap=ov.max_dark_gap,
+                                  dark_gaps=gaps)
     if not kept:
         raise StackingError("Frame selection excluded everything — nothing to stack.")
     s = summarize(kept, geom)
@@ -1601,6 +1663,9 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
             "weighting, integration — is computed on the selected set."
         )
     check_preset(load_preset(working), s, p)
+    gap_warning = _dark_gap_warning(kept, gaps)
+    if gap_warning:
+        p.warnings.append(gap_warning)
 
     # ---- apply overrides -------------------------------------------------
     if ov.drizzle is not None:
@@ -1940,6 +2005,9 @@ def main() -> int:
     g.add_argument("--no-compress", action="store_true")
     g.add_argument("--compress-quant", type=int, metavar="Q",
                    help="Rice quantisation 0-256 (default 16; higher = less loss)")
+    g.add_argument("--max-dark-gap", type=float, metavar="C",
+                   help="drop frames whose sensor temperature drifted more than C "
+                        "from the dark the telescope applied on-device (Seestar)")
     g.add_argument("--no-calibration", action="store_true",
                    help="ignore master darks/flats/biases (the job folder's or the "
                         "telescope's Calibration/ library) and stack raw frames")

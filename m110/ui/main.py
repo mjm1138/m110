@@ -360,6 +360,10 @@ class MainWindow(QMainWindow):
         self.media_cleanup_action.triggered.connect(self._open_media_cleanup)
         self.backup_action = QAction("Back up…", self)
         self.backup_action.triggered.connect(self._open_backup)
+        self.devices_action = QAction("Devices…", self)
+        self.devices_action.setToolTip(
+            "Each telescope's calibration library, the captures it served, and sensor health")
+        self.devices_action.triggered.connect(self._open_devices)
         self.restore_action = QAction("Restore…", self)
         self.restore_action.triggered.connect(self._open_restore)
         self.prefs_action = QAction("Preferences…", self)
@@ -369,6 +373,7 @@ class MainWindow(QMainWindow):
         self.tools_menu = bar.addMenu("Tools")
         self.tools_menu.addAction(self.prep_action)
         self.tools_menu.addAction(self.media_cleanup_action)
+        self.tools_menu.addAction(self.devices_action)
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.backup_action)
         self.tools_menu.addAction(self.restore_action)
@@ -494,6 +499,12 @@ class MainWindow(QMainWindow):
             return
         from m110.ui.publish_dialog import PublishDialog
         PublishDialog(self).exec()
+
+    def _open_devices(self):
+        from m110.ui.devices_dialog import DevicesDialog
+        dlg = DevicesDialog(self)
+        dlg.open_object.connect(self.open_object)
+        dlg.exec()
 
     def _open_backup(self):
         if self.catalog.is_editing():

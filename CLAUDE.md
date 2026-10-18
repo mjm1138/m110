@@ -123,12 +123,12 @@ DONE.md's archived reference — grep the module name there.
 | `catalog.py` | Library (`library.toml`) vs bundled reference/catalog lists; add/remove/enrich entries; `season_from_ra`; `object_identifiers`; Simbad via optional astroquery (`OnlineLookupError`) |
 | `derived.py` | read generated rollups (`derived/*.json`) |
 | `processing.py` | workflow registry (Siril + AstroWizard), `run_autoprep`, `prepare_missing` (creates only absent sandboxes), `reconcile_rejected` |
-| `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path |
+| `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path; capture facts (TELESCOP/GAIN/CCD-TEMP) from a bounded, per-file-cached header sample (`_HeaderCache`) + the inferred on-device dark (`dark_*`) |
 | `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
 | `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
-| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`) and `preset_key` (→ `DEVICE_PRESETS`) |
-| `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry) |
+| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar) |
+| `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry); never matches a dark for a `darks_applied_on_device` telescope. Seestar rule v1: `device_clock` (the ONE filename-clock parser), `applied_dark`, `split_runs`; `master_stats` + `device_rollup` → `derived/devices.json` |
 | `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor |
 | `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else one library master per tier, linked **per job dir**; Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
 | `astrowizard.py` | the finishing round-trip (thin `roundtrip` consumer): `is_master`/`is_autosave`/`is_handoff` (sidecar-keyed, never filename), `prepare_lights` |
@@ -169,6 +169,7 @@ DONE.md's archived reference — grep the module name there.
 | `media_detail.py` · `media_cleanup_dialog.py` | media detail pane · sidecar cleanup |
 | `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (summary + Local drive / Cloud tabs, one `_SlotPanel` each) · restore (From: picker across slots) · MCP connection details |
 | `about_dialog.py` · `update_notice.py` · `error_report.py` · `first_run_dialog.py` | about + update status · update banner/worker · crash dialog + excepthook · first-launch prompt |
+| `devices_dialog.py` | Tools → Devices…: per-device dark library, captures (dark + gap), `SensorChart` scatters — read-only from `derived/devices.json`; `widgets.dark_gap_item` is the shared **Dark** cell |
 | `theme/` | design system: `tokens` (light/dark), `qss.build_qss`, `manager.ThemeManager` (follows OS), bundled JetBrains Mono, `brand` (recolored logo, fixed app icon). **Pull colors/spacing from tokens, never hardcode hex** |
 
 ---
@@ -266,6 +267,11 @@ wrong) is under the same heading in DONE.md's archived reference.
 **Data & files**
 - FITS extensions are `.fit` **and** `.fits` — always via `config.is_fits_file`, never a bare suffix check: it also rejects the `._` AppleDouble sidecars a Mac leaves on NFS/SMB (#161). Any new store enumeration skips `config.is_hidden_name` names.
 - Session facts come from the FITS **header**, not filenames (device conventions differ).
+- **Seestar subs are already dark-subtracted on the device** — never apply a library
+  dark to them (`devices.darks_applied_on_device` gates `calibration.match_masters`).
+  Its `darklibrary/` masters are reference data; which one a capture got is inferred
+  from the filename clock (`calibration.device_clock`, the only filename-time read)
+  corroborated by CCD-TEMP.
 - A walk that skips `lights/`/sandboxes must **prune at the directory** (`roundtrip._walk_files`), never `rglob` then filter — the skipped trees are the whole capture, three times over, per target per sync.
 - Copy from the Seestar (SMB) with `shutil.copyfile` → `.part` → `os.replace`; `copy2` EPERMs.
 - Never trust mtime for provenance/freshness; use header dates (`DATE-OBS`, stack `DATE`).

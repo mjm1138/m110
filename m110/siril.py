@@ -27,7 +27,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import calibration, config, roundtrip
+from . import calibration, config, devices, roundtrip
 
 _log = logging.getLogger("m110")
 
@@ -234,6 +234,11 @@ def plan_prep(target: str, usable_frames: int | None = None,
     calib = _calib_frames(target)
     calib_source = "target" if calib else ""
     calib_notes: list[str] = []
+    if "darks" in calib and devices.darks_applied_on_device(
+            calibration.device_for_target(target)):
+        calib_notes.append("this object's darks/ will be applied, but its telescope "
+                           "already dark-subtracted the subs — that subtracts twice; "
+                           "remove darks/ unless that is intended")
     if not calib and lights:
         match = calibration.match_for_target(target)
         calib_notes = list(match.notes)
