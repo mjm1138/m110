@@ -8,8 +8,9 @@ Open the **Import** page. Pick a source — a mounted Seestar, a DwarfLab Dwarf 
 SD card, or any folder of FITS — and M110 scans it (without changing anything) and
 shows a **grouped preview**: one row per object, with the kind of file (light subs,
 device stack, finished render, media), the file count, size, and where each group
-will land. Device layouts are recognized automatically — a Seestar export, a Dwarf 3
-`DWARF_RAW_*` / `STARTRAILS_*` session, an M110 store, or a loose pile of FITS.
+will land. Device layouts are recognized automatically - a Seestar export, a Dwarf 3
+`DWARF_RAW_*` / `STARTRAILS_*` session, a Celestron Origin session, an M110 store,
+or a loose pile of FITS.
 
 - Check or uncheck groups; retarget a group to a different object if the name or
   pointing looks off.
@@ -23,6 +24,15 @@ will land. Device layouts are recognized automatically — a Seestar export, a D
 
 M110 reads the FITS headers to identify each frame (object, date, exposure, filter,
 pointing), so it works across devices regardless of their filename conventions.
+
+### Celestron Origin sessions
+
+Origin restarts its `Light0001.fits` counter for every session. On import M110 keeps
+the source untouched and appends the session start time before the extension, such
+as `Light0001_20260926-210108.fits`. Lights and that session's darks, flats, and
+biases stay beneath the Origin capture target; `FinalStackedMaster.tiff`, `info.json`,
+and Origin's dark sidecar JSON files are preserved together in `seestar-stacks/`.
+Reimporting the same session offers no new files.
 
 ### The Seestar's dark library
 

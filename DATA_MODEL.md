@@ -114,7 +114,8 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
     stacks/                         Siril stacks (.fit/.tif)              [output]
     seestar-stacks/                 device in-app stacks (+ preview .jpg) [output]
                                     (generic on-device stack tier: Seestar
-                                    Stacked_*, Dwarf stacked-16_*, …)
+                                    Stacked_*, Dwarf stacked-16_*, Origin
+                                    FinalStackedMaster.tiff + session JSON, …)
     finished/                       hand-finished renders                 [output]
     previews/                       optional per-sub JPG previews (#25; opt-in) [archive]
     working_files/                  processing by-products (starless/crop/…) [output]
@@ -265,7 +266,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Calibration frames | `Images/<target>/{darks,flats,biases}/` | FITS | Preserved if present | **Immutable** (convention) | Persistent | Never auto-deleted. Per-target **override** of the device library |
 | Calibration library | `Calibration/<device>/{darks,flats,biases}/` | FITS (masters) | Ingested (`ingest._classify_calibration_dir` for a store-shaped library, kinds `cal-*`); `<device>` = `TELESCOP` | **Immutable** after import (convention) | Persistent | Never auto-deleted; kept at **every** backup tier. Identical bytes re-import as a no-op. Additive → **no `.store_version` bump** |
 | Siril stacks | `Images/<target>/stacks/` | FITS/TIFF | Imported from the siril sandbox (`siril.apply_import`) | **Output** — replaceable by re-import | Persistent | Never auto-deleted |
-| Device stacks | `Images/<target>/seestar-stacks/` | FITS (+ preview .jpg) | Ingested from device — the generic on-device/in-app stack tier (Seestar `Stacked_*`, Dwarf `stacked-16_*` + `stacked.jpg`) | **Output** | Persistent | Never auto-deleted |
+| Device stacks | `Images/<target>/seestar-stacks/` | FITS/TIFF (+ preview/sidecar files) | Ingested from device — the generic on-device/in-app stack tier (Seestar `Stacked_*`, Dwarf `stacked-16_*` + `stacked.jpg`, Origin `FinalStackedMaster.tiff` + session JSON) | **Output** | Persistent | Never auto-deleted |
 | Finished renders | `Images/<target>/finished/` | PNG/JPG/TIFF/FITS | Imported from the siril sandbox | **Output** — user's deliverables | Persistent | Never auto-deleted |
 | Working files | `Images/<target>/working_files/` | FITS (mostly) | Diverted here on import when a `.fit` in a lights source reads as a processing by-product, not a raw sub (`config.is_light_frame`/`is_processing_product`); `ingest.plan_lights_cleanup` relocates already-mis-filed ones | **Output** — kept, not raw | Persistent | Never auto-deleted | Keeps `lights/` sub-only (raw-integrity + correct filter detection) and `finished/` for final renders only |
 | Sub previews | `Images/<target>/previews/` | JPG | **Opt-in** (#25, `import_sub_previews` pref, default off): the Seestar's per-sub `.jpg` beside every raw sub, routed here by the `_sub` classifier (kind `preview`) instead of being ignored | **Archive** — user's copies, review-only | Persistent | Never auto-deleted | Lazily created (only when the pref is on + previews present); kept out of `lights/` and out of the gallery/hero tiers → **no `.store_version` bump** |

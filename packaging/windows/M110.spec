@@ -95,7 +95,8 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets",
-              "PySide6.Qt3DCore", "matplotlib", "pytest", "pytestqt"],
+              "PySide6.Qt3DCore", "matplotlib", "astropy.visualization",
+              "pytest", "pytestqt"],
     cipher=block_cipher,
     noarchive=False,
 )
