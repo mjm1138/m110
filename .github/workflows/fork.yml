@@ -1,0 +1,190 @@
+# FORK-ONLY workflow (rweatherly/m110). Lives on the fork's `main` only; feature
+# branches are cut from upstream/main so this file never appears in an upstream PR.
+# Leaves upstream's ci.yml / release.yml untouched so syncing stays conflict-free.
+#
+#   windows-tests     the full pytest suite on Windows (upstream CI is Linux-only)
+#   windows-portable  PyInstaller onedir build, zipped with run-dev.cmd. No Inno
+#                     Setup installer, so it can never upgrade over an installed M110
+#                     (the installer shares upstream's AppId). Unzip and run it beside
+#                     the release; run-dev.cmd isolates settings + data under D:\m110-dev.
+#   upstream-watch    weekly: compares fork main with mjm1138/m110 main and keeps ONE
+#                     open issue (label upstream-sync) listing what is new, whether a
+#                     trial merge is clean, and which watched files changed. Notify
+#                     only; it never merges or pushes. Needs Issues enabled on the fork.
+#
+# Triggers: PRs into the fork's main (feature -> main inside the fork is how a feature
+# branch gets tested), pushes to main, a weekly schedule, and a manual "Run workflow".
+# Note: GitHub pauses scheduled workflows on a repo with no activity for 60 days.
+name: Fork
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 12 * * 1"      # Mondays 12:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  windows-tests:
+    # Safety: never run if this file is ever merged into the upstream repo.
+    if: github.repository_owner != 'mjm1138' && github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: fork-tests-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install the package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      # Same optional sky-map dependency as upstream CI (not on PyPI).
+      - name: Install the optional sky-map dependency
+        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+      - name: Run the test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+
+  windows-portable:
+    if: github.repository_owner != 'mjm1138' && github.event_name != 'schedule'
+    runs-on: windows-latest
+    concurrency:
+      group: fork-portable-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[build]"
+      - name: Install the optional sky-map dependency
+        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+      # Mirrors packaging/windows/build_windows.ps1 up to the PyInstaller step and
+      # stops there: no Inno Setup, no installer.
+      - name: Build the app folder
+        shell: pwsh
+        run: |
+          python packaging/windows/make_ico.py
+          pyinstaller packaging/windows/M110.spec --noconfirm --clean
+          if (-not (Test-Path dist/M110/M110.exe)) { throw "dist/M110/M110.exe was not produced" }
+      - name: Package the portable zip
+        shell: pwsh
+        run: |
+          $stage = "dist/portable"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse dist/M110 "$stage/M110"
+          $cmd = @(
+            '@echo off',
+            'rem Runs this portable M110 build isolated from any installed M110.',
+            'rem Override the location with:  set M110_DEV_ROOT=E:\somewhere',
+            'if "%M110_DEV_ROOT%"=="" set "M110_DEV_ROOT=D:\m110-dev"',
+            'set "USERPROFILE=%M110_DEV_ROOT%\home"',
+            'set "M110_DATA_ROOT=%M110_DEV_ROOT%\data"',
+            'if not exist "%USERPROFILE%" mkdir "%USERPROFILE%"',
+            'if not exist "%M110_DATA_ROOT%" mkdir "%M110_DATA_ROOT%"',
+            'start "" "%~dp0M110\M110.exe"'
+          )
+          Set-Content -Path "$stage/run-dev.cmd" -Value $cmd -Encoding ascii
+          $short = "${env:GITHUB_SHA}".Substring(0, 7)
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/M110-portable-$short.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-portable
+          path: dist/M110-portable-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  upstream-watch:
+    if: github.repository_owner != 'mjm1138' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: upstream-watch
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}     # two remotes below; stop gh guessing
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main                          # always compare main, even on a manual run elsewhere
+          fetch-depth: 0
+      - name: Compare with upstream and update the tracking issue
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/mjm1138/m110.git 2>/dev/null \
+            || git remote set-url upstream https://github.com/mjm1138/m110.git
+          git fetch --quiet upstream '+refs/heads/main:refs/remotes/upstream/main'
+
+          BEHIND=$(git rev-list --count origin/main..upstream/main)
+          AHEAD=$(git rev-list --count upstream/main..origin/main)
+          echo "fork main: $AHEAD own commit(s); behind upstream by $BEHIND"
+
+          gh label create upstream-sync --color 0e8a16 \
+            --description "Upstream has commits not yet merged into this fork" 2>/dev/null || true
+          EXISTING=$(gh issue list --label upstream-sync --state open --json number \
+            --jq '.[0].number // empty' 2>/dev/null || true)
+
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Up to date with upstream."
+            if [ -n "$EXISTING" ]; then
+              gh issue close "$EXISTING" --comment "Fork main is up to date with upstream." || true
+            fi
+            exit 0
+          fi
+
+          # Files upstream changed that this fork's work touches or depends on.
+          CHANGED=$(git diff --name-only origin/main...upstream/main)
+          WATCH='^(m110/(ingest|siril|planning_config|build_images|scan_sessions|config|migrate|catalog)\.py|DATA_MODEL\.md|\.github/workflows/)'
+          HITS=$(printf '%s\n' "$CHANGED" | grep -E "$WATCH" || true)
+
+          # Trial merge in the object database only (touches no working tree, no commit).
+          set +e
+          MERGE_OUT=$(git merge-tree --write-tree --name-only origin/main upstream/main 2>&1)
+          MERGE_RC=$?
+          set -e
+
+          FENCE='```'
+          {
+            printf 'Upstream mjm1138/m110 main is **%s** commit(s) ahead of this fork main (the fork has %s of its own).\n\n' "$BEHIND" "$AHEAD"
+            if [ "$MERGE_RC" -eq 0 ]; then
+              printf 'Trial merge into main: **clean**.\n\n'
+            else
+              printf 'Trial merge into main: **CONFLICTS**\n\n%s\n%s\n%s\n\n' "$FENCE" "$(printf '%s\n' "$MERGE_OUT" | tail -n +2)" "$FENCE"
+            fi
+            if [ -n "$HITS" ]; then
+              printf '**Upstream changed files this fork also touches or depends on:**\n\n'
+              printf '%s\n' "$HITS" | sed 's/^/- /'
+              printf '\nRebase open feature branches onto upstream/main after syncing.\n\n'
+            else
+              printf 'No changes to the watched files (ingest, siril, planning_config, build_images, scan_sessions, config, migrate, catalog, DATA_MODEL, workflows).\n\n'
+            fi
+            printf '**Commits (newest first, up to 50):**\n\n'
+            git log -n 50 --format='- %h %s (%an, %ad)' --date=short origin/main..upstream/main
+            printf '\n**To merge:** Sync fork on GitHub and choose Update branch (never Discard commits), then git fetch upstream and rebase feature branches onto upstream/main.\n'
+          } > body.md
+
+          cat body.md >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          TITLE="Upstream is $BEHIND commit(s) ahead of fork main"
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --title "$TITLE" --body-file body.md \
+              || echo "::warning::could not update issue #$EXISTING"
+          else
+            gh issue create --title "$TITLE" --label upstream-sync --body-file body.md \
+              || echo "::warning::could not create the issue (are Issues enabled on the fork?)"
+          fi
