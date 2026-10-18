@@ -32,7 +32,10 @@ the source untouched and appends the session start time before the extension, su
 as `Light0001_20260926-210108.fits`. Lights and that session's darks, flats, and
 biases stay beneath the Origin capture target; `FinalStackedMaster.tiff`, `info.json`,
 and Origin's dark sidecar JSON files are preserved together in `seestar-stacks/`.
-Reimporting the same session offers no new files.
+Before copying, M110 resolves known Origin labels to the bundled catalog target —
+for example `Pacman Nebula - NGC 281` to `NGC 281`, `Heart Nebula - IC 1805` to
+the catalog's `Sh2-190`, and `Andromeda Galaxy` to `M31`. It keeps an unknown
+target label unchanged. Reimporting the same session offers no new files.
 
 ### The Seestar's dark library
 

@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 from astropy.io import fits
 
-from m110 import config, ingest
+from m110 import catalog, config, ingest
 from tests._helpers import seed_root
 
 
@@ -32,10 +33,13 @@ def _origin_fits(path: Path, imagetyp: str, *, obj: str | None = None) -> None:
     hdu.writeto(path)
 
 
-def _origin_session(src: Path, *, folder: str, include_info: bool = True) -> Path:
+def _origin_session(src: Path, *, folder: str, include_info: bool = True,
+                    info_target: str | None = TARGET,
+                    fits_target: str | None = None) -> Path:
     session = src / folder
-    _origin_fits(session / "Light0001.fits", "LIGHT")
-    _origin_fits(session / "Light0002.fits", "LIGHT")
+    light_target = fits_target if fits_target is not None else info_target
+    _origin_fits(session / "Light0001.fits", "LIGHT", obj=light_target)
+    _origin_fits(session / "Light0002.fits", "LIGHT", obj=light_target)
     _origin_fits(session / "dark0007.fits", "DARK")
     _origin_fits(session / "bias0007.fits", "BIAS")
     _origin_fits(session / "flat.fits", "FLAT")
@@ -44,7 +48,7 @@ def _origin_session(src: Path, *, folder: str, include_info: bool = True) -> Pat
     if include_info:
         (session / "info.json").write_text(json.dumps({
             "StackedInfo": {
-                "objectName": TARGET,
+                "objectName": info_target,
                 "dateTime": "2026-09-26T21:01:08-04:00",
                 "filter": "Nebula",
                 "stackedDepth": 2,
@@ -110,7 +114,7 @@ def test_origin_sessions_with_reused_light_names_import_once_each(tmp_path, monk
     result = ingest.apply_ops(first)
     assert result == {"moved": len(first), "skipped": 0, "cancelled": False}
     assert ingest.scan_directory_plan(src) == []
-    assert sorted(p.name for p in config.lights_dir(TARGET).iterdir()) == sorted(light_names)
+    assert sorted(p.name for p in config.lights_dir("NGC 281").iterdir()) == sorted(light_names)
 
 
 def test_origin_creator_header_recognizes_a_session_without_info_json(tmp_path, monkeypatch):
@@ -126,5 +130,61 @@ def test_origin_creator_header_recognizes_a_session_without_info_json(tmp_path, 
     ops = ingest.scan_directory_plan(src)
     assert ops
     assert {op.layout for op in ops} == {"origin"}
-    assert all(op.object == TARGET for op in ops)
+    assert all(op.object == "NGC 281" for op in ops)
     assert "unassigned" not in _by_kind(ops)
+
+
+@pytest.mark.parametrize(
+    ("folder", "include_info", "info_target", "fits_target", "expected"),
+    [
+        ("Pacman_Nebula_-_NGC_281_2026-09-26_21-01-08", True,
+         "Pacman Nebula - NGC 281", "Andromeda Galaxy", "NGC 281"),
+        ("Heart_Nebula_-_IC_1805_2026-09-26_21-01-08", True,
+         "Heart Nebula - IC 1805", "Andromeda Galaxy", "Sh2-190"),
+        ("Andromeda_Galaxy_2026-09-26_21-01-08", False,
+         None, "Andromeda Galaxy", "M31"),
+        ("Andromeda_Galaxy_2026-09-26_21-01-08", False,
+         None, "Unknown", "M31"),
+        ("Mystery_Field_2026-09-26_21-01-08", True,
+         "Mystery Field", "Andromeda Galaxy", "Mystery Field"),
+    ],
+)
+def test_origin_resolves_json_fits_and_folder_target_sources(
+        tmp_path, monkeypatch, folder, include_info, info_target, fits_target, expected):
+    """Origin JSON, FITS, then folder labels map to one catalog target."""
+    seed_root(tmp_path, monkeypatch)
+    src = tmp_path / "Origin"
+    _origin_session(src, folder=folder, include_info=include_info,
+                    info_target=info_target, fits_target=fits_target)
+
+    ops = ingest.scan_directory_plan(src)
+
+    assert ops
+    assert {op.object for op in ops} == {expected}
+
+
+@pytest.mark.parametrize(
+    ("folder", "target", "slug", "object_id", "object_type"),
+    [
+        ("Pacman_Nebula_-_NGC_281_2026-09-26_21-01-08",
+         "Pacman Nebula - NGC 281", "ngc-281", "NGC 281", "emission"),
+        ("Heart_Nebula_-_IC_1805_2026-09-26_21-01-08",
+         "Heart Nebula - IC 1805", "sh2-190", "Sh2-190", "emission"),
+        ("Andromeda_Galaxy_2026-09-26_21-01-08",
+         "Andromeda Galaxy", "m31", "M31", "galaxy"),
+    ],
+)
+def test_origin_canonical_target_promotes_the_seeded_catalog_details(
+        tmp_path, monkeypatch, folder, target, slug, object_id, object_type):
+    """A canonical Origin target adds the rich bundled record, not an unknown stub."""
+    seed_root(tmp_path, monkeypatch)
+    src = tmp_path / "Origin"
+    _origin_session(src, folder=folder, info_target=target)
+
+    ops = ingest.scan_directory_plan(src)
+    ingest.apply_ops(ops)
+    assert catalog.add_captured_objects(resolve_coords=False) == [slug]
+
+    entry = catalog.load_library()[slug]
+    assert entry["id"] == object_id
+    assert entry["type"] == object_type

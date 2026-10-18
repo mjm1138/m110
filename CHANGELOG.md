@@ -16,6 +16,9 @@ changes a **user** would notice, per release.
   filenames with the session start time. Lights and session calibration frames go
   to the capture target; the device TIFF stack and its JSON facts stay together in
   the device-stack tier. Reimporting a session does not offer duplicates.
+- **Origin targets use catalog details.** Recognized Origin labels now route to
+  their bundled catalog target before import, so the Library shows the full record
+  for NGC 281, Sh2-190 (Heart Nebula), and M31 instead of an unknown placeholder.
 - **Portable Windows test package.** `packaging\windows\build_portable.ps1` creates
   a ZIP of the onedir app with `run-dev.cmd`, which keeps portable tests under the
   isolated `D:\m110-dev` settings and data paths.

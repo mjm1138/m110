@@ -650,6 +650,9 @@ _ORIGIN_FOLDER_STAMP_RE = re.compile(
 _ORIGIN_DATETIME_RE = re.compile(
     r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})"
 )
+_ORIGIN_TRAILING_DESIGNATION_RE = re.compile(
+    r"(?:^|\s+-\s+)([A-Za-z]+\s*-?\s*\d+)\s*$"
+)
 
 
 def _origin_info(src_dir: Path) -> dict | None:
@@ -675,6 +678,59 @@ def _origin_stamp(folder_name: str, info: dict | None) -> str | None:
         return None
     year, month, day, hour, minute, second = match.groups()
     return f"{year}{month}{day}-{hour}{minute}{second}"
+
+
+def _origin_folder_target(folder_name: str) -> str | None:
+    """The readable target prefix of an Origin session-folder name, if present."""
+    match = _ORIGIN_FOLDER_STAMP_RE.search(folder_name)
+    if not match or match.start() == 0:
+        return None
+    return folder_name[:match.start()].replace("_", " ")
+
+
+def _origin_common_name_target(name: str) -> str | None:
+    """Return a catalog id when an Origin label is a known common name."""
+    normalized = re.sub(r"[^a-z0-9]+", "", name.lower())
+    if not normalized:
+        return None
+    try:
+        library = catalog.load_library()
+    except Exception:
+        library = {}
+    for source in (library, catalog.load_reference()):
+        for entry in source.values():
+            common_name = entry.get("name")
+            if (common_name and re.sub(r"[^a-z0-9]+", "", str(common_name).lower())
+                    == normalized):
+                return _safe_segment(entry.get("id") or name)
+    return None
+
+
+def _canonical_origin_target(label: str | None, folder_name: str) -> str | None:
+    """Resolve an Origin label to a catalog target without changing other devices.
+
+    Origin can supply the target through structured JSON, a FITS OBJECT card, or
+    only its session-folder name.  Preserve a pre-B2 target directory if it
+    already exists; this branch intentionally does not migrate prior imports.
+    """
+    source = _usable_object(label) or _origin_folder_target(folder_name)
+    if not source:
+        return None
+    name = _safe_segment(source.replace("_", " "))
+    existing = _existing_image_dir(name)
+    if existing:
+        return existing
+
+    trailing = _ORIGIN_TRAILING_DESIGNATION_RE.search(name)
+    if trailing and catalog.slug_for_designation(trailing.group(1)):
+        return canonical_target(trailing.group(1))
+
+    common = _origin_common_name_target(name)
+    if not common and trailing:
+        common = _origin_common_name_target(name[:trailing.start()].strip(" -"))
+    if common:
+        return canonical_target(common)
+    return canonical_target(name)
 
 
 def _origin_stamped_name(filename: str, stamp: str) -> str:
@@ -704,8 +760,7 @@ def _classify_origin_dir(src_dir: Path, name: str, action: str,
 
     Origin names every session's frames ``Light0001.fits`` and keeps calibration
     frames beside them.  The session time is therefore part of every destination
-    filename.  B1 intentionally preserves the Origin object name; catalog
-    canonicalization is a later, reviewable migration.
+    filename.  B2 resolves its JSON/FITS/folder target label to a catalog target.
     """
     info_json = _origin_info(src_dir)
     stamp = _origin_stamp(name, info_json)
@@ -727,14 +782,9 @@ def _classify_origin_dir(src_dir: Path, name: str, action: str,
                 obj = _usable_object(facts["object"])
                 if obj:
                     break
-        if not obj:
-            for filename, facts in details:
-                obj = _usable_object(facts["object"]) if facts else None
-                if obj:
-                    break
+    obj = _canonical_origin_target(obj, name)
     if not obj:
         return []
-    obj = _safe_segment(obj)
 
     ops: list[IngestOp] = []
     buckets: dict[str, list[str]] = {}
