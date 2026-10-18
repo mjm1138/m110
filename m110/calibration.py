@@ -1,14 +1,13 @@
 """Pick the calibration master a target needs from the device-level library.
 
 ``Calibration/<device>/{darks,flats,biases}/`` (config.calibration_dir) holds
-MASTER frames that belong to a telescope, not to a target — the DwarfLab Draco
-ships darks across exposure × gain × binning × sensor temperature, flats per
-filter, one bias. This module answers "which one for *this* set of lights?"
+MASTER frames that belong to a telescope, not to a target — darks across
+exposure × gain × binning × sensor temperature, flats per filter, a bias. This
+module answers "which one for *this* set of lights?"
 from **headers only**: the masters' IMAGETYP / EXPTIME / GAIN / XBINNING /
 CCD-TEMP / FILTER / NCOMBINE, and the lights' EXPTIME / GAIN / XBINNING /
 DET-TEMP (or CCD-TEMP) / FILTER / TELESCOP. It never reads a filename for a
-fact — the headerless pre-release masters get theirs stamped at import
-(ingest.py's shim), which is what keeps this module permanent.
+fact: a master missing a card simply doesn't match on it.
 
 Rules (`match_masters`):
 
@@ -16,12 +15,15 @@ Rules (`match_masters`):
   temperature (ties → the master averaged from more frames). A dark at the wrong
   exposure or gain is worse than none, so those never match.
 * **bias** — same binning; the same gain when any candidate has it, else the sole
-  candidate with a note (the Draco's flats/bias say ``gain 2`` where its lights
-  say 60 — the scale is unverified).
+  candidate with a note (some devices record a bias gain on a different scale
+  from their lights').
 * **flat** — same binning and a filter that resolves to the lights' filter. A
   DwarfLab flat's FILTER is an ``ir_<n>`` index whose mapping to a filter name
-  is per device and, for the Draco, **unverified** (`FILTER_INDEX`), so two flats
-  that could both apply yield none and a note rather than a guess.
+  is per device (`FILTER_INDEX`), so two flats that could both apply yield none
+  and a note rather than a guess.
+
+A target whose subs carry more than one ``TELESCOP`` is refused too: each
+device has its own library.
 
 A target whose sampled lights mix exposure/gain/binning is refused with a note:
 BUGS.md — "a mixed workspace must match calibration per job or refuse it". The
@@ -36,15 +38,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import config, devices
-from .ingest import _normalize_imagetyp
+from .ingest import _normalize_imagetyp, _safe_segment
 
 TIERS = config.CALIBRATION_TIERS                     # ("darks", "flats", "biases")
 _TIER_OF_KIND = {"dark": "darks", "flat": "flats", "bias": "biases"}
 
-# Per-device map of a DwarfLab flat's ``ir_<n>`` FILTER token → the filter name
-# the lights carry. UNVERIFIED for the Draco (2026-09 pre-release sample has
-# ir_1 and ir_2 and lights shot through 'Duo-Band'; DwarfLab has not said which
-# is which). Empty → no ir_ flat can match, and `match_masters` says so.
+# Per-device map (keyed by `devices.preset_key`) of a DwarfLab flat's ``ir_<n>``
+# FILTER token → the filter name the lights carry. UNVERIFIED for the Draco
+# (2026-09 pre-release sample has ir_1 and ir_2 and lights shot through
+# 'Duo-Band'; DwarfLab has not said which is which). Empty → no ir_ flat can
+# match, and `match_masters` says so.
 FILTER_INDEX: dict[str, dict[str, str]] = {
     "draco": {},
     "dwarf_3": {},
@@ -89,7 +92,7 @@ def _num(v, cast=float):
 
 def frame_facts(path) -> dict | None:
     """The header facts calibration matching keys on, or None if unreadable.
-    ``temp_c`` is CCD-TEMP, else DET-TEMP (what the Draco writes on a light)."""
+    ``temp_c`` is CCD-TEMP, else DET-TEMP (what some DwarfLab devices write)."""
     try:
         from astropy.io import fits
         h = fits.getheader(str(path))
@@ -116,10 +119,12 @@ def frame_facts(path) -> dict | None:
 def library(device: str) -> dict[str, list[MasterInfo]]:
     """Every master in ``Calibration/<device>/<tier>/``, keyed by tier. A file is
     kept for a tier if its IMAGETYP says so or is absent (the folder is trusted);
-    one that claims another type is skipped. Tiers with nothing are omitted."""
+    one that claims another type is skipped. Tiers with nothing are omitted.
+    `device` goes through the same `_safe_segment` ingest writes with, so a
+    hostile TELESCOP reads the folder it was imported into, never a path above."""
     out: dict[str, list[MasterInfo]] = {}
     for tier in TIERS:
-        d = config.calibration_dir(device, tier)
+        d = config.calibration_dir(_safe_segment(device), tier)
         if not d.is_dir():
             continue
         masters: list[MasterInfo] = []
@@ -251,13 +256,15 @@ def facts_from_frames(frames: list[dict]) -> dict:
     telescop) into the facts of the **dominant** (exptime, gain, binning) group:
     its median temperature, its most common filter, the first telescope seen.
     ``mixed`` says whether more than one group was present, and ``groups`` how
-    many frames each had."""
+    many frames each had; ``telescopes`` lists every distinct TELESCOP (more
+    than one is refused by `match_for_facts`)."""
     groups: Counter = Counter()
     for f in frames:
         groups[(f.get("exptime"), f.get("gain"), f.get("binning"))] += 1
     if not groups:
         return {"exptime": None, "gain": None, "binning": None, "temp_c": None,
-                "filter": None, "telescop": None, "mixed": False, "groups": {}}
+                "filter": None, "telescop": None, "mixed": False, "groups": {},
+                "telescopes": []}
     (exp, gain, binning), _n = groups.most_common(1)[0]
     members = [f for f in frames
                if (f.get("exptime"), f.get("gain"), f.get("binning")) == (exp, gain, binning)]
@@ -271,6 +278,7 @@ def facts_from_frames(frames: list[dict]) -> dict:
         "telescop": telescop,
         "mixed": len(groups) > 1,
         "groups": {f"{k[0]}s/g{k[1]}/b{k[2]}": n for k, n in groups.items()},
+        "telescopes": sorted({f["telescop"] for f in frames if f.get("telescop")}),
     }
 
 
@@ -306,6 +314,11 @@ def match_for_facts(facts: dict, device: str | None) -> MatchResult:
     if not device:
         return MatchResult(notes=["lights carry no TELESCOP header, so no device "
                                   "library can be chosen"])
+    if len(facts.get("telescopes") or []) > 1:
+        return MatchResult(device=device, notes=[
+            f"frames from more than one telescope ({', '.join(facts['telescopes'])})"
+            " — each has its own calibration library; stack them separately or "
+            "add per-target darks/flats/biases"])
     if facts.get("mixed"):
         groups = ", ".join(f"{k} ×{n}" for k, n in facts["groups"].items())
         return MatchResult(device=device, notes=[

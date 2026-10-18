@@ -341,6 +341,17 @@ def filter_visible_tonight(rows: list[dict]) -> list[dict]:
     return [r for r in rows if r.get("observable") is not False]
 
 
+PLAN_CANDIDATE_LIMIT = 30      # bounds the per-target astropy work in plan_night
+
+
+def plan_candidates(rows: list[dict], limit: int = PLAN_CANDIDATE_LIMIT) -> list[str]:
+    """Slugs to feed ``plan_night``: the top ``limit`` of the ranking **among targets
+    that can be observed tonight**. The visibility filter must run *before* the cap —
+    capped first, a capture-many ranking (uncaptured targets score highest) fills the
+    pool with out-of-season targets and the night comes up short and starts late."""
+    return [r["slug"] for r in filter_visible_tonight(rows)][:limit]
+
+
 # ── orchestration (loads app data, computes observability) ─────────────────────
 
 def build_contexts(*, day: date | None = None, site=None,

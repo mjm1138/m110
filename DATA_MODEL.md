@@ -141,7 +141,9 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       `<object>_wizardstack.fits` into the root itself. Either way the master is
       this sandbox's **input**: `archive_keep` spares it (and `lights/`), which is
       what lets one dir hold both halves without the lifetime problem above — the
-      stack is never treated as output. Lazily created, additive → no
+      stack is never treated as a *deliverable*. It is, however, copied into
+      `stacks/` (source mtime preserved) when a finish is imported — never on its
+      own — so the status read sees it as the target's newest stack. Lazily created, additive → no
       .store_version bump                                        [output]
     ⚠ Every sandbox dirname above is a key of **`config.SANDBOX_LINKED_INPUTS`**, the
       single authority; `SANDBOX_DIRNAMES` is derived from it and read by
@@ -160,21 +162,25 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                             (ROADMAP item 6b); written by ingest, layout unchanged →
                             no .store_version bump. An **override**: when present, prep
                             uses these instead of the device library below)
-  Calibration/<device>/             device-level calibration MASTER library
-    darks/ flats/ biases/           (feature/draco). A smart telescope's calibration
-                                    frames belong to the *device*, not to one target:
-                                    the DwarfLab Draco ships a library of master darks
-                                    across exposure × gain × binning × sensor
-                                    temperature, flats per filter index, one bias, and
-                                    the same master serves every target shot at those
-                                    settings. `<device>` = the FITS `TELESCOP` string
-                                    verbatim (`devices.folder_name`: `Draco`, `DWARF 3`;
-                                    a Seestar's is per-unit — a registry is ROADMAP 6d).
-                                    Ingest routes a DwarfLab `CALI_FRAME/{dark,flat,bias}/
-                                    cam_<n>/` tree here (kinds `cal-dark`/`cal-flat`/
-                                    `cal-bias`, the device inferred from a sibling
-                                    session folder) and another store's
-                                    `Calibration/<device>/<tier>/` as itself.
+  Calibration/<device>/             device-level calibration MASTER library. A smart
+    darks/ flats/ biases/           telescope's calibration frames belong to the
+                                    *device*, not to one target: masters across
+                                    exposure × gain × binning × sensor temperature
+                                    (+ flats per filter, a bias), and the same master
+                                    serves every target shot at those settings.
+                                    `<device>` = the FITS `TELESCOP` string verbatim
+                                    (`devices.folder_name`, through `_safe_segment` on
+                                    both write and read: `DWARF 3`; a Seestar's is
+                                    per-unit, `S50_15e7e390` — a registry is ROADMAP
+                                    6d). Matching is header-only (`calibration.py`).
+                                    Ingest imports another store's
+                                    `Calibration/<device>/<tier>/` as itself (kinds
+                                    `cal-dark`/`cal-flat`/`cal-bias`); device-specific
+                                    recognizers feed it. Lazily populated, additive →
+                                    no .store_version bump                [immutable]
+                                    **Draco:** ingest routes a DwarfLab `CALI_FRAME/
+                                    {dark,flat,bias}/cam_<n>/` tree here (the device
+                                    inferred from a sibling session folder).
                                     **Header-stamp shim (temporary):** the 2026-09
                                     pre-release masters have EMPTY headers, so
                                     `apply_ops` writes the facts parsed from the
@@ -182,10 +188,8 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                                     NCOMBINE/FILTER/TELESCOP + an `M110STMP` marker)
                                     into **M110's copy only**, before the atomic rename;
                                     the source is never touched, a master that already
-                                    has IMAGETYP is a plain byte copy. Everything
-                                    downstream is header-only; delete the shim when
-                                    production units write headers. Lazily populated,
-                                    additive → no .store_version bump    [immutable]
+                                    has IMAGETYP is a plain byte copy. Delete the shim
+                                    when production units write headers.
   Media/<Category>_photo|_video/    lunar/planetary/scenery media (e.g. Dwarf
                                     startrails → Startrails_video/ + _photo/).
                                     Scanned **recursively**, and each file's kind
@@ -511,7 +515,7 @@ for integrity verification" noted under *Optional future hardening*.
 
 ## Versioning & migration
 
-`.store_version` (currently **4**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`; **v3→v4** purges capture targets that were wrongly promoted into the object axis — synthetic pseudo-objects like `m81-m82` from a combined `M81 M82` folder, see `migrate._prune_combined_target_objects` and #40c. The top-level `Calibration/` library (feature/draco) is **additive** — created by the skeleton on every launch, nothing moves — so, like `rejected/` and the per-target calibration dirs, it carries no bump.)
+`.store_version` (currently **4**) stamps the on-disk layout. (v2→v3 renamed the per-store `catalog.toml` → `library.toml`; **v3→v4** purges capture targets that were wrongly promoted into the object axis — synthetic pseudo-objects like `m81-m82` from a combined `M81 M82` folder, see `migrate._prune_combined_target_objects` and #40c. The top-level `Calibration/` library is **additive** — created by the skeleton on every launch, nothing moves — so, like `rejected/` and the per-target calibration dirs, it carries no bump.)
 `config.ensure_data_root()` runs `migrate.migrate_store()` on launch. Migrations
 are **idempotent, version-stamped, same-filesystem renames, resume-safe, and never
 destructive**. **Rule:** any change to the on-disk layout or file formats bumps the

@@ -658,3 +658,45 @@ def test_sessions_without_a_window_still_use_the_day_comparison(tmp_path, monkey
     assert f["status"] == "out_of_date"
     assert f["new_lights_since_stack"] == 40
     assert f["stack_meta"]["frames_at_stack"] == 100
+
+
+def _write_wz_stack(folder, name, n, mtime):
+    """A StackingWizard master: NCOMBINE/WZNSUBS/LIVETIME, no STACKCNT, no DATE,
+    and a DATE-OBS that is the first frame's."""
+    from astropy.io import fits
+    import numpy as np
+    import os
+    folder.mkdir(parents=True, exist_ok=True)
+    hdu = fits.PrimaryHDU(np.zeros((2, 2), dtype="float32"))
+    hdu.header["NCOMBINE"] = n
+    hdu.header["WZNSUBS"] = n
+    hdu.header["LIVETIME"] = n * 20.0
+    hdu.header["EXPTIME"] = 20.0
+    hdu.header["DATE-OBS"] = "2026-09-09T08:05:17"
+    hdu.header["WZFPRNT"] = "abc"
+    path = folder / name
+    hdu.writeto(path, overwrite=True)
+    os.utime(path, (mtime, mtime))
+
+
+def test_a_stackingwizard_stack_is_read_and_dated_by_its_mtime(tmp_path, monkeypatch):
+    """The M32 case: a newer SW stack (352 of 552 kept) beside an older Siril one.
+    NCOMBINE stands in for STACKCNT, and — with no DATE — the write time (not the
+    first frame's DATE-OBS) dates it, so it wins and nothing is "new" since."""
+    images = tmp_path / "Images"
+    tgt = images / "M32"
+    (tgt / "lights").mkdir(parents=True)
+    _write_named_stack(tgt, "M_32_244x20sec_final.fit", 244,
+                       "2026-09-17T13:26:00")
+    _write_wz_stack(tgt / "stacks", "M_32_drizzle2x_wizardstack_352f.fits", 352,
+                    mtime=1_791_236_000)                       # 2026-10-05 UTC
+    monkeypatch.setattr(config, "IMAGES_DIR", images)
+
+    sessions = [_sess("M32", "2026-09-09", 300), _sess("M32", "2026-10-02", 252)]
+    totals = build_derived.build_totals({}, sessions)
+    f = build_derived.build_processing(totals, None, {}, sessions)["folders"]["M32"]
+    sm = f["stack_meta"]
+    assert sm["stack_file"] == "M_32_drizzle2x_wizardstack_352f.fits"
+    assert sm["stack_frames"] == 352
+    assert f["new_lights_since_stack"] == 0
+    assert f["status"] == "up_to_date"

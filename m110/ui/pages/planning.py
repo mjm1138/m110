@@ -303,7 +303,7 @@ class PlanningPage(QScrollArea):
                                       "compute it, then try again.")
             return
         ranked = prioritize.rank(contexts, self._weights, self._strategy, pins.load())
-        cand = [r["slug"] for r in ranked][:30]        # bound the astropy work
+        cand = prioritize.plan_candidates(ranked)      # visible tonight, capped for astropy
         scores = {r["slug"]: r["score"] for r in ranked}
         filters = {r["slug"]: prioritize.filter_for_type(r.get("type", ""))
                    for r in ranked}

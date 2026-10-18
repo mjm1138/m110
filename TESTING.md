@@ -338,6 +338,10 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Header wins:** a `DARK`-header frame dropped into an `<obj>_sub/` folder routes
       to `Images/<obj>/darks/`, not `lights/`.
 - [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
+- [ ] Import a folder containing another library's `Calibration/<device>/darks/`
+      (copy one from a backup): the row reads **master darks** with the device as
+      its object, Pointing **—**, destination `Calibration/<device>/darks/`; after
+      confirming, no `Images/<device>/` target appears, and re-importing offers nothing.
 - [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
 
 #### Import — holding area + manual assign  (6c)  ⚙ *(sweep/assign automated — `test_ingest.py`, `test_ui_ingest.py`)*

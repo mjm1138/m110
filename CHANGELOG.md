@@ -23,41 +23,65 @@ changes a **user** would notice, per release.
   NGC 6992"). You can still pick a different object before confirming, and
   nothing is written until you do. Sessions that point nowhere near a catalog
   object go to the holding area as before.
-- **A calibration library per telescope.** The Draco ships master darks, flats and
-  a bias for the whole device (darks for every exposure, gain, binning and sensor
-  temperature) in a `CALI_FRAME` folder. Import now recognizes that folder and
-  files the masters under a new top-level `Calibration/<telescope>/` in your
-  library, named after the telescope that the session folder next to it was shot
-  with; they are never mistaken for light frames or for a capture target. If no
+- **A calibration library per telescope.** Your library now has a top-level
+  `Calibration/<telescope>/` folder (`darks/`, `flats/`, `biases/`) for master
+  calibration frames that belong to a telescope rather than to one object. The
+  folder is named after the telescope's own name in its FITS headers. Importing
+  another M110 library's `Calibration/` folder (a backup, a second computer) files
+  the masters back there, never as an object. Backups keep the library at every
+  level.
+- **The Draco's calibration masters import into that library.** The Draco ships
+  master darks, flats and a bias for the whole device in a `CALI_FRAME` folder.
+  Import recognizes it and files the masters under `Calibration/<telescope>/`,
+  named after the telescope the session folder next to it was shot with. If no
   session folder is beside them, they go to the holding area with a note saying
   why. The pre-release masters carry no information in their headers, so M110
   writes the exposure, gain, binning, temperature and frame count from the
   filename into *its own copy* (marked with an `M110STMP` header card); the files
-  on your device are never modified. Backups keep the library at every tier.
+  on your device are never modified. (For the Draco, the flats' filter indexes
+  are not yet mapped to filter names, so no flat is chosen yet.)
 - **Processing uses the right master automatically.** When an object has no
   calibration frames of its own, preparing it for Siril now picks one master per
   kind from its telescope's library: the dark with the same exposure, gain and
   binning and the nearest sensor temperature, the bias for that binning, and a
   flat only when exactly one fits the filter. The chosen files are linked beside
   the lights and the Naztronomy preset's calibration switches are turned on; the
-  `next-steps.md` in the sandbox says which were used and why any were skipped
-  (for the Draco, the flats' filter indexes are not yet mapped to filter names,
-  so no flat is chosen). `m110-stack` does the same for the frames it is about to
-  stack, calibrating with `-dark`/`-flat`/`-bias`; `--no-calibration` turns it
-  off, and a folder of *raw* darks beside the lights is reported rather than
-  stacked. Your own `darks/`, `flats/` or `biases/` on an object always win.
+  `next-steps.md` in the folder says which were used and why any were skipped.
+  `m110-stack` does the same for the frames it is about to stack;
+  `--no-calibration` turns it off. Your own `darks/`, `flats/` or `biases/` on an
+  object always win, and an object shot on two different telescopes is never
+  given one telescope's masters.
 
 ### Fixed
 - **Calibration frames now reach every Siril job on a mixed-filter object.** They
-  were linked once at the top of the sandbox, but the Naztronomy script looks for
-  `darks/` next to the `lights/` it is run on, which for an object shot through
-  two filters is a per-filter folder underneath. Each job folder now gets its own
-  links.
+  were linked once at the top of the processing folder, but the Naztronomy script
+  looks for `darks/` next to the `lights/` it is run on, which for an object shot
+  through two filters is a per-filter folder underneath. Each job folder now gets
+  its own links.
 - **Same-named folders no longer merge in the holding area.** Files from two
-  source folders that share a name (the Draco's `dark/cam_0` and `flat/cam_0`)
-  used to be held together under one name, and a file with the same name in the
-  second folder was silently skipped. Each now gets its own group, named after its
+  source folders that share a name (say `dark/cam_0` and `flat/cam_0`) used to be
+  held together under one name, and a file with the same name in the second
+  folder was silently skipped. Each now gets its own group, named after its
   parent folder too (`dark_cam_0`, `flat_cam_0`).
+- **No more sudden crashes when running M110 from source on Python 3.11.** The
+  newest PySide6 (6.12.0, the Qt toolkit M110 is built on) has a bug that, on
+  Python 3.11 only, slowly corrupts the interpreter until it aborts — sooner the
+  more images it handles. M110 now refuses that PySide6 release on Python 3.11 and
+  installs the previous one. The downloadable apps were never affected (they ship
+  their own Python 3.12).
+- **Importing a StackingWizard/AstroWizard finish now updates the object's
+  processing status.** The stack StackingWizard made stayed in the `astrowizard`
+  working folder, so an object like M32 kept showing "out of date" against an older
+  stack, with the wrong frame counts. Importing a finish now also files that stack
+  under `stacks/`, and M110 reads StackingWizard's frame count and write time, so
+  the status, "in stack" and "+ new" numbers reflect it. (Objects you already
+  imported need one more import to pick it up.)
+- **Night plans no longer come up short or start late.** The planner chose its 30
+  candidates from the ranking *before* checking what was up that night, so with the
+  "Capture many" strategy (which ranks never-captured targets highest) the pool filled
+  with out-of-season targets and the plan scheduled only a few late ones. It now picks
+  from targets that are actually observable that night, so shallow in-season targets
+  fill the time.
 
 ## [0.3.0-beta.8] - 2026-09-25
 

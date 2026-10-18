@@ -16,7 +16,7 @@ import json
 import re
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Ported into the M110 engine.
@@ -360,22 +360,33 @@ def read_latest_stack_metadata(folder: Path,
             try:
                 with fits.open(f) as hdul:
                     hdr = hdul[0].header
-                    cnt = hdr.get("STACKCNT")
+                    # StackingWizard writes the count as NCOMBINE (and WZNSUBS)
+                    # rather than Siril's STACKCNT, and no stack DATE at all.
+                    cnt = (hdr.get("STACKCNT") or hdr.get("NCOMBINE")
+                           or hdr.get("WZNSUBS"))
                     live = hdr.get("LIVETIME")
                     if not (cnt and live):
                         continue
+                    made = hdr.get("DATE")
+                    if not made and hdr.get("WZFPRNT"):
+                        # Its DATE-OBS is the first frame's, not the stack's. The
+                        # file's own mtime is when it was written — trusted only
+                        # because import preserves the source's (a copy's would lie).
+                        made = datetime.fromtimestamp(
+                            f.stat().st_mtime, timezone.utc
+                        ).strftime("%Y-%m-%dT%H:%M:%S")
                     stacks.append({
                         "partial": _covers_partial_target(
                             hdr.get("OBJECT"), target, catalog_slugs),
                         "dir_priority": pr,
-                        "date": hdr.get("DATE") or "",
+                        "date": made or "",
                         "mtime": f.stat().st_mtime,
                         "stack_file": f.name,
                         "stack_frames": int(cnt),
                         "stack_integration_min": round(float(live) / 60, 1),
                         "stack_integration_hms": fmt_hm(float(live) / 60),
                         "stack_exposure_s": float(hdr.get("EXPTIME", 0)),
-                        "stacked_at": hdr.get("DATE"),
+                        "stacked_at": made,
                     })
             except Exception:
                 continue

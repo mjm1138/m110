@@ -28,7 +28,7 @@ INTERNAL_DIRNAME = ".m110_internal_data"
 # .m110_internal_data/ holding all machine state.
 _SUBDIRS = [
     "Objects", "Images", "Media", "Inbox", "Plans",
-    "Calibration",       # device-level master darks/flats/biases (feature/draco)
+    "Calibration",       # device-level master darks/flats/biases (calibration.py)
     INTERNAL_DIRNAME,
     f"{INTERNAL_DIRNAME}/derived",
     f"{INTERNAL_DIRNAME}/renders/hero",
