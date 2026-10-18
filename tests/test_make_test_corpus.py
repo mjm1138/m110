@@ -49,6 +49,12 @@ def test_generator_builds_and_verifies_a_corpus(tmp_path, capsys):
     # The two sibling fixtures the Import flows are driven from ship beside it.
     assert (tmp_path / "M110-test-import-source").is_dir()
     assert (tmp_path / "M110-test-device-mount").is_dir()
+    # The real Seestar masters ship byte-identical (gzip only stores them).
+    import gzip
+    for gz in sorted(GEN.parent.parent.glob("tests/data/seestar_darklibrary/*.fit.gz")):
+        on_mount = (tmp_path / "M110-test-device-mount" / "Seestar S50" / "darklibrary"
+                    / "20s" / gz.name[:-3])
+        assert on_mount.read_bytes() == gzip.decompress(gz.read_bytes())
 
 
 def test_harness_script_points_at_the_generator():
@@ -70,6 +76,8 @@ def test_harness_script_points_at_the_generator():
     "siril.has_unimported_output", "siril.prune_rejected",
     "catalog.load_coords", "catalog.load_library", "catalog.load_bundled_catalog",
     "goals.set_active_goals", "goals.active_goal_ids",
+    "siril.plan_prep", "config.calibration_dir", "calibration.DARKS_ON_DEVICE_NOTE",
+    "derived.load_devices",
 ])
 def test_engine_api_the_generator_depends_on(call):
     import importlib

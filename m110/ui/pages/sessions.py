@@ -11,9 +11,10 @@ from PySide6.QtWidgets import (
 from m110 import derived
 from m110.ui.widgets import (
     make_table, NumItem, make_numeric, ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
+    dark_gap_item,
 )
 
-_COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount"]
+_COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount", "Dark"]
 
 
 class SessionsPage(QWidget):
@@ -75,6 +76,7 @@ class SessionsPage(QWidget):
             mins = s.get("integration_min", 0.0)
             t.setItem(r, 5, make_numeric(NumItem(_fmt_hm(mins), mins)))
             t.setItem(r, 6, QTableWidgetItem(s.get("mount_mode", "")))
+            t.setItem(r, 7, dark_gap_item(s))
         t.resizeColumnsToContents()
         t.setSortingEnabled(True)
         t.sortItems(0, Qt.DescendingOrder)   # most recent first

@@ -40,6 +40,33 @@ _PRESET_RULES = (
 )
 
 
+# Devices whose saved subs are ALREADY dark-subtracted on the device. Measured on
+# a Seestar S50 (2026-10-18): the hot pixels of its own master darks are absent
+# from every raw `_sub` frame, before and after the firmware began keeping a dark
+# library. The S30s run the same ZWO pipeline and are assumed to match. Applying
+# a library dark to these subs again would double-subtract (DONE.md).
+_DARKS_APPLIED_ON_DEVICE = frozenset({"seestar_s50", "seestar_s30", "seestar_s30_pro"})
+
+
+def darks_applied_on_device(telescop: str | None) -> bool:
+    """True when this telescope's subs come off the device already dark-subtracted,
+    so a library dark is reference data, never something to apply again."""
+    return preset_key(telescop) in _DARKS_APPLIED_ON_DEVICE
+
+
+def display_name(telescop: str | None) -> str:
+    """What a person calls the device: the preset's model name, plus the unit
+    serial when ``TELESCOP`` carries one (``S50_15e7e390`` → ``ZWO Seestar S50 ·
+    15e7e390``); the raw string when the device is unknown."""
+    key = preset_key(telescop)
+    if key is None:
+        return folder_name(telescop)
+    from .planning_config import DEVICE_PRESETS      # local: keeps this module tiny
+    name = DEVICE_PRESETS[key].name
+    head, sep, serial = (telescop or "").strip().partition("_")
+    return f"{name} · {serial}" if sep and serial else name
+
+
 def preset_key(telescop: str | None) -> str | None:
     """The `planning_config.DEVICE_PRESETS` key for a ``TELESCOP`` value, or None
     when the device is unknown to the presets."""

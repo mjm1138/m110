@@ -24,7 +24,7 @@ from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
     process_in_siril, stack_in_stackingwizard, open_in_default,
-    reveal_in_manager, defer, connect_context_menu, FlowLayout,
+    reveal_in_manager, defer, connect_context_menu, FlowLayout, dark_gap_item,
 )
 
 
@@ -394,7 +394,7 @@ class DetailPane(QScrollArea):
             btn_row.deleteLater()
 
     # ---- enrichment sections (Phase 3) ----
-    def _section_table(self, title: str, headers: list[str], rows: list[list[str]]):
+    def _section_table(self, title: str, headers: list[str], rows: list[list]):
         self._lay.addWidget(_section_label(title))
         tbl = make_table(headers)
         tbl.setSortingEnabled(False)
@@ -402,7 +402,8 @@ class DetailPane(QScrollArea):
             i = tbl.rowCount()
             tbl.insertRow(i)
             for c, val in enumerate(r):
-                tbl.setItem(i, c, QTableWidgetItem(val))
+                tbl.setItem(i, c, val if isinstance(val, QTableWidgetItem)
+                            else QTableWidgetItem(val))
         tbl.resizeColumnsToContents()
         fit_table_height(tbl, max_rows=6)      # whole row fits; scroll past 6 rows
         self._lay.addWidget(tbl)
@@ -442,9 +443,11 @@ class DetailPane(QScrollArea):
             s.get("filter", ""),
             _fmt_hm(s.get("integration_min", 0.0)),
             s.get("mount_mode", ""),
+            dark_gap_item(s),
         ] for s in rows]
         self._section_table(
-            "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount"], out)
+            "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount",
+                         "Dark"], out)
 
     def _add_metadata_section(self, slug: str, e: dict, totals: dict | None = None):
         from m110 import catalog

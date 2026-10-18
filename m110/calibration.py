@@ -32,8 +32,10 @@ makes such a target stackable with calibration.
 """
 from __future__ import annotations
 
+import re
 import statistics
 from collections import Counter
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +49,11 @@ _TIER_OF_KIND = {"dark": "darks", "flat": "flats", "bias": "biases"}
 # FILTER token → the filter name the lights carry. No mapping is verified yet, so
 # it is empty: no ir_ flat can match, and `match_masters` says so.
 FILTER_INDEX: dict[str, dict[str, str]] = {}
+
+
+DARKS_ON_DEVICE_NOTE = ("subs from this telescope are already dark-subtracted on the "
+                        "device; its library darks are kept for reference and are "
+                        "never applied again")
 
 
 @dataclass
@@ -104,9 +111,12 @@ def frame_facts(path) -> dict | None:
                         else h.get("EXPOSURE")),
         "gain": _num(h.get("GAIN"), int),
         "binning": _num(h.get("XBINNING"), int),
-        "temp_c": _num(temp),
+        # rounded: a float32 card reads 13.8999996185303 for the 13.9 °C it means
+        "temp_c": round(t, 2) if (t := _num(temp)) is not None else None,
         "filter": (str(filt).strip() or None) if filt not in (None, "") else None,
-        "ncombine": _num(h.get("NCOMBINE"), int),
+        # frames averaged into a master: NCOMBINE, or the Seestar's STACKCNT
+        "ncombine": _num(h.get("NCOMBINE") if h.get("NCOMBINE") is not None
+                         else h.get("STACKCNT"), int),
         "telescop": (str(tel).strip() or None) if tel not in (None, "") else None,
     }
 
@@ -181,10 +191,14 @@ def match_masters(facts: dict, device: str) -> MatchResult:
     what = (f"{exp:g} s" if exp is not None else "? s") + \
            f", gain {gain if gain is not None else '?'}, bin {binning if binning is not None else '?'}"
 
-    # dark: exact exposure/gain/binning, nearest temperature
+    # dark: exact exposure/gain/binning, nearest temperature — unless the device
+    # already subtracted one before saving the subs (devices.darks_applied_on_device)
     darks = [m for m in lib.get("darks", [])
              if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
-    if darks:
+    on_device = devices.darks_applied_on_device(device)
+    if on_device:
+        res.notes.append(DARKS_ON_DEVICE_NOTE)
+    elif darks:
         def _rank(m: MasterInfo):
             dt = abs(m.temp_c - temp) if (m.temp_c is not None and temp is not None) else 999.0
             return (dt, -(m.ncombine or 0), m.path.name)
@@ -220,7 +234,7 @@ def match_masters(facts: dict, device: str) -> MatchResult:
             res.notes.append(f"{len(pool)} master biases match; using {pool[0].path.name}")
     elif lib.get("biases"):
         res.notes.append(f"no master bias at bin {binning}")
-    else:
+    elif not on_device:          # a darks-only Seestar library has no bias tier by design
         res.notes.append(f"no master bias in the {device} library")
 
     # flat: binning + a filter that resolves to the lights' filter, unambiguous
@@ -239,7 +253,7 @@ def match_masters(facts: dict, device: str) -> MatchResult:
                          "unverified, so no flat was linked")
     elif lib.get("flats"):
         res.notes.append(f"no master flat at bin {binning}")
-    else:
+    elif not on_device:
         res.notes.append(f"no master flats in the {device} library")
     return res
 
@@ -328,3 +342,199 @@ def match_for_target(target: str) -> MatchResult:
     facts = target_facts(target)
     tel = facts.get("telescop")
     return match_for_facts(facts, devices.folder_name(tel) if tel else None)
+
+
+# ── device-applied darks: which master a capture got, and how far off it was ──
+# A Seestar subtracts a dark on the device before it saves a sub
+# (devices.darks_applied_on_device), choosing from its own dark library. Nothing
+# in a sub's header says which dark, so it is INFERRED (rule v1, measured on an
+# S50 2026-10-15…18, DONE.md): at the start of each target run the device uses the
+# library dark at the same exposure/gain/binning whose temperature is nearest the
+# sensor's, taking a new one first when none is within ~2 °C; it does not switch
+# mid-run. The gap between a sub's CCD-TEMP and that dark's is the quality signal:
+# hot pixels come out over- or under-subtracted in proportion.
+#
+# The Seestar's masters carry no DATE-OBS, so *when* a dark existed is read from
+# the device's own filename clock — `device_clock`, the ONE filename-time parser
+# for this, compared only with the lights' filename clock (same device, both local
+# time; no timezone arithmetic) and corroborated by temperature.
+
+DARK_RULE = "v1"
+DARK_GAP_WARN_C = 3.0          # gap above which the hot-pixel residue is visible
+_CONFIRM_WINDOW_S = 10 * 60    # a dark this soon before the run was made for it
+_CONFIRM_TEMP_C = 1.0          # …if it matches the run's starting temperature
+# Device-clock gap that separates two runs of one target. Generous on purpose: a
+# plan's frames of one target are one run (a cloud pause must not look like a new
+# target start, which would wrongly re-pick the dark); nights are hours apart.
+RUN_BREAK_S = 2 * 60 * 60
+
+_DEVICE_CLOCK_RE = re.compile(r"_(\d{8})-(\d{6})(?:_thn)?\.[A-Za-z]+$")
+
+
+def device_clock(name: str):
+    """The device's local-time stamp at the end of a Seestar filename
+    (``…_20261015-215239.fit``) as a naive datetime, or None. Only ever compared
+    with another stamp from the same device's clock."""
+    m = _DEVICE_CLOCK_RE.search(name)
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+@dataclass
+class AppliedDark:
+    master: MasterInfo
+    link: str                  # "confirmed" | "inferred"
+    rule: str = DARK_RULE
+
+    def gap(self, temp_c: float | None) -> float | None:
+        if temp_c is None or self.master.temp_c is None:
+            return None
+        return abs(temp_c - self.master.temp_c)
+
+
+def applied_dark(run_start, temp_start: float | None, *, exptime, gain, binning,
+                 masters: list[MasterInfo]) -> AppliedDark | None:
+    """The library dark the device most likely applied to a run that began at
+    device-clock `run_start` with the sensor at `temp_start` — or None when no
+    master at these settings existed yet (captures before the library)."""
+    if run_start is None:
+        return None
+    cands = []
+    for m in masters:
+        made = device_clock(m.path.name)
+        if (made is not None and made <= run_start and _same(m.exptime, exptime, 0.01)
+                and m.gain == gain and m.binning == binning):
+            cands.append((made, m))
+    if not cands:
+        return None
+    if temp_start is None:
+        made, best = max(cands, key=lambda c: c[0])
+    else:
+        made, best = min(cands, key=lambda c: (
+            abs((c[1].temp_c if c[1].temp_c is not None else 999.0) - temp_start),
+            -c[0].timestamp()))
+    confirmed = (temp_start is not None and best.temp_c is not None
+                 and (run_start - made).total_seconds() <= _CONFIRM_WINDOW_S
+                 and abs(best.temp_c - temp_start) <= _CONFIRM_TEMP_C)
+    return AppliedDark(best, "confirmed" if confirmed else "inferred")
+
+
+def split_runs(names: list[str]) -> list[list[str]]:
+    """Group sub filenames into target runs by device clock (a gap over
+    `RUN_BREAK_S` starts a new run). Names without a stamp form their own run."""
+    stamped = sorted((c, n) for n in names if (c := device_clock(n)) is not None)
+    runs: list[list[str]] = []
+    prev = None
+    for c, n in stamped:
+        if prev is None or (c - prev).total_seconds() > RUN_BREAK_S:
+            runs.append([])
+        runs[-1].append(n)
+        prev = c
+    loose = [n for n in names if device_clock(n) is None]
+    return runs + ([loose] if loose else [])
+
+
+# ── sensor health + the per-device rollup (derived/devices.json) ──────────────
+
+_STATS_CACHE_NAME = "master_stats.json"
+HOT_SIGMA = 10.0               # a hot pixel: above median + HOT_SIGMA × robust σ
+
+
+def master_stats(path: Path) -> dict | None:
+    """Pixel statistics of one master: median, mean, robust σ (1.4826 × MAD), the
+    hot-pixel count (> median + `HOT_SIGMA` σ) and shape. None if unreadable."""
+    try:
+        from astropy.io import fits
+        import numpy as np
+        data = fits.getdata(str(path)).astype("float64")
+    except Exception:
+        return None
+    med = float(np.median(data))
+    sigma = 1.4826 * float(np.median(np.abs(data - med)))
+    hot = int((data > med + HOT_SIGMA * max(sigma, 1.0)).sum())
+    return {"median": round(med, 2), "mean": round(float(data.mean()), 2),
+            "sigma": round(sigma, 2), "hot_px": hot, "shape": list(data.shape)}
+
+
+def _content_key(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def device_rollup(sessions: list[dict]) -> dict:
+    """``derived/devices.json``: per device (every ``Calibration/<device>/`` and
+    every TELESCOP a session names) its library masters with their header facts,
+    device-clock time and pixel statistics, how many captures each dark served,
+    and the captures themselves with their inferred dark and gap. Pixel stats are
+    cached by content hash in ``derived/master_stats.json``, so a refresh only
+    reads masters it has never seen. Deterministic (sorted, no timestamps)."""
+    import json
+    cache_path = config.DERIVED_DIR / _STATS_CACHE_NAME
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    used: dict = {}
+
+    names = set()
+    if config.CALIBRATION_DIR.is_dir():
+        names |= {d.name for d in config.CALIBRATION_DIR.iterdir()
+                  if d.is_dir() and not config.is_hidden_name(d.name)}
+    names |= {devices.folder_name(r["telescop"]) for r in sessions if r.get("telescop")}
+
+    out = []
+    for dev in sorted(names):
+        caps = [r for r in sessions if r.get("telescop")
+                and devices.folder_name(r["telescop"]) == dev]
+        served: Counter = Counter(r["dark_ref"] for r in caps if r.get("dark_ref"))
+        masters = []
+        for tier, ms in sorted(library(dev).items()):
+            for m in ms:
+                try:
+                    key = _content_key(m.path)
+                except OSError:
+                    continue
+                stats = cache.get(key) or master_stats(m.path)
+                if stats is not None:
+                    used[key] = stats
+                made = device_clock(m.path.name)
+                preview = m.path.with_suffix(".jpg")
+                masters.append({
+                    "tier": tier, "file": m.path.name,
+                    "rel": m.path.relative_to(config.DATA_ROOT).as_posix(),
+                    "preview": (preview.relative_to(config.DATA_ROOT).as_posix()
+                                if preview.is_file() else None),
+                    "exptime": m.exptime, "gain": m.gain, "binning": m.binning,
+                    "temp_c": m.temp_c, "frames": m.ncombine,
+                    "made": made.isoformat() if made else None,
+                    "captures": served.get(m.path.name, 0),
+                    **(stats or {}),
+                })
+        masters.sort(key=lambda m: (m["tier"], m["made"] or "", m["file"]))
+        out.append({
+            "device": dev,
+            "label": devices.display_name(dev),
+            "darks_applied_on_device": devices.darks_applied_on_device(dev),
+            "masters": masters,
+            "captures": [{k: r.get(k) for k in (
+                "date", "object_dir", "slugs", "frames", "exposure_s", "filter",
+                "temp_first", "temp_min", "temp_max", "dark_ref", "dark_temp_c",
+                "dark_gap_c", "dark_link")} for r in sorted(
+                    caps, key=lambda r: (r["date"], r["object_dir"]))],
+        })
+    out.sort(key=lambda d: (not d["masters"], d["device"]))   # libraries first
+    if used != cache:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(used, sort_keys=True), encoding="utf-8")
+        except OSError:
+            pass
+    return {"devices": out}

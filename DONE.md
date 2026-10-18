@@ -718,6 +718,62 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## Seestar dark library — slice 1 *(done 2026-10-18, `feature/seestar-darks`)*
+
+Prompted by the S50 firmware starting to keep master darks in
+`<volume>/darklibrary/20s/MasterDark_<N>_<exp>s_<T>C_<local YYYYMMDD-HHMMSS>.fit`
+(first dark 2026-10-15 19:28). Built on the device-level calibration library split
+from `feature/draco` to `main` the same day (`feature/calibration-library`, #168).
+
+**What the masters are.** uint16 1080×1920, `STACKCNT=5`, EXPTIME/GAIN/XBINNING/
+CCD-TEMP, `FILTER='dark'`, `CREATOR='ZWO Seestar S50'`; **no** IMAGETYP, DATE-OBS,
+TELESCOP or BAYERPAT, and a stale WCS from whatever target was being solved. Dark
+level rises 476 → 512 ADU from 7.7 to 24.9 °C; hot-pixel signal doubles every
+≈6.5 °C. The five real masters are committed gzipped in
+`tests/data/seestar_darklibrary/` for the corpus.
+
+**Seestar subs are already dark-subtracted on the device.** Master hot pixels
+(≈330 ADU over their neighbours) are absent from every raw `_sub` frame — including
+2026-10-03 subs from before the library existed. Hence the guard: a library dark is
+never matched for a `darks_applied_on_device` telescope; a user-placed per-target
+`darks/` still wins but warns.
+
+**Which dark a capture got (rule v1).** Measured across 15 target starts of three
+nights of plans (all 20 s, gain 80):
+
+| Start | Target | First-sub °C | Gap to nearest stored dark | New dark? |
+|---|---|---|---|---|
+| 10-15 19:30 | M 72 | 24.8 | none stored | 24.9 |
+| 21:53 | C 6 | 13.6 | 11.3 | 13.9 |
+| 23:53 | C 22 | 10.2 | 3.7 | 10.5 |
+| 10-16 01:31 | M 45 mosaic | 8.4 | 2.1 | — |
+| 04:50 | M 78 | 9.5 | 1.0 | — |
+| 20:51 | C 6 | 23.0 | 1.9 | 23.2 |
+| 22:11 / 00:31 | M 76 / C 22 | 12.4 / 8.8 | 1.5 / 1.7 | — |
+| 10-17 01:55 | M 78 | 7.8 | 2.7 | 7.7 |
+| 03:03 → 10-18 04:01 | six more | 26.0 → 9.9 | 0.6–1.4 | — |
+
+So darks ARE taken mid-plan with no exposure change, at a target start, when the
+nearest stored dark is ≳2 °C away (the 1.9/2.1 cases are within the ≈2 min between
+decision and first sub); never re-evaluated mid-target (M 72 cooled 24.8 → 14.4 °C
+on one dark, hot pixels over-subtracted down to −240 ADU, growing steadily). The
+applied dark fits nearest-temperature, not most-recent (10-17 C 22: 18/18 sampled
+subs fit 10.5 °C over the newer 23.2 °C); below ≈12 °C neighbouring darks differ by
+only ≈8 ADU, so elsewhere it can't be told apart. ZWO documents none of this.
+Re-darking a 13.9 °C M 72 sub (`L + D24.9 − D13.9`) took its residue from −142 to
+−8 ADU — the basis of the ROADMAP re-darking follow-up.
+
+**Design choices.** The link is *derived* (session rows carry `dark_rule: "v1"`) so a
+revised rule re-derives cleanly. Dark times come from the filename because nothing
+else carries them; the one parser (`calibration.device_clock`) is only ever compared
+with the lights' filename clock (same device, both local — no timezone math), and
+temperature corroborates (`confirmed` ≤10 min + ≤1 °C). Runs split only on a 2 h
+device-clock gap, so a cloud pause doesn't look like a new target start. Session
+capture facts come from a ≤8-header sample cached per file in
+`derived/session_headers.json`; master pixel stats are cached by content hash
+(`derived/master_stats.json`). The Devices view is a Tools dialog, not a sixth rail
+page (minimal-chrome vision), read-only over `derived/devices.json`.
+
 ## Fixed bugs & shipped improvements *(archive)*
 
 - [x] **NFS data root: AppleDouble `._` sidecars enumerated as content (#161)**

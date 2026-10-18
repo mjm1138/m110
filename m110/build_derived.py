@@ -813,6 +813,8 @@ def main():
     summary = build_summary(catalog, totals)
     processing = build_processing(totals, overrides, catalog, sessions)
     goals = build_goals(totals, goals_mod.active_goal_ids())
+    from . import calibration
+    device_info = calibration.device_rollup(sessions)
 
     out_dir = config.DERIVED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -824,6 +826,8 @@ def main():
         json.dumps(processing, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "goals.json").write_text(
         json.dumps(goals, indent=2, ensure_ascii=False), encoding="utf-8")
+    (out_dir / "devices.json").write_text(
+        json.dumps(device_info, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"  totals:     {len(totals['by_slug'])} slugs, "
           f"{len(totals['by_folder'])} folders")

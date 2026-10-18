@@ -175,6 +175,7 @@ What it contains (and what each fixture exercises):
 | **AppleDouble `._` sidecars** beside one M51 light, the M51 Seestar stack, the M63 finished render, `profiles/default.toml` and the M51 journal (the real 48-byte header) | **#161 — a data root on NFS/SMB from a Mac**: the app must start (the `._default.toml` is not a profile), sessions count M51's real subs only, Siril prep links no `._` file, the gallery shows no `._` render, and a backup copies none of them. A tester on a real NFS mount gets these for free; a local-disk tester gets them from the corpus | §2.1, §2.4 |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
 | **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one | §2.2, §2.4 |
+| `M 72` + `M 76` (Seestar S50 `S50_c0ffee00`, TELESCOP/GAIN/CCD-TEMP subs replaying 2026-10-15) + `Calibration/S50_c0ffee00/darks/` (4 **real** masters from `tests/data/seestar_darklibrary/`); the device mount adds `Seestar S50/darklibrary/20s/` (all 5) + `MyWorks/M 72_sub` | **Seestar dark library**: the never-apply guard, the Sessions **Dark** column (M 72 Δ10.5 ⚠ confirmed), Tools → Devices…, a device import offering exactly one new dark | §2.2 |
 
 The generator is covered by `tests/test_make_test_corpus.py`, which builds and
 self-checks a corpus on every `pytest -q` run (~1s, into a temp dir). Treat a
@@ -201,7 +202,7 @@ button**, which probes `/Volumes` for a `MyWorks` folder
   ```bash
   hdiutil create -size 100m -fs APFS -volname "Seestar S50" /tmp/seestar.dmg
   hdiutil attach /tmp/seestar.dmg
-  cp -R ~/Documents/M110-test-device-mount/"Seestar S50"/MyWorks "/Volumes/Seestar S50/"
+  cp -R ~/Documents/M110-test-device-mount/"Seestar S50"/{MyWorks,darklibrary} "/Volumes/Seestar S50/"
   ```
   M110 then offers **Seestar** as a source exactly as it would for the real scope.
   `hdiutil detach "/Volumes/Seestar S50"` when done.
@@ -376,6 +377,30 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] Device files remain intact (copy, not move).
 - [ ] **EPERM regression:** copying from an SMB mount succeeds (no "Operation not
       permitted").
+
+#### Seestar dark library + Tools → Devices…  ⚙ *(guard/ingest/rule v1/rollup automated — `test_seestar_darks.py`, `test_ui_devices.py`)*
+> Corpus: `M 72` and `M 76` are Seestar S50 captures (`S50_c0ffee00`) replaying a
+> real night; `Calibration/S50_c0ffee00/darks/` holds four of the five **real**
+> masters, the device mount all five.
+- [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50` (the volume, not
+      `MyWorks`): one **master darks** row, object `S50_c0ffee00`, **1** frame (the
+      7.7 °C master; its `.jpg` rides along), Pointing **—**, destination
+      `Calibration/S50_c0ffee00/darks/`. Import it; re-browsing offers nothing.
+- [ ] M 72 detail → **Sessions**: the **Dark** column reads `24.9 °C · Δ10.5 ⚠` in the
+      warning color; hover: the master's filename, `confirmed (rule v1)`, sensor
+      14.4–24.8 °C, the `--max-dark-gap` hint. M 76 reads `13.9 °C · Δ2.7` with no ⚠.
+      Overview → View all sessions… has the same **Dark** column (sortable).
+- [ ] **Tools → Devices…**: heading "ZWO Seestar S50 · c0ffee00" + the never-applied
+      note; **Dark library** lists the masters with a preview icon, made time,
+      median, hot px and captures served (24.9 °C and 13.9 °C serve one each);
+      **Captures** lists M 72 + M 76; **Sensor health** draws two scatters (newest
+      master in the accent color). Check light **and** dark theme.
+- [ ] Double-click a capture → the dialog closes and the Library selects that object.
+- [ ] M 72's `siril/` has **no** `darks/`, and `next-steps.md` carries the
+      "already dark-subtracted on the device" note.
+- [ ] With your own Seestar: browse to its volume; the darks land under your unit's
+      `S50_<serial>`; with no `MyWorks` subs on the volume they go to the holding area
+      and the Inspect dialog says why.
 
 #### Ingest crash/cancel safety  *(Bug #2 regressions — do these deliberately)*
 - [ ] **Close the Ingest window while a scan is running** → no crash.

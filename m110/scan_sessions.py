@@ -110,6 +110,122 @@ def _session_bounds(files: list[Path]) -> tuple[str | None, str | None]:
     return (stamps[0], stamps[-1]) if stamps else (None, None)
 
 
+# ── per-segment capture facts: telescope, gain, sensor temperature ────────────
+# Read from a bounded sample of each segment's subs (first, last and up to
+# `_SAMPLE_BETWEEN` evenly spaced between, in capture order) and cached per file
+# in derived/ — keyed on name + size, since a raw sub never changes — so an
+# unchanged store re-reads no headers on refresh. The cache is derived state:
+# safe to delete, rebuilt on the next scan.
+_SAMPLE_BETWEEN = 6
+_HEADER_CACHE_NAME = "session_headers.json"
+
+
+def _sample(ordered: list[Path]) -> list[Path]:
+    if len(ordered) <= _SAMPLE_BETWEEN + 2:
+        return ordered
+    step = (len(ordered) - 1) / (_SAMPLE_BETWEEN + 1)
+    idx = sorted({round(i * step) for i in range(_SAMPLE_BETWEEN + 2)})
+    return [ordered[i] for i in idx]
+
+
+class _HeaderCache:
+    """{"<object_dir>/<file>": {"size", "telescop", "gain", "binning", "temp_c"}}."""
+
+    def __init__(self):
+        self.path = config.DERIVED_DIR / _HEADER_CACHE_NAME
+        try:
+            self.data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self.data = {}
+        self.used: set[str] = set()
+        self.dirty = False
+
+    def facts(self, f: Path) -> dict:
+        key = f"{f.parent.parent.name}/{f.name}"
+        self.used.add(key)
+        try:
+            size = f.stat().st_size
+        except OSError:
+            size = None
+        hit = self.data.get(key)
+        if hit and hit.get("size") == size:
+            return hit
+        facts = {"size": size, **_read_capture_facts(f)}
+        self.data[key] = facts
+        self.dirty = True
+        return facts
+
+    def save(self):
+        stale = set(self.data) - self.used
+        if not (self.dirty or stale):
+            return
+        for k in stale:
+            del self.data[k]
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self.data, sort_keys=True), encoding="utf-8")
+        except OSError:
+            pass                                 # a cache; the scan result stands
+
+
+def _read_capture_facts(path: Path) -> dict:
+    out = {"telescop": None, "gain": None, "binning": None, "temp_c": None}
+    try:
+        from astropy.io import fits
+        h = fits.getheader(str(path))
+    except Exception:
+        return out
+    tel = h.get("TELESCOP")
+    temp = h.get("CCD-TEMP") if h.get("CCD-TEMP") is not None else h.get("DET-TEMP")
+    for key, val, cast in (("gain", h.get("GAIN"), int), ("binning", h.get("XBINNING"), int),
+                           ("temp_c", temp, lambda v: round(float(v), 2))):
+        try:
+            out[key] = cast(val) if val is not None else None
+        except (TypeError, ValueError):
+            pass
+    out["telescop"] = (str(tel).strip() or None) if tel not in (None, "") else None
+    return out
+
+
+def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
+                    libraries: dict) -> dict:
+    """The per-session capture facts and, for a device that dark-subtracts on
+    board, which library dark it most likely applied (calibration.applied_dark,
+    rule v1) and the widest gap between a sampled sub's temperature and it."""
+    from . import calibration, devices
+    ordered = sorted(files, key=lambda p: p.name)        # name order = capture order
+    sample = _sample(ordered)
+    facts = [cache.facts(f) for f in sample]
+    temps = [ff["temp_c"] for ff in facts if ff.get("temp_c") is not None]
+    tel = next((ff["telescop"] for ff in facts if ff.get("telescop")), None)
+    gain = next((ff["gain"] for ff in facts if ff.get("gain") is not None), None)
+    binning = next((ff["binning"] for ff in facts if ff.get("binning") is not None), None)
+    out = {
+        "telescop": tel, "gain": gain,
+        "temp_first": facts[0].get("temp_c") if facts else None,
+        "temp_last": facts[-1].get("temp_c") if facts else None,
+        "temp_min": min(temps) if temps else None,
+        "temp_max": max(temps) if temps else None,
+        "dark_ref": None, "dark_temp_c": None, "dark_gap_c": None,
+        "dark_link": None, "dark_rule": None,
+    }
+    if not ordered or not devices.darks_applied_on_device(tel):
+        return out
+    device = devices.folder_name(tel)
+    if device not in libraries:
+        libraries[device] = calibration.library(device).get("darks", [])
+    ad = calibration.applied_dark(
+        calibration.device_clock(ordered[0].name), out["temp_first"],
+        exptime=exp, gain=gain, binning=binning, masters=libraries[device])
+    if ad is None:
+        return out
+    gaps = [g for g in (ad.gap(t) for t in temps) if g is not None]
+    out.update(dark_ref=ad.master.path.name, dark_temp_c=ad.master.temp_c,
+               dark_gap_c=round(max(gaps), 1) if gaps else None,
+               dark_link=ad.link, dark_rule=ad.rule)
+    return out
+
+
 def _read_eqmode(path: Path) -> bool | None:
     """Reported mount mode from the FITS ``EQMODE`` card: ``True`` (Equatorial) /
     ``False`` (Alt-Az), or ``None`` when unreadable or absent. **Both** the Seestar
@@ -291,6 +407,8 @@ def scan() -> list[dict]:
 
     catalog_slugs = load_catalog_slugs()
     rows: list[dict] = []
+    cache = _HeaderCache()
+    libraries: dict = {}                     # device → its library darks (one read)
 
     for obj_dir in sorted(images.iterdir()):
         if not obj_dir.is_dir() or obj_dir.name in SKIP_DIRS:
@@ -339,8 +457,10 @@ def scan() -> list[dict]:
                 "pre_new_start": session_date < NEW_START,
                 "first_obs": first_obs,      # UTC DATE-OBS of the segment's
                 "last_obs": last_obs,        # earliest / latest sub (None if unreadable)
+                **_capture_fields(members[(iso, exp, filt)], exp, cache, libraries),
             }
             rows.append(row)
+    cache.save()
     rows.sort(key=lambda r: (r["date"], r["object_dir"], r["exposure_s"]))
     return rows
 

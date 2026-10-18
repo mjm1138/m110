@@ -22,7 +22,7 @@ import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import catalog, config, hints, media
+from . import catalog, config, devices, hints, media
 
 _log = logging.getLogger("m110")
 
@@ -91,6 +91,7 @@ LAYOUTS = [
     Layout("dwarf",           "DwarfLab Dwarf",  True),    # DWARF_RAW_*/STARTRAILS_* session folders
     Layout("m110-store",      "M110 store",      True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
     Layout("calibration",     "Calibration masters", True), # a store's Calibration/<device>/<tier>/
+    Layout("seestar-darks",   "Seestar dark library", True), # <volume>/darklibrary/<exp>s/MasterDark_*
     Layout("raw-fits",        "Raw FITS",        True),    # loose FITS sorted by header
     Layout("finished-render", "Finished render", True),    # a loose *_processed/final raster in an object folder
     Layout("asiair",          "ZWO ASIAIR",      False),   # registered placeholder
@@ -646,6 +647,8 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     # rule below and import as a capture target named after the device.
     if _is_store_calibration_dir(src_dir, name):
         return "calibration"
+    if _is_seestar_darklib_dir(src_dir, name):
+        return "seestar-darks"
     # M110-store-shaped (precursor like ~/Astronomy/Images): a known content
     # subdir under an <object>, or an <object> under a known container.
     if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
@@ -936,6 +939,68 @@ def _classify_calibration_dir(src_dir: Path, name: str, action: str,
                           f"{dev} calibration masters", action, "calibration")
 
 
+# ── Seestar dark library (<volume>/darklibrary/<exp>s/) ───────────────────────
+# Since its 2026-10 firmware the Seestar keeps its master darks beside MyWorks:
+# ``darklibrary/20s/MasterDark_5_20.0s_13.9C_20261015-215239.fit`` (+ a full .jpg
+# and a _thn.jpg). The masters carry EXPTIME/GAIN/XBINNING/CCD-TEMP/STACKCNT but
+# no TELESCOP, so the device is read from the lights on the same volume. They are
+# archived, never applied: the subs are already dark-subtracted on the device
+# (devices.darks_applied_on_device).
+_SEESTAR_DARKLIB_DIRNAME = "darklibrary"
+_SEESTAR_MASTER_RE = re.compile(r"^MasterDark_", re.IGNORECASE)
+_VOLUME_DEVICE_READS = 12          # header reads to find a TELESCOP on the volume
+
+
+def _is_seestar_darklib_dir(src_dir: Path, name: str) -> bool:
+    return (src_dir.parent.name.lower() == _SEESTAR_DARKLIB_DIRNAME
+            and any(_SEESTAR_MASTER_RE.match(f) for f in _fit_files(src_dir)))
+
+
+def _device_from_volume_lights(volume: Path, ctx: dict | None = None) -> str | None:
+    """The Seestar a volume belongs to: the ``TELESCOP`` of the first raw sub under
+    ``<volume>/MyWorks/*_sub/`` that names one (at most `_VOLUME_DEVICE_READS`
+    header reads), or None. Memoised per scan in `ctx`."""
+    key = ("volume_device", str(volume))
+    if ctx is not None and key in ctx:
+        return ctx[key]
+    found = None
+    reads = 0
+    myworks = volume / "MyWorks"
+    subdirs = (sorted(d for d in myworks.iterdir() if d.is_dir() and d.name.endswith("_sub"))
+               if myworks.is_dir() else [])
+    for d in subdirs:
+        for f in _fit_files(d)[:2]:
+            reads += 1
+            tel = (frame_info(str(d / f)) or {}).get("telescop")
+            if tel and (devices.preset_key(tel) or "").startswith("seestar"):
+                found = tel
+                break
+        if found or reads >= _VOLUME_DEVICE_READS:
+            break
+    if ctx is not None:
+        ctx[key] = found
+    return found
+
+
+def _classify_seestar_darks_dir(src_dir: Path, name: str, action: str,
+                                handled: set, ctx: dict | None) -> list[IngestOp]:
+    """Route a Seestar ``darklibrary/<exp>s/`` into ``Calibration/<TELESCOP>/darks/``
+    — each master plus its full-size ``.jpg`` preview (the ``_thn.jpg`` is not
+    content). No device on the volume → nothing claimed: the sweep holds the files
+    and `identify_holding` explains why."""
+    device = _device_from_volume_lights(src_dir.parent.parent, ctx)
+    if not device:
+        return []
+    dev = _safe_segment(devices.folder_name(device))
+    masters = [f for f in _fit_files(src_dir) if _SEESTAR_MASTER_RE.match(f)]
+    previews = [p for p in (Path(f).stem + ".jpg" for f in masters)
+                if (src_dir / p).is_file()]
+    files = masters + previews
+    handled.update(files)
+    return _emit_one_kind(src_dir, files, "cal-dark", dev, f"{dev} dark library",
+                          action, "seestar-darks")
+
+
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
                       handled: set, should_cancel=None) -> list[IngestOp]:
     """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
@@ -995,7 +1060,8 @@ def _emit_unassigned(src_dir: Path, files, name: str, action: str,
 
 
 def _classify_dir(src_dir: Path, name: str, action: str,
-                  should_cancel=None, *, hold_name: str | None = None) -> list[IngestOp]:
+                  should_cancel=None, *, hold_name: str | None = None,
+                  ctx: dict | None = None) -> list[IngestOp]:
     """Classify ONE source directory and return the ops for its NEW files. Picks a
     layout recognizer (6b) — M110-store-shaped, Seestar folder conventions, or a
     raw-FITS header sort — delegates, then **sweeps any unclaimed content file into
@@ -1010,7 +1076,7 @@ def _classify_dir(src_dir: Path, name: str, action: str,
     scan passes a parent-qualified one when two visited dirs share a leaf name, so
     ``dark/cam_0`` and ``flat/cam_0`` don't merge into one ``Inbox/cam_0/`` group
     (and a same-named file from the second dir isn't silently dropped as "already
-    held")."""
+    held"). `ctx` is the per-scan memo the recognizers may share."""
     if _in_own_store(src_dir) or name.lower() in _SKIP_DIRS:
         return []
     layout = _detect_layout(src_dir, name)
@@ -1019,6 +1085,8 @@ def _classify_dir(src_dir: Path, name: str, action: str,
         ops = _classify_store_dir(src_dir, name, action, handled)
     elif layout == "calibration":
         ops = _classify_calibration_dir(src_dir, name, action, handled)
+    elif layout == "seestar-darks":
+        ops = _classify_seestar_darks_dir(src_dir, name, action, handled, ctx)
     elif layout == "dwarf":
         ops = _classify_dwarf_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "seestar":
@@ -1126,13 +1194,14 @@ def scan_directory_plan(root, action: str = "copy", should_cancel=None,
     dirs_visited = dirs_skipped = 0
     visited = _walk(root, should_cancel)
     hold_names = _hold_names([d for d, _files in visited])
+    ctx: dict = {}                                # per-scan memo shared by recognizers
     for d, files in visited:
         if should_cancel and should_cancel():
             raise IngestCancelled()
         if progress:
             progress(scanned, d.name)             # announce the dir before scanning it
         dir_ops = _classify_dir(d, d.name, action, should_cancel,
-                                hold_name=hold_names[d])
+                                hold_name=hold_names[d], ctx=ctx)
         content = len(_content_files(d))
         if content or dir_ops:
             dirs_visited += 1
@@ -1252,7 +1321,9 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
             group=gops[0].group,        # display label = source folder name (not the key)
             object=_object_label(gops[0]),
             kind=kind,
-            frames=len(gops),
+            # a calibration row counts masters, not their .jpg previews
+            frames=(sum(1 for o in gops if config.is_fits_file(Path(o.src).name))
+                    if kind in _CAL_KINDS else len(gops)),
             size_bytes=sum(o.size_bytes for o in gops),
             dest_dir=dest_dir,
             new_object=any(o.new_object for o in gops),
@@ -1274,12 +1345,18 @@ def scan_staging_plan(should_cancel=None, progress=None) -> list[IngestOp]:
 
 
 def scan_seestar_plan(should_cancel=None, progress=None) -> list[IngestOp]:
-    """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
-    untouched). Empty if no Seestar is mounted. Reads only. Delegates to the
-    recursive `scan_directory_plan` so nested MyWorks subfolders are found (#32 — the
-    old shallow one-level scan silently missed them)."""
-    return scan_directory_plan(config.find_seestar_myworks(), "copy",
-                               should_cancel, progress)
+    """Dry-run plan for a mounted Seestar's MyWorks **and** its sibling
+    ``darklibrary/`` when present (copies — leaves the device untouched). Empty if no
+    Seestar is mounted. Reads only. Delegates to the recursive `scan_directory_plan`
+    so nested MyWorks subfolders are found (#32 — the old shallow one-level scan
+    silently missed them)."""
+    myworks = config.find_seestar_myworks()
+    ops = scan_directory_plan(myworks, "copy", should_cancel, progress)
+    if myworks is not None:
+        darklib = Path(myworks).parent / _SEESTAR_DARKLIB_DIRNAME
+        if darklib.is_dir():
+            ops += scan_directory_plan(darklib, "copy", should_cancel, progress)
+    return ops
 
 
 # ── holding area (6c): manual assign of unclassifiable files ───────────────────
@@ -1416,7 +1493,7 @@ def identify_holding(group: IngestGroup, coords: dict | None = None,
 
     fits_path, sample = _representative_files(group)
     info = {"header": None, "suggested_id": None, "suggested_slug": None,
-            "suggested_kind": None, "reason": None,
+            "suggested_kind": None, "reason": None, "note": None,
             "sample": str(sample) if sample else None}
     if fits_path is None:
         return info
@@ -1428,6 +1505,13 @@ def identify_holding(group: IngestGroup, coords: dict | None = None,
 
     if hdr.get("imagetyp") in ("light", "dark", "flat", "bias"):
         info["suggested_kind"] = hdr["imagetyp"]
+    if _SEESTAR_MASTER_RE.match(Path(fits_path).name):
+        # a Seestar master dark held because its volume named no device: it is
+        # never a capture target, so say what to do instead of suggesting one
+        info["note"] = ("a Seestar master dark from an unidentified telescope — "
+                        "import the device (MyWorks and darklibrary together) so "
+                        "it files under Calibration/<telescope>/darks/")
+        return info
 
     slug, reason = _suggest_slug(hdr, coords, cat, ref)
     if slug:

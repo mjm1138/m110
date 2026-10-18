@@ -10,6 +10,13 @@ small rendered PNGs) that exercises the whole app:
         the `.fits` extension, a narrowband filter, and 2nd-device rendering/sessions
   * a captured **globular cluster** (M13) → object-type variety (the corpus is
         otherwise galaxies + nebulae; feeds the prioritizer type-weights)
+  * **Seestar S50 captures with its dark library** (M 72, M 76): subs carrying
+        TELESCOP/GAIN/CCD-TEMP that replay the real 2026-10-15 night — M 72 cooled
+        10 °C on its one dark, M 76 started right after a fresh one — plus FOUR of the
+        five REAL master darks (tests/data/seestar_darklibrary) in
+        `Calibration/S50_c0ffee00/darks/`, and all five on the fake device mount → the
+        Sessions "Dark" column, Tools → Devices…, the never-apply guard in prep, and a
+        device import that offers exactly one new dark
   * **video media** (a Timelapse_video/*.mp4) → the Media page's video-row path
   * a **per-image curation override** (#17) on M42 → the detail pane's
         Finished / Working gallery split has a non-default example
@@ -60,6 +67,7 @@ Then test against it (no install changes needed):
 from __future__ import annotations
 
 import argparse
+import gzip
 import os
 import shutil
 import tarfile
@@ -211,6 +219,53 @@ def _dwarf_stack(folder: str, obj: str, ra: float, dec: float, n: int, exp: int,
     _png(d / "stacked.jpg", seed)   # the device preview render
 
 
+# ── Seestar S50 + its on-device dark library (2026-10 firmware) ───────────────
+
+SEESTAR_DARKS = Path(__file__).resolve().parent.parent / "tests" / "data" / "seestar_darklibrary"
+S50_TELESCOP = "S50_c0ffee00"          # a fake unit serial (the real masters carry none)
+S50_STORE_DARKS = ("24.9C", "13.9C", "10.5C", "23.2C")   # the mount adds the 7.7C one
+
+
+def _seestar_master(name: str, dest_dir: Path):
+    """Unpack one real master (byte-identical) + the device's .jpg/_thn.jpg."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    out = dest_dir / name
+    out.write_bytes(gzip.decompress((SEESTAR_DARKS / f"{name}.gz").read_bytes()))
+    data = fits.getdata(out).astype("float64")
+    lo, hi = np.percentile(data, (1, 99.9))
+    img = (255 * np.clip((data - lo) / ((hi - lo) or 1), 0, 1)).astype("uint8")
+    prev = Image.fromarray(img, "L").resize((270, 480))
+    prev.save(dest_dir / f"{out.stem}.jpg", quality=80)
+    if "darklibrary" in dest_dir.parts:
+        prev.resize((68, 120)).save(dest_dir / f"{out.stem}_thn.jpg", quality=70)
+
+
+def _seestar_masters() -> list[str]:
+    return sorted(p.name[:-3] for p in SEESTAR_DARKS.glob("*.fit.gz"))
+
+
+def _s50_lights(folder: str, obj: str, ra: float, dec: float,
+                start: datetime, n: int, t0: float, t1: float, seed0: int):
+    """n S50 subs, 10 min apart from `start` (device clock = local; DATE-OBS = UTC,
+    6 h ahead), the sensor cooling linearly from t0 to t1 °C."""
+    d = config.lights_dir(folder)
+    names = []
+    for i in range(n):
+        when = start + timedelta(minutes=10 * i)
+        name = f"Light_{obj}_20.0s_IRCUT_{when.strftime('%Y%m%d-%H%M%S')}.fit"
+        _fits(d / name, obj, ra, dec, 20.0, "IRCUT", when + timedelta(hours=6), seed0 + i)
+        with fits.open(d / name, mode="update") as hdul:
+            h = hdul[0].header
+            h["TELESCOP"] = S50_TELESCOP
+            h["INSTRUME"] = "Seestar S50"
+            h["GAIN"] = 80
+            h["XBINNING"] = 1
+            h["EQMODE"] = 1
+            h["CCD-TEMP"] = round(t0 + (t1 - t0) * i / max(n - 1, 1), 2)
+        names.append(name)
+    return names
+
+
 def _reject(folder: str, names: list[str]):
     """Move subs out of `lights/` into `rejected/` — the #110 exclusion, exactly as
     a user does it by hand in a file manager."""
@@ -354,6 +409,22 @@ def build(out: Path):
     _lights("M13", "M13", ra, dec, 30, "LP", base + timedelta(days=12), 16, 5200)
     _seestar_stack("M13", "M13", ra, dec, 100, 30, "LP",
                    base + timedelta(days=12, hours=1), 5300)
+
+    # M 72 + M 76 — a Seestar S50 night replayed from the real one (2026-10-15):
+    # M 72 ran 19:30→21:50 on the one dark the library had (24.9 °C) while the
+    # sensor cooled to 14.4 °C (Dark column Δ≈10 ⚠, link "confirmed"); M 76 began
+    # 21:53, a minute after a fresh 13.9 °C dark (Δ≈2.4). The store's
+    # Calibration/ holds four of the five REAL masters; the device mount adds the
+    # fifth, so a device import offers exactly one new dark.
+    ra, dec = C("m72")
+    _s50_lights("M 72", "M 72", ra, dec, datetime(2026, 10, 15, 19, 30, 0), 15,
+                24.8, 14.4, 5400)
+    ra, dec = C("m76")
+    _s50_lights("M 76", "M 76", ra, dec, datetime(2026, 10, 15, 21, 53, 47), 12,
+                13.6, 11.2, 5500)
+    for name in _seestar_masters():
+        if any(f"_{t}_" in name for t in S50_STORE_DARKS):
+            _seestar_master(name, config.calibration_dir(S50_TELESCOP, "darks"))
 
     # ---- M106 — a Siril sandbox with UNIMPORTED output (round-trip test) ----
     # Its sandbox hardlinks M106's *real* subs (it used to hold unrelated synthetic
@@ -547,6 +618,16 @@ def _build_device_mount(dev: Path):
         when = start + timedelta(seconds=21 * i)
         _fits(myworks / f"Light_M101_30s_LP_{when.strftime('%Y%m%d-%H%M%S')}.fit",
               "M101", ra, dec, 30, "LP", when, 6000 + i)
+
+    # ---- Seestar S50: its dark library beside MyWorks, plus M 72's subs (already
+    # in the store, so nothing new — they're what names the device: the masters
+    # carry no TELESCOP). The 7.7 °C master is the one the store doesn't have.
+    s50 = dev / "Seestar S50" / "MyWorks" / "M 72_sub"
+    s50.mkdir(parents=True)
+    for f in sorted(config.lights_dir("M 72").iterdir()):
+        shutil.copyfile(f, s50 / f.name)
+    for name in _seestar_masters():
+        _seestar_master(name, dev / "Seestar S50" / "darklibrary" / "20s")
 
     # ---- Dwarf 3: the same shape on the other device ----
     session = (dev / "DWARF3" / "Astronomy"
@@ -799,6 +880,28 @@ def verify(out: Path):
     print(f"  device mount: {len(on_device)} frame(s) present, "
           f"{len(offered)} offered (rejected pair correctly withheld)")
 
+    # Seestar dark library: the mount's darklibrary/ offers only the one master the
+    # store lacks, filed under the telescope named by the MyWorks subs beside it.
+    from m110 import calibration, derived
+    dark_ops = [o for o in ingest.scan_directory_plan(dev / "Seestar S50")
+                if o.kind == "cal-dark"]
+    dark_fits = [o for o in dark_ops if o.src.endswith(".fit")]
+    assert len(dark_fits) == 1 and "_7.7C_" in dark_fits[0].src, \
+        f"exactly the 7.7 °C master should be offered, got {[o.src for o in dark_fits]}"
+    assert dark_fits[0].dest_rel.startswith(f"Calibration/{S50_TELESCOP}/darks/")
+    # …and is never applied: Seestar subs are already dark-subtracted on-device.
+    plan = siril.plan_prep("M 72")
+    assert "darks" not in plan.calib_kinds and calibration.DARKS_ON_DEVICE_NOTE in plan.calib_notes
+    assert not (config.siril_dir("M 72") / "darks").exists(), "a Seestar dark was linked"
+    by_dir = {r["object_dir"]: r for r in sessions}
+    m72, m76 = by_dir["M 72"], by_dir["M 76"]
+    assert m72["dark_temp_c"] == 24.9 and m72["dark_gap_c"] > 3 and m72["dark_link"] == "confirmed"
+    assert m76["dark_temp_c"] == 13.9 and m76["dark_gap_c"] < 3 and m76["dark_link"] == "confirmed"
+    (s50,) = [d for d in derived.load_devices() if d["device"] == S50_TELESCOP]
+    assert len(s50["masters"]) == len(S50_STORE_DARKS) and len(s50["captures"]) == 2
+    print(f"  Seestar darks: {len(s50['masters'])} in the library, 1 new on the device; "
+          f"M 72 Δ{m72['dark_gap_c']} °C ({m72['dark_link']}), never linked into prep")
+
     # Phase 5 (5d): Caldwell goal active; the Library is the captured collection
     # (only *captured* Caldwell members land here, not the whole catalog), and the
     # stale stub is left incomplete for the Fill-missing demo.
@@ -876,6 +979,9 @@ def main():
           f"(classifies + sweeps strays to the Holding area panel)")
     print(f"  # and  Import → Browse… → ~/Documents/{device.name}/'Seestar S50'/MyWorks  "
           f"(#110: only the 2 new subs are offered — the rejected pair is withheld)")
+    print(f"  # and  Import → Browse… → ~/Documents/{device.name}/'Seestar S50'  "
+          f"(the dark library: one new master dark → Calibration/{S50_TELESCOP}/darks/)")
+    print("  # and  Tools → Devices…  (dark library, captures with their dark gap, sensor health)")
 
 
 if __name__ == "__main__":

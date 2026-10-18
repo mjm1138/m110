@@ -24,6 +24,31 @@ will land. Device layouts are recognized automatically — a Seestar export, a D
 M110 reads the FITS headers to identify each frame (object, date, exposure, filter,
 pointing), so it works across devices regardless of their filename conventions.
 
+### The Seestar's dark library
+
+Recent Seestar firmware keeps its master darks in a `darklibrary/` folder beside
+`MyWorks/`. Importing from the Seestar brings those in too, filed under
+`Calibration/<telescope>/darks/` (the telescope is named from the subs on the same
+device, e.g. `S50_15e7e390`). Reconnecting copies only darks you don't have yet.
+
+M110 **never applies** these darks: the Seestar already subtracts a dark from every
+sub before saving it, so subtracting one again would do it twice. They're kept as a
+record of what the telescope did:
+
+- The **Dark** column in an object's Sessions table (and in the full session log)
+  shows the dark the telescope most likely used and how far the sensor drifted from
+  it during the capture — "24.9 °C · Δ10.5 ⚠". A ⚠ means more than 3 °C: hot pixels
+  in the drifted subs are over- or under-subtracted. `m110-stack --max-dark-gap 3`
+  leaves those subs out of a stack.
+- **Tools → Devices…** shows each telescope's dark library, the captures each dark
+  served, and its sensor health over time (dark level and hot-pixel count against
+  temperature).
+
+Which dark a capture got is *inferred* — the Seestar doesn't record it — from
+when each dark was made (its filename time) and the sensor temperature. A link says
+**confirmed** when the dark was made for that capture minutes before it started at
+the same temperature, and **inferred** otherwise.
+
 ## Where things land — the library layout
 
 Your data folder is organized around **two views of the same collection**:
@@ -41,6 +66,7 @@ Your data folder is organized around **two views of the same collection**:
     previews/                   per-sub JPG previews (only if you opt in)
     siril/                      the processing sandbox (see Processing)
     (darks/ flats/ biases/)     calibration frames, if you have them
+  Calibration/<telescope>/     master darks/flats/biases that belong to a telescope
   Media/<category>_photo|_video/   lunar / planetary / scenery / startrails
   Plans/                      saved session field guides (see Session planning)
   Inbox/                      holding area for files awaiting manual assignment

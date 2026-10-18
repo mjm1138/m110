@@ -1026,6 +1026,24 @@ remaining device-source gaps collect here:
   header-only matching (`calibration.py`), Siril prep + `m110-stack` use it, and a
   store-shaped `Calibration/` imports as itself. The DwarfLab `CALI_FRAME/`
   recognizer and its header-stamp shim stay on `feature/draco`.
+- **Seestar dark library** — slice 1 **shipped 2026-10-18** (`feature/seestar-darks`,
+  see [`DONE.md`](DONE.md)): `darklibrary/` imports into `Calibration/<S50_serial>/darks/`,
+  the never-re-apply guard (`devices.darks_applied_on_device`), per-session capture
+  facts + the inferred on-device dark and its temperature gap (rule v1; `m110-stack
+  --max-dark-gap`), and Tools → Devices… (library, captures, sensor health). This is
+  also the first per-session device record (`telescop` on every session row) — the
+  registry + `Images/<target>/<device>/` level above are still open. Follow-ups:
+  - **Confirm the trigger rule on the device** — a controlled two-target plan at
+    dusk (≥2.5 °C vs ≈1.5 °C of cooling between targets); rule v1's ≈2 °C threshold
+    and "nearest dark, held for the run" are inferred from three nights, not
+    documented by ZWO. Revise `calibration.applied_dark` (bump `DARK_RULE`) on any
+    surprise.
+  - **Cosmetic correction from the hot-pixel map** — feed the warmest master to
+    Siril's cosmetic correction to clean residual hot pixels without a second dark
+    subtraction.
+  - **Re-darking** (research): `sub + D_applied − D_matched` took a real 13.9 °C
+    M 72 sub's hot-pixel residue from −142 to −8 ADU. Opt-in, sandbox-only, never
+    `lights/`; needs the device's subtraction model confirmed first.
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +
