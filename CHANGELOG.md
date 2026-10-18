@@ -10,7 +10,37 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **A calibration library per telescope.** Your library now has a top-level
+  `Calibration/<telescope>/` folder (`darks/`, `flats/`, `biases/`) for master
+  calibration frames that belong to a telescope rather than to one object. The
+  folder is named after the telescope's own name in its FITS headers. Importing
+  another M110 library's `Calibration/` folder (a backup, a second computer) files
+  the masters back there, never as an object. Backups keep the library at every
+  level.
+- **Processing uses the right master automatically.** When an object has no
+  calibration frames of its own, preparing it for Siril now picks one master per
+  kind from its telescope's library: the dark with the same exposure, gain and
+  binning and the nearest sensor temperature, the bias for that binning, and a
+  flat only when exactly one fits the filter. The chosen files are linked beside
+  the lights and the Naztronomy preset's calibration switches are turned on; the
+  `next-steps.md` in the folder says which were used and why any were skipped.
+  `m110-stack` does the same for the frames it is about to stack;
+  `--no-calibration` turns it off. Your own `darks/`, `flats/` or `biases/` on an
+  object always win, and an object shot on two different telescopes is never
+  given one telescope's masters.
+
 ### Fixed
+- **Calibration frames now reach every Siril job on a mixed-filter object.** They
+  were linked once at the top of the processing folder, but the Naztronomy script
+  looks for `darks/` next to the `lights/` it is run on, which for an object shot
+  through two filters is a per-filter folder underneath. Each job folder now gets
+  its own links.
+- **Same-named folders no longer merge in the holding area.** Files from two
+  source folders that share a name (say `dark/cam_0` and `flat/cam_0`) used to be
+  held together under one name, and a file with the same name in the second
+  folder was silently skipped. Each now gets its own group, named after its
+  parent folder too (`dark_cam_0`, `flat_cam_0`).
 - **Importing a StackingWizard/AstroWizard finish now updates the object's
   processing status.** The stack StackingWizard made stayed in the `astrowizard`
   working folder, so an object like M32 kept showing "out of date" against an older

@@ -820,6 +820,42 @@ def test_nothing_silently_ignored(tmp_path, monkeypatch):
     assert {"Light_a.fit", "x.fit", "pretty.jpg"} <= seen
 
 
+def test_holding_groups_do_not_collide_on_leaf_name(tmp_path, monkeypatch):
+    """Two unclassifiable dirs that share a leaf name (the Draco's
+    ``CALI_FRAME/dark/cam_0`` + ``flat/cam_0``) used to merge into ONE
+    ``Inbox/cam_0/`` group, and a same-named file in the second dir was silently
+    dropped as "already held". Each dir must hold under its own parent-qualified
+    name — while layout detection and object resolution still see the bare name."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    for parent in ("a", "b"):
+        d = src / parent / "cam_0"
+        d.mkdir(parents=True)
+        (d / f"{parent}_only.png").write_bytes(b"png")
+        (d / "same_name.png").write_bytes(parent.encode())
+    ops = ingest.scan_directory_plan(str(src))
+    held = [o for o in ops if o.kind == "unassigned"]
+    assert len(held) == 4                                   # nothing dropped
+    dests = sorted(o.dest_rel for o in held)
+    assert dests == ["Inbox/a_cam_0/a_only.png", "Inbox/a_cam_0/same_name.png",
+                     "Inbox/b_cam_0/b_only.png", "Inbox/b_cam_0/same_name.png"]
+    assert {o.group for o in held} == {"a_cam_0", "b_cam_0"}
+    # A dir with a unique leaf name keeps its plain label (no churn for the
+    # ordinary import, whose "already held" detection keys on that label).
+    names = ingest._hold_names([src / "a" / "cam_0", src / "b" / "cam_0",
+                                src / "c" / "cam_1"])
+    assert names[src / "c" / "cam_1"] == "cam_1"
+    # Still colliding after one level → qualify further.
+    names = ingest._hold_names([src / "x" / "a" / "cam_0", src / "y" / "a" / "cam_0"])
+    assert names[src / "x" / "a" / "cam_0"] == "x_a_cam_0"
+    assert names[src / "y" / "a" / "cam_0"] == "y_a_cam_0"
+    # Apply: both files named same_name.png land, in their own groups.
+    ingest.apply_ops(ops)
+    assert (config.STAGING_DIR / "a_cam_0" / "same_name.png").read_bytes() == b"a"
+    assert (config.STAGING_DIR / "b_cam_0" / "same_name.png").read_bytes() == b"b"
+    assert {g.group for g in ingest.scan_holding()} == {"a_cam_0", "b_cam_0"}
+
+
 def test_scan_holding_groups_by_top_folder(tmp_path, monkeypatch):
     """scan_holding lists Inbox content as unassigned ops grouped by top subfolder."""
     root, _ = _make_staging(tmp_path, monkeypatch)

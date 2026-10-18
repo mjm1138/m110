@@ -24,7 +24,15 @@ KIND_LABEL = {
     "siril-stack": "Siril stack", "finished": "finished",
     "preview": "sub previews", "unassigned": "→ holding area",
     "rejected": "rejected subs",
+    # device-level calibration library (Calibration/<device>/…); the row's
+    # "object" is the telescope
+    "cal-dark": "master darks", "cal-flat": "master flats",
+    "cal-bias": "master biases",
 }
+
+# Kinds whose rows have no pointing to verify (the Pointing column shows "—").
+NO_POINTING_KINDS = frozenset({"media", "dark", "flat", "bias", "finished",
+                               "unassigned", "cal-dark", "cal-flat", "cal-bias"})
 
 # Kinds a held file can be manually assigned to (6c), in dropdown order.
 ASSIGNABLE_KINDS = ["light", "dark", "flat", "bias", "stack",
@@ -237,7 +245,7 @@ class IngestDialog(QDialog):
             self.table.setItem(r, 2, QTableWidgetItem(KIND_LABEL.get(g.kind, g.kind)))
             self.table.setItem(r, 3, QTableWidgetItem(str(g.frames)))
             self.table.setItem(r, 4, QTableWidgetItem(_fmt_size(g.size_bytes)))
-            point = g.pointing or ("—" if g.kind == "media" else "✓")
+            point = g.pointing or ("—" if g.kind in NO_POINTING_KINDS else "✓")
             self.table.setItem(r, 5, QTableWidgetItem(point))
             self.table.setItem(r, 6, QTableWidgetItem(g.dest_dir))
         self._loading = False

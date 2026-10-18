@@ -67,8 +67,9 @@ def test_ensure_data_root_creates_and_seeds(tmp_path):
     assert (internal / "priorities.toml").is_file()
     # a "don't touch" README accompanies the internals
     assert (internal / "README.txt").is_file()
-    # directory skeleton: two visible axes + Media/Inbox + hidden internals
-    for sub in ("Objects", "Images", "Media", "Inbox",
+    # directory skeleton: two visible axes + Media/Inbox/Plans + the device-level
+    # Calibration/ library + hidden internals
+    for sub in ("Objects", "Images", "Media", "Inbox", "Plans", "Calibration",
                 config.INTERNAL_DIRNAME,
                 f"{config.INTERNAL_DIRNAME}/derived",
                 f"{config.INTERNAL_DIRNAME}/renders/hero"):

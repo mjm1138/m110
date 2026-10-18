@@ -26,6 +26,11 @@ KEEP_ALWAYS = [
     "Images/M51/siril/presets/naztronomy.ssf",
     "Images/M51/siril/next-steps.md",
     "Media/Lunar_photo/moon.jpg",
+    # the device-level calibration library: a master dark is minutes of capture
+    # per temperature and cannot be re-shot for a night that is gone
+    "Calibration/Draco/darks/dark_exp_300.000000_gain_60_bin_1_13C_stack_10.fits",
+    "Calibration/Draco/flats/flat_gain_2_bin_1_ir_1.fits",
+    "Calibration/DWARF 3/biases/bias_gain_2_bin_1.fits",
 ]
 
 # Dropped at `essentials` only — the bulk that a user can keep locally.
