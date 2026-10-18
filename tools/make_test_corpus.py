@@ -122,6 +122,26 @@ def _stack_fits(path: Path, obj: str, ra: float, dec: float, exp: float, filt: s
             h["HISTORY"] = line
 
 
+def _stack3_fits(path: Path, obj: str, ra: float, dec: float, seed: int, frames: int):
+    """A stacked product the way DwarfLab's offline test stack is written: 3-plane
+    uint16, `NCOMBINE`/`STACKCNT`, per-frame `EXPTIME` + total `EXPOSURE`, and a
+    name with NO 'stacked' marker — header truth is the only way to know."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = np.stack([_blob(seed=seed + i) for i in range(3)]).astype("uint16")
+    hdu = fits.PrimaryHDU(data=data)
+    h = hdu.header
+    h["OBJECT"] = obj
+    h["FILTER"] = "Duo-Band"
+    h["EXPTIME"] = 300.0
+    h["EXPOSURE"] = 300.0 * frames
+    h["STACKCNT"] = frames
+    h["NCOMBINE"] = frames
+    h["RA"] = round(ra, 5)
+    h["DEC"] = round(dec, 5)
+    h["TELESCOP"] = "Draco"
+    hdu.writeto(path, overwrite=True)
+
+
 def _fits_unclassifiable(path: Path, seed: int, obj: str | None = None):
     """A FITS frame with no IMAGETYP and (by default) no OBJECT — the kind of file
     the importer can't place, so it falls into the Inbox/ holding area (6c)."""
@@ -644,6 +664,9 @@ def _build_import_source(src: Path):
     _fits(dump / "Light_M92_30s_LP_20260620-010000.fit", "M92", ra, dec, 30, "LP",
           datetime(2026, 6, 20, 1, 0, 0), 2600)                # → Images/M92/lights
     _fits_unclassifiable(dump / "capture_001.fit", 2610)       # headerless → holding
+    # a loose stack with no name marker (DwarfLab's Oct-2026 test stack shape):
+    # header truth (3 planes, NCOMBINE) → the stack tier, never a light
+    _stack3_fits(dump / "stack_linear_uint16.fits", "IC 1805", *C("sh2-190"), 2630, 36)
     _png(dump / "edit_final.png", 2620)                        # stray render → holding
 
     # DwarfLab Dwarf 3 on-device sessions (the `dwarf` layout, 6b): a raw-subs +
@@ -919,6 +942,10 @@ def verify(out: Path):
     print(f"  Draco import: {len(draco_lights)} lights named by pointing, "
           f"{len(cal_ops)} masters → Calibration/Draco/; prep links "
           f"{', '.join(prep.calib_kinds)} from the library")
+    loose = [o for o in src_ops if Path(o.src).name == "stack_linear_uint16.fits"]
+    assert loose and loose[0].kind == "stack" \
+        and loose[0].dest_rel.startswith("Images/IC 1805/seestar-stacks/"), \
+        "a loose stack with no name marker must be known by its header, never a light"
 
     # 6c: the Inbox holding area carries unclassifiable files for the manual-assign demo
     held_ops = ingest.scan_holding()

@@ -376,6 +376,14 @@ re-run when its area changes and you want eyes on the visuals).
       cell offering the retarget combo. `stacked_thumbnail.jpg`, `img_reference.png`,
       `shotsInfo.json` are not surfaced.
 - [ ] Retarget the lights row to NGC 6960 → the note clears and the destination follows.
+- [ ] **Loose stacks are stacks** (corpus `mixed_dump/stack_linear_uint16.fits`, a
+      3-plane `NCOMBINE 36` file with no name marker; or DwarfLab's real October test
+      stacks in `~/Documents/M110-test-import-source/Draco_test_data_2026-10/`): the
+      preview shows a **Seestar stack** row → `Images/<object>/seestar-stacks/`, never a
+      lights row. *(`test_ingest.py` header-stack tests.)*
+- [ ] **Unknown name, known pointing**: the real Veil stack (OBJECT `HD 335129`) shows the
+      Pointing cell *"“HD 335129” is not in the catalog — points 0.37° from NGC 6960"* and
+      the Object combo offers NGC 6960; picking it moves the destination.
 - [ ] The `CALI_FRAME/{dark,flat,bias}/cam_0/` tree shows as **master darks / master
       flats / master biases** rows whose Object is **Draco** (real sample 28 · 2 · 1;
       corpus: **5 darks only** — its flats + bias are already in the store and are

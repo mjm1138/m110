@@ -1043,7 +1043,20 @@ remaining device-source gaps collect here:
   root-only placement was a bug for mixed-filter targets), and `m110-stack`
   matches on the *selected* frames and emits `calibrate … -dark= -cc=dark
   -flat= -equalize_cfa -bias= -cfa` (`--no-calibration` to opt out; raw
-  calibration subs beside lights are reported, not stacked). Open for the Draco:
+  calibration subs beside lights are reported, not stacked). **2026-10-18:**
+  DwarfLab's rolling test-data page (Feishu wiki "DRACO Test Data & Images |
+  Ongoing Updates"; two 72 MB stacked FITS so far, no subs/calibration; terms
+  forbid redistribution → the corpus stays synthetic) exposed two gaps, both
+  fixed: a stack is now known by its **header** (`ingest.is_stack_header` —
+  `STACKCNT`/`NCOMBINE` > 1 or 3 planes; their `stack_linear_uint16.fits`
+  imported as a light) and routes to the device-stack tier even loose; an
+  `OBJECT` the catalog doesn't know (the device wrote the star `HD 335129` for a
+  Veil capture) gets a pointing hint + remap suggestion in the preview. Learned:
+  gain 120 exists, `DET-TEMP` down to −7 °C, firmware 1.0.999.103, and DwarfLab's
+  own master darks are **bias-inclusive** ("no extra black subtraction").
+  Still open: `read_latest_stack_metadata` needs `LIVETIME`, which neither Draco
+  stack convention writes (on-device: `EXPTIME` = total + `STACKCNT`; offline:
+  `EXPTIME` per frame + `EXPOSURE` total + `NCOMBINE`). Open for the Draco:
   assigning a *held* master from the holding area
   (needs a device picker; `ASSIGNABLE_KINDS` untouched), volume auto-detection
   (its mount layout is unknown), whether `DATE-OBS` is UTC or local (filename ==

@@ -544,6 +544,15 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [x] **A stack with no "stacked" in its name imported as a light** (done —
+  `feature/draco`). `is_light_frame` is filename-only, so DwarfLab's offline test
+  stack `stack_linear_uint16.fits` (3 planes, `NCOMBINE` 36, `EXPTIME` 300) was a
+  300 s sub to the raw-FITS classifier: it would have become a session and a Siril
+  input. Header truth now decides — `ingest.is_stack_header` (`STACKCNT`/`NCOMBINE`
+  > 1 or `NAXIS3` = 3) routes such a file to the device-stack tier, and a loose
+  on-device `stacked-16_*` outside its session folder goes there too instead of
+  `working_files/`. `tests/test_ingest.py::test_a_stack_is_known_by_its_header_never_imported_as_a_light`.
+
 - [x] **Holding-area groups collided on the leaf folder name** (done —
   `feature/calibration-library`, ported from `feature/draco`). `scan_directory_plan`
   passed only `d.name` to the sweep, so two unclassifiable dirs sharing a leaf

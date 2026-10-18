@@ -266,6 +266,9 @@ wrong) is under the same heading in DONE.md's archived reference.
 **Data & files**
 - FITS extensions are `.fit` **and** `.fits` — always via `config.is_fits_file`, never a bare suffix check: it also rejects the `._` AppleDouble sidecars a Mac leaves on NFS/SMB (#161). Any new store enumeration skips `config.is_hidden_name` names.
 - Session facts come from the FITS **header**, not filenames (device conventions differ).
+- A **stack is known by its header** (`ingest.is_stack_header`: `STACKCNT`/`NCOMBINE` > 1
+  or `NAXIS3` = 3), never by a "stacked" token in the name — DwarfLab's
+  `stack_linear_uint16.fits` imported as a 300 s light before this rule.
 - A walk that skips `lights/`/sandboxes must **prune at the directory** (`roundtrip._walk_files`), never `rglob` then filter — the skipped trees are the whole capture, three times over, per target per sync.
 - Copy from the Seestar (SMB) with `shutil.copyfile` → `.part` → `os.replace`; `copy2` EPERMs.
 - Never trust mtime for provenance/freshness; use header dates (`DATE-OBS`, stack `DATE`).

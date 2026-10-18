@@ -747,6 +747,88 @@ def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
     assert by_kind["light"].layout == "raw-fits"
 
 
+def _stack_fits(path, *, obj=None, planes=3, stackcnt=None, ncombine=None, ra=None, dec=None):
+    """A stacked product as DwarfLab writes them: 3-plane uint16 and/or a frame
+    count in the header — no 'stacked' marker in the name required."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shape = (planes, 2, 2) if planes > 1 else (2, 2)
+    h = fits.PrimaryHDU(np.zeros(shape, dtype="uint16"))
+    if obj is not None:
+        h.header["OBJECT"] = obj
+    if stackcnt is not None:
+        h.header["STACKCNT"] = stackcnt
+    if ncombine is not None:
+        h.header["NCOMBINE"] = ncombine
+    if ra is not None:
+        h.header["RA"], h.header["DEC"] = ra, dec
+    h.header["EXPTIME"] = 300.0
+    h.writeto(path)
+    return path
+
+
+def test_a_stack_is_known_by_its_header_never_imported_as_a_light(tmp_path, monkeypatch):
+    """DwarfLab's offline test stack was `stack_linear_uint16.fits` — no name marker
+    at all — and imported as a 300 s LIGHT (then a session, then a Siril input).
+    Header truth: 3 planes or STACKCNT/NCOMBINE > 1 is a stack → the device-stack
+    tier, whatever the name. A loose `stacked-16_` (on-device) stack outside its
+    session folder goes the same way instead of working_files/."""
+    _make_staging(tmp_path, monkeypatch)
+    pile = tmp_path / "Draco_test_data"
+    _stack_fits(pile / "stack_linear_uint16.fits", obj="IC 1805", planes=3, ncombine=36)
+    _stack_fits(pile / "stacked-16_HD 335129_300s120_Duo-Band_x.fits", obj="HD 335129",
+                planes=3, stackcnt=31)
+    _stack_fits(pile / "mono_master.fits", obj="M51", planes=1, stackcnt=12)   # 2-D, count only
+    _fits_hdr(pile / "Light_M51_a.fit", object="M51", imagetyp="Light")        # a real sub
+    _stack_fits(pile / "nameless.fits", planes=3, ncombine=5)                  # no OBJECT, folder ≠ object
+
+    ops = ingest.scan_directory_plan(pile)
+    by_src = {Path(o.src).name: o for o in ops}
+    assert by_src["stack_linear_uint16.fits"].kind == "stack"
+    assert by_src["stack_linear_uint16.fits"].dest_rel.startswith("Images/IC 1805/seestar-stacks/")
+    assert by_src["stacked-16_HD 335129_300s120_Duo-Band_x.fits"].dest_rel.startswith(
+        "Images/HD 335129/seestar-stacks/")
+    assert by_src["mono_master.fits"].dest_rel.startswith("Images/M51/seestar-stacks/")
+    assert by_src["Light_M51_a.fit"].kind == "light"
+    assert by_src["nameless.fits"].kind == "unassigned"                      # held, not guessed
+    assert not any("/lights/" in o.dest_rel and o.kind != "light" for o in ops)
+    info = ingest.frame_info(str(pile / "stack_linear_uint16.fits"))
+    assert (info["stack_frames"], info["planes"]) == (36, 3) and ingest.is_stack_header(info)
+    sub = ingest.frame_info(str(pile / "Light_M51_a.fit"))
+    assert (sub["stack_frames"], sub["planes"]) == (None, 1) and not ingest.is_stack_header(sub)
+    assert not ingest.is_stack_header(None)
+
+
+def test_a_stack_in_a_folder_named_for_its_object_takes_the_folder_name(tmp_path, monkeypatch):
+    _make_staging(tmp_path, monkeypatch)
+    _stack_fits(tmp_path / "M51" / "result.fits", planes=3, ncombine=20)     # no OBJECT
+    ops = ingest.scan_directory_plan(tmp_path / "M51")
+    assert len(ops) == 1 and ops[0].kind == "stack"
+    assert ops[0].dest_rel == "Images/M51/seestar-stacks/result.fits"
+
+
+def test_unknown_object_gets_a_pointing_hint_and_a_suggestion(tmp_path, monkeypatch):
+    """The Draco wrote the star `HD 335129` as OBJECT for a Veil capture. Nothing
+    to verify the name against, but the pointing is 0.37° from NGC 6960 → say so
+    and offer it; a pointing near nothing stays silent."""
+    _make_staging(tmp_path, monkeypatch)
+    pile = tmp_path / "veil"
+    _stack_fits(pile / "stacked-16_HD 335129_x.fits", obj="HD 335129", planes=3,
+                stackcnt=31, ra=311.7548, dec=30.92674)
+    _fits_hdr(pile / "Light_HD 222222_a.fit", object="HD 222222", imagetyp="Light",
+              ra=200.0, dec=-80.0)                                           # near nothing
+    groups = ingest.annotate_pointing(ingest.group_ops(ingest.scan_directory_plan(pile)))
+    by_obj = {g.object: g for g in groups}
+    veil = by_obj["HD 335129"]
+    assert veil.kind == "stack"
+    assert veil.pointing and "not in the catalog" in veil.pointing and "NGC 6960" in veil.pointing
+    assert veil.suggested == "ngc-6960"
+    far = by_obj["HD 222222"]
+    assert far.pointing is None and far.suggested is None
+    # taking the suggestion works like any remap
+    moved = ingest.retarget(veil, "NGC 6960")
+    assert moved.ops[0].dest_rel.startswith("Images/NGC 6960/seestar-stacks/")
+
+
 def test_header_wins_over_sub_folder(tmp_path, monkeypatch):
     """A DARK-header frame sitting in an `_sub` lights folder routes to darks/."""
     _root, staging = _make_staging(tmp_path, monkeypatch)

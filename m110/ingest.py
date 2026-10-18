@@ -402,6 +402,23 @@ def frame_info(path: str) -> dict | None:
         ra_deg = dec_deg = None
     obj = hdr.get("OBJECT")
     tel = hdr.get("TELESCOP")
+    # A stack announces itself in the header: Siril/DwarfLab write STACKCNT, the
+    # FITS convention is NCOMBINE, and a demosaiced 3-plane image is never a raw
+    # sub. Filename markers ("stacked") are only a hint — DwarfLab's offline test
+    # stack was `stack_linear_uint16.fits`, which no name rule would catch.
+    frames = None
+    for card in ("STACKCNT", "NCOMBINE"):
+        try:
+            v = int(hdr.get(card))
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            frames = v
+            break
+    try:
+        planes = int(hdr.get("NAXIS3") or 1) if int(hdr.get("NAXIS", 2)) >= 3 else 1
+    except (TypeError, ValueError):
+        planes = 1
     return {
         "object": str(obj).strip() if obj not in (None, "") else None,
         "imagetyp": _normalize_imagetyp(hdr.get("IMAGETYP")),
@@ -409,7 +426,19 @@ def frame_info(path: str) -> dict | None:
         "ra_deg": ra_deg,
         "dec_deg": dec_deg,
         "telescop": str(tel).strip() if tel not in (None, "") else None,
+        "stack_frames": frames,
+        "planes": planes,
     }
+
+
+def is_stack_header(info: dict | None) -> bool:
+    """Header truth for "this is a stacked product, not a sub": more than one
+    frame combined (``STACKCNT``/``NCOMBINE``) or a 3-plane (demosaiced RGB)
+    image. Used by the classifiers so a stack never lands in ``lights/`` whatever
+    its filename says."""
+    if not info:
+        return False
+    return (info.get("stack_frames") or 0) > 1 or (info.get("planes") or 1) >= 3
 
 
 def frame_radec(path: str):
@@ -479,6 +508,17 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
         slug = _slug_for_object(g.object, cat)
         proposed = coords.get(slug) if slug else None
         if proposed is None:
+            # The device named something the catalog doesn't know (the Draco wrote
+            # the star `HD 335129` for a Veil capture). Nothing to verify against,
+            # but if a catalog object sits within the identify tolerance, say so
+            # and offer it — the remap combo lets the user take it or keep the name.
+            near, near_sep = _nearest(coords, *radec)
+            if near and near_sep <= IDENTIFY_TOL_DEG:
+                near_id = (cat.get(near, {}).get("id")
+                           or catalog.load_reference().get(near, {}).get("id") or near)
+                g.pointing = (f"“{g.object}” is not in the catalog — points "
+                              f"{near_sep:.2f}° from {near_id}")
+                g.suggested = near
             continue                          # unknown object → unverified
         sep = _separation_deg(radec[0], radec[1], proposed[0], proposed[1])
         if sep <= POINTING_TOL_DEG:
@@ -914,8 +954,12 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
             if should_cancel and should_cancel():
                 raise IngestCancelled()
             info = frame_info(str(src_dir / f))
-            kind = (info["imagetyp"] if info and info["imagetyp"] in ("dark", "flat", "bias")
-                    else "light")
+            if info and info["imagetyp"] in ("dark", "flat", "bias"):
+                kind = info["imagetyp"]
+            elif is_stack_header(info):
+                kind = "stack"          # a stack by header, whatever its name
+            else:
+                kind = "light"
             buckets.setdefault(kind, []).append(f)
         for kind, fs in buckets.items():
             handled.update(fs)
@@ -1183,7 +1227,14 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
         kind = info["imagetyp"] if info else None
         usable = _usable_object(info["object"]) if info else None
         obj_hdr = canonical_target(usable) if usable else None
-        if kind in ("dark", "flat", "bias"):
+        if is_stack_header(info) and kind not in ("dark", "flat", "bias"):
+            # A stacked product (STACKCNT/NCOMBINE > 1 or 3 planes) → the device/
+            # in-app stack tier, never lights/. Object from the header, else the
+            # folder when that names a catalog object; otherwise it is held.
+            if not (obj_hdr or folder_is_object):
+                continue
+            kind, obj = "stack", (obj_hdr or folder_obj)
+        elif kind in ("dark", "flat", "bias"):
             obj = obj_hdr or canonical_target(name)
         elif kind == "light" or obj_hdr:
             kind, obj = "light", (obj_hdr or canonical_target(name))

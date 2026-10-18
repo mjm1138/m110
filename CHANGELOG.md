@@ -23,6 +23,13 @@ changes a **user** would notice, per release.
   NGC 6992"). You can still pick a different object before confirming, and
   nothing is written until you do. Sessions that point nowhere near a catalog
   object go to the holding area as before.
+- **A name the catalog doesn't know gets a pointing hint.** When a device names
+  its target something M110 has no entry for (the Draco wrote the star
+  `HD 335129` for a Veil capture), the preview's Pointing column now says so and
+  names the catalog object the frames actually point at, within 1° ("“HD 335129”
+  is not in the catalog — points 0.37° from NGC 6960"), with that object offered
+  in the row's picker. Keep the device's name or take the suggestion; nothing
+  moves until you confirm.
 - **A calibration library per telescope.** Your library now has a top-level
   `Calibration/<telescope>/` folder (`darks/`, `flats/`, `biases/`) for master
   calibration frames that belong to a telescope rather than to one object. The
@@ -53,6 +60,14 @@ changes a **user** would notice, per release.
   given one telescope's masters.
 
 ### Fixed
+- **A stacked image is never mistaken for a light frame again.** Import used to
+  tell a stack from a sub by its filename, so a stack named without a "stacked"
+  token (DwarfLab's Draco test stack `stack_linear_uint16.fits`) was filed as a
+  single 300 s light, where it would have counted as a session and been handed to
+  Siril as a sub. Import now reads the file itself: a frame count above one in
+  the header or a three-colour image is a stack, and goes to the object's device
+  stack tier. A device stack found loose outside its session folder goes there
+  too, instead of into working files.
 - **Calibration frames now reach every Siril job on a mixed-filter object.** They
   were linked once at the top of the processing folder, but the Naztronomy script
   looks for `darks/` next to the `lights/` it is run on, which for an object shot
