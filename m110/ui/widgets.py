@@ -185,11 +185,21 @@ class NumItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+def _dark_temp(name: str) -> str | None:
+    """The temperature a Seestar master's filename states ("…_13.9C_…" → "13.9"),
+    for display only — the dark's real facts come from its header."""
+    import re
+    m = re.search(r"_(-?\d+(?:\.\d+)?)C_", name)
+    return m.group(1) if m else None
+
+
 def dark_gap_item(row: dict) -> QTableWidgetItem:
     """A session's **Dark** cell: the dark its telescope subtracted on-device
-    (inferred, `calibration.applied_dark`) and the widest gap between a sub's
-    sensor temperature and it — "24.9 °C · Δ10.5 ⚠" — sortable by the gap. The ⚠
-    and the tooltip carry the warning, so it never rests on color alone."""
+    (inferred, `calibration.applied_darks`) and the widest gap between a sub's
+    sensor temperature and the dark in use — "24.9 °C · Δ10.5 ⚠", or
+    "24.9→23.2→13.9 °C · Δ7.0" when the telescope switched darks mid-capture —
+    sortable by the gap. The ⚠ and the tooltip carry the warning, so it never rests
+    on color alone."""
     from m110 import calibration
     from m110.ui import theme
     if not row.get("dark_ref"):
@@ -199,12 +209,17 @@ def dark_gap_item(row: dict) -> QTableWidgetItem:
         return it
     gap, dt = row.get("dark_gap_c"), row.get("dark_temp_c")
     warn = gap is not None and gap > calibration.DARK_GAP_WARN_C
-    text = (f"{dt:g} °C" if dt is not None else "?") + \
+    temps = [t for t in (_dark_temp(n) for n in row.get("dark_refs") or []) if t]
+    text = ("→".join(temps) + " °C" if len(temps) > 1
+            else f"{dt:g} °C" if dt is not None else "?") + \
            (f" · Δ{gap:.1f}" if gap is not None else "") + (" ⚠" if warn else "")
     it = NumItem(text, gap if gap is not None else -1.0)
     tmin, tmax = row.get("temp_min"), row.get("temp_max")
-    tip = [f"Dark the telescope applied on-device: {row['dark_ref']}",
-           f"Link: {row.get('dark_link')} (rule {row.get('dark_rule')})"]
+    refs = row.get("dark_refs") or [row["dark_ref"]]
+    tip = [("Darks the telescope applied on-device, in order: " if len(refs) > 1
+            else "Dark the telescope applied on-device: ") + ", ".join(refs),
+           f"Link: {row.get('dark_link')} (rule {row.get('dark_rule')})"
+           + (" for the first; the switches are inferred" if len(refs) > 1 else "")]
     if tmin is not None and tmax is not None:
         tip.append(f"Sensor during the capture: {tmin:g}–{tmax:g} °C")
     if warn:

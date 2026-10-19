@@ -1053,10 +1053,14 @@ remaining device-source gaps collect here:
     - *Does the firmware prune old darks?* If it does, M110's copy is the only
       lasting record — the archive then matters more, and the Devices view should
       say which masters are gone from the device.
-    - *Does the device re-pick the nearest dark per frame or once per target run?*
-      Rule v1 assumes once per run; the data could not tell them apart below ≈12 °C
-      (neighbouring darks differ by ≈8 ADU there). A per-frame re-pick would make
-      `dark_gap_c` overstate drift on long runs.
+    - ~~*Does the device re-pick the nearest dark per frame or once per target
+      run?*~~ **Answered 2026-10-19 — neither: a sticky window.** It switches
+      mid-run, but only once the sensor is ≈2.5 °C off the dark in use, and only to
+      a dark within ≈2.5 °C; otherwise it keeps the current one. Shipped as **rule
+      v2** (`calibration.applied_darks`; DONE.md). Still open: switch *timing* is
+      matched to within a few minutes (the window fits anywhere in 2.4–2.6 °C, and
+      the device may decide on a smoothed or periodically sampled temperature) —
+      three observed switches can't pin it closer; more cooling runs would.
     - *S30 / S30 Pro:* `devices.darks_applied_on_device` assumes they dark-subtract
       on-device like the S50 (same ZWO pipeline) — unmeasured. If wrong, those users
       silently lose dark calibration. Verify with one S30 sub + master (the same
