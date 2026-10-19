@@ -48,6 +48,14 @@ changes a **user** would notice, per release.
   object always win, and an object shot on two different telescopes is never
   given one telescope's masters.
 
+### Changed
+- **The Dark column now follows the Seestar switching darks mid-capture.** Looking
+  at more nights showed the telescope changes to a better-matched dark partway
+  through a long capture once the sensor has cooled about 2.5 °C away from the one
+  in use. The column (and `m110-stack`'s drift warning) now accounts for that, so a
+  capture that switched shows each dark it used ("24.9→23.2→13.9 °C · Δ6.7") and a
+  smaller, more accurate drift than before. Sessions pick this up on the next Sync.
+
 ### Fixed
 - **Calibration frames now reach every Siril job on a mixed-filter object.** They
   were linked once at the top of the processing folder, but the Naztronomy script

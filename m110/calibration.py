@@ -347,19 +347,25 @@ def match_for_target(target: str) -> MatchResult:
 # ── device-applied darks: which master a capture got, and how far off it was ──
 # A Seestar subtracts a dark on the device before it saves a sub
 # (devices.darks_applied_on_device), choosing from its own dark library. Nothing
-# in a sub's header says which dark, so it is INFERRED (rule v1, measured on an
+# in a sub's header says which dark, so it is INFERRED (rule v2, measured on an
 # S50 2026-10-15…18, DONE.md): at the start of each target run the device uses the
 # library dark at the same exposure/gain/binning whose temperature is nearest the
-# sensor's, taking a new one first when none is within ~2 °C; it does not switch
-# mid-run. The gap between a sub's CCD-TEMP and that dark's is the quality signal:
-# hot pixels come out over- or under-subtracted in proportion.
+# sensor's, taking a new one first when none is within ~2 °C. During the run the
+# choice is *sticky*: it keeps the current dark while the sensor stays within
+# `DARK_WINDOW_C` of it, and once it drifts further, switches to the nearest dark
+# that IS within the window — or, when none is, keeps the current one (it never
+# takes a dark mid-run). Rule v1 assumed no mid-run switch; real C 6 runs showed
+# 24.9→23.2 at 22.1 °C and 23.2→13.9 at ≈16.2 °C. The gap between a sub's CCD-TEMP
+# and the dark in use is the quality signal: hot pixels come out over- or
+# under-subtracted in proportion.
 #
 # The Seestar's masters carry no DATE-OBS, so *when* a dark existed is read from
 # the device's own filename clock — `device_clock`, the ONE filename-time parser
 # for this, compared only with the lights' filename clock (same device, both local
 # time; no timezone arithmetic) and corroborated by temperature.
 
-DARK_RULE = "v1"
+DARK_RULE = "v2"
+DARK_WINDOW_C = 2.5            # the device's mid-run switching window (rule v2)
 DARK_GAP_WARN_C = 3.0          # gap above which the hot-pixel residue is visible
 _CONFIRM_WINDOW_S = 10 * 60    # a dark this soon before the run was made for it
 _CONFIRM_TEMP_C = 1.0          # …if it matches the run's starting temperature
@@ -403,12 +409,8 @@ def applied_dark(run_start, temp_start: float | None, *, exptime, gain, binning,
     master at these settings existed yet (captures before the library)."""
     if run_start is None:
         return None
-    cands = []
-    for m in masters:
-        made = device_clock(m.path.name)
-        if (made is not None and made <= run_start and _same(m.exptime, exptime, 0.01)
-                and m.gain == gain and m.binning == binning):
-            cands.append((made, m))
+    cands = [(made, m) for made, m in _dark_candidates(masters, exptime, gain, binning)
+             if made <= run_start]
     if not cands:
         return None
     if temp_start is None:
@@ -421,6 +423,48 @@ def applied_dark(run_start, temp_start: float | None, *, exptime, gain, binning,
                  and (run_start - made).total_seconds() <= _CONFIRM_WINDOW_S
                  and abs(best.temp_c - temp_start) <= _CONFIRM_TEMP_C)
     return AppliedDark(best, "confirmed" if confirmed else "inferred")
+
+
+def _dark_candidates(masters: list[MasterInfo], exptime, gain, binning) -> list:
+    """(device-clock made, master) for every master at these settings that says
+    when it was made."""
+    out = []
+    for m in masters:
+        made = device_clock(m.path.name)
+        if (made is not None and _same(m.exptime, exptime, 0.01)
+                and m.gain == gain and m.binning == binning):
+            out.append((made, m))
+    return out
+
+
+def applied_darks(frames: list[tuple[str, float | None]], *, exptime, gain, binning,
+                  masters: list[MasterInfo]) -> list[AppliedDark | None]:
+    """The dark in use for each frame of ONE target run (`frames` = (filename,
+    CCD-TEMP) in capture order), by rule v2: the run's starting dark
+    (`applied_dark`), then the sticky `DARK_WINDOW_C` switch. A switched-to dark is
+    always "inferred". All None when no master existed at the run's start."""
+    if not frames:
+        return []
+    name0, temp0 = frames[0]
+    current = applied_dark(device_clock(name0), temp0, exptime=exptime, gain=gain,
+                           binning=binning, masters=masters)
+    if current is None:
+        return [None] * len(frames)
+    cands = _dark_candidates(masters, exptime, gain, binning)
+    out: list[AppliedDark | None] = []
+    for name, temp in frames:
+        held = current.master.temp_c
+        if temp is not None and held is not None and abs(temp - held) > DARK_WINDOW_C:
+            now = device_clock(name)
+            near = [m for made, m in cands
+                    if (now is None or made <= now) and m.temp_c is not None
+                    and abs(temp - m.temp_c) <= DARK_WINDOW_C]
+            if near:
+                best = min(near, key=lambda m: (abs(temp - m.temp_c), m.path.name))
+                if best.path != current.master.path:
+                    current = AppliedDark(best, "inferred")
+        out.append(current)
+    return out
 
 
 def split_runs(names: list[str]) -> list[list[str]]:
@@ -494,7 +538,9 @@ def device_rollup(sessions: list[dict]) -> dict:
     for dev in sorted(names):
         caps = [r for r in sessions if r.get("telescop")
                 and devices.folder_name(r["telescop"]) == dev]
-        served: Counter = Counter(r["dark_ref"] for r in caps if r.get("dark_ref"))
+        served: Counter = Counter(ref for r in caps
+                                  for ref in (r.get("dark_refs") or
+                                              ([r["dark_ref"]] if r.get("dark_ref") else [])))
         masters = []
         for tier, ms in sorted(library(dev).items()):
             for m in ms:
@@ -527,7 +573,7 @@ def device_rollup(sessions: list[dict]) -> dict:
             "captures": [{k: r.get(k) for k in (
                 "date", "object_dir", "slugs", "frames", "exposure_s", "filter",
                 "temp_first", "temp_min", "temp_max", "dark_ref", "dark_temp_c",
-                "dark_gap_c", "dark_link")} for r in sorted(
+                "dark_gap_c", "dark_link", "dark_refs", "dark_rule")} for r in sorted(
                     caps, key=lambda r: (r["date"], r["object_dir"]))],
         })
     out.sort(key=lambda d: (not d["masters"], d["device"]))   # libraries first

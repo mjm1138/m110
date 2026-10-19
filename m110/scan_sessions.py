@@ -112,11 +112,14 @@ def _session_bounds(files: list[Path]) -> tuple[str | None, str | None]:
 
 # ── per-segment capture facts: telescope, gain, sensor temperature ────────────
 # Read from a bounded sample of each segment's subs (first, last and up to
-# `_SAMPLE_BETWEEN` evenly spaced between, in capture order) and cached per file
+# `_SAMPLE_BETWEEN` evenly spaced between, in capture order) and cached per file.
+# Dense on purpose: the on-device dark switch (rule v2) is path-dependent, so a
+# sparse sample can step over the window where a switch happened and then never
+# make it (≈4 min spacing on a 3 h run ≈ a few tenths of a °C of cooling)
 # in derived/ — keyed on name + size, since a raw sub never changes — so an
 # unchanged store re-reads no headers on refresh. The cache is derived state:
 # safe to delete, rebuilt on the next scan.
-_SAMPLE_BETWEEN = 6
+_SAMPLE_BETWEEN = 46
 _HEADER_CACHE_NAME = "session_headers.json"
 
 
@@ -190,8 +193,9 @@ def _read_capture_facts(path: Path) -> dict:
 def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
                     libraries: dict) -> dict:
     """The per-session capture facts and, for a device that dark-subtracts on
-    board, which library dark it most likely applied (calibration.applied_dark,
-    rule v1) and the widest gap between a sampled sub's temperature and it."""
+    board, which library darks it most likely applied (calibration.applied_darks,
+    rule v2, simulated over the sampled subs in capture order) and the widest gap
+    between a sampled sub's temperature and the dark in use for it."""
     from . import calibration, devices
     ordered = sorted(files, key=lambda p: p.name)        # name order = capture order
     sample = _sample(ordered)
@@ -207,22 +211,25 @@ def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
         "temp_min": min(temps) if temps else None,
         "temp_max": max(temps) if temps else None,
         "dark_ref": None, "dark_temp_c": None, "dark_gap_c": None,
-        "dark_link": None, "dark_rule": None,
+        "dark_link": None, "dark_rule": None, "dark_refs": [],
     }
     if not ordered or not devices.darks_applied_on_device(tel):
         return out
     device = devices.folder_name(tel)
     if device not in libraries:
         libraries[device] = calibration.library(device).get("darks", [])
-    ad = calibration.applied_dark(
-        calibration.device_clock(ordered[0].name), out["temp_first"],
+    used = calibration.applied_darks(
+        [(f.name, ff.get("temp_c")) for f, ff in zip(sample, facts)],
         exptime=exp, gain=gain, binning=binning, masters=libraries[device])
-    if ad is None:
+    if not used or used[0] is None:
         return out
-    gaps = [g for g in (ad.gap(t) for t in temps) if g is not None]
-    out.update(dark_ref=ad.master.path.name, dark_temp_c=ad.master.temp_c,
+    first = used[0]
+    gaps = [g for g in (ad.gap(ff.get("temp_c")) for ad, ff in zip(used, facts))
+            if g is not None]
+    refs = list(dict.fromkeys(ad.master.path.name for ad in used))
+    out.update(dark_ref=first.master.path.name, dark_temp_c=first.master.temp_c,
                dark_gap_c=round(max(gaps), 1) if gaps else None,
-               dark_link=ad.link, dark_rule=ad.rule)
+               dark_link=first.link, dark_rule=first.rule, dark_refs=refs)
     return out
 
 

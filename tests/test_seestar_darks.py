@@ -237,7 +237,7 @@ def test_sessions_carry_the_capture_facts_and_the_dark_gap(tmp_path, monkeypatch
         == (24.8, 14.4, 14.4, 24.8)
     assert m72["dark_ref"] == "MasterDark_5_20.0s_24.9C_20261015-192853.fit"
     assert (m72["dark_temp_c"], m72["dark_gap_c"], m72["dark_link"], m72["dark_rule"]) \
-        == (24.9, 10.5, "confirmed", "v1")
+        == (24.9, 10.5, "confirmed", "v2")
     c6 = rows["C 6"]
     assert c6["dark_temp_c"] == 13.9 and c6["dark_gap_c"] == 2.7
 
@@ -320,3 +320,78 @@ def test_device_rollup_links_masters_to_the_captures_they_served(tmp_path, monke
     monkeypatch.setattr(calibration, "master_stats",
                         lambda p: (_ for _ in ()).throw(AssertionError("re-read")))
     build_derived.main()
+
+
+# ── rule v2: the device switches darks mid-run, inside a sticky window ────────
+# Replays the real C 6 run of 2026-10-17 (live-store subs, read-only analysis,
+# DONE.md): it started at 26.0 °C on the 24.9 °C dark, held it at 23.4 °C even
+# though 23.2 was nearer, switched to 23.2 at 22.1 °C (2.8 off 24.9), held 23.2
+# all the way down to 16.6 °C, and switched to 13.9 at 16.25 °C (2.35 from it).
+
+FULL_LIBRARY = LIBRARY + [("23.2", "20261016-204959"), ("7.7", "20261017-015231")]
+C6_OCT17 = [("20261017-191608", 26.0), ("20261017-194500", 24.375),
+            ("20261017-195200", 23.4), ("20261017-200311", 22.062),
+            ("20261017-202900", 20.2), ("20261017-205500", 18.6),
+            ("20261017-213827", 16.6), ("20261017-214409", 16.25),
+            ("20261017-214534", 16.5), ("20261017-220800", 15.8)]
+
+
+def _full_library():
+    for temp, stamp in FULL_LIBRARY:
+        seestar_master_dark(config.calibration_dir(S50, "darks")
+                            / f"MasterDark_5_20.0s_{temp}C_{stamp}.fit", float(temp))
+    return calibration.library(S50)["darks"]
+
+
+def test_rule_v2_follows_the_measured_mid_run_switches(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    masters = _full_library()
+    used = calibration.applied_darks(
+        [(f"Light_C 6_20.0s_LP_{s}.fit", t) for s, t in C6_OCT17],
+        exptime=20.0, gain=80, binning=1, masters=masters)
+    assert [ad.master.temp_c for ad in used] == [
+        24.9, 24.9, 24.9,          # 23.4 °C: still within 2.5 of 24.9 → sticky
+        23.2, 23.2, 23.2, 23.2,    # 22.06: 2.84 off → nearest within the window
+        13.9, 13.9, 13.9]          # 16.25: 13.9 comes within 2.5; 16.5 jitter keeps it
+    assert used[0].link == "inferred"          # 24.9 was made two nights earlier
+    assert {ad.link for ad in used[3:]} == {"inferred"}
+    assert round(max(ad.gap(t) for ad, (_, t) in zip(used, C6_OCT17)), 1) == 6.6
+
+
+def test_rule_v2_never_switches_to_a_dark_made_later(tmp_path, monkeypatch):
+    """Oct 15 M 72: the 13.9 °C dark was made at 21:52, after the run ended, so the
+    24.9 °C dark stays in use however far the sensor cools."""
+    seed_root(tmp_path, monkeypatch)
+    masters = _full_library()
+    used = calibration.applied_darks(
+        [(f"Light_M 72_20.0s_IRCUT_{s}.fit", t) for s, t in M72],
+        exptime=20.0, gain=80, binning=1, masters=masters)
+    assert {ad.master.temp_c for ad in used} == {24.9}
+
+
+def test_a_session_lists_every_dark_it_used(tmp_path, monkeypatch):
+    from m110 import scan_sessions
+    from m110.ui.widgets import dark_gap_item
+    seed_root(tmp_path, monkeypatch)
+    _full_library()
+    _lights("C 6", C6_OCT17)
+    (row,) = scan_sessions.scan()
+    assert [n.split("_")[3] for n in row["dark_refs"]] == ["24.9C", "23.2C", "13.9C"]
+    assert row["dark_ref"] == row["dark_refs"][0] and row["dark_rule"] == "v2"
+    assert row["dark_gap_c"] == 6.6
+    item = dark_gap_item(row)
+    assert item.text() == "24.9→23.2→13.9 °C · Δ6.6 ⚠"
+    assert "switches are inferred" in item.toolTip()
+
+
+def test_m110_stack_gaps_follow_the_switches(tmp_path, monkeypatch):
+    from tests.test_stacking import _sub
+    seed_root(tmp_path, monkeypatch)
+    _full_library()
+    d = tmp_path / "job"
+    for stamp, temp in C6_OCT17:
+        _sub(d / "lights" / f"Light_C 6_20.0s_LP_{stamp}.fit", EXPTIME=20.0, GAIN=80,
+             XBINNING=1, CCD_TEMP=temp, FILTER="LP", TELESCOP=S50, OBJECT="C 6")
+    plan = build_plan(d, Overrides(max_dark_gap=3.0), deep_measure=False)
+    # only 20.2 (3.0 off 23.2 — not over), 18.6 and 16.6 drifted past 3 °C
+    assert len(plan.dropped) == 2

@@ -718,6 +718,39 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## Seestar dark rule v2 — sticky mid-run switching *(done 2026-10-19, `feature/seestar-dark-rule-v2`)*
+
+Rule v1 (slice 1, below) assumed the device keeps one dark for a whole target run.
+Re-reading the live store's C 6 subs (read-only) — two long cooling runs that cross
+between library darks — showed it switches mid-run, but not to the nearest dark:
+
+| Run | Switch | At sensor | Off the old dark | To the new dark |
+|---|---|---|---|---|
+| Oct 17, from 19:16 (26.0 °C) | 24.9 → 23.2 | ≈22.1 °C, 20:03 | 2.8 | 1.1 |
+| Oct 17 | 23.2 → 13.9 | ≈16.1 °C, 21:44 | 7.1 | 2.2 |
+| Oct 16, from 20:51 (23.0 °C) | 23.2 → 13.9 | ≈16.3 °C, 21:38 | 6.9 | 2.4 |
+
+At 23.4 °C it still used 24.9 although 23.2 was 0.2 °C away; it held 23.2 down to
+16.6 °C while 13.9 was 2.7 away. Model: keep the current dark while within W of it;
+past W, switch to the nearest dark within W; none → keep. Fit on predicted vs
+observed hot-pixel residue (every 3rd sub):
+
+| Run | v1 RMS | v2 RMS (W = 2.5) |
+|---|---|---|
+| M 72 Oct 15 (one dark existed) | 12.9 | 12.9 |
+| C 6 Oct 15 | 3.1 | 3.1 |
+| C 6 Oct 16 | 56.6 | 5.1 |
+| C 6 Oct 17 | 56.2 | 17.8 |
+
+The Oct 17 remainder is all within minutes of the two switches (single-frame CCD-TEMP
+jitter of ±0.2 °C crosses the threshold early). W ∈ 2.4–2.6, with or without a
+5-frame median, trade the two runs' errors (best pair 10.2 / 9.2) — overfitting
+on three switches, so v2 keeps the plain W = 2.5 per-frame rule. Max gap on the
+switching runs drops from ≈9.6–9.9 °C (v1) to 6.7 °C. Below ≈17 °C neighbouring
+cold darks (13.9 / 10.5) are indistinguishable by residue. Because the rule is
+path-dependent, the session header sample went from ≤8 to ≤48 subs (a sparse sample
+can step over the window and never switch); per-file caching keeps refresh cheap.
+
 ## Seestar dark library — slice 1 *(done 2026-10-18, `feature/seestar-darks`)*
 
 Prompted by the S50 firmware starting to keep master darks in

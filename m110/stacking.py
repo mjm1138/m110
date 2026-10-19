@@ -1510,10 +1510,11 @@ class StackPlan:
 
 def device_dark_gaps(frames: list[Frame], geom: dict) -> dict:
     """{frame name: (gap °C, AppliedDark)} for frames from a telescope that
-    dark-subtracts on the device (calibration.applied_dark, rule v1): each target
-    run's dark is the library master nearest the run's starting temperature, and
-    a frame's gap is how far its own CCD-TEMP drifted from it. Empty when the
-    device doesn't, or its library holds no darks."""
+    dark-subtracts on the device (calibration.applied_darks, rule v2): each target
+    run starts on the library master nearest its starting temperature and switches
+    within the device's sticky window as the sensor drifts; a frame's gap is how far
+    its own CCD-TEMP sits from the dark in use for it. Empty when the device
+    doesn't, or its library holds no darks."""
     tel = geom.get("telescop")
     if not devices.darks_applied_on_device(tel):
         return {}
@@ -1524,13 +1525,12 @@ def device_dark_gaps(frames: list[Frame], geom: dict) -> dict:
     out: dict = {}
     for run in calibration.split_runs(list(by_name)):
         first = by_name[run[0]]
-        ad = calibration.applied_dark(
-            calibration.device_clock(first.name), first.temp, exptime=first.exposure,
+        used = calibration.applied_darks(
+            [(n, by_name[n].temp) for n in run], exptime=first.exposure,
             gain=first.gain, binning=first.binning, masters=masters)
-        if ad is None:
-            continue
-        for n in run:
-            out[n] = (ad.gap(by_name[n].temp), ad)
+        for n, ad in zip(run, used):
+            if ad is not None:
+                out[n] = (ad.gap(by_name[n].temp), ad)
     return out
 
 
