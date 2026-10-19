@@ -546,7 +546,12 @@ output stops at the field guide, which is unaffected.
 
 **Permission requested 2026-09-28** — asked ZWO whether a supported plan-import
 interface already exists or is planned and, if not, whether they would publish
-one or grant written permission on terms they set. Awaiting a reply.
+one or grant written permission on terms they set. **No substantive reply (as of
+2026-10-19):** ZWO sent only an automated acknowledgement (ticket 61063) and,
+days later, a satisfaction survey — the ticket appears to have been closed
+without an answer. That is silence, not a refusal, so 2b stays shelved on the
+same terms as above. A possible next step is a neutral question on ZWO's user
+forum asking whether a documented plan format is on the Seestar roadmap.
 
 **2c — Dwarf plan hand-off** — *surveyed 2026-09-29; same deferral as the SSC
 option above.* The equivalent question for DwarfLab, asked because the answer
