@@ -1049,6 +1049,22 @@ remaining device-source gaps collect here:
   - **Re-darking** (research): `sub + D_applied − D_matched` took a real 13.9 °C
     M 72 sub's hot-pixel residue from −142 to −8 ADU. Opt-in, sandbox-only, never
     `lights/`; needs the device's subtraction model confirmed first.
+  - **Open questions** (from the 2026-10-18 analysis; none blocks slice 1):
+    - *Does the firmware prune old darks?* If it does, M110's copy is the only
+      lasting record — the archive then matters more, and the Devices view should
+      say which masters are gone from the device.
+    - *Does the device re-pick the nearest dark per frame or once per target run?*
+      Rule v1 assumes once per run; the data could not tell them apart below ≈12 °C
+      (neighbouring darks differ by ≈8 ADU there). A per-frame re-pick would make
+      `dark_gap_c` overstate drift on long runs.
+    - *S30 / S30 Pro:* `devices.darks_applied_on_device` assumes they dark-subtract
+      on-device like the S50 (same ZWO pipeline) — unmeasured. If wrong, those users
+      silently lose dark calibration. Verify with one S30 sub + master (the same
+      hot-pixel check as the S50).
+    - *Which firmware / app version introduced the dark library?* Unknown; record it
+      so "subs before the library" can be dated and the S30 question scoped.
+    - *A real `m110-stack` run on a Seestar target* (needs Siril) — slice 1's
+      proposal was validated header-only (`build_plan`), not end to end.
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +
