@@ -557,10 +557,12 @@ re-run when its area changes and you want eyes on the visuals).
       render (→ `finished/`) and stack (→ `stacks/`) checked, intermediates absent;
       a **hero** picker lists the raster(s); a **cleanup** choice is offered.
 - [ ] Import (cleanup = *archive*) → render shows in the gallery, the chosen hero
-      becomes the hero; the run's output + intermediates (incl. Siril's `process/`)
-      are **moved** into a visible `siril/[<FILTER>/]archive/<timestamp>/`
-      (nothing deleted), while `lights/` + `presets/` stay so the sandbox is ready
-      for another run. `Images/<target>/lights/` originals are untouched.
+      becomes the hero; the run's output + intermediates are **moved** into a
+      visible `siril/[<FILTER>/]archive/<timestamp>/` (nothing deleted), while
+      `lights/` + `presets/` stay so the sandbox is ready for another run — and so
+      does Siril's `process/` scratch, which is **not** in the new archive folder
+      (`config.SANDBOX_SCRATCH`; the next Naztronomy run asks to clear it).
+      `Images/<target>/lights/` originals are untouched.
 - [ ] **Re-import keeps the hero:** process again, import again → the hero picker
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
@@ -806,7 +808,10 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
       confirm the destination's used space didn't roughly double.
 - [ ] **A sandbox's work is backed up; its links are not.** In the first snapshot,
       open `Images/M101/siril/`: `archive/20260701-214500/` is there with its four
-      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**.
+      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**,
+      nor is Siril's `process/` scratch, either at `siril/process/` or inside
+      `archive/20260701-214500/process/` (`config.SANDBOX_SCRATCH`; both are in the
+      corpus, so their absence is the rule working, at both tiers).
       Then confirm `Images/M101/lights/` *is* there with all 18 subs. This is the whole
       rule (`config.SANDBOX_LINKED_INPUTS`): the frames are backed up once, under the
       path they really live at, while the hand-work beside them is kept. Getting it

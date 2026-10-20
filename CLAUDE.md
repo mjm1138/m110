@@ -118,7 +118,7 @@ DONE.md's archived reference — grep the module name there.
 
 | Module | Role |
 |---|---|
-| `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes) |
+| `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes), `SANDBOX_SCRATCH` (tool scratch: not archived, not backed up) |
 | `migrate.py` | in-place idempotent store migration to the two-axis layout |
 | `catalog.py` | Library (`library.toml`) vs bundled reference/catalog lists; add/remove/enrich entries; `season_from_ra`; `object_identifiers`; Simbad via optional astroquery (`OnlineLookupError`) |
 | `derived.py` | read generated rollups (`derived/*.json`) |
