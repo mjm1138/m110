@@ -531,6 +531,24 @@ re-run when its area changes and you want eyes on the visuals).
       objects that already have one are untouched (edited presets preserved). The
       **Tools → Prepare working folders** menu action does the same on demand and
       reports how many were created.
+- [ ] **Per-filter tiers + labels (#174):** an LP job's preset says
+      `"filter": "LP (Narrowband)"` with `bg_filter` 100; an IRCUT job says
+      `"No Filter (Broadband)"` with `bg_filter` 98. Both have `star_count_filter`
+      100 and roundness/fwhm 95/98 at 100–500 subs, 92/95 at 501–1500, 90/95 above.
+      The corpus's Dwarf 3 capture (M42, Duo-Band) gets `"telescope": "Dwarf 3"`,
+      `"filter": "Dual-Band"` and `bg_filter` 100. A Dwarf target holding both
+      `Astro` and `Duo-Band` subs splits into `siril/Astro/` + `siril/Duo-Band/` by
+      the header `FILTER`, as a Seestar LP + IRCUT target already does.
+- [ ] **Ask before replacing a preset (#174):** the corpus's M101 sandbox ships an
+      old-style preset (98% × 4, broadband label on LP subs). Import the device
+      mount's two new M101 subs → after the progress dialog closes, **Update Siril
+      presets?** lists M101 with each change (`roundness: 98 → 95`, `filter: No
+      Filter (Broadband) → LP (Narrowband)`, …). **Replace selected** → the old file
+      is in `siril/presets/archive/naztronomy_smart_scope_presets.<stamp>.json` and
+      the new one is in place. Repeat with **Keep existing** (or closing the window)
+      on a fresh corpus → the file is untouched, and a second import with no new
+      tier crossed does **not** ask again.
+- [ ] An import that changes no preset shows no dialog at all.
 
 **Import finished work**
 - [ ] Simulate Siril: drop a `*_processed.png` and a `*_processed.fit` into

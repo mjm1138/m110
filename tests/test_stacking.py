@@ -1291,3 +1291,81 @@ def test_without_streaming_the_terminal_gets_the_heartbeat_and_nothing_else(
     assert any(x.endswith("] stack") for x in out)
     assert not any("integrating" in x for x in out)
     assert "log: integrating" in log.read_text()      # the log is still complete
+
+
+# ── frame-selection filters (#174) ───────────────────────────────────────────
+
+from m110 import stacking as _stk                     # noqa: E402
+
+
+def _filter_survey(depth, filt="IRCUT", n=None):
+    return Survey(n_frames=n or depth, exposures={10.0: n or depth},
+                  filters={filt: n or depth}, naxis1=1080, naxis2=1920,
+                  depth_median=depth, depth_min=depth)
+
+
+@pytest.mark.parametrize("depth,filt,want", [
+    (80, "IRCUT", None),
+    (300, "IRCUT", {"roundness": 95.0, "fwhm": 98.0, "star_count": 100.0, "bg": 98.0}),
+    (800, "LP", {"roundness": 92.0, "fwhm": 95.0, "star_count": 100.0, "bg": 100.0}),
+    (3000, "Duo-Band", {"roundness": 90.0, "fwhm": 95.0, "star_count": 100.0, "bg": 100.0}),
+])
+def test_proposal_filters_follow_depth_and_filter(tmp_path, depth, filt, want):
+    p = build_proposal(_filter_survey(depth, filt), None, tmp_path)
+    assert p.get("filters") == want
+
+
+def test_mosaic_filters_key_on_depth_not_frame_count(tmp_path):
+    # 3000 frames but each patch of sky sits in only 300: the 100–500 tier.
+    p = build_proposal(_filter_survey(300, n=3000), None, tmp_path)
+    assert p.get("filters")["roundness"] == 95.0
+
+
+def test_register_command_leaves_off_filters_at_100(tmp_path):
+    p = build_proposal(_filter_survey(800, "LP"), None, tmp_path)
+    ssf = build_ssf_apply("lights", p)
+    assert "-filter-round=92%" in ssf and "-filter-wfwhm=95%" in ssf
+    assert "-filter-bkg" not in ssf and "-filter-nbstars" not in ssf
+
+
+def test_filter_overrides_layer_in_order(tmp_path):
+    s = _filter_survey(300)
+    p = build_proposal(s, None, tmp_path)
+    _stk.apply_filter_overrides(p, s, Overrides(filter_pct=97, filter_bkg=100))
+    assert p.get("filters") == {"roundness": 97, "fwhm": 97, "star_count": 97, "bg": 100}
+
+    p = build_proposal(s, None, tmp_path)
+    _stk.apply_filter_overrides(p, s, Overrides(filter_round=90))
+    assert p.get("filters")["roundness"] == 90 and p.get("filters")["fwhm"] == 98.0
+
+    p = build_proposal(s, None, tmp_path)
+    _stk.apply_filter_overrides(p, s, Overrides(no_filters=True, filter_round=90))
+    assert p.get("filters") is None
+
+
+def test_single_filter_override_turns_filters_on_below_floor(tmp_path):
+    s = _filter_survey(60)
+    p = build_proposal(s, None, tmp_path)
+    assert p.get("filters") is None
+    _stk.apply_filter_overrides(p, s, Overrides(filter_round=95))
+    assert p.get("filters") == {"roundness": 95, "fwhm": 98.0, "star_count": 100.0, "bg": 98.0}
+
+
+def test_filters_label():
+    assert _stk.filters_label(None) == "off"
+    assert _stk.filters_label({"roundness": 92.0, "fwhm": 95.0, "star_count": 100.0,
+                               "bg": 100.0}) == "round 92% · wFWHM 95%"
+
+
+@pytest.mark.parametrize("label,filt,warns", [
+    ("No Filter (Broadband)", "LP", True),
+    ("LP (Narrowband)", "LP", False),
+    ("LP (Narrowband)", "IRCUT", True),
+    ("Astro filter (UV/IR)", "Duo-Band", True),
+    ("Dual-Band", "Duo-Band", False),
+    ("Dual-Band", "UNKNOWN", False),
+])
+def test_check_preset_flags_label_mismatch(label, filt, warns):
+    p = Proposal()
+    _stk.check_preset({"filter": label}, _filter_survey(50, filt), p)
+    assert bool(p.warnings) is warns

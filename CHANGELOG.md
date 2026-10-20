@@ -49,6 +49,26 @@ changes a **user** would notice, per release.
   given one telescope's masters.
 
 ### Changed
+- **Siril frame selection is tuned per filter, and the same way everywhere.** The
+  four quality filters measure different things, so M110 no longer sets one
+  percentage for all of them. Roundness does the most work (95% → 92% → 90% as the
+  set grows), wFWHM only trims the worst tail (98% / 95%), background stays at 98%,
+  and star count is off, because wFWHM weighting already covers it. With the LP or
+  Duo-Band filter, background is off too: the filter flattens the sky, so the cut
+  removed close to random frames. Below 100 frames nothing is filtered. The Siril
+  preset and `m110-stack` now use the same table, so an object no longer gets
+  different frame selection depending on how you stack it. `m110-stack` picks the
+  tier from how many frames cover each part of the sky, so a large mosaic isn't
+  filtered as hard as a deep single field, and below 100 frames it no longer
+  filters at all. New `--filter-round`, `--filter-wfwhm`, `--filter-bkg` and
+  `--filter-nbstars` options (also available to the assistant) adjust one filter
+  at a time.
+- **M110 asks before replacing a Siril preset.** When new subs change what M110
+  would suggest, or you have saved your own preset from Naztronomy, importing no
+  longer re-tunes or silently skips the preset. A dialog lists what would change,
+  per object. **Replace** moves the old file to `presets/archive/` and writes the
+  new one; **Keep existing** leaves it alone, and M110 won't ask again until its
+  suggestion changes.
 - **The Dark column now follows the Seestar switching darks mid-capture.** Looking
   at more nights showed the telescope changes to a better-matched dark partway
   through a long capture once the sensor has cooled about 2.5 °C away from the one
@@ -57,6 +77,14 @@ changes a **user** would notice, per release.
   smaller, more accurate drift than before. Sessions pick this up on the next Sync.
 
 ### Fixed
+- **LP and Dwarf presets now name the right filter and telescope.** Every Siril
+  preset said "No Filter (Broadband)" on a ZWO Seestar S50, including LP subs and
+  Dwarf 3 captures, so SPCC calibrated colour for the wrong filter and
+  `m110-stack` warned about the mismatch on every LP stack. LP jobs now say
+  "LP (Narrowband)", and Dwarf 3 / Dwarf Mini captures get their own telescope
+  with "Astro filter (UV/IR)" or "Dual-Band". Dwarf captures are also split into
+  per-filter jobs by the filter in their FITS headers, as Seestar captures already
+  were.
 - **Calibration frames now reach every Siril job on a mixed-filter object.** They
   were linked once at the top of the processing folder, but the Naztronomy script
   looks for `darks/` next to the `lights/` it is run on, which for an object shot

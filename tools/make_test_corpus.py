@@ -34,7 +34,9 @@ small rendered PNGs) that exercises the whole app:
   * **M101 mid-rejection** (#110): a sandbox hardlinking all 18 subs, built *before*
         two of them were moved to `rejected/` → ships with stale links the first
         refresh must prune (`processing.reconcile_rejected`), and with integration
-        already excluding the pair
+        already excluding the pair; its preset is the pre-#174 kind (98% × 4,
+        broadband label on LP), so importing the device mount's new M101 subs
+        raises the "Update Siril presets?" dialog
   * a **fake mounted telescope** shipped beside the store (Seestar `MyWorks/` +
         Dwarf `Astronomy/DWARF_RAW_*`) holding M101/M42's frames *including the
         rejected ones* plus a couple of genuinely new subs → re-import must offer
@@ -68,6 +70,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import json
 import os
 import shutil
 import tarfile
@@ -78,7 +81,7 @@ import numpy as np
 from astropy.io import fits
 from PIL import Image
 
-from m110 import config, catalog, objects
+from m110 import config, catalog, objects, siril
 
 
 # ── synthetic media helpers ──────────────────────────────────────────────────
@@ -295,8 +298,14 @@ def _prebuilt_sandbox(folder: str, names: list[str]):
             shutil.copyfile(src, dst)
     presets = config.siril_dir(folder) / "presets"
     presets.mkdir(exist_ok=True)
-    (presets / "naztronomy_smart_scope_presets.json").write_text(
-        '{"_note": "synthetic preset for testing"}\n')
+    # The preset M110 wrote before #174: one percentage for all four filters and
+    # the broadband label even on LP subs. It differs from today's proposal, so the
+    # next import into this folder (the device mount's new subs) asks whether to
+    # replace it — the tester's way to see that dialog.
+    legacy = {**siril.default_preset(len(names), "LP"), "filter": "No Filter (Broadband)",
+              "roundness": 98.0, "fwhm": 98.0, "star_count_filter": 98.0,
+              "bg_filter": 98.0}
+    (presets / siril.PRESET_NAME).write_text(json.dumps(legacy, indent=4) + "\n")
     (config.siril_dir(folder) / "next-steps.md").write_text(
         "# Next steps\n\nSynthetic sandbox (pre-dates the rejection).\n")
     # An archived past run. Backups keep this and skip the lights/ links beside it
