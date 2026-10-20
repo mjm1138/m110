@@ -27,6 +27,24 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **An import mid-stack swept the running stack's scratch into the archive**
+  (done — `feature/stack-in-progress-guard`). 2026-10-20, M1: *Import finished
+  work* ran while `m110-stack --run` was between its plate-solve and registration
+  phases. `roundtrip.archive_run` moved every child of the job dir that
+  `archive_keep` doesn't protect, which included the live `process/` (3.5 GB, the
+  solved `bkg_pp_lights_` sequence) and the open `siril_stack.log`. Phase 2 failed
+  with Siril's *"No sequence `bkg_pp_lights_' found"* and m110-stack said only
+  *"Registration failed (exit 1)"*. No data was lost. The same hazard applied to a
+  Siril GUI run. Fix: `m110-stack --run` writes `.m110-stack.running` (pid, host,
+  start time, phase) for the whole run; `roundtrip.require_idle` makes
+  `apply_import`/`archive_run` raise `StackInProgress` before any write;
+  `autoprep` (both workflows) and `prune_rejected` skip the target via
+  `roundtrip.sandbox_busy`, which also counts `process/` written in the last
+  5 min (the Siril GUI heuristic); the import dialog refuses up front, and warns
+  plus defaults cleanup to *Leave as-is* on recent scratch activity; a phase whose
+  input sequence vanished says so (`stacking.scratch_lost`).
+  `tests/test_stack_in_progress.py`.
+
 - [x] **Siril prep linked calibration frames where a mixed-filter job never
   looks** (done — `feature/calibration-library`, ported from `feature/draco`).
   `plan_prep` hardlinked darks/flats/biases once, at the sandbox root, while the

@@ -670,6 +670,21 @@ m110-stack "<copy>" --run
 - [ ] Ctrl-C mid-run leaves no half-written stack.
 - [ ] Three Siril runs happen, not two — `siril_stack.log` (solve),
       `siril_stack_register.log`, `siril_stack_stack.log` all appear in the working dir.
+- [ ] **An import cannot disturb a running stack.** Run this on a copy that lives
+      **inside a test store** (so M110 can see it), with some finished output in the
+      sandbox. While it runs, `ls -a` the working dir: `.m110-stack.running` is there.
+      In M110, open *Import finished work* for that object: it must say *"A stack is
+      running in this sandbox — wait for it to finish"* with **Import** disabled, and
+      `process/` must stay put. After the run ends (success, failure or Ctrl-C) the
+      marker is gone and the import works again. `kill -9` a run: the leftover
+      marker must not block the next import (its pid is dead, so it is ignored and
+      removed).
+- [ ] Start a second `m110-stack --run` on the same folder while one is running: it
+      refuses (*"Not starting a second run in the same folder"*) and the first run
+      carries on.
+- [ ] Siril GUI run (no marker): run the Naztronomy script on a sandbox and open
+      *Import finished work* while it works. The dialog warns *"Siril may still be
+      working here"* and the clean-up defaults to *Leave the sandbox as-is*.
 
 **A partial plate solve** — the case that used to lose the whole run. Hard to force
 on purpose; if a real set doesn't produce one, the orchestration is covered by

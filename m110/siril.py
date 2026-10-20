@@ -583,8 +583,9 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
 
 def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
     """Set up sandboxes for the given targets — idempotent, and **skips** any
-    target whose sandbox already holds un-imported finished output (never
-    disturbs in-progress/finished processing). Qt-free.
+    target whose sandbox already holds un-imported finished output or has a stack
+    running in it (`roundtrip.sandbox_busy`: never disturbs in-progress/finished
+    processing — the next sync retries). Qt-free.
 
     `only_missing=True` additionally skips any target that already has a `siril/`
     sandbox — so a refresh-time backfill creates only the absent ones and never
@@ -603,7 +604,7 @@ def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
             continue
         if not _lights(target):
             continue
-        if has_unimported_output(target):
+        if has_unimported_output(target) or roundtrip.sandbox_busy(target, SANDBOX):
             skipped.append(target)
             continue
         plan = plan_prep(target, should_cancel=should_cancel)
@@ -644,13 +645,15 @@ def prune_rejected(target: str) -> dict:
       A sub that merely vanished from ``lights/`` is left alone and counted as an
       orphan: it may be the *last* copy (on a filesystem where `_link_or_copy` fell
       back to a byte copy it certainly is);
-    * a target holding un-imported finished output is skipped whole — the same guard
-      `autoprep` uses, so an in-progress run is never disturbed.
+    * a target holding un-imported finished output, or with a stack running in it
+      (a live m110-stack marker, or `process/` written in the last few minutes —
+      Siril's `link` points its scratch at these very files), is skipped whole —
+      the same guards `autoprep` uses, so an in-progress run is never disturbed.
     """
     base = config.siril_dir(target)
     if not base.is_dir():
         return {"pruned": 0, "orphans": 0, "skipped": False}
-    if has_unimported_output(target):
+    if has_unimported_output(target) or roundtrip.sandbox_busy(target, SANDBOX):
         return {"pruned": 0, "orphans": 0, "skipped": True}
 
     rdir = config.rejected_dir(target)

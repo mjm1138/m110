@@ -325,10 +325,16 @@ def _prebuilt_sandbox(folder: str, names: list[str]):
     # at the job root (where it stays now). Backups skip both at every tier
     # (`config.SANDBOX_SCRATCH`) while keeping the four intermediates above — so a
     # tester sees the scratch rule and the authored-work rule side by side.
+    # Back-dated to the archived run (files first — writing one bumps its dir):
+    # fresh mtimes would trip `roundtrip.sandbox_busy`'s 5-minute scratch window,
+    # and autoprep would skip the folder as if Siril were still running in it.
+    past = datetime(2026, 7, 1, 21, 45).timestamp()
     for proc in (run / "process", config.siril_dir(folder) / "process"):
         proc.mkdir(exist_ok=True)
         (proc / "r_pp_lights_.seq").write_text("synthetic Siril sequence\n")
         (proc / "r_pp_lights_00001.fit").write_text("synthetic registered sub\n")
+        for p in (*proc.iterdir(), proc):
+            os.utime(p, (past, past))
 
 
 def _video(path: Path):
