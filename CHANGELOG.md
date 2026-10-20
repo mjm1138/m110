@@ -77,6 +77,18 @@ changes a **user** would notice, per release.
   smaller, more accurate drift than before. Sessions pick this up on the next Sync.
 
 ### Fixed
+- **Importing finished work can no longer break a stack that is still running.**
+  If you ran *Import finished work* while `m110-stack --run` was working in the
+  same object, the import's clean-up moved the stack's working files into
+  `siril/archive/`, and the next stage failed with only *"Registration failed"*.
+  Nothing was lost — the files were all in the archive — but the run was. Now
+  `m110-stack` marks the folder while it runs, and the import tells you a stack is
+  running and to wait, without changing anything. Automatic processing prep and
+  rejected-sub clean-up skip that object until the run is over. For a run you
+  started in Siril itself, which leaves no mark, the import warns when Siril wrote
+  to `process/` in the last few minutes and defaults to leaving the folder as it
+  is. If a stack's working files do disappear mid-run, `m110-stack` now says so
+  plainly, and says where they went if they were archived.
 - **LP and Dwarf presets now name the right filter and telescope.** Every Siril
   preset said "No Filter (Broadband)" on a ZWO Seestar S50, including LP subs and
   Dwarf 3 captures, so SPCC calibrated colour for the wrong filter and

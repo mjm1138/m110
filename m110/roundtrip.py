@@ -30,10 +30,14 @@ and `has_unimported_output` went true off a different tool's output, which made
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
-from dataclasses import dataclass
+import socket
+import sys
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -115,6 +119,204 @@ class Sandbox:
             return [base]
         filt = [p for p in base.iterdir() if p.is_dir() and (p / "lights").is_dir()]
         return filt if filt else [base]
+
+
+# ── a run in progress (never disturb it) ─────────────────────────────────────
+#
+# An import's archive sweep moves everything in a job dir that `archive_keep`
+# doesn't protect — which, while a stack is running there, is that stack's live
+# scratch. On 2026-10-20 an import landed between m110-stack's plate-solve and
+# registration phases, swept the solved 3.5 GB `process/` sequence (and the open
+# log) into `archive/<ts>/`, and phase 2 died with "No sequence found". So a run
+# announces itself, and every writer that tidies a sandbox asks first.
+
+#: Written by `m110-stack --run` in its working dir for the whole run. Leading
+#: dot: `config.is_hidden_name` keeps it out of every content walk, so it is never
+#: offered as output or classified as anything.
+RUN_MARKER = ".m110-stack.running"
+
+#: How recently `process/` must have changed to count as "Siril may be working in
+#: here" — the heuristic for a Siril GUI (Naztronomy) run, which writes no marker.
+SCRATCH_ACTIVE_WINDOW_S = 5 * 60
+
+
+class StackInProgress(RuntimeError):
+    """A writer refused to touch a sandbox because a stack is running in it."""
+
+    def __init__(self, runs):
+        self.runs = list(runs)
+        super().__init__(describe_runs(self.runs) + " Wait for it to finish, "
+                         "then try again — nothing was changed.")
+
+
+def _pid_alive(pid: int) -> bool:
+    """True if a process with this pid exists on this machine.
+
+    Windows needs its own probe: there `os.kill(pid, 0)` is not a probe at all —
+    it calls TerminateProcess with exit code 0, i.e. it would *kill the stack*
+    whose liveness we were asking about."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return bool(ok) and code.value == 259          # STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True                  # exists, owned by someone else
+    except OSError:
+        return False
+    return True
+
+
+def write_run_marker(job_dir: Path, phase: str, started: float | None = None) -> Path:
+    """Write (or update) the run marker in `job_dir`: this pid, host, start time
+    and the current phase. Atomic (`.part` → `os.replace`) so a reader never sees
+    half a marker."""
+    path = Path(job_dir) / RUN_MARKER
+    info = {"pid": os.getpid(), "host": socket.gethostname(),
+            "started": started if started is not None else time.time(),
+            "phase": phase}
+    tmp = path.with_name(path.name + ".part")
+    tmp.write_text(json.dumps(info), encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
+def clear_run_marker(job_dir: Path) -> None:
+    """Remove the marker — but only our own: a second invocation that was refused
+    must not delete the live run's marker on its way out."""
+    path = Path(job_dir) / RUN_MARKER
+    try:
+        info = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if info.get("pid") == os.getpid():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def stack_in_progress(job_dir: Path) -> dict | None:
+    """The live run marker in `job_dir` (pid/host/started/phase, plus `job`), or
+    None. A **stale** marker — its pid is not alive on this host, or it is
+    unreadable — is removed here and ignored: a crashed or killed run must not
+    lock its sandbox forever.
+
+    A marker written on *another* host (a store on a NAS shared by two Macs) can't
+    be probed, so it counts as live; the refusal names the file, so a user whose
+    other machine crashed mid-run knows what to delete."""
+    path = Path(job_dir) / RUN_MARKER
+    try:
+        info = json.loads(path.read_text(encoding="utf-8"))
+        pid = int(info["pid"])
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, KeyError, TypeError):
+        info, pid = None, -1             # garbage: treat as stale
+    if info is not None and (info.get("host") != socket.gethostname()
+                             or _pid_alive(pid)):
+        return {**info, "job": str(job_dir), "marker": str(path)}
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    return None
+
+
+def scratch_recently_active(job_dir: Path,
+                            window_s: float = SCRATCH_ACTIVE_WINDOW_S) -> bool:
+    """True if `<job>/process/` (Siril's scratch) changed within `window_s` — the
+    only sign a Siril GUI run leaves. A heuristic, so callers **skip or warn on
+    it, never refuse**: mtime says nothing about *who* wrote (the store rule:
+    never trust mtime for provenance), the commonest moment to import is the
+    minute a GUI run finishes — exactly when `process/` is freshest — and a long
+    GUI stack writes nothing there for an hour, so it could not be a reliable
+    block anyway."""
+    proc = Path(job_dir) / "process"
+    cutoff = time.time() - window_s
+    try:
+        if proc.stat().st_mtime >= cutoff:
+            return True
+        with os.scandir(proc) as it:
+            for ent in it:
+                if ent.stat(follow_symlinks=False).st_mtime >= cutoff:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _run_dirs(sandbox: "Sandbox", target: str) -> list[Path]:
+    """Every dir a run could be using in this sandbox: the root and each
+    immediate subdir (a per-filter job). Wider than `job_dirs`, which returns the
+    per-filter dirs *instead of* the root — a stack started before the target
+    split must still be seen. `archive/` holds only finished runs."""
+    base = sandbox.dir(target)
+    if not base.is_dir():
+        return []
+    try:
+        subs = sorted(p for p in base.iterdir()
+                      if p.is_dir() and p.name != "archive")
+    except OSError:
+        subs = []
+    return [base] + subs
+
+
+def active_runs(target: str, sandbox: "Sandbox") -> list[dict]:
+    """Live run markers anywhere in the target's sandbox (see `stack_in_progress`)."""
+    return [m for d in _run_dirs(sandbox, target)
+            if (m := stack_in_progress(d)) is not None]
+
+
+def active_scratch(target: str, sandbox: "Sandbox") -> list[str]:
+    """Job dirs whose `process/` changed recently — a possible Siril GUI run."""
+    return [str(d) for d in _run_dirs(sandbox, target)
+            if scratch_recently_active(d)]
+
+
+def sandbox_busy(target: str, sandbox: "Sandbox") -> bool:
+    """True if an automatic writer (autoprep, prune) should leave this sandbox
+    alone for now: a live marker **or** recent scratch activity. Skipping costs
+    nothing — the next sync retries — so the heuristic is allowed to decide here."""
+    return bool(active_runs(target, sandbox) or active_scratch(target, sandbox))
+
+
+def require_idle(target: str, sandbox: "Sandbox") -> None:
+    """Raise `StackInProgress` if a run marker is live in the sandbox. The gate
+    every user-driven sandbox writer passes before its first write."""
+    runs = active_runs(target, sandbox)
+    if runs:
+        raise StackInProgress(runs)
+
+
+def describe_runs(runs) -> str:
+    """One sentence per running stack, for a dialog or an error message."""
+    out = []
+    for r in runs:
+        try:
+            since = datetime.fromtimestamp(float(r.get("started"))).strftime("%H:%M")
+        except (TypeError, ValueError, OSError):
+            since = "?"
+        where = Path(r.get("job", "")).name or "the sandbox"
+        host = r.get("host")
+        on = f" on {host}" if host and host != socket.gethostname() else ""
+        out.append(f"m110-stack is running in {where}/{on} (pid {r.get('pid')}, "
+                   f"phase: {r.get('phase', '?')}, started {since}). If no stack "
+                   f"is actually running, delete {r.get('marker')}.")
+    return " ".join(out)
 
 
 # ── classification (shared: directory wins, then the filename vocabulary) ────
@@ -363,6 +565,11 @@ class ImportPlan:
     items: list                  # list[FinishedItem]
     hero_candidates: list        # render src paths (rasters)
     workflow: str = ""           # which sandbox produced this plan
+    #: Live run markers in the sandbox (`active_runs`) — the import is refused.
+    running: list = field(default_factory=list)
+    #: Job dirs whose `process/` changed recently (`active_scratch`) — a possible
+    #: Siril GUI run; the import warns and defaults to leaving the sandbox as-is.
+    scratch_active: list = field(default_factory=list)
 
 
 def has_unimported_output(target: str, sandbox: Sandbox) -> bool:
@@ -398,7 +605,8 @@ def scan_finished(target: str, sandbox: Sandbox, should_cancel=None) -> ImportPl
         if kind == "render":
             heroes.append(str(p))
     return ImportPlan(target=target, items=items, hero_candidates=heroes,
-                      workflow=sandbox.id)
+                      workflow=sandbox.id, running=active_runs(target, sandbox),
+                      scratch_active=active_scratch(target, sandbox))
 
 
 # ── apply (writes finished/ + stacks/, gated cleanup) ────────────────────────
@@ -413,7 +621,12 @@ def apply_import(target: str, sandbox: Sandbox, selected_srcs,
     cleanup: "archive" (default) sweeps each job's intermediates/output/scratch
     into `<job>/archive/<timestamp>/`, keeping whatever the workflow declared so
     the sandbox is ready for another run; "none" leaves it. **Never deletes** and
-    never escapes the sandbox. `hero_src=None` keeps the object's current hero."""
+    never escapes the sandbox. `hero_src=None` keeps the object's current hero.
+
+    Raises `StackInProgress` — before any write — while a stack is running in
+    the sandbox: its half-written output must not be copied, and the archive
+    sweep would carry off its live scratch."""
+    require_idle(target, sandbox)
     selected = set(selected_srcs)
     plan = scan_finished(target, sandbox)
     chosen = [it for it in plan.items if it.src in selected]
@@ -516,10 +729,12 @@ def prune_archives(target: str, sandbox: Sandbox, keep: int) -> dict:
 def archive_run(target: str, sandbox: Sandbox) -> str:
     """Move each job's run output/intermediates/scratch into
     `<job>/archive/<timestamp>/`, keeping whatever the workflow's `archive_keep`
-    predicate protects. Never deletes; only moves within the sandbox."""
+    predicate protects. Never deletes; only moves within the sandbox.
+    Raises `StackInProgress` while a stack is running in the sandbox."""
     base = sandbox.dir(target)
     if not base.is_dir():
         return "none"
+    require_idle(target, sandbox)
     job_dirs = sandbox.job_dirs(base)
     ts0 = datetime.now().strftime("%Y%m%d-%H%M%S")
     ts, n = ts0, 2
