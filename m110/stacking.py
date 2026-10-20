@@ -38,13 +38,14 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict, fields
 from pathlib import Path
 
 import numpy as np
 
-from . import calibration, config, devices, launch, siril as siril_mod
+from . import calibration, config, devices, launch, roundtrip, siril as siril_mod
 
 PRESET_NAME = siril_mod.PRESET_NAME
 
@@ -2105,6 +2106,54 @@ def main() -> int:
         return 0
 
     # ---- execute ---------------------------------------------------------
+    # The run marker is what stops an import, autoprep or prune from tidying
+    # this folder mid-run (`roundtrip.require_idle` / `sandbox_busy`): an import
+    # between phases once swept the solved scratch into archive/ and phase 2
+    # died on a sequence that was no longer there. Removed however we leave.
+    other = roundtrip.stack_in_progress(working)
+    if other:
+        print(roundtrip.describe_runs([other]) + " Not starting a second run in "
+              "the same folder: it would clear that run's scratch.",
+              file=sys.stderr)
+        return 2
+    started = time.time()
+    try:
+        roundtrip.write_run_marker(working, "starting", started)
+        return _execute(a, plan, siril,
+                        lambda ph: roundtrip.write_run_marker(working, ph, started))
+    finally:
+        roundtrip.clear_run_marker(working)
+
+
+def scratch_lost(working: Path, seq: str) -> str | None:
+    """Why a phase failed, when the reason is that its input vanished: None while
+    `process/` still holds `seq` (the sequence the previous phase produced), else
+    a plain sentence saying so — and where it went, if an archive sweep took it.
+
+    Without this the only report was Siril's "No sequence found" buried in a log
+    and "Registration failed (exit 1)", which reads as a Siril problem when the
+    real cause was M110 itself tidying the sandbox mid-run."""
+    proc = working / "process"
+    if (proc / f"{seq}.seq").exists():
+        return None
+    msg = ("process/ was moved or removed during the run — was the sandbox "
+           "imported or cleaned up?" if not proc.is_dir() else
+           f"process/ no longer holds the {seq} sequence the previous phase "
+           "produced — it was moved or removed during the run. Was the sandbox "
+           "imported or cleaned up?")
+    moved = sorted(working.glob(f"archive/*/process/{seq}.seq"))
+    if moved:
+        msg += f" It is now in {moved[-1].parent.relative_to(working)}/."
+    return msg
+
+
+def _execute(a, plan, siril: str, mark) -> int:
+    """The `--run` half of `main`: the three Siril phases, then the rename,
+    handoff and scratch cleanup. `mark(phase)` updates the run marker."""
+    p = plan.proposal
+    working, lights, dropped = plan.working, plan.lights, plan.dropped
+    ssf_solve, ssf_reg, ssf_stack = (plan.solve_ssf, plan.register_ssf,
+                                     plan.stack_ssf)
     log_path = working / "siril_stack.log"
     heartbeat, stream = resolve_verbosity(a.verbose, a.heartbeat)
     on_raw = _printer if stream else None
@@ -2114,7 +2163,7 @@ def main() -> int:
           + (", with Siril's full output" if stream
              else " (-v, -vv, -vvv for more)") + ".\n", flush=True)
 
-    reg_seq = seq_names(lights.name, p)[1]
+    pre_seq, reg_seq = seq_names(lights.name, p)
     errors: list[str] = []
 
     if a.restack:
@@ -2134,6 +2183,7 @@ def main() -> int:
                   flush=True)
 
         # ---- phase 1: solve ----------------------------------------------
+        mark("solve")
         rc, errors = run_siril(siril, working, ssf_solve, log_path, heartbeat,
                                on_line=_printer, on_raw=on_raw)
         outcome = parse_solve_log(
@@ -2162,13 +2212,16 @@ def main() -> int:
         # ---- phase 2: apply the registration -----------------------------
         # Its own Siril invocation: phase 1 commits the registration to the .seq
         # before it aborts, so this reads it back regardless of how phase 1 ended.
+        mark("register")
         rc, errs_reg = run_siril(siril, working, ssf_reg, log_path.with_name(
             "siril_stack_register.log"), heartbeat, on_line=_printer,
             on_raw=on_raw)
         errors += errs_reg
         if rc != 0:
-            print(f"\nRegistration failed (exit {rc}). "
-                  f"Log: {log_path.with_name('siril_stack_register.log')}\n")
+            lost = scratch_lost(working, pre_seq)
+            print(f"\nRegistration failed (exit {rc})"
+                  + (f": {lost}" if lost else ".")
+                  + f" Log: {log_path.with_name('siril_stack_register.log')}\n")
             return 1
 
     # Catch empty registered frames before they kill the stack hours from now.
@@ -2179,6 +2232,11 @@ def main() -> int:
               f"normalisation cannot compute statistics on them.\n", flush=True)
         ssf_stack = build_ssf_stack(lights.name, p, drop)
 
+    # Phase 2 just wrote the registered sequence, so if it is missing now it
+    # vanished mid-run. Under --restack it only counts if it was here to begin
+    # with: nothing to reuse is a different mistake, and Siril's error says so.
+    had_reg = not a.restack or (working / "process" / f"{reg_seq}.seq").exists()
+    mark("stack")
     rc, errs2 = run_siril(siril, working, ssf_stack, log_path.with_name(
         "siril_stack_stack.log"), heartbeat, on_line=_printer, on_raw=on_raw)
     errors += errs2
@@ -2189,7 +2247,8 @@ def main() -> int:
     produced = sorted(working.glob(f"{p.get('out')}.fit*"))
     print(f"\nLog: {log_path}")
     if rc != 0 or not produced:
-        print(f"FAILED (exit {rc}). Check the log.\n")
+        lost = scratch_lost(working, reg_seq) if had_reg else None
+        print(f"FAILED (exit {rc}). " + (lost or "Check the log.") + "\n")
         return 1
     from datetime import datetime
     now = datetime.now()

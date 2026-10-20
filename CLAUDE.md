@@ -118,7 +118,7 @@ DONE.md's archived reference — grep the module name there.
 
 | Module | Role |
 |---|---|
-| `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes) |
+| `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes), `SANDBOX_SCRATCH` (tool scratch: not archived, not backed up) |
 | `migrate.py` | in-place idempotent store migration to the two-axis layout |
 | `catalog.py` | Library (`library.toml`) vs bundled reference/catalog lists; add/remove/enrich entries; `season_from_ra`; `object_identifiers`; Simbad via optional astroquery (`OnlineLookupError`) |
 | `derived.py` | read generated rollups (`derived/*.json`) |
@@ -129,7 +129,7 @@ DONE.md's archived reference — grep the module name there.
 | `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
 | `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar) |
 | `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry); never matches a dark for a `darks_applied_on_device` telescope. Seestar rule v2: `device_clock` (the ONE filename-clock parser), `applied_dark` (run start) + `applied_darks` (sticky 2.5 °C mid-run switch), `split_runs`; `master_stats` + `device_rollup` → `derived/devices.json` |
-| `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor |
+| `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor; the run guard (`RUN_MARKER`, `stack_in_progress`, `require_idle`, `sandbox_busy`) |
 | `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else one library master per tier, linked **per job dir**; Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
 | `astrowizard.py` | the finishing round-trip (thin `roundtrip` consumer): `is_master`/`is_autosave`/`is_handoff` (sidecar-keyed, never filename), `prepare_lights` |
 | `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; three-phase solve·register·stack; `calibration_for_stack` (job-dir masters, else the device library on the *selected* frames → `calibrate -dark/-flat/-bias`; `--no-calibration`); `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
@@ -276,6 +276,7 @@ wrong) is under the same heading in DONE.md's archived reference.
 - Copy from the Seestar (SMB) with `shutil.copyfile` → `.part` → `os.replace`; `copy2` EPERMs.
 - Never trust mtime for provenance/freshness; use header dates (`DATE-OBS`, stack `DATE`).
 - The real Siril stack often sits in `working_files/`, not `stacks/`; readers look there.
+- Anything that moves or unlinks inside a sandbox asks first: `roundtrip.require_idle` (user-driven, raises) or `sandbox_busy` (automatic, skips). A live `m110-stack` run owns its `process/`.
 - `processing.json` stamps `generated_at`, so it churns; everything else in `derived/` is deterministic.
 - A backup destination that can't hardlink is probed up front (`backup.probe_destination`,
   on a worker) and switches to the pooled format, telling the user. Pooled objects are

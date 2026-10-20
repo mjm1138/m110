@@ -7,7 +7,9 @@ without an allowlist to maintain.
 A workflow sandbox (`Images/<target>/siril/`, `astrowizard/`, …) is **not**
 excluded wholesale. Only its *linked inputs* are — the hardlink trees declared in
 `config.SANDBOX_LINKED_INPUTS` — because those bytes are already in the snapshot
-under their real path. What a sandbox otherwise holds is authored work.
+under their real path — and its tool's own scratch (`config.SANDBOX_SCRATCH`, Siril's
+`process/`, live or inside an archived run), which the tool rebuilds every run. What
+a sandbox otherwise holds is authored work.
 
 **Tiers** (issue #93) sit on top of that denylist, because offsite storage is
 metered where a spare drive isn't. Light frames are ~99% of a library's bytes, so
@@ -27,6 +29,7 @@ import os
 from pathlib import Path
 
 from .. import config
+from ..roundtrip import ARCHIVE_TS_RE
 
 SCOPE_EVERYTHING = "everything"
 SCOPE_ESSENTIALS = "essentials"
@@ -84,7 +87,7 @@ def is_excluded(rel: str, scope: str = DEFAULT_SCOPE) -> bool:
     parts = rel.split("/")
     if _is_os_sidecar(parts[-1]):
         return True
-    if _is_sandbox_linked_input(parts):
+    if _is_sandbox_linked_input(parts) or _is_sandbox_scratch(parts):
         return True
     return scope == SCOPE_ESSENTIALS and _is_bulk(parts)
 
@@ -141,6 +144,36 @@ def _is_sandbox_linked_input(parts: list[str]) -> bool:
     # match is deliberately left in scope: `archive/<ts>/…` is authored output, and
     # a backup denylist should fail toward keeping a file rather than dropping it.
     return tail[0] in linked or (len(tail) > 1 and tail[1] in linked)
+
+
+def _is_sandbox_scratch(parts: list[str]) -> bool:
+    """True for a workflow's own **scratch** (`config.SANDBOX_SCRATCH`, i.e. Siril's
+    `process/`) at a job root — `Images/<target>/<sandbox>/[<FILTER>/]process/…` —
+    or inside an archived run, `…/[<FILTER>/]archive/<ts>/process/…`.
+
+    Excluded at every tier: the tool rebuilds it from the linked inputs on every
+    run, and an archived one is never re-opened. Before `archive_run` stopped
+    moving it (it now stays at the job root), each import filed a copy into
+    `archive/<ts>/` — 71 MB for a Naztronomy run, 3.5 GB for a kept `m110-stack`
+    scratch — and the default backup carried every one of them.
+
+    The shapes are matched exactly, and the archived run's name must parse as
+    `archive_run`'s timestamp: a folder the user put in `archive/` themselves is
+    left in scope, the same containment `roundtrip.prune_archives` applies."""
+    if len(parts) < 4 or parts[0] != "Images":
+        return False
+    scratch = config.SANDBOX_SCRATCH.get(parts[2])
+    if not scratch:
+        return False
+    tail = parts[3:]
+    if tail[0] in scratch:
+        return True
+    if tail[0] != _ARCHIVE_DIRNAME and len(tail) > 1:     # a per-filter job dir
+        tail = tail[1:]
+        if tail[0] in scratch:
+            return True
+    return (len(tail) > 2 and tail[0] == _ARCHIVE_DIRNAME
+            and bool(ARCHIVE_TS_RE.match(tail[1])) and tail[2] in scratch)
 
 
 def iter_source_files(root: Path, scope: str = DEFAULT_SCOPE) -> list[str]:

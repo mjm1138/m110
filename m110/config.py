@@ -407,6 +407,28 @@ SANDBOX_LINKED_INPUTS: dict[str, frozenset[str]] = {
 # Derived, so the dirnames and their linked-input policy can never drift apart.
 SANDBOX_DIRNAMES = frozenset(SANDBOX_LINKED_INPUTS)
 
+# The second question a workflow answers: which of its job-dir subdirectories are
+# the **tool's own scratch** — bytes the tool derives from the linked inputs and
+# rebuilds on every run, so they are neither authored work nor a deliverable.
+# Siril's `process/` is the one there is: the converted, calibrated and registered
+# sequences. Two things read this:
+#
+# * `siril.SANDBOX.archive_keep` leaves it in place on import rather than moving it
+#   into `archive/<ts>/`. The tools already own its lifecycle — Naztronomy asks
+#   before deleting an old `process/` at the start of a run, `m110-stack` clears it
+#   (`stacking.clear_scratch`) unless `--restack` reuses it on purpose — and an
+#   archived copy is one nobody will ever re-open in Siril. Measured on a real
+#   store: one archived `m110-stack` scratch was 3.5 GB, and keep-N
+#   retention multiplies that by N.
+# * `backup.scope` excludes it from **every** tier, live (`<sandbox>/[<FILTER>/]
+#   process/`) and already archived (`…/archive/<ts>/process/`) alike. It is also
+#   skipped by every finished-output walk (`siril._SKIP_DIRS`, `roundtrip.
+#   ROOT_SKIP_DIRS`), so nothing M110 imports or shows ever lives there.
+SANDBOX_SCRATCH: dict[str, frozenset[str]] = {
+    "siril": frozenset({"process"}),
+    "astrowizard": frozenset(),
+}
+
 
 def siril_dir(name: str) -> Path:
     """Contained Siril sandbox for a capture target (processing-prep)."""

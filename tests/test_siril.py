@@ -510,6 +510,50 @@ def test_archive_per_filter_jobs(tmp_path, monkeypatch):
     assert (sb / "IRCUT" / "lights").is_dir()
 
 
+@pytest.mark.parametrize("filt", [None, "IRCUT"])
+def test_archive_leaves_siril_scratch_in_place(tmp_path, monkeypatch, filt):
+    """Siril's `process/` is the tool's own scratch, rebuilt every run, so the
+    archive sweep leaves it where the tools manage it (Naztronomy asks before
+    clearing it, `m110-stack` clears it unless `--restack`) instead of filing a
+    copy — up to several GB — into every `archive/<ts>/` keep-N retains. A
+    `process/` already inside an older archived run is not touched either."""
+    kw = {"ircut": 120} if filt is None else {"ircut": 120, "lp": 40}
+    target = _make_target(tmp_path, monkeypatch, **kw)
+    siril.apply_prep(siril.plan_prep(target))
+    job = config.siril_job_dir(target, filt)
+    (job / "process").mkdir()
+    (job / "process" / "r_pp_lights_.seq").write_text("seq")
+    (job / "process" / "r_pp_lights_00001.fit").write_text("sub")
+    old = job / "archive" / "20261004-113230" / "process"
+    old.mkdir(parents=True)
+    (old / "pp_lights_.seq").write_text("old seq")
+    (job / f"{target}_processed.png").write_text("p")
+
+    res = siril.apply_import(target, [], cleanup="archive")
+
+    assert res["cleaned"] == "archive"
+    assert (job / "process" / "r_pp_lights_.seq").read_text() == "seq"
+    assert (job / "process" / "r_pp_lights_00001.fit").is_file()
+    new = [d for d in (job / "archive").iterdir() if d.name != "20261004-113230"]
+    assert len(new) == 1 and (new[0] / f"{target}_processed.png").is_file()
+    assert not (new[0] / "process").exists()
+    assert (old / "pp_lights_.seq").read_text() == "old seq"
+
+
+def test_scratch_alone_is_not_a_run_to_archive(tmp_path, monkeypatch):
+    """With nothing but `process/` left behind, there is no run to file away — so
+    no empty `archive/<ts>/` appears and retention is not triggered."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    (sb / "process").mkdir()
+    (sb / "process" / "pp_lights_.seq").write_text("seq")
+
+    assert siril.apply_import(target, [], cleanup="archive")["cleaned"] == "none"
+    assert not (sb / "archive").exists()
+    assert (sb / "process" / "pp_lights_.seq").is_file()
+
+
 def test_resolve_import_dest_dispositions(tmp_path):
     src = tmp_path / "src.png"; src.write_bytes(b"AAA")
     dest = tmp_path / "M42.png"

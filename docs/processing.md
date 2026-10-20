@@ -17,7 +17,7 @@ After an ingest (and again whenever it notices a target missing one), M110 build
 Images/<target>/siril/
   lights/            your light subs, ready for Siril (see "Hardlinks" below)
   presets/           a Siril preset tuned to your frame count
-  process/           scratch space for Siril's intermediate files
+  process/           Siril's scratch space (left in place on import; not backed up)
   next-steps.md      a short, per-target guide to what to do in Siril
   archive/<ts>/      past runs, kept so you can re-process later
 ```

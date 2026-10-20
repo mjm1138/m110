@@ -557,10 +557,12 @@ re-run when its area changes and you want eyes on the visuals).
       render (→ `finished/`) and stack (→ `stacks/`) checked, intermediates absent;
       a **hero** picker lists the raster(s); a **cleanup** choice is offered.
 - [ ] Import (cleanup = *archive*) → render shows in the gallery, the chosen hero
-      becomes the hero; the run's output + intermediates (incl. Siril's `process/`)
-      are **moved** into a visible `siril/[<FILTER>/]archive/<timestamp>/`
-      (nothing deleted), while `lights/` + `presets/` stay so the sandbox is ready
-      for another run. `Images/<target>/lights/` originals are untouched.
+      becomes the hero; the run's output + intermediates are **moved** into a
+      visible `siril/[<FILTER>/]archive/<timestamp>/` (nothing deleted), while
+      `lights/` + `presets/` stay so the sandbox is ready for another run — and so
+      does Siril's `process/` scratch, which is **not** in the new archive folder
+      (`config.SANDBOX_SCRATCH`; the next Naztronomy run asks to clear it).
+      `Images/<target>/lights/` originals are untouched.
 - [ ] **Re-import keeps the hero:** process again, import again → the hero picker
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
@@ -668,6 +670,21 @@ m110-stack "<copy>" --run
 - [ ] Ctrl-C mid-run leaves no half-written stack.
 - [ ] Three Siril runs happen, not two — `siril_stack.log` (solve),
       `siril_stack_register.log`, `siril_stack_stack.log` all appear in the working dir.
+- [ ] **An import cannot disturb a running stack.** Run this on a copy that lives
+      **inside a test store** (so M110 can see it), with some finished output in the
+      sandbox. While it runs, `ls -a` the working dir: `.m110-stack.running` is there.
+      In M110, open *Import finished work* for that object: it must say *"A stack is
+      running in this sandbox — wait for it to finish"* with **Import** disabled, and
+      `process/` must stay put. After the run ends (success, failure or Ctrl-C) the
+      marker is gone and the import works again. `kill -9` a run: the leftover
+      marker must not block the next import (its pid is dead, so it is ignored and
+      removed).
+- [ ] Start a second `m110-stack --run` on the same folder while one is running: it
+      refuses (*"Not starting a second run in the same folder"*) and the first run
+      carries on.
+- [ ] Siril GUI run (no marker): run the Naztronomy script on a sandbox and open
+      *Import finished work* while it works. The dialog warns *"Siril may still be
+      working here"* and the clean-up defaults to *Leave the sandbox as-is*.
 
 **A partial plate solve** — the case that used to lose the whole run. Hard to force
 on purpose; if a real set doesn't produce one, the orchestration is covered by
@@ -806,7 +823,10 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
       confirm the destination's used space didn't roughly double.
 - [ ] **A sandbox's work is backed up; its links are not.** In the first snapshot,
       open `Images/M101/siril/`: `archive/20260701-214500/` is there with its four
-      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**.
+      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**,
+      nor is Siril's `process/` scratch, either at `siril/process/` or inside
+      `archive/20260701-214500/process/` (`config.SANDBOX_SCRATCH`; both are in the
+      corpus, so their absence is the rule working, at both tiers).
       Then confirm `Images/M101/lights/` *is* there with all 18 subs. This is the whole
       rule (`config.SANDBOX_LINKED_INPUTS`): the frames are backed up once, under the
       path they really live at, while the hand-work beside them is kept. Getting it
