@@ -63,10 +63,13 @@ def _fits():
     from astropy.io import fits
     return fits
 
-# Naztronomy's shipped quality-filter defaults.
-# Measured on M15: 98% kept 231 frames vs 210 at 95%, with identical FWHM —
-# the frames 95% discarded were fine. Matches Naztronomy's M15 preset.
-DEFAULT_FILTERS = {"roundness": 98.0, "fwhm": 98.0, "star_count": 98.0, "bg": 98.0}
+# The four frame-selection filters. Their thresholds come from
+# `siril.filter_quality_for` — the one table prep's preset and this stacker share
+# (#174) — keyed here on coverage depth rather than total frames, like drizzle.
+FILTER_KEYS = siril_mod.FILTER_KEYS
+# (Overrides field, filter key) for the per-filter command-line overrides.
+_FILTER_OVERRIDES = (("filter_round", "roundness"), ("filter_wfwhm", "fwhm"),
+                     ("filter_bkg", "bg"), ("filter_nbstars", "star_count"))
 
 
 # --------------------------------------------------------------------------
@@ -670,9 +673,21 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
           "per-frame linear gradient removal before registration")
 
     # -- quality filters --------------------------------------------------
-    p.set("filters", dict(DEFAULT_FILTERS),
-          "98% thresholds on roundness, wFWHM, background and star count. 95% was "
-          "measurably too tight — it cut 21 of 231 frames on M15 with no FWHM gain")
+    dominant = _dominant_filter(s)
+    on, quality = siril_mod.filter_quality_for(s.depth_median, dominant)
+    if on:
+        p.set("filters", quality,
+              f"keep {filters_label(quality)} for a depth of {s.depth_median}. "
+              "Each cut drops that share of frames whatever the night was like, "
+              "and the four mostly add up, so they are tuned apart: roundness "
+              "catches wind and tracking error, which rejection cannot; wFWHM "
+              "weighting already handles soft frames, so wFWHM trims only the "
+              "tail; star count adds nothing to wFWHM"
+              + ("; background is off because a dual-band filter flattens the "
+                 "sky" if siril_mod.is_dual_band(dominant) else ""))
+    else:
+        p.set("filters", None,
+              f"a depth of {s.depth_median} is too few frames to spare any")
 
     # -- compression -------------------------------------------------------
     p.set("compress", True,
@@ -806,13 +821,45 @@ def load_preset(working: Path) -> dict:
     return siril_mod._read_preset(working / "presets" / PRESET_NAME)
 
 
+def filters_label(f: dict | None) -> str:
+    """``round 95% · wFWHM 98% · bkg 98%`` — the filters that cut anything."""
+    if not f:
+        return "off"
+    on = [f"{name} {f[k]:g}%" for k, name in (("roundness", "round"), ("fwhm", "wFWHM"),
+                                               ("bg", "bkg"), ("star_count", "stars"))
+          if f.get(k, 100) < 100]
+    return " · ".join(on) or "off"
+
+
+def _dominant_filter(s: Survey) -> str:
+    return max(s.filters, key=s.filters.get) if s.filters else ""
+
+
+def apply_filter_overrides(p: Proposal, s: Survey, ov: "Overrides") -> None:
+    """--no-filters, then --filter-pct (all four), then the per-filter flags on
+    top of whatever is in force — the depth tier's values when filters were off."""
+    if ov.no_filters:
+        p.set("filters", None, "disabled on the command line")
+        return
+    if ov.filter_pct is not None:
+        p.set("filters", {k: ov.filter_pct for k in FILTER_KEYS},
+              f"all four thresholds set to {ov.filter_pct:g}% on the command line")
+    single = {k: getattr(ov, name) for name, k in _FILTER_OVERRIDES
+              if getattr(ov, name) is not None}
+    if single:
+        base = p.get("filters") or siril_mod.filter_quality_for(
+            s.depth_median, _dominant_filter(s))[1]
+        merged = {**base, **single}
+        p.set("filters", merged, f"keep {filters_label(merged)} (set on the command line)")
+
+
 def check_preset(preset: dict, s: Survey, p: Proposal) -> None:
     if not preset:
         return
-    declared = str(preset.get("filter", "")).lower()
+    declared = str(preset.get("filter", ""))
     if declared and s.filters:
-        actual = max(s.filters, key=s.filters.get)
-        if ("no filter" in declared or "broadband" in declared) and actual.upper().startswith("LP"):
+        actual = _dominant_filter(s)
+        if actual != "UNKNOWN" and (declared in siril_mod.DUAL_BAND_LABELS) != siril_mod.is_dual_band(actual):
             p.warnings.append(
                 f"The M110 preset declares filter '{preset['filter']}' but the "
                 f"frames are {actual}. That mislabels the data for SPCC."
@@ -1026,12 +1073,11 @@ def build_ssf_apply(lights_name: str, p: Proposal) -> str:
            "-filter-included"]
     if p.get("filters"):
         f = p.get("filters")
-        reg += [
-            f"-filter-round={f['roundness']}%",
-            f"-filter-wfwhm={f['fwhm']}%",
-            f"-filter-bkg={f['bg']}%",
-            f"-filter-nbstars={f['star_count']}%",
-        ]
+        # A filter at 100% keeps every frame, so it is left off the command.
+        reg += [f"-filter-{flag}={f[k]:g}%"
+                for flag, k in (("round", "roundness"), ("wfwhm", "fwhm"),
+                                ("bkg", "bg"), ("nbstars", "star_count"))
+                if f[k] < 100]
     if p.get("drizzle"):
         reg += ["-drizzle", f"-scale={p.get('drizzle_scale')}",
                 f"-pixfrac={p.get('pixfrac')}"]
@@ -1272,7 +1318,7 @@ def format_report(s: Survey, p: Proposal, siril: str, working: Path,
         ("feather", f"{p.get('feather')} px" if p.get("feather") else "off"),
         ("rgb_equal", "on" if p.get("rgb_equal") else "off"),
         ("bg extraction", "on" if p.get("bg_extract") else "off"),
-        ("quality filters", "98% round/wfwhm/bkg/stars" if p.get("filters") else "off"),
+        ("quality filters", filters_label(p.get("filters"))),
         ("compression", f"rice q{p.get('compress_quant')}" if p.get("compress") else "off"),
         ("calibration", " · ".join(
             f"{t[:-1]} {'✓' if (p.get('calibration') or {}).get(t) else '—'}"
@@ -1458,6 +1504,10 @@ class Overrides:
     no_bg_extract: bool = False
     no_filters: bool = False
     filter_pct: float | None = None
+    filter_round: float | None = None
+    filter_wfwhm: float | None = None
+    filter_bkg: float | None = None
+    filter_nbstars: float | None = None
     feather: int | None = None
     no_compress: bool = False
     compress_quant: int | None = None
@@ -1688,11 +1738,7 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
         p.set("rgb_equal", True, "set on the command line")
     if ov.no_bg_extract:
         p.set("bg_extract", False, "disabled on the command line")
-    if ov.no_filters:
-        p.set("filters", None, "disabled on the command line")
-    elif ov.filter_pct is not None:
-        p.set("filters", {k: ov.filter_pct for k in DEFAULT_FILTERS},
-              f"all four thresholds set to {ov.filter_pct:g}% on the command line")
+    apply_filter_overrides(p, s, ov)
     if ov.feather:
         p.set("feather", ov.feather, "set on the command line")
     if ov.no_compress:
@@ -1999,8 +2045,12 @@ def main() -> int:
     g.add_argument("--no-bg-extract", action="store_true")
     g.add_argument("--no-filters", action="store_true")
     g.add_argument("--filter-pct", type=float, metavar="PCT",
-                   help="set all four quality-filter thresholds (default 95; "
-                        "Naztronomy's M15 preset used 98 — higher keeps more frames)")
+                   help="set all four quality-filter thresholds to PCT (the share "
+                        "of frames each keeps; default: tiered by depth and filter)")
+    for flag, name in (("round", "roundness"), ("wfwhm", "wFWHM"),
+                       ("bkg", "background"), ("nbstars", "star-count")):
+        g.add_argument(f"--filter-{flag}", type=float, metavar="PCT",
+                       help=f"set only the {name} threshold (100 = off)")
     g.add_argument("--feather", type=int, metavar="PX")
     g.add_argument("--no-compress", action="store_true")
     g.add_argument("--compress-quant", type=int, metavar="Q",

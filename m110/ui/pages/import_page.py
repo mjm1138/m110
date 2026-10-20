@@ -27,6 +27,7 @@ from m110.ui.ingest_dialog import (
     _ScanWorker, _ApplyWorker, _fmt_size, KIND_LABEL, ASSIGNABLE_KINDS,
     NO_POINTING_KINDS,
 )
+from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
 from m110.ui.widgets import fit_cell_widgets
 
 RECENTS_KEY = "import_recents"
@@ -430,6 +431,7 @@ class ImportPage(QWidget):
         self._close_progress()
         self._set_busy(False)
         moved = result.get("moved", 0)
+        resolve_preset_conflicts(self, result)
         self.imported.emit(moved)
         self.refresh_holding()
 
@@ -658,6 +660,7 @@ class ImportPage(QWidget):
         self._close_progress()
         self._set_busy(False)
         moved = result.get("moved", 0)
+        resolve_preset_conflicts(self, result)
         self.imported.emit(moved)
         if moved and QMessageBox.question(
                 self, "Remember alias?",
@@ -816,6 +819,7 @@ class ImportPage(QWidget):
         moved = result.get("moved", 0)
         skipped = result.get("skipped", 0)
         cancelled = result.get("cancelled", False)
+        resolve_preset_conflicts(self, result)
         self.imported.emit(moved)
         self.refresh_holding()      # unclassified files may have landed in Inbox/
         bits = [f"{moved} file(s) imported"]

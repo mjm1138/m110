@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import catalog, config, ingest
+from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
 
 KIND_LABEL = {
     "light": "lights", "stack": "Seestar stack", "media": "media",
@@ -105,7 +106,10 @@ class _ApplyWorker(QThread):
                                   for op in self._ops if op.kind == "light"
                                   and len(Path(op.dest_rel).parts) > 1})
                 if targets:
-                    processing.run_autoprep(targets, should_cancel=self._cancel.is_set)
+                    # Presets that differ from the proposal come back here, for
+                    # the done slot to ask about (`resolve_preset_conflicts`).
+                    res["autoprep"] = processing.run_autoprep(
+                        targets, should_cancel=self._cancel.is_set)
             self.done.emit(res)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -403,6 +407,7 @@ class IngestDialog(QDialog):
         moved = result.get("moved", 0)
         skipped = result.get("skipped", 0)
         cancelled = result.get("cancelled", False)
+        resolve_preset_conflicts(self, result)
         self.ingested.emit(moved)
         # Do NOT auto-rescan: a fresh device scan here is slow and pops another
         # modal (the "modal won't close" report). Clear the consumed plan; the

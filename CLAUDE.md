@@ -164,7 +164,7 @@ DONE.md's archived reference — grep the module name there.
 | `pages/overview.py` | landing dashboard of collapsible sections (goals, pins, integration, checklists, manage goals) |
 | `pages/processing.py` · `pages/sessions.py` · `pages/journal.py` · `pages/media.py` | Siril queue · session log (dialog) · feed view · media browser |
 | `pages/planning.py` + `night_timeline.py` + `field_guide_dialog.py` + `site_profile_editor.py` | planning pane: ranking, night plan/sequencer, saved guides, site profiles; astropy workers fire only on explicit actions |
-| `pages/import_page.py` · `ingest_dialog.py` · `holding_inspect_dialog.py` | import flow: preview-then-confirm, holding area, bulk assign |
+| `pages/import_page.py` · `ingest_dialog.py` · `holding_inspect_dialog.py` · `preset_conflict_dialog.py` | import flow: preview-then-confirm, holding area, bulk assign; ask before replacing a differing Siril preset |
 | `import_dialog.py` · `handoff_dialog.py` · `export_dialog.py` · `add_object_dialog.py` · `image_viewer.py` | import finished work · send stack to a workflow · export for sharing · add object · gallery viewer |
 | `media_detail.py` · `media_cleanup_dialog.py` | media detail pane · sidecar cleanup |
 | `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (summary + Local drive / Cloud tabs, one `_SlotPanel` each) · restore (From: picker across slots) · MCP connection details |

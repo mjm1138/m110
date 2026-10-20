@@ -92,6 +92,7 @@ that is 86 GB → 34.5 GB, and a canvas halved on each axis.
 
 Overrides: `drizzle` (0 = off) · `pixfrac` · `rejection` · `weight` ·
 `overlap_norm` · `feather` · `no_bg_extract` · `no_filters` · `filter_pct` ·
+`filter_round` · `filter_wfwhm` · `filter_bkg` · `filter_nbstars` ·
 `only_exposure` · `exclude_night` · `filter`.
 
 `overrides_applied` echoes what you forced, and `how_to_run` grows the matching
@@ -237,11 +238,37 @@ data along with its worst.
 
 ## The one thing the per-setting justifications do not say
 
-**The quality filters compound.** Four independent thresholds at 95% do not retain
-95% — measured on NGC 7000, 904 frames registered down to 753, about 83%. The
-default is 98% because 95% was measurably too tight (it cut 21 of 231 frames on M15
-with no FWHM gain). Budget for the loss when a target is close to an integration
-goal, and reach for `no_filters` only when a set is already thin.
+**The quality filters compound.** Each percentage is the share of frames Siril
+*keeps*, ranked on that one metric over the whole set, so 95% drops the worst ~5%
+on a perfect night and on a bad one alike. All four cutoffs are computed over the
+full set and then ANDed, and they overlap less than you would hope: across six
+real stacks the combined drop was 55–90% of the four individual drops added
+together. Budget for roughly the sum.
+
+That is why the four are tuned apart, by depth (the same table prep writes into
+the Naztronomy preset):
+
+| Depth | Roundness | wFWHM | Background | Star count |
+|---|---|---|---|---|
+| < 100 | off | off | off | off |
+| 100–500 | 95 | 98 | 98 | off |
+| 501–1500 | 92 | 95 | 98 | off |
+| > 1500 | 90 | 95 | 98 | off |
+
+- **Roundness carries the weight.** Wind, polar-alignment error and tracking
+  glitches show up as elongation, and winsorized rejection cannot catch an
+  elongated frame — it is not a per-pixel outlier.
+- **wFWHM only trims the tail**, because wFWHM *weighting* already down-weights
+  soft frames. On M15, 95% cut 21 of 231 frames with no FWHM gain.
+- **Star count is off.** wFWHM already penalises frames with fewer stars, and the
+  near-blank frames it would catch fail registration anyway.
+- **Background is off on a dual-band filter** (Seestar `LP`, DwarfLab
+  `Duo-Band`). Background tracks altitude into the light dome; with the sky
+  suppressed and its spread small, the cut removes near-arbitrary frames.
+
+Budget for the loss when a target is close to an integration goal, loosen one
+filter with its own override rather than all four, and reach for `no_filters`
+only when a set is already thin.
 
 ## After
 

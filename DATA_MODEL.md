@@ -123,7 +123,10 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       frames, else ONE matched master per tier from Calibration/<device>/; placed
       in **each job dir**, i.e. under siril/<FILTER>/ on a mixed-filter target,
       because the Naztronomy script resolves them against Siril's working dir) ·
-      process/ (scratch) · presets/ · next-steps.md · archive/<ts>/ (past runs)
+      process/ (scratch) · presets/ (the Naztronomy preset; presets/archive/
+      <name>.<YYYYmmdd-HHMMSS>.json = presets the user chose to replace;
+      .m110_declined_preset.json = the proposal they last kept theirs against,
+      #174) · next-steps.md · archive/<ts>/ (past runs)
     astrowizard/                    contained AstroWizard sandbox (ROADMAP item 14):
       the handed-off stack + its `<stack>.src.json` provenance sidecar
       ({source, size_bytes, stacked_at, frames, integration_sec, object, filter,

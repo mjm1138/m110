@@ -121,6 +121,10 @@ _CLI_FLAGS = {
     "no_bg_extract": lambda v: " --no-bg-extract",
     "no_filters": lambda v: " --no-filters",
     "filter_pct": lambda v: f" --filter-pct {v:g}",
+    "filter_round": lambda v: f" --filter-round {v:g}",
+    "filter_wfwhm": lambda v: f" --filter-wfwhm {v:g}",
+    "filter_bkg": lambda v: f" --filter-bkg {v:g}",
+    "filter_nbstars": lambda v: f" --filter-nbstars {v:g}",
 }
 
 
@@ -208,7 +212,21 @@ _CLI_FLAGS = {
                                            "already too thin to lose frames.")},
             "filter_pct": {"type": "number",
                            "description": ("Set all four quality-filter thresholds at "
-                                           "once, e.g. 95. The default is 98.")},
+                                           "once, e.g. 95 — the share of frames each "
+                                           "keeps. The default is tiered by depth and "
+                                           "filter; see the proposal's reason.")},
+            "filter_round": {"type": "number",
+                             "description": ("Set only the roundness threshold — the "
+                                             "one that catches wind and tracking "
+                                             "error. 100 turns it off.")},
+            "filter_wfwhm": {"type": "number",
+                             "description": "Set only the wFWHM threshold. 100 = off."},
+            "filter_bkg": {"type": "number",
+                           "description": ("Set only the background threshold. 100 = "
+                                           "off, the default on a dual-band filter.")},
+            "filter_nbstars": {"type": "number",
+                               "description": ("Set only the star-count threshold. "
+                                               "100 = off, the default.")},
             "verbosity": {"type": "integer", "minimum": 0, "maximum": 3,
                           "description": ("How much the run says in the terminal. "
                                           "Changes only the `how_to_run` command, "
@@ -231,7 +249,9 @@ def plan_stack(target: str, filter: str | None = None,
                rejection: str | None = None, weight: str | None = None,
                overlap_norm: bool | None = None, feather: int | None = None,
                no_bg_extract: bool = False, no_filters: bool = False,
-               filter_pct: float | None = None, verbosity: int = 0) -> ToolResult:
+               filter_pct: float | None = None, filter_round: float | None = None,
+               filter_wfwhm: float | None = None, filter_bkg: float | None = None,
+               filter_nbstars: float | None = None, verbosity: int = 0) -> ToolResult:
     require_store()
     from m110 import stacking            # lazy: pulls astropy on first header read
 
@@ -252,6 +272,10 @@ def plan_stack(target: str, filter: str | None = None,
         no_bg_extract=no_bg_extract,
         no_filters=no_filters,
         filter_pct=filter_pct,
+        filter_round=filter_round,
+        filter_wfwhm=filter_wfwhm,
+        filter_bkg=filter_bkg,
+        filter_nbstars=filter_nbstars,
     )
     try:
         plan = stacking.build_plan(directory, ov, deep_measure=False)
@@ -278,6 +302,8 @@ def plan_stack(target: str, filter: str | None = None,
         ("weight", weight), ("overlap_norm", overlap_norm), ("feather", feather),
         ("no_bg_extract", no_bg_extract or None),
         ("no_filters", no_filters or None), ("filter_pct", filter_pct),
+        ("filter_round", filter_round), ("filter_wfwhm", filter_wfwhm),
+        ("filter_bkg", filter_bkg), ("filter_nbstars", filter_nbstars),
     ) if v is not None}
     # Echoed so a reader can tell an engine proposal from a hand-forced setting.
     # Without it an overridden run reads identically to one the engine chose.
