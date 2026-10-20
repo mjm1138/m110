@@ -685,7 +685,7 @@ def apply_import(target: str, sandbox: Sandbox, selected_srcs,
 
 #: The archive dirname `archive_run` writes: `%Y%m%d-%H%M%S`, plus a `-N` suffix
 #: when two runs land in the same second.
-_ARCHIVE_TS_RE = re.compile(r"^\d{8}-\d{6}(-\d+)?$")
+ARCHIVE_TS_RE = re.compile(r"^\d{8}-\d{6}(-\d+)?$")
 
 
 def prune_archives(target: str, sandbox: Sandbox, keep: int) -> dict:
@@ -717,7 +717,7 @@ def prune_archives(target: str, sandbox: Sandbox, keep: int) -> dict:
         if not arch.is_dir():
             continue
         runs = sorted(d for d in arch.iterdir()
-                      if d.is_dir() and _ARCHIVE_TS_RE.match(d.name))
+                      if d.is_dir() and ARCHIVE_TS_RE.match(d.name))
         for old in runs[:-keep] if keep < len(runs) else []:
             size = sum(f.stat().st_size for f in old.rglob("*") if f.is_file())
             shutil.rmtree(old)

@@ -51,6 +51,24 @@ NEVER = [
     f"{config.INTERNAL_DIRNAME}/sessions.jsonl",
     "Images/M51/siril/lights/Light_M51_10s_001.fit",
     "Images/M51/siril/Ha/lights/Light_M51_10s_001.fit",
+    # Siril's own scratch (config.SANDBOX_SCRATCH), live or already archived:
+    # rebuilt from lights/ every run, and a kept m110-stack one is GBs.
+    "Images/M51/siril/process/r_pp_lights_00001.fit",
+    "Images/M51/siril/Ha/process/pp_lights_.seq",
+    "Images/M51/siril/archive/20261004-113230/process/pp_lights_00001.fit",
+    "Images/M51/siril/Ha/archive/20261020-085357-2/process/r_pp_lights_.seq",
+]
+
+# Look like scratch, but are not Siril's `process/` at a job root or directly
+# inside one of `archive_run`'s timestamped runs — so the denylist fails toward
+# keeping them, at the tier that keeps the surrounding tree.
+NOT_SCRATCH = [
+    # a folder of the user's own inside archive/, as prune_archives also spares
+    "Images/M51/siril/archive/my-best-attempt/process/result.fit",
+    # a capture target whose object dir holds a process/ (mis-pointed cwd)
+    "Images/M51/process/result.fit",
+    # another workflow declares no scratch
+    "Images/M51/astrowizard/process/M51_AW3_str.tif",
 ]
 
 
@@ -70,6 +88,19 @@ def test_bulk_frames_are_kept_at_everything_and_dropped_at_essentials(rel):
 @pytest.mark.parametrize("scope", [SCOPE_EVERYTHING, SCOPE_ESSENTIALS])
 def test_regenerable_and_linked_inputs_are_never_backed_up(rel, scope):
     assert is_excluded(rel, scope) is True
+
+
+@pytest.mark.parametrize("rel", NOT_SCRATCH)
+def test_only_the_declared_scratch_shapes_are_dropped(rel):
+    assert is_excluded(rel, SCOPE_EVERYTHING) is False
+
+
+def test_scratch_registry_names_only_known_sandboxes():
+    """A scratch entry for an undeclared workflow would be dead config; one that
+    named a linked input would be a second, conflicting answer for the same dir."""
+    assert set(config.SANDBOX_SCRATCH) <= config.SANDBOX_DIRNAMES
+    for wf, scratch in config.SANDBOX_SCRATCH.items():
+        assert not scratch & config.SANDBOX_LINKED_INPUTS[wf]
 
 
 def test_the_default_is_everything_so_existing_backups_do_not_narrow():

@@ -320,6 +320,15 @@ def _prebuilt_sandbox(folder: str, names: list[str]):
             f"synthetic archived {stage} intermediate\n")
     (run / f"starless_{folder}_120x30sec_stretch.fit").write_text(
         "synthetic archived starless intermediate\n")
+    # Siril's `process/` scratch, twice: inside that archived run (where
+    # `archive_run` filed it before it learned to leave scratch in place) and live
+    # at the job root (where it stays now). Backups skip both at every tier
+    # (`config.SANDBOX_SCRATCH`) while keeping the four intermediates above — so a
+    # tester sees the scratch rule and the authored-work rule side by side.
+    for proc in (run / "process", config.siril_dir(folder) / "process"):
+        proc.mkdir(exist_ok=True)
+        (proc / "r_pp_lights_.seq").write_text("synthetic Siril sequence\n")
+        (proc / "r_pp_lights_00001.fit").write_text("synthetic registered sub\n")
 
 
 def _video(path: Path):
@@ -943,6 +952,22 @@ def verify(out: Path):
     assert "._M63_119x30sec_processed.png" not in m63, "._ render in the gallery"
     print(f"  #161: {len(planted)} AppleDouble sidecars planted, none visible "
           f"(sessions/profile/prep/gallery)")
+
+    # Siril scratch stays out of every backup tier, live or archived, while the
+    # archived run's own intermediates are kept (`config.SANDBOX_SCRATCH`).
+    from m110.backup import scope
+    backed = set(scope.iter_source_files(out))
+    for t in ("M101", "M106"):
+        sb = f"Images/{t}/siril"
+        run = f"{sb}/archive/20260701-214500"
+        assert (out / sb / "process").is_dir() and (out / run / "process").is_dir(), \
+            f"{t}: the corpus should ship live + archived Siril scratch"
+        assert any(r.startswith(run + "/") for r in backed), \
+            f"{t}: the archived run's intermediates must be backed up"
+        assert not any(r.startswith(sb + "/") and "/process/" in r for r in backed), \
+            f"{t}: Siril's process/ scratch leaked into the backup scope"
+    print("  scratch: M101/M106 siril/process/ + archive/<ts>/process/ skipped by "
+          "backup; the archived intermediates kept")
 
 
 def make_tar(paths, tar_path: Path):

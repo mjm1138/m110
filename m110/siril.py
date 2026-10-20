@@ -691,9 +691,12 @@ def prune_rejected(target: str) -> dict:
 # `siril.apply_import` / `siril.has_unimported_output`, and an extraction that is
 # behaviour-preserving should not also be an API break.
 
-# Kept in each job dir on cleanup, so the sandbox is ready for another run.
-_ARCHIVE_KEEP = {"lights", "darks", "flats", "biases",
-                 "presets", "archive", "next-steps.md"}
+# Kept in each job dir on cleanup, so the sandbox is ready for another run. Siril's
+# `process/` scratch stays too: the tools manage it, and an archived copy is
+# regenerable bytes multiplied by keep-N (see `config.SANDBOX_SCRATCH`).
+_ARCHIVE_KEEP = ({"lights", "darks", "flats", "biases",
+                  "presets", "archive", "next-steps.md"}
+                 | config.SANDBOX_SCRATCH["siril"])
 
 # Sandbox subdirs that never hold fresh, importable output: the hardlinked
 # inputs, Siril's scratch, the preset, and prior archived runs.

@@ -75,6 +75,18 @@ changes a **user** would notice, per release.
   in use. The column (and `m110-stack`'s drift warning) now accounts for that, so a
   capture that switched shows each dark it used ("24.9→23.2→13.9 °C · Δ6.7") and a
   smaller, more accurate drift than before. Sessions pick this up on the next Sync.
+- **Backups no longer carry Siril's `process/` scratch.** Siril rebuilds the
+  converted, calibrated and registered frames in `process/` every time you stack,
+  so there is nothing in it you can't get back by stacking again — but backups were
+  storing it — about 40 GB on one real library. Every backup level now skips it,
+  both the live folder and the
+  copies already filed in past runs' `archive/` folders. Nothing is deleted from
+  your library; your existing backups keep what they have until they're pruned.
+- **Importing finished work leaves Siril's `process/` folder where it is.** It used
+  to be moved into the run's `archive/` folder along with everything else, so every
+  archived run kept a copy of a scratch folder you'd never open again. Now it stays
+  put for Siril to reuse or clear: the Naztronomy script asks whether to delete it
+  when you start the next run, and `m110-stack` clears it itself.
 
 ### Fixed
 - **Importing finished work can no longer break a stack that is still running.**

@@ -221,7 +221,13 @@ Legend: `[ ]` open · `[~]` partially done
   is retention (keeping every log forever on a target that is re-stacked often is
   its own mess) and whether a *successful* run's log is worth keeping at all.
 
-- [ ] **Siril's converted-sequence cube is backed up as authored work.** The
+- [x] **Siril's converted-sequence cube is backed up as authored work.**
+  *(done 2026-10-20, `feature/scratch-out-of-archives`)* The structural signal
+  turned up: `lights.fit` sits in `archive/<ts>/process/`, not loose beside the
+  output — the archive sweep had filed Siril's whole `process/` scratch with each
+  run. `archive_run` now leaves `process/` at the job root, and `backup.scope`
+  skips it live and archived at every tier (`config.SANDBOX_SCRATCH`; measured
+  27 GB live + 14 GB archived). Original report: The
   narrowed scope above keeps everything in a sandbox that isn't a declared link
   tree, which sweeps in `lights.fit` — Siril's single-file conversion of the
   sequence, pure scratch, fully regenerable from frames the backup already has.

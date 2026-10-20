@@ -123,7 +123,8 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       frames, else ONE matched master per tier from Calibration/<device>/; placed
       in **each job dir**, i.e. under siril/<FILTER>/ on a mixed-filter target,
       because the Naztronomy script resolves them against Siril's working dir) ·
-      process/ (scratch) · presets/ (the Naztronomy preset; presets/archive/
+      process/ (Siril's scratch: stays put on import, never backed up —
+      `config.SANDBOX_SCRATCH`) · presets/ (the Naztronomy preset; presets/archive/
       <name>.<YYYYmmdd-HHMMSS>.json = presets the user chose to replace;
       .m110_declined_preset.json = the proposal they last kept theirs against,
       #174) · next-steps.md · archive/<ts>/ (past runs)
@@ -342,6 +343,14 @@ for integrity verification.
   import the run's intermediates move into `<sandbox>/[<FILTER>/]archive/<ts>/` and
   the sandbox is left ready for the next run.
 
+  **Siril's `process/` scratch is not archived** (`config.SANDBOX_SCRATCH`): it stays
+  at the job root, where the tools own its lifecycle — Naztronomy asks before
+  deleting an old one at the start of a run, `m110-stack` clears it
+  (`stacking.clear_scratch`) unless `--restack` reuses it. Before this, every import
+  filed a copy into `archive/<ts>/` (one kept `m110-stack` scratch was 3.5 GB) that
+  nobody would re-open. Runs archived earlier still hold theirs; M110 does not delete
+  them — keep-N retention removes them with their run, or the user can.
+
   **Policy changed (14b): `archive/` can now be pruned, keep-N-latest.** This
   softens the earlier commitment that pruning would be "user-gated and explicit —
   never automatic" — but only for stores created from here on. **An existing store
@@ -377,11 +386,11 @@ destination string names is decided once, by `backup.parse_destination`; above t
 storage seam nothing joins paths itself, and only `LocalBackend` knows what a
 filesystem is. Scope is a **denylist** aligned with the lifecycle classes
 above: everything is backed up **except** the regenerable Derived tier (`derived/`,
-`renders/`, `sessions.jsonl`), the assistant outbox, and a workflow sandbox's
-**linked inputs**.
+`renders/`, `sessions.jsonl`), the assistant outbox, a workflow sandbox's
+**linked inputs**, and its tool's own **scratch** (Siril's `process/`).
 
-That last one is narrower than it once was. A sandbox is *not* excluded wholesale:
-only the subdirectories declared in **`config.SANDBOX_LINKED_INPUTS`** — the
+The sandbox rule is narrower than it once was. A sandbox is *not* excluded
+wholesale: only the subdirectories declared in **`config.SANDBOX_LINKED_INPUTS`** — the
 hardlink trees (`siril/lights/`, `siril/<FILTER>/lights/`, and the calibration
 links beside them) whose bytes are already in the snapshot under
 `Images/<target>/lights/`. Everything else a sandbox holds is backed up:
@@ -400,6 +409,18 @@ real library at **+139 GB against 186 GB backed up**, near enough to double,
 while adding no recoverable information. Leaving the authored work out is cheap
 and silent in the other direction: **+39 GB (+21%)** on the same library, and the
 user only discovers the gap when they go looking for a run they wanted back.
+
+The one carve-out from "everything else is authored" is the tool's **scratch**,
+declared per workflow in **`config.SANDBOX_SCRATCH`** — today only Siril's
+`process/`, the converted/calibrated/registered sequences Siril rebuilds from
+`lights/` on every run. It is excluded at **every tier**, both live
+(`siril/[<FILTER>/]process/`) and inside an archived run
+(`siril/[<FILTER>/]archive/<ts>/process/`, where imports filed it before
+`archive_run` learned to leave it in place). Measured on the developer's library:
+**27 GB live across 5 job dirs, 14 GB archived across 73 runs** (2026-10-20). The
+match is by exact shape, and an archived run
+must carry `archive_run`'s timestamp name, so a folder the user put in `archive/`
+themselves stays in scope.
 
 ### Scope tiers
 
