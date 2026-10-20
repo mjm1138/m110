@@ -223,10 +223,10 @@ _CLI_FLAGS = {
                              "description": "Set only the wFWHM threshold. 100 = off."},
             "filter_bkg": {"type": "number",
                            "description": ("Set only the background threshold. 100 = "
-                                           "off, the default on a dual-band filter.")},
+                                           "off.")},
             "filter_nbstars": {"type": "number",
                                "description": ("Set only the star-count threshold. "
-                                               "100 = off, the default.")},
+                                               "100 = off.")},
             "verbosity": {"type": "integer", "minimum": 0, "maximum": 3,
                           "description": ("How much the run says in the terminal. "
                                           "Changes only the `how_to_run` command, "

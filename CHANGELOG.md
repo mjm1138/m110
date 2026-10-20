@@ -51,11 +51,12 @@ changes a **user** would notice, per release.
 ### Changed
 - **Siril frame selection is tuned per filter, and the same way everywhere.** The
   four quality filters measure different things, so M110 no longer sets one
-  percentage for all of them. Roundness does the most work (95% → 92% → 90% as the
-  set grows), wFWHM only trims the worst tail (98% / 95%), background stays at 98%,
-  and star count is off, because wFWHM weighting already covers it. With the LP or
-  Duo-Band filter, background is off too: the filter flattens the sky, so the cut
-  removed close to random frames. Below 100 frames nothing is filtered. The Siril
+  percentage for all of them: up to 500 frames roundness and star count keep 95%
+  while wFWHM and background keep 98%, and above 500 all four keep 95%. The values
+  come from stacking the same 767 M1 subs three ways: 95% on all four gave about
+  3% better signal-to-noise than a tighter roundness cut with background and star
+  count off, with stars the same to within 0.3%. Below 100 frames nothing is
+  filtered. The Siril
   preset and `m110-stack` now use the same table, so an object no longer gets
   different frame selection depending on how you stack it. `m110-stack` picks the
   tier from how many frames cover each part of the sky, so a large mosaic isn't

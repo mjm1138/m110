@@ -45,27 +45,34 @@ def _prep(target):
 
 # ── the tier table ───────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("n,on,roundness,fwhm", [
-    (50, False, 95.0, 98.0), (99, False, 95.0, 98.0), (100, True, 95.0, 98.0),
-    (500, True, 95.0, 98.0), (501, True, 92.0, 95.0), (1500, True, 92.0, 95.0),
-    (1501, True, 90.0, 95.0),
+_SMALL = {"roundness": 95.0, "fwhm": 98.0, "star_count": 95.0, "bg": 98.0}
+_LARGE = {"roundness": 95.0, "fwhm": 95.0, "star_count": 95.0, "bg": 95.0}
+
+
+@pytest.mark.parametrize("n,on,want", [
+    (50, False, _SMALL), (99, False, _SMALL), (100, True, _SMALL), (500, True, _SMALL),
+    (501, True, _LARGE), (1500, True, _LARGE), (5000, True, _LARGE),
 ])
-def test_filter_tiers(n, on, roundness, fwhm):
+def test_filter_tiers(n, on, want):
+    """Revised on the M1 A/B/C stacks: roundness never tighter than 95%, and
+    above 500 frames 95% on all four (the best-measured run)."""
     got_on, q = siril.filter_quality_for(n, "IRCUT")
-    assert got_on is on
-    assert q == {"roundness": roundness, "fwhm": fwhm, "star_count": 100.0, "bg": 98.0}
+    assert got_on is on and q == want
 
 
-@pytest.mark.parametrize("filt", ["LP", "lp", "Duo-Band", "Dual-Band"])
-def test_dual_band_turns_background_off(filt):
-    assert siril.is_dual_band(filt)
-    assert siril.filter_quality_for(800, filt)[1]["bg"] == 100.0
+@pytest.mark.parametrize("filt", ["LP", "Duo-Band", "IRCUT", "Astro", "", None])
+def test_filters_are_the_same_for_every_filter(filt):
+    # Background stays on for dual-band too: wFWHM weighting ignores sky brightness.
+    assert siril.filter_quality_for(800, filt) == siril.filter_quality_for(800, "IRCUT")
 
 
-@pytest.mark.parametrize("filt", ["IRCUT", "Astro", "VIS", "OTHER", "", None])
-def test_broadband_keeps_background(filt):
-    assert not siril.is_dual_band(filt)
-    assert siril.filter_quality_for(800, filt)[1]["bg"] == 98.0
+@pytest.mark.parametrize("filt,dual", [
+    ("LP", True), ("lp", True), ("Duo-Band", True), ("Dual-Band", True),
+    ("IRCUT", False), ("Astro", False), ("VIS", False), ("OTHER", False), ("", False),
+    (None, False),
+])
+def test_is_dual_band(filt, dual):
+    assert siril.is_dual_band(filt) is dual
 
 
 @pytest.mark.parametrize("telescop,filt,scope,label", [
@@ -88,13 +95,13 @@ def test_default_preset_writes_the_tiers_and_label():
     mid = siril.default_preset(300, "IRCUT")
     assert mid["filters"] is True and mid["filter"] == "No Filter (Broadband)"
     assert (mid["roundness"], mid["fwhm"], mid["bg_filter"], mid["star_count_filter"]) \
-        == (95.0, 98.0, 98.0, 100.0)
+        == (95.0, 98.0, 98.0, 95.0)
     lp = siril.default_preset(1000, "LP")
-    assert lp["filter"] == "LP (Narrowband)" and lp["bg_filter"] == 100.0
-    assert lp["roundness"] == 92.0 and lp["drizzle_amount"] == 2.0
+    assert lp["filter"] == "LP (Narrowband)" and lp["drizzle_amount"] == 2.0
+    assert (lp["roundness"], lp["fwhm"], lp["bg_filter"], lp["star_count_filter"]) \
+        == (95.0, 95.0, 95.0, 95.0)
     dwarf = siril.default_preset(2000, "Duo-Band", "DWARF 3")
     assert (dwarf["telescope"], dwarf["filter"]) == ("Dwarf 3", "Dual-Band")
-    assert dwarf["roundness"] == 90.0
 
 
 # ── filter detection ─────────────────────────────────────────────────────────
@@ -130,7 +137,7 @@ def test_seestar_lp_job_is_labelled_lp(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     _make_lights("M27", 120, "LP")
     preset = siril.plan_prep("M27").jobs[0].preset
-    assert preset["filter"] == "LP (Narrowband)" and preset["bg_filter"] == 100.0
+    assert preset["filter"] == "LP (Narrowband)" and preset["bg_filter"] == 98.0
 
 
 # ── apply_prep: write only where missing, report what differs ────────────────
@@ -164,7 +171,7 @@ def test_grown_target_reports_conflict_and_leaves_file(tmp_path, monkeypatch):
     [c] = res["preset_conflicts"]
     assert c.target == "M51" and c.preset_path == str(pp)
     changed = {k: (old, new) for k, old, new in c.changes}
-    assert changed["roundness"] == (95.0, 92.0)
+    assert changed["fwhm"] == (98.0, 95.0) and changed["bg_filter"] == (98.0, 95.0)
     assert changed["drizzle_amount"] == (1.5, 2.0)
 
 
@@ -201,7 +208,7 @@ def test_replace_archives_and_writes_proposal(tmp_path, monkeypatch):
 
     out = siril.apply_preset_choices(conflicts, {str(pp)})
     assert out == {"replaced": [str(pp)], "kept": []}
-    assert json.loads(pp.read_text())["roundness"] == 92.0
+    assert json.loads(pp.read_text())["fwhm"] == 95.0
     [archived] = (pp.parent / "archive").iterdir()
     assert archived.read_text() == old
     assert archived.name.startswith("naztronomy_smart_scope_presets.")
@@ -214,7 +221,7 @@ def test_keep_is_remembered_until_the_proposal_changes(tmp_path, monkeypatch):
     _prep("M51")
     pp = _preset_path("M51")
     old = pp.read_text()
-    _make_lights("M51", 600, start=120)
+    _make_lights("M51", 230, start=120)                    # 350: pixfrac 1.0 → 0.7
     conflicts = _prep("M51")["preset_conflicts"]
 
     assert siril.apply_preset_choices(conflicts, set())["kept"] == [str(pp)]
@@ -223,8 +230,8 @@ def test_keep_is_remembered_until_the_proposal_changes(tmp_path, monkeypatch):
     # Same proposal next ingest → not asked again.
     assert siril.plan_prep("M51").jobs[0].preset_state == "declined"
     assert _prep("M51")["preset_conflicts"] == []
-    # The proposal moves on (another tier) → asked again.
-    _make_lights("M51", 1000, start=720)
+    # The proposal moves on (past 500: drizzle 2.0 and the 95% tier) → asked again.
+    _make_lights("M51", 300, start=350)
     assert len(_prep("M51")["preset_conflicts"]) == 1
 
 

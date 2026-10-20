@@ -38,7 +38,7 @@ def test_replace_selected_returns_ticked_rows(qtbot, tmp_path, monkeypatch):
     dlg = pcd.PresetConflictDialog(conflicts)
     qtbot.addWidget(dlg)
     assert dlg.table.rowCount() == 1
-    assert "roundness: 95 → 92" in dlg.table.item(0, 3).text()
+    assert "fwhm: 98 → 95" in dlg.table.item(0, 3).text()
     dlg._replace_btn.click()
     assert dlg.result() == dlg.DialogCode.Accepted
     assert dlg.replace_paths() == {conflicts[0].preset_path}
@@ -69,7 +69,7 @@ def test_resolve_applies_the_answer(qtbot, tmp_path, monkeypatch):
                         lambda self: self._replace_btn.click())
     out = pcd.resolve_preset_conflicts(None, {"autoprep": result})
     assert out["replaced"] == [c.preset_path]
-    assert json.loads(open(c.preset_path).read())["roundness"] == 92.0
+    assert json.loads(open(c.preset_path).read())["fwhm"] == 95.0
 
 
 def test_resolve_is_silent_without_conflicts(monkeypatch):

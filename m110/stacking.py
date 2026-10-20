@@ -678,13 +678,12 @@ def build_proposal(s: Survey, gaia: Path | None, working: Path,
     if on:
         p.set("filters", quality,
               f"keep {filters_label(quality)} for a depth of {s.depth_median}. "
-              "Each cut drops that share of frames whatever the night was like, "
-              "and the four mostly add up, so they are tuned apart: roundness "
-              "catches wind and tracking error, which rejection cannot; wFWHM "
-              "weighting already handles soft frames, so wFWHM trims only the "
-              "tail; star count adds nothing to wFWHM"
-              + ("; background is off because a dual-band filter flattens the "
-                 "sky" if siril_mod.is_dual_band(dominant) else ""))
+              "Each cut drops that share of frames whatever the night was like, and "
+              "the four mostly add up. Measured on M1's 767 subs: 95% on all four "
+              "beat roundness 92% / wFWHM 95% by 2.7% in core SNR with stars the "
+              "same to within 0.3%. Roundness tighter than 95% only costs signal, "
+              "and background stays on even with a dual-band filter, because wFWHM "
+              "weighting does not see sky brightness")
     else:
         p.set("filters", None,
               f"a depth of {s.depth_median} is too few frames to spare any")
