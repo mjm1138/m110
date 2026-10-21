@@ -47,10 +47,40 @@ def load_goals() -> list:
     return _load("goals.json") or []
 
 
+_DEVICE_TOTALS = {"integration_min": 0.0, "sessions": 0, "nights": 0, "objects": 0,
+                  "first_capture": None, "last_capture": None}
+
+
+def normalize_device(d: dict) -> dict | None:
+    """One `devices.json` entry with every key its readers use present. The file
+    is derived and rewritten on Sync, but an older app version's copy is read at
+    launch before that Sync runs (a pre-Devices-page rollup has no ``totals`` /
+    ``objects`` / identity keys), so readers never index it raw. None for an entry
+    with no device key."""
+    if not isinstance(d, dict) or not d.get("device"):
+        return None
+    d = dict(d)
+    totals = d.get("totals") if isinstance(d.get("totals"), dict) else {}
+    d["totals"] = {**_DEVICE_TOTALS, **totals}
+    for key in ("objects", "masters", "captures"):
+        if not isinstance(d.get(key), list):
+            d[key] = []
+    d["label"] = d.get("label") or d["device"]
+    for key in ("nickname", "preset", "model", "serial"):
+        d.setdefault(key, None)
+    d["retired"] = bool(d.get("retired"))
+    d["darks_applied_on_device"] = bool(d.get("darks_applied_on_device"))
+    return d
+
+
 def load_devices() -> list:
-    """Per-device calibration library, captures and sensor health
-    (`calibration.device_rollup`); [] if absent."""
-    return (_load("devices.json") or {}).get("devices", [])
+    """Per-device identity, totals, objects, calibration library, captures and
+    sensor health (`calibration.device_rollup`), each entry `normalize_device`d —
+    tolerant of a rollup written by an older version; [] if absent."""
+    raw = (_load("devices.json") or {}).get("devices", [])
+    if not isinstance(raw, list):
+        return []
+    return [n for n in (normalize_device(d) for d in raw) if n is not None]
 
 
 def load_images() -> dict:

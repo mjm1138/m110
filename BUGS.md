@@ -568,6 +568,18 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [x] **Launch crashed on the first run after upgrading to the Devices page**
+  (done — `fix/devices-page-old-rollup`). `MainWindow` builds the Devices page —
+  which reads `derived/devices.json` — before the launch Sync regenerates it, so the
+  first launch read the *previous* version's rollup (no `totals` key, from #169) and
+  `d["totals"]` raised `KeyError`. Every test built its fixture with the new schema.
+  Fix: `derived.load_devices` passes each entry through `normalize_device` (defaults
+  for every key readers use; entries with no device key dropped), and the page
+  normalizes injected data the same way. The rule this records: **a derived file is
+  read before the launch Sync rewrites it, so its readers must tolerate an older
+  schema.** `tests/test_ui_devices.py::test_a_rollup_from_an_older_version_does_not_crash_launch`
+  builds the real `MainWindow` over a #169-shaped rollup (fails without the fix).
+
 - [x] **The Import page never offered the Seestar's dark library** (done —
   `fix/import-page-darklibrary`, found on a real S50 the day after #169 merged). #169
   taught `ingest.scan_seestar_plan` to scan the `darklibrary/` beside `MyWorks`, but
