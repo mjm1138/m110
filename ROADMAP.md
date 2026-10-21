@@ -1037,17 +1037,7 @@ remaining device-source gaps collect here:
   facts + the inferred on-device dark and its temperature gap (rule v1; `m110-stack
   --max-dark-gap`), and a Devices view (library, captures, sensor health). This is
   also the first per-session device record (`telescop` on every session row).
-- **Devices as first-class — shipped 2026-10-21** (`feature/devices-page`): a
-  **Devices** rail page (replacing the Tools dialog); the **registry**
-  `devices.toml` (nickname, retired, model override — devices themselves are
-  discovered); sessions **split by device** (two scopes on one target/night/exposure
-  were one merged row); **per-device integration** (`totals.json` `by_device` per
-  object and folder; per-device totals + objects in `devices.json`); darks named
-  alike in both tables with cross-selection; Reveal selects the file. Next:
-  **planning uses the device** (`feature/planning-device`), then **per-object
-  integration targets** (item 1 follow-up), which read `by_device`. Still open: the
-  `Images/<target>/<device>/` path level (+ migration), and telling two Dwarf 3s
-  apart (their TELESCOP is the model string; needs `MACADDR`). Follow-ups:
+  Follow-ups:
   - **Confirm the trigger rule on the device** — a controlled two-target plan at
     dusk (≥2.5 °C vs ≈1.5 °C of cooling between targets); rule v1's ≈2 °C threshold
     and "nearest dark, held for the run" are inferred from three nights, not
@@ -1079,6 +1069,17 @@ remaining device-source gaps collect here:
       so "subs before the library" can be dated and the S30 question scoped.
     - *A real `m110-stack` run on a Seestar target* (needs Siril) — slice 1's
       proposal was validated header-only (`build_plan`), not end to end.
+- **Devices as first-class — shipped 2026-10-21** (`feature/devices-page`): a
+  **Devices** rail page (replacing the Tools dialog); the **registry**
+  `devices.toml` (nickname, retired, model override — devices themselves are
+  discovered); sessions **split by device** (two scopes on one target/night/exposure
+  were one merged row); **per-device integration** (`totals.json` `by_device` per
+  object and folder; per-device totals + objects in `devices.json`); darks named
+  alike in both tables with cross-selection; Reveal selects the file. Next:
+  **planning uses the device** (`feature/planning-device`), then **per-object
+  integration targets** (item 1 follow-up), which read `by_device`. Still open: the
+  `Images/<target>/<device>/` path level (+ migration), and telling two Dwarf 3s
+  apart (their TELESCOP is the model string; needs `MACADDR`).
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +
