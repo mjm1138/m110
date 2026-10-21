@@ -382,12 +382,13 @@ re-run when its area changes and you want eyes on the visuals).
 > Corpus: `M 72` and `M 76` are Seestar S50 captures (`S50_c0ffee00`) replaying a
 > real night; `Calibration/S50_c0ffee00/darks/` holds four of the five **real**
 > masters, the device mount all five.
-- [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50` (the volume, not
-      `MyWorks`): one **master darks** row, object `S50_c0ffee00`, **1** frame (the
+- [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50/MyWorks` (the folder
+      the page's **Seestar device** entry points at — the darks live *beside* it, and
+      must still be offered): one **master darks** row, object `S50_c0ffee00`, **1** frame (the
       7.7 °C master; its `.jpg` rides along), Pointing **—**, destination
       `Calibration/S50_c0ffee00/darks/`. Import it; re-browsing offers nothing.
 - [ ] M 72 detail → **Sessions**: the **Dark** column reads `24.9 °C · Δ10.5 ⚠` in the
-      warning color; hover: the master's filename, `confirmed (rule v1)`, sensor
+      warning color; hover: the master's filename, `confirmed (rule v2)`, sensor
       14.4–24.8 °C, the `--max-dark-gap` hint. M 76 reads `13.9 °C · Δ2.7` with no ⚠.
       Overview → View all sessions… has the same **Dark** column (sortable).
 - [ ] **Tools → Devices…**: heading "ZWO Seestar S50 · c0ffee00" + the never-applied

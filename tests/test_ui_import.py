@@ -269,3 +269,29 @@ def test_holding_bulk_assign_multiple_rows(tmp_path, monkeypatch, qtbot):
     assert page.holding_table.rowCount() == 0          # both moved out of Inbox
     files = sorted(p.name for p in config.lights_dir("M42").glob("*.fit"))
     assert files == ["a.fit", "b.fit"]                 # both rows landed under M42
+
+
+def test_picking_the_seestar_brings_its_dark_library(tmp_path, monkeypatch, qtbot):
+    """The Import page's Seestar entry points at MyWorks, but the device keeps its
+    master darks in the darklibrary/ beside it. Choosing the device must offer
+    them too — the engine helper did, but this page scanned MyWorks alone, so on a
+    real Seestar the darks never appeared (2026-10-21)."""
+    from tests._helpers import mount_darklibrary, mount_seestar
+    seed_root(tmp_path, monkeypatch)
+    myworks, _ = mount_seestar(tmp_path, monkeypatch, "M 72",
+                               extra={"TELESCOP": "S50_c0ffee00"})
+    mount_darklibrary(myworks.parent, [("13.9", "20261015-215239")])
+    from m110.ui.pages.import_page import ImportPage
+    page = ImportPage()
+    qtbot.addWidget(page)
+    i = next(i for i in range(page._source.count())
+             if page._source.itemText(i).startswith("Seestar device"))
+    page._source.setCurrentIndex(i)
+    page._on_source_chosen(i)
+    _scan(page, qtbot, 2)                     # M 72's lights + the dark library
+    rows = {page.table.item(r, 2).text(): page.table.item(r, 6).text()
+            for r in range(page.table.rowCount())}
+    assert rows["master darks"] == "Calibration/S50_c0ffee00/darks"
+    assert page.table.item(
+        next(r for r in range(2) if page.table.item(r, 2).text() == "master darks"),
+        3).text() == "1"                      # one master; its .jpg rides along

@@ -568,6 +568,18 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+- [x] **The Import page never offered the Seestar's dark library** (done —
+  `fix/import-page-darklibrary`, found on a real S50 the day after #169 merged). #169
+  taught `ingest.scan_seestar_plan` to scan the `darklibrary/` beside `MyWorks`, but
+  the Import page — the path users actually take — called `scan_directory_plan` on the
+  chosen folder (`MyWorks`), so the darks never appeared and `Calibration/` stayed
+  empty. The tests and corpus `verify()` exercised the engine helper and a
+  volume-root scan, never the page. Fix: `ingest.source_scan_roots` /
+  `scan_source_plan` (a `MyWorks` root also covers its sibling `darklibrary/`), used
+  by the page and by `scan_seestar_plan`.
+  `tests/test_ui_import.py::test_picking_the_seestar_brings_its_dark_library` drives
+  the page's own source combo (fails without the fix).
+
 - [x] **Holding-area groups collided on the leaf folder name** (done —
   `feature/calibration-library`, ported from `feature/draco`). `scan_directory_plan`
   passed only `d.name` to the sweep, so two unclassifiable dirs sharing a leaf

@@ -79,7 +79,8 @@ def test_harness_script_points_at_the_generator():
     # a named failure rather than deep inside a build.
     "media.list_media", "media.cleanup_candidates", "media.poster_for",
     "refresh.run_refresh", "scan_sessions.scan",
-    "ingest.scan_directory_plan", "ingest.scan_holding", "ingest.group_ops",
+    "ingest.scan_directory_plan", "ingest.scan_source_plan", "ingest.scan_holding",
+    "ingest.group_ops",
     "objects.write_journal", "objects.set_curation", "objects.get_curation",
     "siril.has_unimported_output", "siril.prune_rejected",
     "catalog.load_coords", "catalog.load_library", "catalog.load_bundled_catalog",
