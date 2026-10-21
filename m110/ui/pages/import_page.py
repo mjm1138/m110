@@ -212,9 +212,11 @@ class ImportPage(QWidget):
         root = self._root
         self._set_busy(True)
         self._make_progress("Scanning…", 0, "Scanning")   # 0 max = indeterminate
+        # scan_source_plan, not scan_directory_plan: a Seestar's MyWorks brings
+        # the darklibrary/ beside it (the device keeps its master darks there)
         plan_fn = (lambda should_cancel=None, progress=None, r=root:
-                   ingest.scan_directory_plan(r, should_cancel=should_cancel,
-                                              progress=progress))
+                   ingest.scan_source_plan(r, should_cancel=should_cancel,
+                                           progress=progress))
         self._worker = _ScanWorker(plan_fn, self._cancel_event, self)
         self._worker.done.connect(self._on_scan_done)
         self._worker.cancelled.connect(self._on_scan_cancelled)

@@ -395,3 +395,15 @@ def test_m110_stack_gaps_follow_the_switches(tmp_path, monkeypatch):
     plan = build_plan(d, Overrides(max_dark_gap=3.0), deep_measure=False)
     # only 20.2 (3.0 off 23.2 — not over), 18.6 and 16.6 drifted past 3 °C
     assert len(plan.dropped) == 2
+
+
+def test_a_myworks_source_also_covers_the_dark_library_beside_it(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    myworks, _ = mount_seestar(tmp_path, monkeypatch, "M 72", extra=LIGHT)
+    assert ingest.source_scan_roots(myworks) == [myworks]          # no library yet
+    lib = mount_darklibrary(myworks.parent, MASTERS[:1]).parent
+    assert ingest.source_scan_roots(myworks) == [myworks, lib]
+    assert ingest.source_scan_roots(myworks / "M 72_sub") == [myworks / "M 72_sub"]
+    assert ingest.source_scan_roots(None) == []
+    ops = ingest.scan_source_plan(myworks)
+    assert any(o.kind == "cal-dark" for o in ops) and any(o.kind == "light" for o in ops)

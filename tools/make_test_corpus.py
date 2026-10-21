@@ -907,7 +907,9 @@ def verify(out: Path):
     # Seestar dark library: the mount's darklibrary/ offers only the one master the
     # store lacks, filed under the telescope named by the MyWorks subs beside it.
     from m110 import calibration, derived
-    dark_ops = [o for o in ingest.scan_directory_plan(dev / "Seestar S50")
+    # via MyWorks — the folder the Import page's Seestar entry scans — not the
+    # volume root: that is the path that once missed the darks entirely
+    dark_ops = [o for o in ingest.scan_source_plan(dev / "Seestar S50" / "MyWorks")
                 if o.kind == "cal-dark"]
     dark_fits = [o for o in dark_ops if o.src.endswith(".fit")]
     assert len(dark_fits) == 1 and "_7.7C_" in dark_fits[0].src, \
@@ -1019,8 +1021,8 @@ def main():
           f"(classifies + sweeps strays to the Holding area panel)")
     print(f"  # and  Import → Browse… → ~/Documents/{device.name}/'Seestar S50'/MyWorks  "
           f"(#110: only the 2 new subs are offered — the rejected pair is withheld)")
-    print(f"  # and  Import → Browse… → ~/Documents/{device.name}/'Seestar S50'  "
-          f"(the dark library: one new master dark → Calibration/{S50_TELESCOP}/darks/)")
+    print(f"  #      (the same MyWorks also offers the darklibrary/ beside it: one new "
+          f"master dark → Calibration/{S50_TELESCOP}/darks/)")
     print("  # and  Tools → Devices…  (dark library, captures with their dark gap, sensor health)")
 
 

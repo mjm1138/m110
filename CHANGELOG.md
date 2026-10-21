@@ -13,8 +13,10 @@ changes a **user** would notice, per release.
 ### Added
 - **Your Seestar's dark library comes in with your captures.** Recent Seestar
   firmware keeps its master darks in a `darklibrary` folder next to `MyWorks`.
-  Importing from the Seestar now copies them into `Calibration/<your telescope>/darks/`
-  (named after your unit, e.g. `S50_15e7e390`); reconnecting copies only new ones.
+  Importing from the Seestar — its entry on the Import page, or browsing to its
+  `MyWorks` folder — now offers them as a **master darks** row and copies them into
+  `Calibration/<your telescope>/darks/` (named after your unit, e.g.
+  `S50_15e7e390`); reconnecting copies only new ones.
   M110 never applies them: the Seestar already subtracts a dark from every sub
   before saving it, and doing it again would subtract twice. If you put darks on a
   Seestar object yourself, Siril prep and `m110-stack` now warn about that.

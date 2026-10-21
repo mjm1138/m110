@@ -1350,12 +1350,34 @@ def scan_seestar_plan(should_cancel=None, progress=None) -> list[IngestOp]:
     Seestar is mounted. Reads only. Delegates to the recursive `scan_directory_plan`
     so nested MyWorks subfolders are found (#32 — the old shallow one-level scan
     silently missed them)."""
-    myworks = config.find_seestar_myworks()
-    ops = scan_directory_plan(myworks, "copy", should_cancel, progress)
-    if myworks is not None:
-        darklib = Path(myworks).parent / _SEESTAR_DARKLIB_DIRNAME
+    return scan_source_plan(config.find_seestar_myworks(), "copy",
+                            should_cancel, progress)
+
+
+def source_scan_roots(root) -> list[Path]:
+    """The folders an import from `root` covers: `root` itself, plus — when `root`
+    is a Seestar ``MyWorks`` — the ``darklibrary/`` beside it. The device keeps its
+    master darks there, outside MyWorks, so a scan of MyWorks alone never sees
+    them; this is what makes every way of picking the Seestar (the Import page's
+    device entry, a recent folder, Browse… to MyWorks) bring the darks too."""
+    if root is None:
+        return []
+    root = Path(root)
+    roots = [root]
+    if root.name.lower() == "myworks":
+        darklib = root.parent / _SEESTAR_DARKLIB_DIRNAME
         if darklib.is_dir():
-            ops += scan_directory_plan(darklib, "copy", should_cancel, progress)
+            roots.append(darklib)
+    return roots
+
+
+def scan_source_plan(root, action: str = "copy", should_cancel=None,
+                     progress=None) -> list[IngestOp]:
+    """`scan_directory_plan` over every folder in `source_scan_roots(root)` — the
+    entry point for an import the user picked a folder for. Reads only."""
+    ops: list[IngestOp] = []
+    for r in source_scan_roots(root):
+        ops += scan_directory_plan(r, action, should_cancel, progress)
     return ops
 
 
