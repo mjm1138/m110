@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 import shutil
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -37,6 +37,7 @@ DEFAULT_PROFILE = "default"
 # Which site profile the planner/prioritizer reads. Persisted in settings.json
 # (not in a profile file) so it's a per-user choice, not per-store data.
 ACTIVE_PROFILE_SETTING = "active_site_profile"
+ACTIVE_DEVICE_SETTING = "active_device"        # the telescope Planning plans for (per user)
 
 
 @dataclass
@@ -149,8 +150,10 @@ def list_profiles() -> list[str]:
     d = Path(config.PROFILES_DIR)
     if not d.is_dir():
         return []
+    # profiles/device.toml is the legacy device profile, not a site
     names = sorted(p.stem for p in d.glob("*.toml")
-                   if not config.is_hidden_name(p.name))
+                   if not config.is_hidden_name(p.name)
+                   and p.stem != LEGACY_DEVICE_PROFILE)
     if DEFAULT_PROFILE in names:
         names.remove(DEFAULT_PROFILE)
         names.insert(0, DEFAULT_PROFILE)
@@ -177,9 +180,63 @@ def load_site(name: str = DEFAULT_PROFILE, path=None) -> Site:
     return site
 
 
-def load_device(name: str = "device", path=None) -> Device:
-    """Load a device profile (optional ``device.toml`` under the profiles dir),
-    falling back to in-code Seestar S50 defaults."""
+LEGACY_DEVICE_PROFILE = "device"     # profiles/device.toml — pre-registry, hand-written
+
+# The planning limits a user may override per telescope (Devices page →
+# devices.toml ``[devices."<key>".planning]``); everything else comes from the
+# telescope's preset.
+PLANNING_OVERRIDES = ("start_alt_ceiling_deg", "ceiling_is_hard", "low_alt_floor_deg",
+                      "max_exposure_s", "default_exposure_s", "gain")
+
+
+def device_for(key: str, registry: dict | None = None) -> Device:
+    """The planning `Device` for one telescope (a device key — its TELESCOP): its
+    preset (`devices.effective_preset`, else the S50 defaults), named by
+    `devices.label`, with the user's per-device planning overrides applied."""
+    from . import devices
+    reg = devices.load_registry() if registry is None else registry
+    preset = devices.effective_preset(key, reg)
+    dev = replace(DEVICE_PRESETS.get(preset or "", Device()))
+    for k, v in reg.get(key, {}).get("planning", {}).items():
+        if k in PLANNING_OVERRIDES:
+            setattr(dev, k, v)
+    dev.name = devices.label(key, reg)
+    return dev
+
+
+def planning_devices() -> list[dict]:
+    """The telescopes Planning can plan for: every non-retired device M110 knows,
+    most recently used first (the `derived/devices.json` order) — ``[{device, label}]``."""
+    from . import derived
+    return [{"device": d["device"], "label": d.get("label") or d["device"]}
+            for d in derived.load_devices()
+            if not d.get("retired") and d["device"] != "unknown"]
+
+
+def active_device_key() -> str | None:
+    """The telescope Planning plans for: the user's pick (per user, like the
+    active site) while it is still a known, non-retired device; else the most
+    recently used one; None when M110 knows no telescope yet."""
+    keys = [d["device"] for d in planning_devices()]
+    chosen = config.get_setting(ACTIVE_DEVICE_SETTING, "") or ""
+    if chosen in keys:
+        return chosen
+    return keys[0] if keys else None
+
+
+def set_active_device(key: str) -> None:
+    config.save_setting(ACTIVE_DEVICE_SETTING, key)
+
+
+def load_device(name: str = LEGACY_DEVICE_PROFILE, path=None) -> Device:
+    """The planning `Device`. With an explicit `path` or a non-default `name`, that
+    profile TOML (``[device]`` table). Otherwise the **active telescope**
+    (`active_device_key` → `device_for`), else the legacy hand-written
+    ``profiles/device.toml``, else in-code Seestar S50 defaults."""
+    if path is None and name == LEGACY_DEVICE_PROFILE:
+        key = active_device_key()
+        if key:
+            return device_for(key)
     p = Path(path) if path else profile_path(name)
     raw = _load_toml(p)
     dev = Device()

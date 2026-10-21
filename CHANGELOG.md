@@ -37,6 +37,12 @@ changes a **user** would notice, per release.
   ("Oct 15 21:52 · 13.9 °C"), and selecting a capture highlights the dark(s) it
   used — or a dark, the captures it served. Right-click a dark or a capture to
   reveal the file in Finder.
+- **Planning plans for your telescope.** Night plans used the Seestar S50's limits
+  whatever you own. Planning now plans for the telescope you pick — a **Telescope**
+  choice next to Location appears once M110 knows more than one, and the Devices page
+  has **Use for planning** — with that model's limits (a Dwarf's softer 80° ceiling,
+  for example). Adjust a telescope's start ceiling, exposure or gain on its Devices
+  page; field guides now say which telescope a plan is for.
 - **Sessions show which telescope shot them.** The session tables have a
   **Device** column, and two scopes shooting the same object on the same night are
   now two sessions rather than one merged row.

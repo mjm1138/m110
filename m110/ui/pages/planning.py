@@ -108,6 +108,14 @@ class PlanningPage(QScrollArea):
         self.selector = QComboBox()
         self.selector.currentIndexChanged.connect(self._on_location_changed)
         loc.addWidget(self.selector, 1)
+        # The telescope the night plan is for — its start-altitude ceiling and
+        # exposure limits (planning_config.device_for). Hidden until M110 knows
+        # more than one telescope: with one, there is nothing to choose.
+        self.device_label = QLabel("Telescope:")
+        loc.addWidget(self.device_label)
+        self.device_picker = QComboBox()
+        self.device_picker.currentIndexChanged.connect(self._on_device_changed)
+        loc.addWidget(self.device_picker, 1)
         lay.addLayout(loc)
 
         self._priority_sec = CollapsibleSection("Priority targets", expanded=True)
@@ -657,12 +665,35 @@ class PlanningPage(QScrollArea):
         self._reload_guides()
 
     # ---- refresh ----
+    def _reload_devices(self):
+        self._loading = True
+        self.device_picker.clear()
+        active = pc.active_device_key()
+        for d in pc.planning_devices():
+            self.device_picker.addItem(d["label"], d["device"])
+        i = self.device_picker.findData(active)
+        self.device_picker.setCurrentIndex(max(i, 0))
+        many = self.device_picker.count() > 1
+        self.device_label.setVisible(many)
+        self.device_picker.setVisible(many)
+        self._loading = False
+
+    def _on_device_changed(self, _idx: int):
+        if self._loading:
+            return
+        key = self.device_picker.currentData()
+        if not key:
+            return
+        pc.set_active_device(key)
+        self._invalidate_plan()               # a plan is device-specific (its ceiling)
+
     def reload(self):
         # Cheap: refresh the selector + re-rank the cached contexts. The heavy astropy
         # recompute is NOT triggered here — the shell calls `ensure_ranking()` when the
         # user navigates to Planning (an explicit, app-only action), so a background
         # refresh (or an offscreen test that builds the page) never spawns the worker.
         self._reload_selector()
+        self._reload_devices()
         self._render_ranking()
         self._reload_guides()
 

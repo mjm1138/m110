@@ -1075,9 +1075,14 @@ remaining device-source gaps collect here:
   discovered); sessions **split by device** (two scopes on one target/night/exposure
   were one merged row); **per-device integration** (`totals.json` `by_device` per
   object and folder; per-device totals + objects in `devices.json`); darks named
-  alike in both tables with cross-selection; Reveal selects the file. Next:
-  **planning uses the device** (`feature/planning-device`), then **per-object
-  integration targets** (item 1 follow-up), which read `by_device`. Still open: the
+  alike in both tables with cross-selection; Reveal selects the file. **Planning
+  uses the device** (`feature/planning-device`, same day): the active telescope
+  (per user, like the active site; default = most recently used) supplies the night
+  plan's start ceiling / exposure limits — its preset + per-device overrides edited
+  on the Devices page — and plans and field guides name it; the orphaned
+  `profiles/device.toml` is now only a fallback and no longer lists as a site.
+  Next: **per-object integration targets** (item 1 follow-up), which read
+  `by_device`. Still open: the
   `Images/<target>/<device>/` path level (+ migration), and telling two Dwarf 3s
   apart (their TELESCOP is the model string; needs `MACADDR`).
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
