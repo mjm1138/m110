@@ -250,7 +250,7 @@ def test_every_action_is_reachable_from_exactly_one_menu(tmp_path, monkeypatch, 
 
         expected = [win.ingest_action, win.publish_action, win.quit_action,
                     win.refresh_action, win.add_object_action, win.fill_meta_action,
-                    win.enrich_online_action, win.prep_action, win.devices_action,
+                    win.enrich_online_action, win.prep_action,
                     win.backup_action,
                     win.restore_action, win.prefs_action, win.user_guide_action,
                     win.check_updates_action, win.report_action, win.about_action]

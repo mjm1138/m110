@@ -233,6 +233,24 @@ def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
     return out
 
 
+def _device_of(subs: list[Path], cache: "_HeaderCache"):
+    """A function giving each sub of one target folder its device key. A folder
+    is almost always one telescope's, so a bounded sample decides: if every
+    sampled sub names the same TELESCOP (or none does), the whole folder is that
+    device and no other header is read. Only when the sample shows two or more
+    does every sub's TELESCOP get read (once — `_HeaderCache` keeps it)."""
+    from . import devices
+
+    def key_of(f: Path) -> str:
+        return devices.folder_name(cache.facts(f).get("telescop"))
+
+    seen = {key_of(f) for f in _sample(subs)}
+    if len(seen) <= 1:
+        only = next(iter(seen), devices.UNKNOWN)
+        return lambda f: only
+    return key_of
+
+
 def _read_eqmode(path: Path) -> bool | None:
     """Reported mount mode from the FITS ``EQMODE`` card: ``True`` (Equatorial) /
     ``False`` (Alt-Az), or ``None`` when unreadable or absent. **Both** the Seestar
@@ -424,34 +442,38 @@ def scan() -> list[dict]:
         if not lights.is_dir():
             continue
 
-        # Bucket by (iso-date, exp, filt) to compress to one row per session-segment.
-        # Each light's key comes from the filename (Seestar fast path) or its FITS
-        # header (device-agnostic fallback — see `_session_key`).
-        bucket: dict[tuple[str, float, str], int] = defaultdict(int)
-        rep: dict[tuple[str, float, str], Path] = {}   # one sub per bucket → EQMODE read
-        members: dict[tuple[str, float, str], list[Path]] = defaultdict(list)
-        for f in lights.iterdir():
-            if not f.is_file() or not config.is_fits_file(f.name):
-                continue
+        # Bucket by (iso-date, exp, filt, device) to compress to one row per
+        # session-segment. Each light's (date, exp, filter) comes from the filename
+        # (Seestar fast path) or its FITS header (device-agnostic fallback — see
+        # `_session_key`); its device from `_device_of` (one TELESCOP for the
+        # whole folder unless a sample shows two scopes shot it).
+        bucket: dict[tuple, int] = defaultdict(int)
+        rep: dict[tuple, Path] = {}                      # one sub per bucket → EQMODE read
+        members: dict[tuple, list[Path]] = defaultdict(list)
+        subs = sorted(f for f in lights.iterdir()
+                      if f.is_file() and config.is_fits_file(f.name))
+        device_of = _device_of(subs, cache)
+        for f in subs:
             key = _session_key(f)
             if key is None:
                 continue
+            key = (*key, device_of(f))
             bucket[key] += 1
             rep.setdefault(key, f)
             members[key].append(f)
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
-        for (iso, exp, filt), n in sorted(bucket.items()):
+        for (iso, exp, filt, device), n in sorted(bucket.items()):
             session_date = datetime.strptime(iso, "%Y-%m-%d").date()
             # One header read per session-segment (mount mode is constant within a
             # capture run) — negligible next to the filename fast-path for the subs.
-            mount_mode = _mount_mode(rep.get((iso, exp, filt)), session_date)
+            mount_mode = _mount_mode(rep.get((iso, exp, filt, device)), session_date)
             # The segment's real UTC window. `date` is the *observing night's*
             # label, not a calendar day of these timestamps — subs shot after
             # local midnight carry the previous evening's label and a DATE-OBS
             # on the following day — so anything comparing a session to a
             # timestamped event (a stack's FITS `DATE`) has to use these.
-            first_obs, last_obs = _session_bounds(members[(iso, exp, filt)])
+            first_obs, last_obs = _session_bounds(members[(iso, exp, filt, device)])
             row = {
                 "date": iso,
                 "object_dir": obj_dir.name,
@@ -464,7 +486,8 @@ def scan() -> list[dict]:
                 "pre_new_start": session_date < NEW_START,
                 "first_obs": first_obs,      # UTC DATE-OBS of the segment's
                 "last_obs": last_obs,        # earliest / latest sub (None if unreadable)
-                **_capture_fields(members[(iso, exp, filt)], exp, cache, libraries),
+                **_capture_fields(members[(iso, exp, filt, device)], exp, cache, libraries),
+                "device": device,            # devices.folder_name(TELESCOP) or "unknown"
             }
             rows.append(row)
     cache.save()

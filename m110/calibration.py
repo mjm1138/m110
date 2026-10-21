@@ -513,31 +513,52 @@ def _content_key(path: Path) -> str:
     return h.hexdigest()
 
 
-def device_rollup(sessions: list[dict]) -> dict:
-    """``derived/devices.json``: per device (every ``Calibration/<device>/`` and
-    every TELESCOP a session names) its library masters with their header facts,
-    device-clock time and pixel statistics, how many captures each dark served,
-    and the captures themselves with their inferred dark and gap. Pixel stats are
-    cached by content hash in ``derived/master_stats.json``, so a refresh only
-    reads masters it has never seen. Deterministic (sorted, no timestamps)."""
+def dark_label(made, temp_c: float | None) -> str:
+    """How every table names a master dark: its device-clock time and header
+    temperature — ``"Oct 15 21:52 · 13.9 °C"``. `made` is a datetime or ISO
+    string (or None for a master with no device-clock stamp)."""
+    if isinstance(made, str):
+        try:
+            made = datetime.fromisoformat(made)
+        except ValueError:
+            made = None
+    when = f"{made:%b} {made.day} {made:%H:%M}" if made else "undated"
+    temp = f"{temp_c:g} °C" if temp_c is not None else "? °C"
+    return f"{when} · {temp}"
+
+
+def device_rollup(sessions: list[dict], totals: dict | None = None) -> dict:
+    """``derived/devices.json``: per device — every ``Calibration/<device>/``, every
+    device a session names, ``"unknown"`` only when some session has no TELESCOP —
+    its identity (registry nickname/retired/preset, label, model, serial), its
+    totals (integration, sessions, nights, objects, first/last capture), the
+    objects it shot (from `totals` ``by_slug[...].by_device``), its library masters
+    with header facts, device-clock time, a display label and pixel statistics,
+    and its captures with their inferred dark(s), labels and gap. Pixel stats are
+    cached by content hash in ``derived/master_stats.json``, so a refresh only reads
+    masters it has never seen. Deterministic (sorted, no timestamps)."""
     import json
+    from .build_derived import session_device
     cache_path = config.DERIVED_DIR / _STATS_CACHE_NAME
     try:
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         cache = {}
     used: dict = {}
+    registry = devices.load_registry()
+    by_slug = (totals or {}).get("by_slug", {})
+    by_folder = (totals or {}).get("by_folder", {})
 
     names = set()
     if config.CALIBRATION_DIR.is_dir():
         names |= {d.name for d in config.CALIBRATION_DIR.iterdir()
                   if d.is_dir() and not config.is_hidden_name(d.name)}
-    names |= {devices.folder_name(r["telescop"]) for r in sessions if r.get("telescop")}
+    names |= {session_device(r) for r in sessions}
 
     out = []
     for dev in sorted(names):
-        caps = [r for r in sessions if r.get("telescop")
-                and devices.folder_name(r["telescop"]) == dev]
+        caps = sorted((r for r in sessions if session_device(r) == dev),
+                      key=lambda r: (r["date"], r["object_dir"]))
         served: Counter = Counter(ref for r in caps
                                   for ref in (r.get("dark_refs") or
                                               ([r["dark_ref"]] if r.get("dark_ref") else [])))
@@ -561,22 +582,63 @@ def device_rollup(sessions: list[dict]) -> dict:
                     "exptime": m.exptime, "gain": m.gain, "binning": m.binning,
                     "temp_c": m.temp_c, "frames": m.ncombine,
                     "made": made.isoformat() if made else None,
+                    "label": dark_label(made, m.temp_c),
                     "captures": served.get(m.path.name, 0),
                     **(stats or {}),
                 })
         masters.sort(key=lambda m: (m["tier"], m["made"] or "", m["file"]))
+        label_of = {m["file"]: m["label"] for m in masters}
+
+        captures = []
+        for r in caps:
+            c = {k: r.get(k) for k in (
+                "date", "object_dir", "slugs", "frames", "exposure_s", "filter",
+                "integration_min", "temp_first", "temp_min", "temp_max", "dark_ref",
+                "dark_temp_c", "dark_gap_c", "dark_link", "dark_refs", "dark_rule")}
+            refs = r.get("dark_refs") or ([r["dark_ref"]] if r.get("dark_ref") else [])
+            c["dark_refs"] = refs
+            c["dark_labels"] = [label_of.get(n) or n for n in refs]
+            c["lights_rel"] = (config.lights_dir(r["object_dir"])
+                               .relative_to(config.DATA_ROOT).as_posix())
+            captures.append(c)
+
+        dates = sorted({r["date"] for r in caps})
+        folder_minutes = sum(f.get("by_device", {}).get(dev, {}).get("integration_min", 0.0)
+                             for f in by_folder.values())
+        objects = sorted(
+            ({"slug": slug, "id": t.get("id") or slug,
+              **t["by_device"][dev]}
+             for slug, t in by_slug.items() if dev in t.get("by_device", {})),
+            key=lambda o: (-o["integration_min"], o["slug"]))
+        entry = registry.get(dev, {})
         out.append({
             "device": dev,
-            "label": devices.display_name(dev),
+            "label": devices.label(dev, registry),
+            "nickname": entry.get("nickname"),
+            "retired": bool(entry.get("retired")),
+            "preset": devices.effective_preset(dev, registry),
+            "model": devices.model_name(dev, registry),
+            "serial": devices.serial(dev),
             "darks_applied_on_device": devices.darks_applied_on_device(dev),
+            "totals": {
+                # folder-level, so a two-object folder ("M81 M82") counts once
+                "integration_min": round(folder_minutes or
+                                         sum(r["integration_min"] for r in caps), 2),
+                "sessions": len(caps),
+                "nights": len(dates),
+                "objects": len(objects),
+                "first_capture": dates[0] if dates else None,
+                "last_capture": dates[-1] if dates else None,
+            },
+            "objects": objects,
             "masters": masters,
-            "captures": [{k: r.get(k) for k in (
-                "date", "object_dir", "slugs", "frames", "exposure_s", "filter",
-                "temp_first", "temp_min", "temp_max", "dark_ref", "dark_temp_c",
-                "dark_gap_c", "dark_link", "dark_refs", "dark_rule")} for r in sorted(
-                    caps, key=lambda r: (r["date"], r["object_dir"]))],
+            "captures": captures,
         })
-    out.sort(key=lambda d: (not d["masters"], d["device"]))   # libraries first
+    # most recent capture first (never-used last), retired at the end — stable
+    # sorts, applied least-significant first
+    out.sort(key=lambda d: d["device"])
+    out.sort(key=lambda d: d["totals"]["last_capture"] or "", reverse=True)
+    out.sort(key=lambda d: d["retired"])
     if used != cache:
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -584,3 +646,4 @@ def device_rollup(sessions: list[dict]) -> dict:
         except OSError:
             pass
     return {"devices": out}
+

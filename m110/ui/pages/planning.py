@@ -27,7 +27,7 @@ from m110 import catalog, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
     make_table, fit_table_height, CollapsibleSection, connect_context_menu,
-    reveal_in_manager,
+    reveal_in_manager, reveal_label,
 )
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
@@ -594,7 +594,7 @@ class PlanningPage(QScrollArea):
         only part a test can reach."""
         menu = QMenu(self)
         acts = {"view": menu.addAction("View"),
-                "reveal": menu.addAction("Reveal in file manager")}
+                "reveal": menu.addAction(reveal_label())}
         menu.addSeparator()          # keep the destructive one off the main cluster
         acts["delete"] = menu.addAction("Delete…")
         return menu, acts

@@ -1,7 +1,7 @@
 """M110 — PySide6 desktop shell.
 
-A left nav rail switches between the pages (Library · Overview · Import ·
-Processing · …) in a stacked content area. The **Library** (thumbnail grid) is
+A left nav rail switches between the pages (Library · Overview · Planning ·
+Import · Processing · Devices) in a stacked content area. The **Library** (thumbnail grid) is
 the landing "home"; a fresh empty store lands on **Overview** (welcome/CTA).
 Overview merges the former Summary dashboard and Goals management into one pane
 of collapsible sections. The Library page hosts the shared per-object detail;
@@ -30,6 +30,7 @@ from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui.pages.planning import PlanningPage
+from m110.ui.pages.devices import DevicesPage
 from m110.ui.widgets import modal_loop_active, defer
 from m110.ui import theme
 
@@ -124,7 +125,7 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Planning", "Import", "Processing"]
+    NAV = ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
 
     def __init__(self):
         super().__init__()
@@ -165,12 +166,14 @@ class MainWindow(QMainWindow):
         self.planning = PlanningPage()
         self.import_page = ImportPage()
         self.processing = ProcessingPage()
+        self.devices = DevicesPage()
         self.pages = [self.catalog, self.overview, self.planning,
-                      self.import_page, self.processing]
+                      self.import_page, self.processing, self.devices]
         self._catalog_index = self.pages.index(self.catalog)
         self._overview_index = self.pages.index(self.overview)
         self._planning_index = self.pages.index(self.planning)
         self._import_index = self.pages.index(self.import_page)
+        self._devices_index = self.pages.index(self.devices)
 
         self.stack = QStackedWidget()
         # Uniform breathing room around every page (token-driven), so content isn't
@@ -238,6 +241,7 @@ class MainWindow(QMainWindow):
         self.planning.open_object.connect(self.open_object)
         self.planning.pins_changed.connect(self._on_pins_changed)
         self.processing.open_object.connect(self.open_object)
+        self.devices.open_object.connect(self.open_object)
         self.import_page.imported.connect(
             lambda moved: self._do_refresh() if moved else None)
 
@@ -360,10 +364,6 @@ class MainWindow(QMainWindow):
         self.media_cleanup_action.triggered.connect(self._open_media_cleanup)
         self.backup_action = QAction("Back up…", self)
         self.backup_action.triggered.connect(self._open_backup)
-        self.devices_action = QAction("Devices…", self)
-        self.devices_action.setToolTip(
-            "Each telescope's calibration library, the captures it served, and sensor health")
-        self.devices_action.triggered.connect(self._open_devices)
         self.restore_action = QAction("Restore…", self)
         self.restore_action.triggered.connect(self._open_restore)
         self.prefs_action = QAction("Preferences…", self)
@@ -373,7 +373,6 @@ class MainWindow(QMainWindow):
         self.tools_menu = bar.addMenu("Tools")
         self.tools_menu.addAction(self.prep_action)
         self.tools_menu.addAction(self.media_cleanup_action)
-        self.tools_menu.addAction(self.devices_action)
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.backup_action)
         self.tools_menu.addAction(self.restore_action)
@@ -500,12 +499,6 @@ class MainWindow(QMainWindow):
         from m110.ui.publish_dialog import PublishDialog
         PublishDialog(self).exec()
 
-    def _open_devices(self):
-        from m110.ui.devices_dialog import DevicesDialog
-        dlg = DevicesDialog(self)
-        dlg.open_object.connect(self.open_object)
-        dlg.exec()
-
     def _open_backup(self):
         if self.catalog.is_editing():
             return
@@ -600,7 +593,7 @@ class MainWindow(QMainWindow):
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
         self.prep_action.setEnabled(not editing)
-        for act in self.view_actions:      # else Ctrl+1..5 walks around the lock
+        for act in self.view_actions:      # else Ctrl+1..6 walks around the lock
             act.setEnabled(not editing)
 
     def _on_notes_saved(self, _slug: str):

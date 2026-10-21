@@ -99,6 +99,31 @@ def slug_to_priority_id(slug: str, catalog: dict) -> str:
     return catalog.get(slug, {}).get("id", slug.upper())
 
 
+def _device_bucket() -> dict:
+    return {"frames": 0, "integration_min": 0.0, "session_dates": set()}
+
+
+def session_device(s: dict) -> str:
+    """A session row's device key (`devices.folder_name`). Rows written before the
+    split carry only ``telescop``; a row with neither is ``"unknown"``."""
+    from . import devices
+    return s.get("device") or devices.folder_name(s.get("telescop"))
+
+
+def _add_device(by_device: dict, s: dict) -> None:
+    d = by_device[session_device(s)]
+    d["frames"] += s["frames"]
+    d["integration_min"] += s["integration_min"]
+    d["session_dates"].add(s["date"])
+
+
+def _device_totals(by_device: dict) -> dict:
+    return {dev: {"frames": d["frames"],
+                  "integration_min": round(d["integration_min"], 2),
+                  "session_count": len(d["session_dates"])}
+            for dev, d in sorted(by_device.items())}
+
+
 def build_totals(catalog: dict, sessions: list[dict]) -> dict:
     """For each captured slug, aggregate sessions and compute status.
 
@@ -117,6 +142,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         "has_pre_new_start": False,
         "session_refs": [],   # indices into sessions list
         "framings": {},       # {target: {counted, frames, integration_min, …}}
+        "by_device": defaultdict(_device_bucket),
     })
 
     # Also track per-object-folder totals (composite frames like M81/M82
@@ -129,6 +155,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         "exposures": set(),
         "slugs": set(),
         "has_pre_new_start": False,
+        "by_device": defaultdict(_device_bucket),
     })
 
     # An object's sessions, split by the framing they were shot in. A mosaic of
@@ -161,6 +188,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
                 if s.get("pre_new_start"):
                     t["has_pre_new_start"] = True
                 t["session_refs"].append(i)
+                _add_device(t["by_device"], s)
         by_slug[slug]["framings"] = {
             folder: {
                 "counted": folder in counted,
@@ -182,6 +210,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         f["slugs"].update(s.get("slugs", []))
         if s.get("pre_new_start"):
             f["has_pre_new_start"] = True
+        _add_device(f["by_device"], s)
 
     # Targets captured *only* as Seestar in-app stacks have no raw light frames, so
     # they produce no sessions and are absent from the loop above — yet they're real
@@ -223,6 +252,8 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             # Every framing this object was shot in, and whether it counts toward
             # the integration above (a mosaic beside a plain capture does not).
             "framings": t["framings"],
+            # The same counted integration, split by the telescope that shot it.
+            "by_device": _device_totals(t["by_device"]),
             "status": ("deep_stack" if t["integration_min"]
                        >= deep_threshold((catalog.get(slug) or {}).get("type"))
                        else "initial"),
@@ -242,6 +273,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "exposures": sorted(f["exposures"]),
             "slugs": sorted(f["slugs"]),
             "has_pre_new_start": f["has_pre_new_start"],
+            "by_device": _device_totals(f["by_device"]),
             # A folder can feed several objects (e.g. "M81 M82"); use the most
             # demanding of their thresholds so a faint member isn't marked done early.
             "status": ("deep_stack" if f["integration_min"] >= max(
@@ -814,7 +846,7 @@ def main():
     processing = build_processing(totals, overrides, catalog, sessions)
     goals = build_goals(totals, goals_mod.active_goal_ids())
     from . import calibration
-    device_info = calibration.device_rollup(sessions)
+    device_info = calibration.device_rollup(sessions, totals)
 
     out_dir = config.DERIVED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)

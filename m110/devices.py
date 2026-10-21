@@ -19,6 +19,7 @@ the place to fold that.
 from __future__ import annotations
 
 import re
+import tomllib
 
 UNKNOWN = "unknown"
 
@@ -77,3 +78,138 @@ def preset_key(telescop: str | None) -> str | None:
         if re.search(pat, low):
             return key
     return None
+
+
+# ── the registry: what the user has said about each telescope ──────────────────
+# Devices are DISCOVERED (every TELESCOP a session names, every Calibration/<dev>/
+# folder); `.m110_internal_data/devices.toml` holds only the user's edits, keyed
+# by the device key (`folder_name`):
+#
+#   [devices."S50_15e7e390"]
+#   nickname = "Backyard S50"
+#   retired = false
+#   preset = "seestar_s50"      # only when TELESCOP is not recognised
+#
+# Additive and lazily created (absence = no edits) → no .store_version bump.
+# A malformed file reads as empty rather than failing a refresh.
+
+REGISTRY_FIELDS = ("nickname", "retired", "preset")
+
+
+def load_registry() -> dict[str, dict]:
+    """``{device key: {nickname?, retired?, preset?, planning?}}`` — the user's edits."""
+    from . import config
+    path = config.DEVICES_TOML
+    if not path.is_file():
+        return {}
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    devs = data.get("devices", {})
+    if not isinstance(devs, dict):
+        return {}
+    out: dict[str, dict] = {}
+    for key, entry in devs.items():
+        if not isinstance(entry, dict):
+            continue
+        clean = {}
+        if isinstance(entry.get("nickname"), str) and entry["nickname"].strip():
+            clean["nickname"] = entry["nickname"].strip()
+        if isinstance(entry.get("retired"), bool):
+            clean["retired"] = entry["retired"]
+        if isinstance(entry.get("preset"), str) and entry["preset"].strip():
+            clean["preset"] = entry["preset"].strip()
+        if isinstance(entry.get("planning"), dict):
+            clean["planning"] = {k: v for k, v in entry["planning"].items()
+                                 if isinstance(v, (int, float, bool))}
+        out[str(key)] = clean
+    return out
+
+
+def save_device(key: str, **fields) -> dict:
+    """Merge `fields` into `key`'s entry (a value of None or "" clears that field)
+    and rewrite the file, keeping every other device. Returns the new entry."""
+    reg = load_registry()
+    entry = dict(reg.get(key, {}))
+    for name, value in fields.items():
+        if name not in REGISTRY_FIELDS + ("planning",):
+            raise ValueError(f"unknown device field {name!r}")
+        if value is None or value == "" or value == {} or value is False and name == "retired":
+            entry.pop(name, None)
+        else:
+            entry[name] = value
+    if entry:
+        reg[key] = entry
+    else:
+        reg.pop(key, None)
+    _write_registry(reg)
+    return entry
+
+
+def effective_preset(key: str | None, registry: dict | None = None) -> str | None:
+    """The preset that describes `key`: the user's choice, else the TELESCOP rule."""
+    reg = load_registry() if registry is None else registry
+    return (reg.get(key or "", {}).get("preset")) or preset_key(key)
+
+
+def model_name(key: str | None, registry: dict | None = None) -> str | None:
+    """The preset's model name ("ZWO Seestar S50"), or None for an unknown device."""
+    preset = effective_preset(key, registry)
+    if not preset:
+        return None
+    from .planning_config import DEVICE_PRESETS
+    dev = DEVICE_PRESETS.get(preset)
+    return dev.name if dev else None
+
+
+def serial(key: str | None) -> str | None:
+    """The unit serial a per-unit TELESCOP carries (``S50_15e7e390`` → ``15e7e390``)."""
+    head, sep, tail = (key or "").strip().partition("_")
+    return tail if sep and tail else None
+
+
+def label(key: str | None, registry: dict | None = None) -> str:
+    """What the UI calls the device: the user's nickname, else `display_name`."""
+    if not key or key == UNKNOWN:
+        return "Unknown telescope"
+    reg = load_registry() if registry is None else registry
+    nick = reg.get(key, {}).get("nickname")
+    if nick:
+        return nick
+    model = model_name(key, reg)
+    if model and preset_key(key) is None:          # user-chosen preset, raw TELESCOP
+        return f"{model} · {key}"
+    return display_name(key)
+
+
+def _q(s: str) -> str:
+    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _toml_value(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    return _q(v)
+
+
+def _write_registry(reg: dict[str, dict]) -> None:
+    from . import config
+    lines = ["# What you've told M110 about each telescope (Devices page).",
+             "# Keyed by the FITS TELESCOP value; devices themselves are discovered.", ""]
+    for key in sorted(reg):
+        entry = reg[key]
+        lines.append(f"[devices.{_q(key)}]")
+        for name in REGISTRY_FIELDS:
+            if name in entry:
+                lines.append(f"{name} = {_toml_value(entry[name])}")
+        if entry.get("planning"):
+            lines += ["", f"[devices.{_q(key)}.planning]"]
+            for k in sorted(entry["planning"]):
+                lines.append(f"{k} = {_toml_value(entry['planning'][k])}")
+        lines.append("")
+    config.DEVICES_TOML.parent.mkdir(parents=True, exist_ok=True)
+    config.DEVICES_TOML.write_text("\n".join(lines), encoding="utf-8")

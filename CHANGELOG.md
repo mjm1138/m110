@@ -28,9 +28,18 @@ changes a **user** would notice, per release.
   the assistant) leaves them out. The Seestar doesn't record which dark it used, so
   M110 works it out from when each dark was made and the sensor temperature, and
   says whether a link is confirmed or inferred.
-- **Tools → Devices…** shows each telescope's dark library (with previews), the
-  captures each dark served, and its sensor health over time: dark level and
-  hot-pixel count against temperature.
+- **A Devices page.** Every telescope you've imported from now has its own place
+  on the left-hand rail (the last entry, Ctrl+6): what it captured (total time,
+  nights, and how long it spent on each object), its dark library (with previews),
+  every capture with the dark it used, and its sensor health over time. Give a
+  scope a nickname, tell M110 its model when it can't tell from the files, or mark
+  one retired to tidy it out of the list. A dark is named the same way everywhere
+  ("Oct 15 21:52 · 13.9 °C"), and selecting a capture highlights the dark(s) it
+  used — or a dark, the captures it served. Right-click a dark or a capture to
+  reveal the file in Finder.
+- **Sessions show which telescope shot them.** The session tables have a
+  **Device** column, and two scopes shooting the same object on the same night are
+  now two sessions rather than one merged row.
 - **A calibration library per telescope.** Your library now has a top-level
   `Calibration/<telescope>/` folder (`darks/`, `flats/`, `biases/`) for master
   calibration frames that belong to a telescope rather than to one object. The
@@ -51,6 +60,9 @@ changes a **user** would notice, per release.
   given one telescope's masters.
 
 ### Changed
+- **"Reveal" now selects the file.** Revealing an image, a field guide or a dark
+  opens Finder (or Explorer) with that file selected, instead of just opening its
+  folder, and the menu item says "Reveal in Finder" on a Mac.
 - **Siril frame selection is tuned per filter, and the same way everywhere.** The
   four quality filters measure different things, so M110 no longer sets one
   percentage for all of them: up to 500 frames roundness and star count keep 95%

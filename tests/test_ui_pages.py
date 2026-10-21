@@ -2031,6 +2031,8 @@ def test_reveal_guide_opens_the_folder_not_the_file(tmp_path, monkeypatch, qapp)
     from PySide6.QtGui import QDesktopServices
     monkeypatch.setattr(QDesktopServices, "openUrl",
                         lambda url: opened.append(url.toLocalFile()) or True)
+    import sys
+    monkeypatch.setattr(sys, "platform", "linux")   # Finder/Explorer *select* it instead
 
     from m110.ui.pages.planning import PlanningPage
     page = PlanningPage()

@@ -8,13 +8,15 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit, QTableWidgetItem,
 )
 
-from m110 import derived
+from m110 import derived, devices
+from m110.build_derived import session_device
 from m110.ui.widgets import (
     make_table, NumItem, make_numeric, ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
     dark_gap_item,
 )
 
-_COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount", "Dark"]
+_COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount", "Device",
+         "Dark"]
 
 
 class SessionsPage(QWidget):
@@ -55,6 +57,7 @@ class SessionsPage(QWidget):
 
     def reload(self):
         rows = derived.load_sessions()
+        registry = devices.load_registry()
         t = self._table
         t.setSortingEnabled(False)
         t.setRowCount(0)
@@ -76,7 +79,8 @@ class SessionsPage(QWidget):
             mins = s.get("integration_min", 0.0)
             t.setItem(r, 5, make_numeric(NumItem(_fmt_hm(mins), mins)))
             t.setItem(r, 6, QTableWidgetItem(s.get("mount_mode", "")))
-            t.setItem(r, 7, dark_gap_item(s))
+            t.setItem(r, 7, QTableWidgetItem(devices.label(session_device(s), registry)))
+            t.setItem(r, 8, dark_gap_item(s))
         t.resizeColumnsToContents()
         t.setSortingEnabled(True)
         t.sortItems(0, Qt.DescendingOrder)   # most recent first
@@ -96,7 +100,7 @@ class SessionsPage(QWidget):
                 t.setRowHidden(r, False)
                 continue
             hay = " ".join(
-                (t.item(r, c).text() if t.item(r, c) else "") for c in (0, 1, 4, 6)
+                (t.item(r, c).text() if t.item(r, c) else "") for c in (0, 1, 4, 6, 7)
             ).lower()
             t.setRowHidden(r, q not in hay)
 
