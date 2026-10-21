@@ -221,3 +221,33 @@ def test_dark_cells_and_device_columns(tmp_path, monkeypatch, qtbot):
     assert dark_gap_item({"dark_ref": None}).text() == "—"
     from m110.ui.pages.sessions import _COLS
     assert _COLS[-2:] == ["Device", "Dark"]
+
+
+def test_a_rollup_from_an_older_version_does_not_crash_launch(tmp_path, monkeypatch, qapp):
+    """The window builds the Devices page before the launch Sync rewrites
+    derived/devices.json — so the page must read a rollup written by the
+    previous version (#169's: no totals / objects / identity keys). A raw
+    d["totals"] crashed launch on the first run after upgrading (2026-10-21)."""
+    import json
+    from m110 import config, derived
+    seed_root(tmp_path, monkeypatch)
+    old = {"devices": [{"device": "S50_15e7e390", "label": "ZWO Seestar S50 · 15e7e390",
+                        "darks_applied_on_device": True,
+                        "masters": [{"tier": "darks", "file": D13, "temp_c": 13.9,
+                                     "made": "2026-10-15T21:52:39", "captures": 1}],
+                        "captures": [{"date": "2026-10-15", "object_dir": "C 6",
+                                      "slugs": ["ngc-6543"], "frames": 70,
+                                      "dark_ref": D13, "dark_gap_c": 2.7}]},
+                       {"label": "an entry with no device key"}]}
+    config.DERIVED_DIR.mkdir(parents=True, exist_ok=True)
+    (config.DERIVED_DIR / "devices.json").write_text(json.dumps(old))
+    (d,) = derived.load_devices()
+    assert d["totals"]["last_capture"] is None and d["objects"] == []
+    from m110.ui.main import MainWindow
+    win = MainWindow()                                   # used to raise KeyError
+    win._ready = False
+    try:
+        assert win.devices.device_list.rowCount() == 1
+        assert win.devices.library_table.rowCount() == 1
+    finally:
+        win.deleteLater(); qapp.processEvents()

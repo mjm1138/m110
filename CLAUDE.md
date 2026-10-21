@@ -278,6 +278,9 @@ wrong) is under the same heading in DONE.md's archived reference.
 - The real Siril stack often sits in `working_files/`, not `stacks/`; readers look there.
 - Anything that moves or unlinks inside a sandbox asks first: `roundtrip.require_idle` (user-driven, raises) or `sandbox_busy` (automatic, skips). A live `m110-stack` run owns its `process/`.
 - `processing.json` stamps `generated_at`, so it churns; everything else in `derived/` is deterministic.
+- A `derived/` file is read at launch **before** Sync rewrites it, so after an upgrade
+  it has the previous version's schema: readers use `.get`/normalizers (e.g.
+  `derived.normalize_device`), never raw new keys.
 - A backup destination that can't hardlink is probed up front (`backup.probe_destination`,
   on a worker) and switches to the pooled format, telling the user. Pooled objects are
   mode 0444, so Windows deletes need `chmod` first.

@@ -304,8 +304,8 @@ class DevicesPage(QWidget):
     def reload(self):
         """Re-read the rollup + registry; keep the selected device if it remains."""
         keep = self._current["device"] if self._current else None
-        self._devices = (self._fixed if self._fixed is not None
-                         else derived.load_devices())
+        self._devices = ([n for n in map(derived.normalize_device, self._fixed) if n]
+                         if self._fixed is not None else derived.load_devices())
         self._fill_list(select=keep)
 
     def restyle(self):
