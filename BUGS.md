@@ -358,6 +358,16 @@ Legend: `[ ]` open · `[~]` partially done
   Related: `Images/M81/` has 327 lights and no `stacks/` tier at all, so it reads
   `not_processed` while its stack lives in the combined folder. Needs a user-facing
   reconcile/"move to the right target" flow, not a silent rule.
+  *Reconciled by hand 2026-10-21 (from the Astronomy session).* By **pointing**, the
+  `OBJECT = 'M 81'` LP subs in both folders are the combined framing (Dec 69.15–69.18°), so
+  "M81-only by header" holds for `OBJECT` only. Pointing is the signal a reconcile flow
+  should use. All 221 LP subs in `Images/M81/lights` were combined framing: the 111 that
+  duplicated `M81 M82/lights` byte-for-byte were trashed, and the other 110 were moved into
+  `M81 M82/lights` (hardlinked into `siril/LP/lights` and `astrowizard/lights`). `M81/`
+  now holds only its 106 genuinely M81-centred IRCUT subs (Dec 68.95°). Left behind:
+  `M81/siril/LP/` (a stale job whose `lights/` still hardlinks the moved frames, plus an
+  `M_81_120x10sec…_og.fit` stack built from them). The duplicates show that `m81`'s
+  object rollup had been counting those 111 frames twice.
 
 - [ ] **Directory precedence outranks the stack `DATE` — should it?** Follow-up to the
   mtime→`DATE` selection fix (`feature/stack-date-selection`, see DONE.md).
