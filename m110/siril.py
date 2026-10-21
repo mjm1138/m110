@@ -92,43 +92,51 @@ FILTER_KEYS = ("roundness", "fwhm", "star_count", "bg")
 _PRESET_FILTER_KEYS = {"roundness": "roundness", "fwhm": "fwhm",
                        "star_count": "star_count_filter", "bg": "bg_filter"}
 
-# (upper frame bound inclusive, roundness, wFWHM) — first row whose bound holds.
-# Each percentage is the share Siril KEEPS, ranked on that one metric over the
-# whole set; the four cuts are ANDed, and on real stacks they overlap by only
-# 10–45% (#174), so the drops roughly add.
-_FILTER_TIERS = ((500, 95.0, 98.0), (1500, 92.0, 95.0), (None, 90.0, 95.0))
+# (upper frame bound inclusive, {share kept per filter}) — first row whose bound
+# holds. Each percentage is the share Siril KEEPS, ranked on that one metric over
+# the whole set; the four cuts are ANDed and the drops roughly add (#174).
+#
+# Measured on M1 (767 LP subs, 732 solved; same frames, only the filters
+# varied — DONE.md): roundness 92 / wFWHM 95 kept 675 frames at core SNR 27.89;
+# adding background 98 kept 665 at 28.12; 95% on all four kept 660 at 28.66.
+# Star size and roundness agreed to within 0.3% across all three. So the
+# background and star-count cuts pay for themselves even on a dual-band filter,
+# and a roundness cut tighter than 95% only costs signal.
+_FILTER_TIERS = (
+    (500, {"roundness": 95.0, "fwhm": 98.0, "star_count": 95.0, "bg": 98.0}),
+    (None, {"roundness": 95.0, "fwhm": 95.0, "star_count": 95.0, "bg": 95.0}),
+)
 _FILTER_FLOOR = 100          # below this there are not enough frames to filter
 
 
 def is_dual_band(filt: str | None) -> bool:
     """True for a dual-band (Hα + OIII) light-pollution filter: the Seestar's
-    ``LP`` and the DwarfLab ``Duo-Band``. Their sky is suppressed and its spread
-    small, so a background cut there removes near-arbitrary frames."""
+    ``LP`` and the DwarfLab ``Duo-Band``. It picks the Naztronomy filter label
+    (`naztronomy_scope`); it no longer changes the frame-selection filters."""
     return re.sub(r"[^a-z]", "", (filt or "").lower()) in {"lp", "duoband", "dualband"}
 
 
 def filter_quality_for(usable_frames: int, filt: str | None = "") -> tuple[bool, dict]:
     """(filters_on, {roundness, fwhm, star_count, bg}) — the share of frames each
-    frame-selection filter keeps, by frame count and filter (#174).
+    frame-selection filter keeps, by frame count (#174, revised on the M1 A/B/C
+    stacks). `filt` is accepted for callers that key on it; the values are the
+    same for every filter.
 
-    The four measure different things, so they are tuned apart:
+    * **100–500 frames:** roundness and star count 95%, wFWHM and background 98%
+      — 95% across the board cut 21 of 231 frames on M15 with no FWHM gain.
+    * **over 500:** 95% on all four, the best of the three M1 runs.
+    * **Roundness never goes tighter than 95%.** When elongation is in nearly
+      every sub (optics, not wind), a tighter cut drops signal without making
+      the stars any rounder.
+    * **Background stays on, dual-band included.** wFWHM weighting scores
+      sharpness and star count, not sky brightness, so a sharp bright-sky frame
+      keeps full weight unless this filter drops it.
 
-    * **roundness** carries the weight — wind, polar-alignment and tracking
-      errors show up as elongation, which rejection cannot catch;
-    * **wFWHM** only trims the worst tail, since wFWHM *weighting* already
-      down-weights soft frames;
-    * **background** is 98%, but off (100) on a dual-band filter (`is_dual_band`);
-    * **star count** is off (100): wFWHM already penalises low-star frames, and
-      the near-blank ones fail registration anyway.
-
-    Below 100 frames the filters are off; the values are the next tier's."""
-    for bound, roundness, fwhm in _FILTER_TIERS:
+    Below 100 frames the filters are off; the values are the first tier's."""
+    for bound, quality in _FILTER_TIERS:
         if bound is None or usable_frames <= bound:
             break
-    return usable_frames >= _FILTER_FLOOR, {
-        "roundness": roundness, "fwhm": fwhm, "star_count": 100.0,
-        "bg": 100.0 if is_dual_band(filt) else 98.0,
-    }
+    return usable_frames >= _FILTER_FLOOR, dict(quality)
 
 
 # Naztronomy's `telescope` choice and its two filter labels (broadband, dual-band)

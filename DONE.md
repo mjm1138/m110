@@ -718,6 +718,39 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## Frame-selection tiers revised on M1 *(done 2026-10-20, `feature/filter-tiers-m1`)*
+
+#174's table (roundness 95/92/90, background off on dual-band, star count off) was
+reasoned from Siril's ANDing logic and stack logs, not from stacked results. Three
+`m110-stack` runs of the **same** M1 frames (767 LP subs, 732 plate-solved, drizzle
+2.0/0.5, w 3 3, wFWHM weighting — only the filters varied):
+
+| Run | Filters (round/wFWHM/bkg/stars) | Kept | Core SNR | Outskirts SNR | FWHM | Roundness |
+|---|---|---|---|---|---|---|
+| A | 92 / 95 / off / off | 675 | 27.89 | 2.07 | 5.076″ | 0.8134 |
+| C | 92 / 95 / 98 / off | 665 | 28.12 | 2.09 | 5.073″ | 0.8144 |
+| B | 95 / 95 / 95 / 95 | 660 | 28.66 | 2.14 | 5.086″ | 0.8127 |
+
+Method: Siril `findstar` on each stack, 1,421 unsaturated stars matched by RA/Dec
+in all three (bootstrap CIs on the per-star medians); SNR = mean of the central
+1.5′ minus the 8–14′ annulus median, over the MAD of the 8–20′ sky, on the green
+channel binned 4× (4.75″). Findings:
+
+- **Background on, even for LP:** A → C dropped 10 more frames yet SNR rose
+  0.9–1.1% where −0.7% was expected. wFWHM weighting does not see sky brightness.
+- **Roundness tighter than 95% buys nothing here:** C's stars are 0.27% smaller
+  and +0.003 rounder than B's — detectable, invisible — for ~23 more frames lost.
+  M1's elongation is aligned across the field (axis coherence 0.87–0.90) and worse
+  at the edges (0.85 → 0.77), i.e. in nearly every sub, which a percentile cut
+  cannot remove.
+- **B beats C by 1.9% (core) / 2.5% (outskirts)**; whether that is B's stricter
+  background, its star-count cut, or the frames C drops for roundness was not
+  separated (a `--filter-pct 95 --filter-nbstars 100` run would).
+
+New table (`siril._FILTER_TIERS`): 100–500 → 95/98/98/95 (wFWHM and background
+stay 98 on small sets per the M15 measurement); > 500 → 95 on all four (= run B).
+`is_dual_band` now only picks the Naztronomy label. One target, one rig: revisit
+when a wind-affected target is available, where a tighter roundness cut may pay.
 ## Never disturb a running stack *(done 2026-10-20, `feature/stack-in-progress-guard`)*
 
 **The incident.** An import on M1 landed between m110-stack's solve and register

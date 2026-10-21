@@ -1306,9 +1306,9 @@ def _filter_survey(depth, filt="IRCUT", n=None):
 
 @pytest.mark.parametrize("depth,filt,want", [
     (80, "IRCUT", None),
-    (300, "IRCUT", {"roundness": 95.0, "fwhm": 98.0, "star_count": 100.0, "bg": 98.0}),
-    (800, "LP", {"roundness": 92.0, "fwhm": 95.0, "star_count": 100.0, "bg": 100.0}),
-    (3000, "Duo-Band", {"roundness": 90.0, "fwhm": 95.0, "star_count": 100.0, "bg": 100.0}),
+    (300, "IRCUT", {"roundness": 95.0, "fwhm": 98.0, "star_count": 95.0, "bg": 98.0}),
+    (800, "LP", {"roundness": 95.0, "fwhm": 95.0, "star_count": 95.0, "bg": 95.0}),
+    (3000, "Duo-Band", {"roundness": 95.0, "fwhm": 95.0, "star_count": 95.0, "bg": 95.0}),
 ])
 def test_proposal_filters_follow_depth_and_filter(tmp_path, depth, filt, want):
     p = build_proposal(_filter_survey(depth, filt), None, tmp_path)
@@ -1322,9 +1322,11 @@ def test_mosaic_filters_key_on_depth_not_frame_count(tmp_path):
 
 
 def test_register_command_leaves_off_filters_at_100(tmp_path):
-    p = build_proposal(_filter_survey(800, "LP"), None, tmp_path)
+    s = _filter_survey(300, "LP")
+    p = build_proposal(s, None, tmp_path)
+    _stk.apply_filter_overrides(p, s, Overrides(filter_bkg=100, filter_nbstars=100))
     ssf = build_ssf_apply("lights", p)
-    assert "-filter-round=92%" in ssf and "-filter-wfwhm=95%" in ssf
+    assert "-filter-round=95%" in ssf and "-filter-wfwhm=98%" in ssf
     assert "-filter-bkg" not in ssf and "-filter-nbstars" not in ssf
 
 
@@ -1347,8 +1349,8 @@ def test_single_filter_override_turns_filters_on_below_floor(tmp_path):
     s = _filter_survey(60)
     p = build_proposal(s, None, tmp_path)
     assert p.get("filters") is None
-    _stk.apply_filter_overrides(p, s, Overrides(filter_round=95))
-    assert p.get("filters") == {"roundness": 95, "fwhm": 98.0, "star_count": 100.0, "bg": 98.0}
+    _stk.apply_filter_overrides(p, s, Overrides(filter_round=97))
+    assert p.get("filters") == {"roundness": 97, "fwhm": 98.0, "star_count": 95.0, "bg": 98.0}
 
 
 def test_filters_label():

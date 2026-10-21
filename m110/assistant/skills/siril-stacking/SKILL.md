@@ -245,26 +245,37 @@ full set and then ANDed, and they overlap less than you would hope: across six
 real stacks the combined drop was 55–90% of the four individual drops added
 together. Budget for roughly the sum.
 
-That is why the four are tuned apart, by depth (the same table prep writes into
-the Naztronomy preset):
+The table, by depth (the same one prep writes into the Naztronomy preset):
 
 | Depth | Roundness | wFWHM | Background | Star count |
 |---|---|---|---|---|
 | < 100 | off | off | off | off |
-| 100–500 | 95 | 98 | 98 | off |
-| 501–1500 | 92 | 95 | 98 | off |
-| > 1500 | 90 | 95 | 98 | off |
+| 100–500 | 95 | 98 | 98 | 95 |
+| > 500 | 95 | 95 | 95 | 95 |
 
-- **Roundness carries the weight.** Wind, polar-alignment error and tracking
-  glitches show up as elongation, and winsorized rejection cannot catch an
-  elongated frame — it is not a per-pixel outlier.
-- **wFWHM only trims the tail**, because wFWHM *weighting* already down-weights
-  soft frames. On M15, 95% cut 21 of 231 frames with no FWHM gain.
-- **Star count is off.** wFWHM already penalises frames with fewer stars, and the
-  near-blank frames it would catch fail registration anyway.
-- **Background is off on a dual-band filter** (Seestar `LP`, DwarfLab
-  `Duo-Band`). Background tracks altitude into the light dome; with the sky
-  suppressed and its spread small, the cut removes near-arbitrary frames.
+It was measured, not reasoned out. On M1 (767 LP subs, 732 plate-solved), three
+stacks of the same frames differed only in their filters:
+
+| Filters | Frames kept | Core SNR | Star FWHM / roundness |
+|---|---|---|---|
+| roundness 92, wFWHM 95, rest off | 675 | 27.89 | 5.076″ / 0.813 |
+| the same + background 98 | 665 | 28.12 | 5.073″ / 0.814 |
+| 95 on all four | 660 | **28.66** | 5.086″ / 0.813 |
+
+- **Roundness no tighter than 95%.** When elongation is in nearly every sub —
+  M1's stars point the same way across the field, worse at the edges, so it is
+  optics rather than wind — a tighter cut drops signal and leaves the stars as
+  they were. A target with occasional wind or tracking glitches might reward a
+  tighter cut; try `filter_round` on it rather than changing the default.
+- **Background stays on, even with a dual-band filter** (Seestar `LP`, DwarfLab
+  `Duo-Band`). wFWHM weighting scores sharpness and star count, not sky
+  brightness, so a sharp but bright-sky frame keeps full weight unless this
+  filter drops it. On M1 it was worth about 1% of SNR on its own.
+- **wFWHM is 98% on small sets**: on M15, 95% cut 21 of 231 frames with no FWHM
+  gain.
+
+A 2.7% SNR difference is worth about 5.5% more integration (SNR grows with the
+square root of time) — real, but not visible on a single pair of images.
 
 Budget for the loss when a target is close to an integration goal, loosen one
 filter with its own override rather than all four, and reach for `no_filters`
