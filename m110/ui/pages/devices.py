@@ -21,12 +21,14 @@ from pathlib import Path
 from PySide6.QtCore import QItemSelection, QItemSelectionModel, QPointF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPen
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel,
+    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+    QLabel, QSpinBox,
     QLineEdit, QMenu, QPushButton, QScrollArea, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from m110 import config, derived, devices
+from m110 import planning_config as pc
 from m110.planning_config import DEVICE_PRESETS
 from m110.ui import theme
 from m110.ui.widgets import (
@@ -204,6 +206,58 @@ class DevicesPage(QWidget):
         btns.addWidget(self.save_btn)
         self._id_sec.body.addLayout(btns)
 
+        # planning (PR B): the active planning telescope + its limit overrides
+        self._plan_sec = CollapsibleSection("Planning")
+        prow = QHBoxLayout()
+        self.planning_state = QLabel()
+        prow.addWidget(self.planning_state, 1)
+        self.use_for_planning = QPushButton("Use for planning")
+        self.use_for_planning.clicked.connect(self._use_for_planning)
+        prow.addWidget(self.use_for_planning)
+        self._plan_sec.body.addLayout(prow)
+        pform = QFormLayout()
+        self.ceiling = QDoubleSpinBox()
+        self.ceiling.setRange(30.0, 90.0)
+        self.ceiling.setDecimals(1)
+        self.ceiling.setSuffix(" °")
+        self.ceiling.valueChanged.connect(self._on_limits_edited)
+        pform.addRow("Start ceiling", self.ceiling)
+        self.ceiling_hard = QCheckBox("Hard — the telescope refuses to start above it")
+        self.ceiling_hard.toggled.connect(self._on_limits_edited)
+        pform.addRow("", self.ceiling_hard)
+        self.floor = QDoubleSpinBox()
+        self.floor.setRange(0.0, 60.0)
+        self.floor.setDecimals(1)
+        self.floor.setSuffix(" °")
+        self.floor.valueChanged.connect(self._on_limits_edited)
+        pform.addRow("Low-altitude floor", self.floor)
+        self.max_exposure = QSpinBox()
+        self.max_exposure.setRange(1, 600)
+        self.max_exposure.setSuffix(" s")
+        self.max_exposure.valueChanged.connect(self._on_limits_edited)
+        pform.addRow("Longest exposure", self.max_exposure)
+        self.default_exposure = QSpinBox()
+        self.default_exposure.setRange(1, 600)
+        self.default_exposure.setSuffix(" s")
+        self.default_exposure.valueChanged.connect(self._on_limits_edited)
+        pform.addRow("Default exposure", self.default_exposure)
+        self.gain = QSpinBox()
+        self.gain.setRange(0, 1000)
+        self.gain.valueChanged.connect(self._on_limits_edited)
+        pform.addRow("Gain", self.gain)
+        self._plan_sec.body.addLayout(pform)
+        lbtns = QHBoxLayout()
+        self.limits_note = QLabel()
+        self.limits_note.setWordWrap(True)
+        lbtns.addWidget(self.limits_note, 1)
+        self.limits_defaults_btn = QPushButton("Model defaults")
+        self.limits_defaults_btn.clicked.connect(self._limits_to_defaults)
+        self.limits_save_btn = QPushButton("Save limits")
+        self.limits_save_btn.clicked.connect(self._save_limits)
+        lbtns.addWidget(self.limits_defaults_btn)
+        lbtns.addWidget(self.limits_save_btn)
+        self._plan_sec.body.addLayout(lbtns)
+
         self._obj_sec = CollapsibleSection("Objects")
         self.objects_table = make_table(_OBJ_COLS)
         self.objects_table.sortByColumn(1, Qt.DescendingOrder)     # most integration first
@@ -234,7 +288,7 @@ class DevicesPage(QWidget):
         self._health_sec.body.addWidget(self.level_chart)
         self._health_sec.body.addWidget(self.hot_chart)
 
-        for sec in (self._id_sec, self._obj_sec, self._lib_sec, self._cap_sec,
+        for sec in (self._id_sec, self._plan_sec, self._obj_sec, self._lib_sec, self._cap_sec,
                     self._health_sec):
             self._body.addWidget(sec)
         self._scroll = QScrollArea()
@@ -346,6 +400,8 @@ class DevicesPage(QWidget):
         for col in (4, 5):
             self.captures_table.setColumnHidden(col, not linked)
         self._id_sec.setVisible(d["device"] != devices.UNKNOWN)
+        self._plan_sec.setVisible(d["device"] != devices.UNKNOWN and not d.get("retired"))
+        self._load_planning(d)
 
     # identity (the registry) ------------------------------------------------
 
@@ -396,6 +452,88 @@ class DevicesPage(QWidget):
         self._set_dirty(False)
         self._fill_list(select=key if (not f["retired"] or self.show_retired.isChecked())
                         else None)
+
+    # planning (the active telescope + its limits) ------------------------------
+
+    _LIMIT_NAMES = {"start_alt_ceiling_deg": "start ceiling", "ceiling_is_hard": "hard ceiling",
+                    "low_alt_floor_deg": "low-altitude floor",
+                    "max_exposure_s": "longest exposure",
+                    "default_exposure_s": "default exposure", "gain": "gain"}
+
+    _LIMIT_WIDGETS = (("start_alt_ceiling_deg", "ceiling"), ("ceiling_is_hard", "ceiling_hard"),
+                      ("low_alt_floor_deg", "floor"), ("max_exposure_s", "max_exposure"),
+                      ("default_exposure_s", "default_exposure"), ("gain", "gain"))
+
+    def _model_defaults(self, key: str):
+        preset = devices.effective_preset(key)
+        return DEVICE_PRESETS.get(preset or "", pc.Device())
+
+    def _load_planning(self, d: dict):
+        key = d["device"]
+        active = pc.active_device_key() == key
+        self.planning_state.setText("<b>Planning plans for this telescope.</b>" if active
+                                    else "Planning plans for another telescope.")
+        self.use_for_planning.setVisible(not active)
+        self._show_limits(pc.device_for(key))
+        self._refresh_limits_note(key)
+
+    def _show_limits(self, dev):
+        widgets = [getattr(self, w) for _, w in self._LIMIT_WIDGETS]
+        for w in widgets:
+            w.blockSignals(True)
+        self.ceiling.setValue(dev.start_alt_ceiling_deg or 90.0)
+        self.ceiling_hard.setChecked(bool(dev.ceiling_is_hard))
+        self.floor.setValue(dev.low_alt_floor_deg)
+        self.max_exposure.setValue(int(dev.max_exposure_s))
+        self.default_exposure.setValue(int(dev.default_exposure_s))
+        self.gain.setValue(int(dev.gain))
+        for w in widgets:
+            w.blockSignals(False)
+        self.limits_save_btn.setEnabled(False)
+
+    def _limits_overrides(self, key: str) -> dict:
+        """The edited limits that differ from the telescope's model defaults —
+        only those are stored, so a later preset correction still reaches it."""
+        base = self._model_defaults(key)
+        vals = {"start_alt_ceiling_deg": self.ceiling.value(),
+                "ceiling_is_hard": self.ceiling_hard.isChecked(),
+                "low_alt_floor_deg": self.floor.value(),
+                "max_exposure_s": self.max_exposure.value(),
+                "default_exposure_s": self.default_exposure.value(),
+                "gain": self.gain.value()}
+        return {k: v for k, v in vals.items() if getattr(base, k) != v}
+
+    def _refresh_limits_note(self, key: str):
+        changed = self._limits_overrides(key)
+        model = devices.model_name(key) or "Seestar S50 defaults"
+        self.limits_note.setText(f"Your changes to the {model} limits: "
+                                 + ", ".join(self._LIMIT_NAMES[k] for k in changed)
+                                 if changed else f"Using the {model} limits.")
+        self.limits_defaults_btn.setEnabled(bool(changed))
+
+    def _on_limits_edited(self, *_):
+        self.limits_save_btn.setEnabled(True)
+        if self._current:
+            self._refresh_limits_note(self._current["device"])
+
+    def _limits_to_defaults(self):
+        if self._current:
+            self._show_limits(self._model_defaults(self._current["device"]))
+            self.limits_save_btn.setEnabled(True)
+            self._refresh_limits_note(self._current["device"])
+
+    def _save_limits(self):
+        if not self._current:
+            return
+        key = self._current["device"]
+        devices.save_device(key, planning=self._limits_overrides(key) or None)
+        self.limits_save_btn.setEnabled(False)
+        self._refresh_limits_note(key)
+
+    def _use_for_planning(self):
+        if self._current:
+            pc.set_active_device(self._current["device"])
+            self._load_planning(self._current)
 
     # objects ------------------------------------------------------------------
 

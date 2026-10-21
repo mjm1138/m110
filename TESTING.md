@@ -412,6 +412,13 @@ re-run when its area changes and you want eyes on the visuals).
       list until **Show retired**. The Dwarf shows no dark library and no Dark column.
 - [ ] M51's detail → **Sessions**: the 2026-05-20 night is **two** rows (S50 12
       frames, Travel S30 6 frames) — two scopes, one night.
+- [ ] **Planning** shows a **Telescope** picker next to Location (three scopes known),
+      defaulting to the most recently used (the S50). Pick **DwarfLab Dwarf 3** → an
+      existing plan clears; plan a night → the start ceiling is the Dwarf's soft 80°,
+      and a saved field guide says "**Telescope:** DwarfLab Dwarf 3".
+- [ ] Devices → the S50 → **Planning**: "Use for planning" when another scope is
+      active; set Start ceiling 74° → **Save limits** → only that change is noted
+      ("Your changes to the … limits"); **Model defaults** + Save clears it.
 - [ ] M 72's `siril/` has **no** `darks/`, and `next-steps.md` carries the
       "already dark-subtracted on the device" note.
 - [ ] With your own Seestar: browse to its volume; the darks land under your unit's
