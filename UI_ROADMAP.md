@@ -23,8 +23,10 @@ file owns *look & feel*.
   numbers, no decoration for its own sake.
 - **Minimal main-window chrome (a core principle, 2026-07-01).** A common failing of
   astro software is a cluttered, control-dense interface. M110 pushes hard the other
-  way: the **main window's** primary views (**Library · Overview · Import · Processing** —
-  the 4-pane rail after the 2026-07 IA cleanup) carry as **few visible controls as possible**, presented
+  way: the **main window's** primary views (**Library · Overview · Planning · Import ·
+  Processing · Devices** — the rail after the 2026-07 IA cleanup, with Planning added
+  post-beta and **Devices** promoted from a Tools dialog on 2026-10-21 because users own
+  several telescopes and per-object integration targets will be per device) carry as **few visible controls as possible**, presented
   **unobtrusively but legibly** — prefer one control with one clear meaning over several
   redundant ones; prefer a sensible default over a toggle nobody switches; don't let a
   control's show/hide relocate its neighbours. Complexity is allowed to grow in
@@ -265,7 +267,7 @@ Four small corrections to the shell itself, once the pages had settled.
   pair only read acceptably on macOS, where the `MenuRole`s hoist About/Preferences into
   the app menu; on Windows and Linux it filed Preferences under "Library" and offered
   **no way to quit at all**. One structure covers all three — the roles still do the
-  hoisting, so there's no `sys.platform` branch to drift. A **View** menu (Ctrl+1–5)
+  hoisting, so there's no `sys.platform` branch to drift. A **View** menu (Ctrl+1–6)
   came with it, giving the rail keyboard access it never had.
 
 ### Phase 4+ — Later  *(deferred)*

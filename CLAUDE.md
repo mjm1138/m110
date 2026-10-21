@@ -95,7 +95,7 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
     darks/ flats/ biases/           per-target Images/<t>/darks/… overrides it
   Inbox/                            ingest holding area
   Plans/                            saved field guides
-  .m110_internal_data/              library.toml goals.toml priorities.toml pins.toml
+  .m110_internal_data/              library.toml goals.toml priorities.toml pins.toml devices.toml
                                     sessions.jsonl profiles/ derived/ renders/ .store_version (=4)
 ```
 
@@ -127,7 +127,7 @@ DONE.md's archived reference — grep the module name there.
 | `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
 | `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
-| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar) |
+| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim = the device key), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar); the registry `devices.toml` (`load_registry`/`save_device`: nickname, retired, preset) + `label`/`model_name`/`serial` |
 | `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry); never matches a dark for a `darks_applied_on_device` telescope. Seestar rule v2: `device_clock` (the ONE filename-clock parser), `applied_dark` (run start) + `applied_darks` (sticky 2.5 °C mid-run switch), `split_runs`; `master_stats` + `device_rollup` → `derived/devices.json` |
 | `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor; the run guard (`RUN_MARKER`, `stack_in_progress`, `require_idle`, `sandbox_busy`) |
 | `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else one library master per tier, linked **per job dir**; Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
@@ -156,7 +156,7 @@ DONE.md's archived reference — grep the module name there.
 
 | Module | Role |
 |---|---|
-| `main.py` | shell: nav rail → 5 pages **Library · Overview · Planning · Import · Processing**; `_build_menus()` (File/View/Library/Tools/Help, `MenuRole` hoisting); `RefreshWorker`; auto-sync on launch/focus/ingest; `open_object(slug)`; `_ready` gates launch workers |
+| `main.py` | shell: nav rail → 6 pages **Library · Overview · Planning · Import · Processing · Devices**; `_build_menus()` (File/View/Library/Tools/Help, `MenuRole` hoisting); `RefreshWorker`; auto-sync on launch/focus/ingest; `open_object(slug)`; `_ready` gates launch workers |
 | `widgets.py` | shared table/thumbnail helpers (`ThumbnailLoader`, `fit_table_height`, `fit_cell_widgets`), launch helpers, **`drain_worker`**, **`modal_loop_active`/`defer`/`connect_context_menu`** |
 | `image_grid.py` | reusable tile grid (model + delegate), app-data-agnostic |
 | `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, processing/sessions tables, handoff/import buttons |
@@ -169,7 +169,7 @@ DONE.md's archived reference — grep the module name there.
 | `media_detail.py` · `media_cleanup_dialog.py` | media detail pane · sidecar cleanup |
 | `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (summary + Local drive / Cloud tabs, one `_SlotPanel` each) · restore (From: picker across slots) · MCP connection details |
 | `about_dialog.py` · `update_notice.py` · `error_report.py` · `first_run_dialog.py` | about + update status · update banner/worker · crash dialog + excepthook · first-launch prompt |
-| `devices_dialog.py` | Tools → Devices…: per-device dark library, captures (dark + gap), `SensorChart` scatters — read-only from `derived/devices.json`; `widgets.dark_gap_item` is the shared **Dark** cell |
+| `pages/devices.py` | the **Devices** rail page: device list + detail (identity → `devices.toml`, objects, dark library, captures, `SensorChart`), dark ↔ capture cross-selection, Reveal menus — from `derived/devices.json`; `widgets.dark_gap_item`/`dark_labels` are the shared **Dark** cell, `reveal_in_manager` selects the file |
 | `theme/` | design system: `tokens` (light/dark), `qss.build_qss`, `manager.ThemeManager` (follows OS), bundled JetBrains Mono, `brand` (recolored logo, fixed app icon). **Pull colors/spacing from tokens, never hardcode hex** |
 
 ---

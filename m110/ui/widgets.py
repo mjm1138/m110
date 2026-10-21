@@ -193,13 +193,31 @@ def _dark_temp(name: str) -> str | None:
     return m.group(1) if m else None
 
 
+def dark_labels(row: dict) -> list[str]:
+    """The labels of the darks a session's telescope applied, in order — the same
+    "Oct 15 21:52 · 13.9 °C" the Devices page's dark library shows. A rollup
+    capture carries them (from the masters' headers); a plain session row only has
+    the filenames, so they are read from those, for display only."""
+    from m110 import calibration
+    refs = row.get("dark_refs") or ([row["dark_ref"]] if row.get("dark_ref") else [])
+    if row.get("dark_labels") and len(row["dark_labels"]) == len(refs):
+        return list(row["dark_labels"])
+    out = []
+    for name in refs:
+        t = _dark_temp(name)
+        out.append(calibration.dark_label(calibration.device_clock(name),
+                                          float(t) if t else None))
+    return out
+
+
 def dark_gap_item(row: dict) -> QTableWidgetItem:
     """A session's **Dark** cell: the dark its telescope subtracted on-device
     (inferred, `calibration.applied_darks`) and the widest gap between a sub's
-    sensor temperature and the dark in use — "24.9 °C · Δ10.5 ⚠", or
-    "24.9→23.2→13.9 °C · Δ7.0" when the telescope switched darks mid-capture —
-    sortable by the gap. The ⚠ and the tooltip carry the warning, so it never rests
-    on color alone."""
+    sensor temperature and the dark in use — "Oct 15 19:28 · 24.9 °C · Δ10.5 ⚠", or
+    "3 darks · Δ6.7" when the telescope switched darks mid-capture (all of them in
+    the tooltip) — sortable by the gap. The dark is named exactly as the Devices
+    page's dark library names it. The ⚠ and the tooltip carry the warning, so it
+    never rests on color alone."""
     from m110 import calibration
     from m110.ui import theme
     if not row.get("dark_ref"):
@@ -207,6 +225,27 @@ def dark_gap_item(row: dict) -> QTableWidgetItem:
         it.setToolTip("No dark link: this telescope doesn't subtract darks on board, "
                       "or the capture predates its dark library.")
         return it
+    gap = row.get("dark_gap_c")
+    warn = gap is not None and gap > calibration.DARK_GAP_WARN_C
+    labels = dark_labels(row)
+    text = (labels[0] if len(labels) == 1 else f"{len(labels)} darks") + \
+           (f" · Δ{gap:.1f}" if gap is not None else "") + (" ⚠" if warn else "")
+    it = NumItem(text, gap if gap is not None else -1.0)
+    tmin, tmax = row.get("temp_min"), row.get("temp_max")
+    tip = [("Darks the telescope applied on-device, in order:" if len(labels) > 1
+            else "Dark the telescope applied on-device:")]
+    tip += [f"  {lab}" for lab in labels]
+    tip.append(f"Link: {row.get('dark_link')} (rule {row.get('dark_rule')})"
+               + (" for the first; the switches are inferred" if len(labels) > 1 else ""))
+    if tmin is not None and tmax is not None:
+        tip.append(f"Sensor during the capture: {tmin:g}–{tmax:g} °C")
+    if warn:
+        tip.append(f"More than {calibration.DARK_GAP_WARN_C:g} °C off: hot pixels in "
+                   "the drifted subs are over- or under-subtracted. m110-stack "
+                   "--max-dark-gap can leave them out.")
+        it.setForeground(QColor(theme.active_tokens().warn))
+    it.setToolTip("\n".join(tip))
+    return it
     gap, dt = row.get("dark_gap_c"), row.get("dark_temp_c")
     warn = gap is not None and gap > calibration.DARK_GAP_WARN_C
     temps = [t for t in (_dark_temp(n) for n in row.get("dark_refs") or []) if t]
@@ -354,9 +393,31 @@ def open_in_default(path) -> None:
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
 
+def reveal_label() -> str:
+    """The platform's name for `reveal_in_manager` — what a menu item should say."""
+    import sys
+    if sys.platform == "darwin":
+        return "Reveal in Finder"
+    if sys.platform.startswith("win"):
+        return "Show in Explorer"
+    return "Reveal in file manager"
+
+
 def reveal_in_manager(path) -> None:
-    """Show a file/dir in the OS file manager (for a file, opens its folder)."""
+    """Show `path` in the OS file manager. A file is **selected** in its folder
+    (Finder ``open -R``, Explorer ``/select,``); a folder is opened. Linux file
+    managers have no portable select, so a file opens its folder there."""
+    import subprocess
+    import sys
     p = Path(path)
+    if p.is_file() and sys.platform == "darwin":
+        from m110 import launch
+        subprocess.Popen(["/usr/bin/open", "-R", str(p)], env=launch._child_env(),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    if p.is_file() and sys.platform.startswith("win"):
+        subprocess.Popen(["explorer", f"/select,{p}"])
+        return
     target = p if p.is_dir() else p.parent
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 

@@ -16,7 +16,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | # | Milestone | Status | Detail |
 |---|---|---|---|
 | — | **MVP v0.1 — "the Library"** (catalog, ingest, rendering, processing-prep, two-axis store) | ✅ shipped | [`DONE.md`](DONE.md) |
-| 0 | **Navigation IA** — 5-pane rail (Library · Overview · Planning · Import · Processing) | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
+| 0 | **Navigation IA** — 6-pane rail (Library · Overview · Planning · Import · Processing · Devices) | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | — | **UI design system** — tokens, light/dark theming, restyled surfaces, branding | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open [↓](#1--session-planning-follow-ups-non-blocking-refinements))* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
 | 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open [↓](#5--catalog-growth))* | [`DONE.md`](DONE.md) |
@@ -1035,9 +1035,19 @@ remaining device-source gaps collect here:
   see [`DONE.md`](DONE.md)): `darklibrary/` imports into `Calibration/<S50_serial>/darks/`,
   the never-re-apply guard (`devices.darks_applied_on_device`), per-session capture
   facts + the inferred on-device dark and its temperature gap (rule v1; `m110-stack
-  --max-dark-gap`), and Tools → Devices… (library, captures, sensor health). This is
-  also the first per-session device record (`telescop` on every session row) — the
-  registry + `Images/<target>/<device>/` level above are still open. Follow-ups:
+  --max-dark-gap`), and a Devices view (library, captures, sensor health). This is
+  also the first per-session device record (`telescop` on every session row).
+- **Devices as first-class — shipped 2026-10-21** (`feature/devices-page`): a
+  **Devices** rail page (replacing the Tools dialog); the **registry**
+  `devices.toml` (nickname, retired, model override — devices themselves are
+  discovered); sessions **split by device** (two scopes on one target/night/exposure
+  were one merged row); **per-device integration** (`totals.json` `by_device` per
+  object and folder; per-device totals + objects in `devices.json`); darks named
+  alike in both tables with cross-selection; Reveal selects the file. Next:
+  **planning uses the device** (`feature/planning-device`), then **per-object
+  integration targets** (item 1 follow-up), which read `by_device`. Still open: the
+  `Images/<target>/<device>/` path level (+ migration), and telling two Dwarf 3s
+  apart (their TELESCOP is the model string; needs `MACADDR`). Follow-ups:
   - **Confirm the trigger rule on the device** — a controlled two-target plan at
     dusk (≥2.5 °C vs ≈1.5 °C of cooling between targets); rule v1's ≈2 °C threshold
     and "nearest dark, held for the run" are inferred from three nights, not
@@ -1107,7 +1117,8 @@ when extending an existing subsystem).
 
 - **MVP v0.1 — "the Library"** — 0.1a–0.1f, own data root + bootstrap, the
   image-rendering port, the two-axis store (#13), the processing-prep round-trip.
-- **0 — Navigation IA** — the 5-pane nav rail after the pre-launch 8→4 cleanup
+- **0 — Navigation IA** — the nav rail after the pre-launch 8→4 cleanup (Devices
+  added 2026-10-21 as the sixth pane)
   (Overview merged Summary+Goals; Media/Journal/Sessions absorbed into Library);
   Planning added post-beta. **Media brought up to parity** (`feature/media-first-class`):
   its own List/Grid views swapped into the Library's view segment, a detail pane,

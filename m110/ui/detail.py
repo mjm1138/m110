@@ -17,14 +17,16 @@ from PySide6.QtWidgets import (
     QToolButton, QMenu, QMessageBox,
 )
 
-from m110 import build_images, config, derived, objects, processing, siril
+from m110 import build_images, config, derived, devices, objects, processing, siril
+from m110.build_derived import session_device
 from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
     process_in_siril, stack_in_stackingwizard, open_in_default,
-    reveal_in_manager, defer, connect_context_menu, FlowLayout, dark_gap_item,
+    reveal_in_manager, reveal_label, defer, connect_context_menu, FlowLayout,
+    dark_gap_item,
 )
 
 
@@ -436,6 +438,7 @@ class DetailPane(QScrollArea):
         if not rows:
             return
         rows.sort(key=lambda s: s.get("date", ""), reverse=True)
+        registry = devices.load_registry()
         out = [[
             s.get("date", ""),
             str(s.get("frames", 0)),
@@ -443,10 +446,12 @@ class DetailPane(QScrollArea):
             s.get("filter", ""),
             _fmt_hm(s.get("integration_min", 0.0)),
             s.get("mount_mode", ""),
+            devices.label(session_device(s), registry),
             dark_gap_item(s),
         ] for s in rows]
         self._section_table(
             "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount",
+                         "Device",
                          "Dark"], out)
 
     def _add_metadata_section(self, slug: str, e: dict, totals: dict | None = None):
@@ -664,7 +669,7 @@ class DetailPane(QScrollArea):
         export_act = menu.addAction("Export for sharing…")
         menu.addSeparator()
         open_act = menu.addAction("Open in default app")
-        reveal_act = menu.addAction("Reveal in file manager")
+        reveal_act = menu.addAction(reveal_label())
         chosen = menu.exec(global_pos)
         # These three act on the real file (`src`), never the render: revealing a
         # .fit must land on the .fit, and exporting must re-render it at full

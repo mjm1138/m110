@@ -101,11 +101,13 @@ def _blob(size: int = 72, seed: int = 0) -> np.ndarray:
 
 
 def _fits(path: Path, obj: str, ra: float, dec: float,
-          exp: float, filt: str, when: datetime, seed: int):
+          exp: float, filt: str, when: datetime, seed: int, telescop: str | None = None):
     path.parent.mkdir(parents=True, exist_ok=True)
     hdu = fits.PrimaryHDU(data=_blob(seed=seed))
     h = hdu.header
     h["OBJECT"] = obj
+    if telescop:
+        h["TELESCOP"] = telescop
     h["FILTER"] = filt
     h["EXPTIME"] = exp
     h["DATE-OBS"] = when.strftime("%Y-%m-%dT%H:%M:%S")
@@ -153,16 +155,19 @@ def _png(path: Path, seed: int = 0):
 
 
 def _lights(folder: str, obj: str, ra: float, dec: float, exp: int, filt: str,
-            start: datetime, n: int, seed0: int, kind: str = "Light"):
-    """Write n light subs into Images/<folder>/lights/ (Seestar filename form).
-    Returns the filenames, in capture order."""
+            start: datetime, n: int, seed0: int, kind: str = "Light",
+            telescop: str | None = None):
+    """Write n light subs into Images/<folder>/lights/ (Seestar filename form),
+    shot by the corpus S50 unless `telescop` names another. Returns the
+    filenames, in capture order."""
+    telescop = telescop or S50_TELESCOP
     d = config.lights_dir(folder)
     names = []
     for i in range(n):
         when = start + timedelta(seconds=21 * i)
         name = (f"{kind}_{obj}_{exp}s_{filt}_"
                 f"{when.strftime('%Y%m%d-%H%M%S')}.fit")
-        _fits(d / name, obj, ra, dec, exp, filt, when, seed0 + i)
+        _fits(d / name, obj, ra, dec, exp, filt, when, seed0 + i, telescop)
         names.append(name)
     return names
 
@@ -226,6 +231,8 @@ def _dwarf_stack(folder: str, obj: str, ra: float, dec: float, n: int, exp: int,
 
 SEESTAR_DARKS = Path(__file__).resolve().parent.parent / "tests" / "data" / "seestar_darklibrary"
 S50_TELESCOP = "S50_c0ffee00"          # a fake unit serial (the real masters carry none)
+S30_TELESCOP = "S30_deadbeef"          # a second scope — M13 + one M51 night (Devices page)
+S30_NICKNAME = "Travel S30"            # shipped in devices.toml → the registry demo
 S50_STORE_DARKS = ("24.9C", "13.9C", "10.5C", "23.2C")   # the mount adds the 7.7C one
 
 
@@ -365,6 +372,9 @@ def build(out: Path):
 
     ra, dec = C("m51")
     _lights("M51", "M51", ra, dec, 30, "LP", base, 12, 100)
+    # the second scope on the same night, same exposure + filter → its own session
+    _lights("M51", "M51", ra, dec, 30, "LP", base + timedelta(hours=1), 6, 150,
+            telescop=S30_TELESCOP)
     _lights("M51", "M51", ra, dec, 30, "LP", base + timedelta(days=4), 10, 200)
     _seestar_stack("M51", "M51", ra, dec, 120, 30, "LP", base + timedelta(days=4, hours=2), 300)
 
@@ -430,7 +440,8 @@ def build(out: Path):
     # corpus is otherwise galaxies + nebulae; the prioritizer type-weights + the
     # Library/Planning views want a cluster).
     ra, dec = C("m13")
-    _lights("M13", "M13", ra, dec, 30, "LP", base + timedelta(days=12), 16, 5200)
+    _lights("M13", "M13", ra, dec, 30, "LP", base + timedelta(days=12), 16, 5200,
+            telescop=S30_TELESCOP)
     _seestar_stack("M13", "M13", ra, dec, 100, 30, "LP",
                    base + timedelta(days=12, hours=1), 5300)
 
@@ -543,6 +554,11 @@ def build(out: Path):
     # Refresh once so captured folders are promoted into the Library (5d: the
     # Library is the captured collection, no longer bulk-seeded from goals) and
     # derived/renders are built — i.e. the post-launch state the app would produce.
+    # The second scope has a nickname (the registry, devices.toml) — set before the
+    # refresh so derived/devices.json already carries it.
+    from m110 import devices
+    devices.save_device(S30_TELESCOP, nickname=S30_NICKNAME)
+
     from m110 import refresh
     refresh.run_refresh()
 
@@ -924,9 +940,24 @@ def verify(out: Path):
     assert m72["dark_temp_c"] == 24.9 and m72["dark_gap_c"] > 3 and m72["dark_link"] == "confirmed"
     assert m76["dark_temp_c"] == 13.9 and m76["dark_gap_c"] < 3 and m76["dark_link"] == "confirmed"
     (s50,) = [d for d in derived.load_devices() if d["device"] == S50_TELESCOP]
-    assert len(s50["masters"]) == len(S50_STORE_DARKS) and len(s50["captures"]) == 2
+    assert len(s50["masters"]) == len(S50_STORE_DARKS)
+    assert len([c for c in s50["captures"] if c["dark_ref"]]) == 2     # M 72 + M 76
     print(f"  Seestar darks: {len(s50['masters'])} in the library, 1 new on the device; "
           f"M 72 Δ{m72['dark_gap_c']} °C ({m72['dark_link']}), never linked into prep")
+
+    # Devices as first-class: two scopes shot M51 on the same night with the same
+    # exposure + filter → two sessions; totals split by device; the S30's nickname
+    # comes from the registry.
+    first_night = min(r["date"] for r in sessions if r["object_dir"] == "M51")
+    split = {r["device"]: r["frames"] for r in sessions
+             if r["object_dir"] == "M51" and r["date"] == first_night}
+    assert split == {S50_TELESCOP: 12, S30_TELESCOP: 6}, f"M51 night not split: {split}"
+    by_dev = derived.load_totals()["by_slug"]["m51"]["by_device"]
+    assert set(by_dev) == {S50_TELESCOP, S30_TELESCOP}, by_dev
+    (s30,) = [d for d in derived.load_devices() if d["device"] == S30_TELESCOP]
+    assert s30["label"] == S30_NICKNAME and {o["slug"] for o in s30["objects"]} == {"m13", "m51"}
+    print(f"  devices: {[d['label'] for d in derived.load_devices()]} · M51 "
+          f"{first_night} split {split}")
 
     # Phase 5 (5d): Caldwell goal active; the Library is the captured collection
     # (only *captured* Caldwell members land here, not the whole catalog), and the

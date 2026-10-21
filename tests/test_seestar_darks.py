@@ -380,8 +380,12 @@ def test_a_session_lists_every_dark_it_used(tmp_path, monkeypatch):
     assert row["dark_ref"] == row["dark_refs"][0] and row["dark_rule"] == "v2"
     assert row["dark_gap_c"] == 6.6
     item = dark_gap_item(row)
-    assert item.text() == "24.9→23.2→13.9 °C · Δ6.6 ⚠"
-    assert "switches are inferred" in item.toolTip()
+    assert item.text() == "3 darks · Δ6.6 ⚠"
+    tip = item.toolTip()
+    assert "switches are inferred" in tip
+    # named exactly as the Devices page's dark library names them, in order
+    assert tip.index("Oct 15 19:28 · 24.9 °C") < tip.index("Oct 16 20:49 · 23.2 °C") \
+        < tip.index("Oct 15 21:52 · 13.9 °C")
 
 
 def test_m110_stack_gaps_follow_the_switches(tmp_path, monkeypatch):
