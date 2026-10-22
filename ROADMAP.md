@@ -36,6 +36,79 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 
 ---
 
+## 1.0 release criteria
+
+*Drafted 2026-10-22.* **1.0 is a stability promise, not a feature milestone.** The
+feature surface is already there: everything ✅ above, including session planning,
+which the original beta plan had deferred until after beta. What 1.0 adds is a
+commitment: a store you can upgrade and restore across without loss, shipped flows
+that give correct output, and installers verified on every platform we ship. So the
+gate is a hardening list plus a freeze, not more milestones.
+
+### The freeze
+
+- Once 0.3.0-beta.9 is cut, the next cycle is a **freeze**: the blockers below and
+  regression fixes only. No new rail pages, no new top-level store directories, no
+  `.store_version` bump.
+- Tag 1.0 after **one or two consecutive betas with no store-shape change** and no
+  open blocker.
+- **Draco does not gate 1.0.** Device-level calibration on `main` is additive, and the
+  header-stamp shim lives only on `feature/draco`. But Draco work must not land store
+  changes during the freeze; it ships in 1.x.
+
+### Blockers
+
+Each one points at its full entry in [`BUGS.md`](BUGS.md).
+
+**Data safety**
+- [ ] **#40d — Restore has no store-version gate** *(Backup & restore)*. Restoring an
+  older snapshot into a newer store must migrate it or refuse. Highest priority:
+  1.0 implicitly promises that your data survives an upgrade.
+- [ ] **No user-facing way to merge or rename a capture target** *(Import)*. A
+  mis-filed capture has no way out today. That's a hole in the data model, not polish.
+
+**Correctness of shipped flows**
+- [ ] **A library re-match leaves the previous master linked in a Siril job**
+  *(Processing)*.
+- [ ] **The library flat is matched per target, not per filter job** *(Processing)*.
+  Both give wrong output in device-library calibration, which landed after
+  0.3.0-beta.8.
+
+**Supportability**
+- [ ] **A failed stack's log is destroyed by the next attempt** *(Processing)*. Beta
+  reports need that log.
+
+**Security & release integrity**
+- [ ] **F8 — pin `uranometria`** to a SHA or tag *(Security)*. BUGS rates it Medium
+  once packaged builds install it the same way, and `release.yml` now does (the Linux
+  and Windows jobs), so the trigger has fired. One line in each of `ci.yml` and
+  `release.yml`.
+- [ ] **F9 — guard `objects.write_journal` at the writer** *(Security)*. Latent and
+  cheap; same shape as the fixed F1.
+- [ ] **`release.py` smoke phase can watch the wrong run** *(Packaging & release)*. It
+  has to fail closed before a 1.0 tag relies on it.
+
+**Platform QE**
+- [ ] **Smoke-test the packaged installers on real hardware for all three platforms**,
+  recorded in [`TESTING.md`](TESTING.md): the notarized macOS `.dmg`, the Linux
+  AppImage on an x86_64 desktop distro (so far only a from-source ARM run on a Pi 5 is
+  confirmed), and the Windows installer on a real Windows machine.
+
+### Explicitly not 1.0
+
+Items **2, 9, 11, 12c–e, 13, 15**, assistant **M1/M2**, the N-destination backup list,
+publishing targets beyond GitHub Pages, **#18**, **#21** refinements and **#45**
+guidance all land in 1.x. None is a promise 1.0 makes.
+
+### Open questions
+
+- **Windows code signing.** The beta decision was "ship unsigned, revisit on uptake."
+  Does the 1.0 label change that?
+- **Is there enough feedback?** Is beta usage broad enough to call the surface
+  validated, or should the freeze cycle recruit more testers?
+
+---
+
 ## Foundational decisions
 
 - **Distribution:** open-source, **Developer-ID direct distribution** (notarized
