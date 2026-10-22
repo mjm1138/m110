@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.8</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.9</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -227,12 +227,14 @@ and the right size rather than re-reading all of it — a full re-check would me
 downloading the entire backup, which you'd be billed for.</p>
 <blockquote>
 <p><strong>What's not in a backup:</strong> regenerable app state — thumbnails, derived rollups,
-the session index, and the Siril sandboxes — is skipped, because M110 rebuilds it
-automatically. Your catalog, notes, subs, stacks, and finished renders are all
-included.</p>
+the session index — is skipped, because M110 rebuilds it automatically. So are the
+hardlinked copies of your subs in the Siril working folders (the subs themselves
+are backed up once, where they really live) and Siril's <code>process/</code> scratch, which
+Siril rebuilds every time you stack. Your catalog, notes, subs, stacks, finished
+renders and past processing runs are all included.</p>
 </blockquote>
 <p>Next: <strong><a href="planning.html">Session planning →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.8 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v0.3.0-beta.9 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

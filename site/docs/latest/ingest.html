@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.8</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.9</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html" class="on">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -49,6 +49,30 @@ will land. Device layouts are recognized automatically — a Seestar export, a D
 </ul>
 <p>M110 reads the FITS headers to identify each frame (object, date, exposure, filter,
 pointing), so it works across devices regardless of their filename conventions.</p>
+<h3 id="the-seestars-dark-library">The Seestar's dark library</h3>
+<p>Recent Seestar firmware keeps its master darks in a <code>darklibrary/</code> folder beside
+<code>MyWorks/</code>. Importing from the Seestar brings those in too, filed under
+<code>Calibration/&lt;telescope&gt;/darks/</code> (the telescope is named from the subs on the same
+device, e.g. <code>S50_15e7e390</code>). Reconnecting copies only darks you don't have yet.</p>
+<p>M110 <strong>never applies</strong> these darks: the Seestar already subtracts a dark from every
+sub before saving it, so subtracting one again would do it twice. They're kept as a
+record of what the telescope did:</p>
+<ul>
+<li>The <strong>Dark</strong> column in an object's Sessions table (and in the full session log)
+  shows the dark the telescope most likely used and how far the sensor drifted from
+  it during the capture — "24.9 °C · Δ10.5 ⚠". A ⚠ means more than 3 °C: hot pixels
+  in the drifted subs are over- or under-subtracted. <code>m110-stack --max-dark-gap 3</code>
+  leaves those subs out of a stack.</li>
+<li>The <strong>Devices</strong> page (last on the rail) shows each telescope's dark library, the
+  captures each dark served, and its sensor health over time (dark level and
+  hot-pixel count against temperature). Darks are named by when the telescope made
+  them and at what temperature ("Oct 15 21:52 · 13.9 °C") in both tables; select a
+  capture to highlight its darks, and right-click either to reveal the file.</li>
+</ul>
+<p>Which dark a capture got is <em>inferred</em> — the Seestar doesn't record it — from
+when each dark was made (its filename time) and the sensor temperature. A link says
+<strong>confirmed</strong> when the dark was made for that capture minutes before it started at
+the same temperature, and <strong>inferred</strong> otherwise.</p>
 <h2 id="where-things-land-the-library-layout">Where things land — the library layout</h2>
 <p>Your data folder is organized around <strong>two views of the same collection</strong>:</p>
 <pre><code>&lt;data folder&gt;/            (default ~/Documents/M110)
@@ -63,6 +87,7 @@ pointing), so it works across devices regardless of their filename conventions.<
     previews/                   per-sub JPG previews (only if you opt in)
     siril/                      the processing sandbox (see Processing)
     (darks/ flats/ biases/)     calibration frames, if you have them
+  Calibration/&lt;telescope&gt;/     master darks/flats/biases that belong to a telescope
   Media/&lt;category&gt;_photo|_video/   lunar / planetary / scenery / startrails
   Plans/                      saved session field guides (see Session planning)
   Inbox/                      holding area for files awaiting manual assignment
@@ -88,7 +113,7 @@ finished renders in separate folders on purpose:</p>
 <strong>Library</strong> page and each object's <strong>detail pane</strong>, which groups the gallery into
 "Finished" and "Working files."</p>
 <p>Next: <strong><a href="library.html">The library &amp; object metadata →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.8 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v0.3.0-beta.9 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

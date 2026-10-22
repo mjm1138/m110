@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.9] - 2026-10-22
+
 ### Added
 - **Your Seestar's dark library comes in with your captures.** Recent Seestar
   firmware keeps its master darks in a `darklibrary` folder next to `MyWorks`.

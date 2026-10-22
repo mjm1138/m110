@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.8</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.9</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -32,11 +32,165 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project aims to follow <a href="https://semver.org/">Semantic Versioning</a> once it
 reaches 1.0. Until then (pre-<code>0.1.0</code>), the detailed engineering history of how and
-why each subsystem shipped lives in <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.8/DONE.md"><code>DONE.md</code></a>; this file summarizes the
+why each subsystem shipped lives in <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.9/DONE.md"><code>DONE.md</code></a>; this file summarizes the
 changes a <strong>user</strong> would notice, per release.</p>
 <h2 id="unreleased">[Unreleased]</h2>
-<h2 id="030-beta8-2026-09-25">[0.3.0-beta.8] - 2026-09-25</h2>
+<h2 id="030-beta9-2026-10-22">[0.3.0-beta.9] - 2026-10-22</h2>
 <h3 id="added">Added</h3>
+<ul>
+<li><strong>Your Seestar's dark library comes in with your captures.</strong> Recent Seestar
+  firmware keeps its master darks in a <code>darklibrary</code> folder next to <code>MyWorks</code>.
+  Importing from the Seestar — its entry on the Import page, or browsing to its
+  <code>MyWorks</code> folder — now offers them as a <strong>master darks</strong> row and copies them into
+  <code>Calibration/&lt;your telescope&gt;/darks/</code> (named after your unit, e.g.
+  <code>S50_15e7e390</code>); reconnecting copies only new ones.
+  M110 never applies them: the Seestar already subtracts a dark from every sub
+  before saving it, and doing it again would subtract twice. If you put darks on a
+  Seestar object yourself, Siril prep and <code>m110-stack</code> now warn about that.</li>
+<li><strong>See which dark each capture got, and how far off it was.</strong> The Sessions tables
+  have a new <strong>Dark</strong> column: the dark the Seestar most likely used for that capture
+  and how far the sensor's temperature drifted from it ("24.9 °C · Δ10.5 ⚠"). Over
+  3 °C, hot pixels in the drifted subs come out over- or under-subtracted;
+  <code>m110-stack</code> warns about those frames and <code>--max-dark-gap 3</code> (also available to
+  the assistant) leaves them out. The Seestar doesn't record which dark it used, so
+  M110 works it out from when each dark was made and the sensor temperature, and
+  says whether a link is confirmed or inferred.</li>
+<li><strong>A Devices page.</strong> Every telescope you've imported from now has its own place
+  on the left-hand rail (the last entry, Ctrl+6): what it captured (total time,
+  nights, and how long it spent on each object), its dark library (with previews),
+  every capture with the dark it used, and its sensor health over time. Give a
+  scope a nickname, tell M110 its model when it can't tell from the files, or mark
+  one retired to tidy it out of the list. A dark is named the same way everywhere
+  ("Oct 15 21:52 · 13.9 °C"), and selecting a capture highlights the dark(s) it
+  used — or a dark, the captures it served. Right-click a dark or a capture to
+  reveal the file in Finder.</li>
+<li><strong>Planning plans for your telescope.</strong> Night plans used the Seestar S50's limits
+  whatever you own. Planning now plans for the telescope you pick — a <strong>Telescope</strong>
+  choice next to Location appears once M110 knows more than one, and the Devices page
+  has <strong>Use for planning</strong> — with that model's limits (a Dwarf's softer 80° ceiling,
+  for example). Adjust a telescope's start ceiling, exposure or gain on its Devices
+  page; field guides now say which telescope a plan is for.</li>
+<li><strong>Sessions show which telescope shot them.</strong> The session tables have a
+  <strong>Device</strong> column, and two scopes shooting the same object on the same night are
+  now two sessions rather than one merged row.</li>
+<li><strong>A calibration library per telescope.</strong> Your library now has a top-level
+  <code>Calibration/&lt;telescope&gt;/</code> folder (<code>darks/</code>, <code>flats/</code>, <code>biases/</code>) for master
+  calibration frames that belong to a telescope rather than to one object. The
+  folder is named after the telescope's own name in its FITS headers. Importing
+  another M110 library's <code>Calibration/</code> folder (a backup, a second computer) files
+  the masters back there, never as an object. Backups keep the library at every
+  level.</li>
+<li><strong>Processing uses the right master automatically.</strong> When an object has no
+  calibration frames of its own, preparing it for Siril now picks one master per
+  kind from its telescope's library: the dark with the same exposure, gain and
+  binning and the nearest sensor temperature, the bias for that binning, and a
+  flat only when exactly one fits the filter. The chosen files are linked beside
+  the lights and the Naztronomy preset's calibration switches are turned on; the
+  <code>next-steps.md</code> in the folder says which were used and why any were skipped.
+  <code>m110-stack</code> does the same for the frames it is about to stack;
+  <code>--no-calibration</code> turns it off. Your own <code>darks/</code>, <code>flats/</code> or <code>biases/</code> on an
+  object always win, and an object shot on two different telescopes is never
+  given one telescope's masters.</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong>"Reveal" now selects the file.</strong> Revealing an image, a field guide or a dark
+  opens Finder (or Explorer) with that file selected, instead of just opening its
+  folder, and the menu item says "Reveal in Finder" on a Mac.</li>
+<li><strong>Siril frame selection is tuned per filter, and the same way everywhere.</strong> The
+  four quality filters measure different things, so M110 no longer sets one
+  percentage for all of them: up to 500 frames roundness and star count keep 95%
+  while wFWHM and background keep 98%, and above 500 all four keep 95%. The values
+  come from stacking the same 767 M1 subs three ways: 95% on all four gave about
+  3% better signal-to-noise than a tighter roundness cut with background and star
+  count off, with stars the same to within 0.3%. Below 100 frames nothing is
+  filtered. The Siril
+  preset and <code>m110-stack</code> now use the same table, so an object no longer gets
+  different frame selection depending on how you stack it. <code>m110-stack</code> picks the
+  tier from how many frames cover each part of the sky, so a large mosaic isn't
+  filtered as hard as a deep single field, and below 100 frames it no longer
+  filters at all. New <code>--filter-round</code>, <code>--filter-wfwhm</code>, <code>--filter-bkg</code> and
+  <code>--filter-nbstars</code> options (also available to the assistant) adjust one filter
+  at a time.</li>
+<li><strong>M110 asks before replacing a Siril preset.</strong> When new subs change what M110
+  would suggest, or you have saved your own preset from Naztronomy, importing no
+  longer re-tunes or silently skips the preset. A dialog lists what would change,
+  per object. <strong>Replace</strong> moves the old file to <code>presets/archive/</code> and writes the
+  new one; <strong>Keep existing</strong> leaves it alone, and M110 won't ask again until its
+  suggestion changes.</li>
+<li><strong>The Dark column now follows the Seestar switching darks mid-capture.</strong> Looking
+  at more nights showed the telescope changes to a better-matched dark partway
+  through a long capture once the sensor has cooled about 2.5 °C away from the one
+  in use. The column (and <code>m110-stack</code>'s drift warning) now accounts for that, so a
+  capture that switched shows each dark it used ("24.9→23.2→13.9 °C · Δ6.7") and a
+  smaller, more accurate drift than before. Sessions pick this up on the next Sync.</li>
+<li><strong>Backups no longer carry Siril's <code>process/</code> scratch.</strong> Siril rebuilds the
+  converted, calibrated and registered frames in <code>process/</code> every time you stack,
+  so there is nothing in it you can't get back by stacking again — but backups were
+  storing it — about 40 GB on one real library. Every backup level now skips it,
+  both the live folder and the
+  copies already filed in past runs' <code>archive/</code> folders. Nothing is deleted from
+  your library; your existing backups keep what they have until they're pruned.</li>
+<li><strong>Importing finished work leaves Siril's <code>process/</code> folder where it is.</strong> It used
+  to be moved into the run's <code>archive/</code> folder along with everything else, so every
+  archived run kept a copy of a scratch folder you'd never open again. Now it stays
+  put for Siril to reuse or clear: the Naztronomy script asks whether to delete it
+  when you start the next run, and <code>m110-stack</code> clears it itself.</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong>Importing finished work can no longer break a stack that is still running.</strong>
+  If you ran <em>Import finished work</em> while <code>m110-stack --run</code> was working in the
+  same object, the import's clean-up moved the stack's working files into
+  <code>siril/archive/</code>, and the next stage failed with only <em>"Registration failed"</em>.
+  Nothing was lost — the files were all in the archive — but the run was. Now
+  <code>m110-stack</code> marks the folder while it runs, and the import tells you a stack is
+  running and to wait, without changing anything. Automatic processing prep and
+  rejected-sub clean-up skip that object until the run is over. For a run you
+  started in Siril itself, which leaves no mark, the import warns when Siril wrote
+  to <code>process/</code> in the last few minutes and defaults to leaving the folder as it
+  is. If a stack's working files do disappear mid-run, <code>m110-stack</code> now says so
+  plainly, and says where they went if they were archived.</li>
+<li><strong>LP and Dwarf presets now name the right filter and telescope.</strong> Every Siril
+  preset said "No Filter (Broadband)" on a ZWO Seestar S50, including LP subs and
+  Dwarf 3 captures, so SPCC calibrated colour for the wrong filter and
+  <code>m110-stack</code> warned about the mismatch on every LP stack. LP jobs now say
+  "LP (Narrowband)", and Dwarf 3 / Dwarf Mini captures get their own telescope
+  with "Astro filter (UV/IR)" or "Dual-Band". Dwarf captures are also split into
+  per-filter jobs by the filter in their FITS headers, as Seestar captures already
+  were.</li>
+<li><strong>Calibration frames now reach every Siril job on a mixed-filter object.</strong> They
+  were linked once at the top of the processing folder, but the Naztronomy script
+  looks for <code>darks/</code> next to the <code>lights/</code> it is run on, which for an object shot
+  through two filters is a per-filter folder underneath. Each job folder now gets
+  its own links.</li>
+<li><strong>Same-named folders no longer merge in the holding area.</strong> Files from two
+  source folders that share a name (say <code>dark/cam_0</code> and <code>flat/cam_0</code>) used to be
+  held together under one name, and a file with the same name in the second
+  folder was silently skipped. Each now gets its own group, named after its
+  parent folder too (<code>dark_cam_0</code>, <code>flat_cam_0</code>).</li>
+<li><strong>No more sudden crashes when running M110 from source on Python 3.11.</strong> The
+  newest PySide6 (6.12.0, the Qt toolkit M110 is built on) has a bug that, on
+  Python 3.11 only, slowly corrupts the interpreter until it aborts — sooner the
+  more images it handles. M110 now refuses that PySide6 release on Python 3.11 and
+  installs the previous one. The downloadable apps were never affected (they ship
+  their own Python 3.12).</li>
+<li><strong>Importing a StackingWizard/AstroWizard finish now updates the object's
+  processing status.</strong> The stack StackingWizard made stayed in the <code>astrowizard</code>
+  working folder, so an object like M32 kept showing "out of date" against an older
+  stack, with the wrong frame counts. Importing a finish now also files that stack
+  under <code>stacks/</code>, and M110 reads StackingWizard's frame count and write time, so
+  the status, "in stack" and "+ new" numbers reflect it. (Objects you already
+  imported need one more import to pick it up.)</li>
+<li><strong>Night plans no longer come up short or start late.</strong> The planner chose its 30
+  candidates from the ranking <em>before</em> checking what was up that night, so with the
+  "Capture many" strategy (which ranks never-captured targets highest) the pool filled
+  with out-of-season targets and the plan scheduled only a few late ones. It now picks
+  from targets that are actually observable that night, so shallow in-season targets
+  fill the time.</li>
+</ul>
+<h2 id="030-beta8-2026-09-25">[0.3.0-beta.8] - 2026-09-25</h2>
+<h3 id="added_1">Added</h3>
 <ul>
 <li><strong>Back up to a local drive and the cloud at the same time.</strong> The Back up window
   (Tools → Back up…) now has two tabs, <strong>Local drive</strong> and <strong>Cloud</strong>. Each has its own
@@ -51,13 +205,13 @@ changes a <strong>user</strong> would notice, per release.</p>
 <li><strong>Restore can read from either backup.</strong> With both set up, Restore has a <strong>From:</strong>
   picker to switch between the local and cloud copies.</li>
 </ul>
-<h3 id="fixed">Fixed</h3>
+<h3 id="fixed_1">Fixed</h3>
 <ul>
 <li>The user guide and the first-run backup prompt pointed to a Library menu entry
   for Back up / Restore. It's under <strong>Tools</strong>.</li>
 </ul>
 <h2 id="030-beta7-2026-09-21">[0.3.0-beta.7] - 2026-09-21</h2>
-<h3 id="added_1">Added</h3>
+<h3 id="added_2">Added</h3>
 <ul>
 <li><strong><code>m110-stack</code> can say more while it works.</strong> A run used to report its current
   stage once a minute and nothing else; the only way to see more was to <code>tail</code> the
@@ -67,7 +221,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   exact interval. The assistant's stacking skill knows the levels too, so the
   command it hands you can carry the one you asked for.</li>
 </ul>
-<h3 id="changed">Changed</h3>
+<h3 id="changed_1">Changed</h3>
 <ul>
 <li><strong>An object's action buttons now sit below the picture and notes, and wrap.</strong>
   Import finished work, Process in Siril, Reveal working folder, Stack in
@@ -83,7 +237,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   <code>M110-0.3.0-beta.7-x86_64.AppImage</code>, <code>M110-0.3.0-beta.7-setup.exe</code>. A final
   release keeps the plain <code>M110-0.3.0.dmg</code> form.</li>
 </ul>
-<h3 id="fixed_1">Fixed</h3>
+<h3 id="fixed_2">Fixed</h3>
 <ul>
 <li><strong>A Library on a network share now works from a Mac.</strong> With the data folder on
   an NFS export (or any share that can't hold a file's extended attributes),
@@ -116,7 +270,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   and the same sync takes a few seconds.</li>
 </ul>
 <h2 id="030-beta6-2026-09-13">[0.3.0-beta.6] - 2026-09-13</h2>
-<h3 id="added_2">Added</h3>
+<h3 id="added_3">Added</h3>
 <ul>
 <li><strong>You can now back up to cloud storage — S3, Backblaze B2, Cloudflare R2,
   Wasabi or anything else that speaks the S3 protocol.</strong> In <strong>Tools → Back up</strong>,
@@ -158,7 +312,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   M110 will understand them.</p>
 </li>
 </ul>
-<h3 id="added_3">Added</h3>
+<h3 id="added_4">Added</h3>
 <ul>
 <li><strong>The user guide is now published at <a href="https://m110.space/docs/">m110.space/docs</a>.</strong>
   Every release keeps its own copy, and <strong>Help → User guide</strong> opens the one
@@ -199,7 +353,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   you can choose to leave the folder untouched instead. Those step files are also
   no longer offered to you as things to import: only what you actually exported is.</li>
 </ul>
-<h3 id="fixed_2">Fixed</h3>
+<h3 id="fixed_3">Fixed</h3>
 <ul>
 <li><strong>A Seestar mosaic no longer creates a second copy of its object in the
   Library.</strong> The Seestar names a mosaic with a space in the designation
@@ -233,7 +387,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   Those working files are now cleared at the start of each run, and M110 says how
   much it freed. <code>--restack</code> still reuses them, which is what it's for.</li>
 </ul>
-<h3 id="added_4">Added</h3>
+<h3 id="added_5">Added</h3>
 <ul>
 <li><strong>Send a stack straight to AstroWizard.</strong> An object's detail pane now has a
   <strong>Send to AstroWizard…</strong> button. It lists every stack you have for that object —
@@ -271,7 +425,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   combined afterwards. It can't start a stack itself — it reads your frames'
   headers and proposes, nothing more.</li>
 </ul>
-<h3 id="changed_1">Changed</h3>
+<h3 id="changed_2">Changed</h3>
 <ul>
 <li><strong>Backups now keep your processing history.</strong> A backup used to skip each
   object's <code>siril/</code> working folder entirely, which also threw away the archived
@@ -299,7 +453,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   an unexpected folder was a puzzle. The first lines of the log, and the crash
   report, now name the folder <em>and</em> where the choice came from.</li>
 </ul>
-<h3 id="fixed_3">Fixed</h3>
+<h3 id="fixed_4">Fixed</h3>
 <ul>
 <li><strong>A single frame with a bad pointing could wreck a stacking proposal.</strong> If one
   sub carried a nonsense RA/Dec in its header — one frame in 744 on a real set,
@@ -320,7 +474,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   reimport, and no images are touched.</li>
 </ul>
 <h2 id="030-beta5-2026-08-18">[0.3.0-beta.5] - 2026-08-18</h2>
-<h3 id="added_5">Added</h3>
+<h3 id="added_6">Added</h3>
 <ul>
 <li><strong>You can now set aside subs you don't want stacked, without deleting them.</strong>
   Move any frames you don't want — clouds, trails, bad focus — from an object's
@@ -379,7 +533,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   the background, then shows either "You're up to date" or the newer version with a
   Download link. It re-checks each time you open it, and never counts against the
   daily launch check.</p>
-<h3 id="changed_2">Changed</h3>
+<h3 id="changed_3">Changed</h3>
 <ul>
 <li><strong>Working out your priority targets is about 10× faster</strong> — on a Messier-sized
   list it went from roughly 23 seconds to under 3. This is the calculation behind
@@ -430,7 +584,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   Markdown when an assistant reads them, and a mistaken tool argument produces a
   clearer message naming the tool and the argument.</li>
 </ul>
-<h3 id="fixed_4">Fixed</h3>
+<h3 id="fixed_5">Fixed</h3>
 <ul>
 <li><strong>Lunar and planetary photos were squashed in the Media view — the Moon showed
   as a wide oval.</strong> Media thumbnails were being stretched to fill a square instead
@@ -494,7 +648,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   heading read "Automation  retention".</li>
 </ul>
 <h2 id="030-beta4-2026-08-11">[0.3.0-beta.4] - 2026-08-11</h2>
-<h3 id="added_6">Added</h3>
+<h3 id="added_7">Added</h3>
 <ul>
 <li><strong>Backups now work properly on destinations that can't share files between
   backups</strong> — many network drives, appliance NASes and exFAT disks. Previously M110
@@ -514,8 +668,8 @@ changes a <strong>user</strong> would notice, per release.</p>
   its own way back out, next to the data: a browsable copy of the newest backup
   (where the destination allows it), an <code>INDEX.tsv</code> listing every file in plain text,
   and a <code>restore.py</code> that rebuilds your files with nothing but a standard Python
-  install — no M110 needed. See the <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.8/docs/backup.md">backup guide</a>.</p>
-<h3 id="changed_3">Changed</h3>
+  install — no M110 needed. See the <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.9/docs/backup.md">backup guide</a>.</p>
+<h3 id="changed_4">Changed</h3>
 <ul>
 <li><strong>The backup window now tells you what your destination can do, before you back up.</strong>
   Some destinations — exFAT drives, certain network shares and appliance NASes — can't
@@ -525,7 +679,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   are shared between backups" or warns that every backup will be a full copy, along with
   how much room is left. The restore list marks any backup that was stored as a full copy.</li>
 </ul>
-<h3 id="fixed_5">Fixed</h3>
+<h3 id="fixed_6">Fixed</h3>
 <ul>
 <li><strong>M110 could crash while you were looking at an image.</strong> If a background sync
   finished while an image viewer or a right-click menu was open, M110 rebuilt the page
@@ -544,7 +698,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   met.</li>
 </ul>
 <h2 id="030-beta3-2026-07-30">[0.3.0-beta.3] - 2026-07-30</h2>
-<h3 id="fixed_6">Fixed</h3>
+<h3 id="fixed_7">Fixed</h3>
 <ul>
 <li><strong>The Mac app launched with no menu bar</strong> (and no Dock icon, and no entry in Force
   Quit): the packaged bundle was marked as a <em>background</em> app. That flag was set
@@ -555,7 +709,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   became visible.</li>
 </ul>
 <h2 id="030-beta2-2026-07-30">[0.3.0-beta.2] - 2026-07-30</h2>
-<h3 id="fixed_7">Fixed</h3>
+<h3 id="fixed_8">Fixed</h3>
 <ul>
 <li><strong>0.3.0-beta.1 wouldn't start.</strong> The packaged app crashed on launch with a
   <code>FileNotFoundError</code> about <code>constellations.json</code>: the installer carried the sky-map
@@ -569,7 +723,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   the Map view was simply absent there).</li>
 </ul>
 <h2 id="030-beta1-2026-07-30">[0.3.0-beta.1] - 2026-07-30</h2>
-<h3 id="added_7">Added</h3>
+<h3 id="added_8">Added</h3>
 <ul>
 <li><strong>A sky map in the Library.</strong> A fourth view — List · Grid · Feed · <strong>Map</strong> — plots your
   collection on a star chart, so you can see where everything you've shot actually sits and
@@ -619,14 +773,14 @@ changes a <strong>user</strong> would notice, per release.</p>
   history and image data are sent to whatever AI model that client uses. M110 tells you
   this before it writes anything, and Disconnect removes it again.</p>
 <p>You bring your own client and your own account — M110 never handles an API key.</p>
-<h3 id="changed_4">Changed</h3>
+<h3 id="changed_5">Changed</h3>
 <ul>
 <li><strong>The Library's catalog filter lists the catalogs you've set as goals</strong>, rather than every
   catalog M110 ships. Picking one you weren't working and getting an empty view was a dead
   end — and since most Messier objects also belong to one of the Popular lists, the full list
   was mostly noise. Turn a catalog on under <strong>Overview → Manage goals</strong> to filter by it.</li>
 <li><strong>The security policy now describes what actually leaves your machine.</strong>
-  <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.8/SECURITY.md"><code>SECURITY.md</code></a> lists every network call M110 makes and when it runs,
+  <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.9/SECURITY.md"><code>SECURITY.md</code></a> lists every network call M110 makes and when it runs,
   covers the AI assistant (what a connected client can see, and the narrow limits on
   what it can write), and is straight about publishing to GitHub Pages uploading your
   images. It previously described a version of M110 that only ever exported to a local
@@ -636,7 +790,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   packaged builds already include it, so that was jargon that told you nothing about
   the privacy question you were being asked.</li>
 </ul>
-<h3 id="fixed_8">Fixed</h3>
+<h3 id="fixed_9">Fixed</h3>
 <ul>
 <li><strong>Mosaic folders and catalog-number folders now count toward the right object.</strong> A capture
   folder named for <em>how</em> you shot it (<code>M42_mosaic</code>, <code>NGC 7000_mosaic</code>) or by a catalog number
@@ -686,7 +840,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   folders are unaffected and still get their <code>next-steps.md</code>.</li>
 </ul>
 <h2 id="020-beta8-2026-07-22">[0.2.0-beta.8] - 2026-07-22</h2>
-<h3 id="fixed_9">Fixed</h3>
+<h3 id="fixed_10">Fixed</h3>
 <ul>
 <li><strong>"Reveal in file manager" on a <code>.fit</code> now shows the <code>.fit</code>.</strong> Because M110 can't display
   a FITS directly, gallery tiles show a generated preview of it — and Reveal, Open, and
@@ -714,7 +868,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   reported figures change.</li>
 </ul>
 <h2 id="020-beta7-2026-07-21">[0.2.0-beta.7] - 2026-07-21</h2>
-<h3 id="added_8">Added</h3>
+<h3 id="added_9">Added</h3>
 <ul>
 <li><strong>Export finished images sized for web sharing.</strong> Right-click any image in an object's
   gallery — or the hero image — or use the new <strong>⤓ Export…</strong> button in the full-screen
@@ -735,7 +889,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   added to the object reference: the <strong>Pelican</strong>, <strong>Horsehead</strong>, and <strong>Elephant's Trunk</strong>
   nebulae, and the second half of the <strong>Double Cluster</strong> (NGC 884).</li>
 </ul>
-<h3 id="changed_5">Changed</h3>
+<h3 id="changed_6">Changed</h3>
 <ul>
 <li><strong>Importing a Siril project keeps your Naztronomy preset.</strong> If the folder you import
   already contains a <code>naztronomy_smart_scope_presets.json</code>, M110 carries it into that object's
@@ -759,7 +913,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   caption on Overview now explains that this section shows the targets you've
   <em>pinned</em>, and points to Planning for the automatic ranking.</li>
 </ul>
-<h3 id="fixed_10">Fixed</h3>
+<h3 id="fixed_11">Fixed</h3>
 <ul>
 <li><strong>"Import finished work" now finds the stacks and renders you've sorted into folders
   yourself.</strong> If you saved your Siril stack into a <code>stacks/</code> folder and your finished image
@@ -780,7 +934,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   test-suite failures in CI, which were the same race.)</li>
 </ul>
 <h2 id="020-beta6-2026-07-19">[0.2.0-beta.6] - 2026-07-19</h2>
-<h3 id="changed_6">Changed</h3>
+<h3 id="changed_7">Changed</h3>
 <ul>
 <li><strong>"Enrich online" is no longer offered when only the filter is unset.</strong> The capture
   <em>filter</em> was counted as missing metadata, so objects that otherwise had everything would
@@ -788,7 +942,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   which filter you shot with. Filter is no longer treated as a fillable gap, so enrichment
   is only offered when there's actually a field a lookup could provide.</li>
 </ul>
-<h3 id="fixed_11">Fixed</h3>
+<h3 id="fixed_12">Fixed</h3>
 <ul>
 <li><strong>Planning and priority ranking work in the installed app.</strong> In the packaged builds they
   failed with <em>"astronomy engine unavailable"</em> (the ranking) or no usable plan — because the
@@ -819,7 +973,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   M110's menus kept full-strength text; they're now dimmed like disabled buttons.)</li>
 </ul>
 <h2 id="020-beta5-2026-07-19">[0.2.0-beta.5] - 2026-07-19</h2>
-<h3 id="fixed_12">Fixed</h3>
+<h3 id="fixed_13">Fixed</h3>
 <ul>
 <li><strong>A re-processed image with the same filename is no longer silently lost on import.</strong>
   When you <em>Import finished work</em> and a file has the <strong>same name</strong> as one already in
@@ -859,7 +1013,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   moon, and observability again. (Running from source was never affected.)</li>
 </ul>
 <h2 id="020-beta4-2026-07-18">[0.2.0-beta.4] - 2026-07-18</h2>
-<h3 id="fixed_13">Fixed</h3>
+<h3 id="fixed_14">Fixed</h3>
 <ul>
 <li><strong>"Process in Siril" no longer crashes Siril's scripts (macOS).</strong> Launching Siril from
   the packaged M110 app could make Siril's Python scripts abort on startup with a "two sets
@@ -868,7 +1022,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   environment, so its scripts run normally.</li>
 </ul>
 <h2 id="020-beta3-2026-07-17">[0.2.0-beta.3] - 2026-07-17</h2>
-<h3 id="added_9">Added</h3>
+<h3 id="added_10">Added</h3>
 <ul>
 <li><strong>Process in Siril, in one click.</strong> Right-click an object (or use the button on its
   detail page, or right-click a row on the Processing page) → <strong>Process in Siril</strong> and
@@ -878,14 +1032,14 @@ changes a <strong>user</strong> would notice, per release.</p>
   When Siril can't be found, M110 offers to open the working folder instead. <strong>Quit Siril
   when you finish an object</strong> — M110 sets the working directory only as Siril starts, so
   if Siril is already open it won't switch to the next object's folder. (See the
-  <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.8/docs/processing.md">processing guide</a>.)</li>
+  <a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.9/docs/processing.md">processing guide</a>.)</li>
 <li><strong>"Open in…" for gallery images.</strong> Right-click any image on an object's page to <strong>Open
   in default app</strong> (your usual image viewer/editor) or <strong>Reveal in file manager</strong>.</li>
 <li><strong>"Reveal working folder" on an object.</strong> The object detail pane now has a button that
   opens that object's Siril processing folder (<code>Images/&lt;target&gt;/siril/</code>) directly — so
   you can set Siril's <em>working directory</em> to the right place instead of hunting for it.</li>
 </ul>
-<h3 id="fixed_14">Fixed</h3>
+<h3 id="fixed_15">Fixed</h3>
 <ul>
 <li><strong>Windows: the app no longer crashes on launch.</strong> The Windows build was missing the
   time-zone database that the planning features rely on, so it quit immediately with a
@@ -897,7 +1051,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   work</em>. M110 now also scans the object folder as a fallback, so that easy mistake no
   longer strands your processing output.</li>
 </ul>
-<h3 id="changed_7">Changed</h3>
+<h3 id="changed_8">Changed</h3>
 <ul>
 <li><strong>Priority targets now default to what's actually up tonight.</strong> The Planning page's
   priority list has a new <strong>"Visible tonight"</strong> checkbox (on by default) that hides
@@ -909,7 +1063,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   cutting a primary short, and <strong>never schedules a slot under 30 minutes</strong> — no more
   10-minute stubs that a slew and autofocus would eat whole.</li>
 </ul>
-<h3 id="added_10">Added</h3>
+<h3 id="added_11">Added</h3>
 <ul>
 <li><strong>Weight object types in your priority ranking.</strong> Planning → <em>Tuning weights</em> gains
   <strong>Galaxies / Globular clusters / Open clusters / Nebulae</strong> controls — turn galaxies and
@@ -917,7 +1071,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   cluster-heavy catalog like Messier.</li>
 </ul>
 <h2 id="020-beta2-2026-07-15">[0.2.0-beta.2] - 2026-07-15</h2>
-<h3 id="added_11">Added</h3>
+<h3 id="added_12">Added</h3>
 <ul>
 <li><strong>Publish straight to GitHub Pages.</strong> <em>Library → Publish / share</em> can now deploy your
   site to a GitHub repository instead of only writing a folder you host yourself. Enter
@@ -925,7 +1079,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   have, so no passwords or tokens are handled by the app. Your site lands at
   <code>https://&lt;owner&gt;.github.io/&lt;repo&gt;/</code>, and the success dialog links straight to it.
   Uploads happen in the background with real progress, and <strong>Cancel</strong> stops them
-  cleanly. See the new <strong><a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.8/docs/publishing.md">Publishing guide</a></strong> for the one-time
+  cleanly. See the new <strong><a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.9/docs/publishing.md">Publishing guide</a></strong> for the one-time
   repository and SSH setup.</li>
 <li><strong>Choose how uploads work.</strong> <em>Replace the site each time</em> (the default) keeps the
   repository small forever but re-uploads everything on each publish; <em>Upload only what
@@ -934,7 +1088,7 @@ changes a <strong>user</strong> would notice, per release.</p>
 <li><strong>Save your publish settings without publishing.</strong> Change what's included, the site
   title, or the destination, and keep it for next time — no export required.</li>
 </ul>
-<h3 id="changed_8">Changed</h3>
+<h3 id="changed_9">Changed</h3>
 <ul>
 <li><strong>Published galleries now show your finished images only</strong>, by default. Working files
   (Siril stacks and other by-products) no longer go on the public site — they were the
@@ -945,7 +1099,7 @@ changes a <strong>user</strong> would notice, per release.</p>
   the top, no clutter from fully-processed targets, and the same Target / Rejected /
   Latest stack / Notes columns you see in the window.</li>
 </ul>
-<h3 id="fixed_15">Fixed</h3>
+<h3 id="fixed_16">Fixed</h3>
 <ul>
 <li><strong>Re-publishing removes what you've excluded.</strong> Unchecking a section or narrowing your
   galleries used to leave the old pages and images behind in the output folder — and if
@@ -960,7 +1114,7 @@ changes a <strong>user</strong> would notice, per release.</p>
 <h3 id="security">Security</h3>
 <p>From an internal threat-model review of M110's real attack surface — the files you
 import. Full assessment in
-<a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.8/docs-archive/SECURITY_ASSESSMENT.md"><code>docs-archive/SECURITY_ASSESSMENT.md</code></a>.
+<a href="https://github.com/mjm1138/m110/blob/v0.3.0-beta.9/docs-archive/SECURITY_ASSESSMENT.md"><code>docs-archive/SECURITY_ASSESSMENT.md</code></a>.
 - <strong>A crafted capture file can no longer write outside your data folder.</strong> An object name
   read from a FITS <code>OBJECT</code> header (fully attacker-controlled in a hand-made file), or a
   source folder name, flowed into the destination path unsanitized. Object names are now
@@ -973,7 +1127,7 @@ import. Full assessment in
   (over 300 megapixels — far beyond any real frame or mosaic) instead of trying to
   allocate them.</p>
 <h2 id="020-beta1-2026-07-15">[0.2.0-beta.1] - 2026-07-15</h2>
-<h3 id="added_12">Added</h3>
+<h3 id="added_13">Added</h3>
 <ul>
 <li><strong>Plan a night.</strong> On the Planning page, pick a night, choose how many <strong>targets</strong>
   (default 4), and M110 builds a real observing <strong>schedule</strong> — back-to-back,
@@ -998,7 +1152,7 @@ import. Full assessment in
   diffuse targets are down-weighted by surface brightness — a showpiece outranks a
   stretch target on a small scope.</li>
 </ul>
-<h3 id="fixed_16">Fixed</h3>
+<h3 id="fixed_17">Fixed</h3>
 <ul>
 <li><strong>Moon information is now trustworthy.</strong> The plan header describes the whole night
   ("29% lit · up at dusk (+6°) · sets 23:05"), not one misleading snapshot; the
@@ -1014,7 +1168,7 @@ import. Full assessment in
   selection now render properly in both light and dark themes — and the "Night:"
   field itself is no longer near-unreadable in dark mode.</li>
 </ul>
-<h3 id="changed_9">Changed</h3>
+<h3 id="changed_10">Changed</h3>
 <ul>
 <li>Field guides now note both dates: when the plan was generated and which night it's
   for. Season labels are no longer printed beside a dated recommendation (they read
@@ -1026,7 +1180,7 @@ import. Full assessment in
   hand-edited priorities file, which the automatic ranking replaces.</li>
 </ul>
 <h2 id="010-beta3-2026-07-14">[0.1.0-beta.3] - 2026-07-14</h2>
-<h3 id="added_13">Added</h3>
+<h3 id="added_14">Added</h3>
 <ul>
 <li><strong>Planning page + location profiles.</strong> A new <strong>Planning</strong> pane in the nav rail is
   the home for session planning. It starts with a <strong>location selector</strong>, your
@@ -1049,7 +1203,7 @@ import. Full assessment in
   can be hand-edited.</li>
 <li>The <strong>user guide</strong> is now linked from the app's Help menu and the website.</li>
 </ul>
-<h3 id="fixed_17">Fixed</h3>
+<h3 id="fixed_18">Fixed</h3>
 <ul>
 <li><strong>Combined captures count for both objects.</strong> A two-object capture folder (like
   <code>M81 M82</code>) now credits its integration to <em>both</em> catalog objects, and no longer
@@ -1061,7 +1215,7 @@ import. Full assessment in
   correctly, but only the current row's checkbox was visible).</li>
 </ul>
 <h2 id="010-beta2-2026-07-12">[0.1.0-beta.2] - 2026-07-12</h2>
-<h3 id="added_14">Added</h3>
+<h3 id="added_15">Added</h3>
 <ul>
 <li><strong>Update notifications.</strong> M110 checks GitHub for a newer release on launch (about
   once a day) and shows a quiet, dismissible banner when one is available, with
@@ -1072,7 +1226,7 @@ import. Full assessment in
   area and assign them all to the same object and kind in one step, instead of one row
   at a time.</li>
 </ul>
-<h3 id="fixed_18">Fixed</h3>
+<h3 id="fixed_19">Fixed</h3>
 <ul>
 <li><strong>Import now scans every subfolder, consistently.</strong> Some capture folders nested more
   than one level deep could be missed depending on how you started the import. The
@@ -1090,7 +1244,7 @@ import. Full assessment in
 </ul>
 <h2 id="010-beta1-2026-07-10">[0.1.0-beta.1] - 2026-07-10</h2>
 <p>First public beta.</p>
-<h3 id="added_15">Added</h3>
+<h3 id="added_16">Added</h3>
 <ul>
 <li><strong>DwarfLab Dwarf 3 support.</strong> Import recognizes the Dwarf 3's on-device layout —
   raw subs, in-app stacks, and startrails (routed to Media) — and derives sessions
@@ -1113,14 +1267,14 @@ import. Full assessment in
 <li>Import: <strong>live scan progress</strong> shows the current folder and a running file count, so
   a slow scan over a network share clearly shows progress.</li>
 </ul>
-<h3 id="changed_10">Changed</h3>
+<h3 id="changed_11">Changed</h3>
 <ul>
 <li><strong>Simpler navigation</strong> — the nav rail is now four pages: <strong>Library · Overview ·
   Import · Processing</strong>. The Library is home and opens as a thumbnail grid.</li>
 <li>The holding area splits a mixed import folder into one row <strong>per detected object</strong>,
   so each can be assigned independently.</li>
 </ul>
-<h3 id="fixed_19">Fixed</h3>
+<h3 id="fixed_20">Fixed</h3>
 <ul>
 <li><strong>First launch no longer shows "Sync failed"</strong> on a brand-new (empty) library.</li>
 <li><strong>Processing accuracy</strong> — objects whose finished stack lives among their working
@@ -1150,7 +1304,7 @@ Release entries look like:
 Keep the newest release at the top, under [Unreleased]. Move Unreleased items
 into a dated, versioned section when you cut a release.
 --></article>
-    <p class="foot">M110 v0.3.0-beta.8 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v0.3.0-beta.9 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>
