@@ -320,8 +320,10 @@ artifact every time a cheap one is redone.
 - **AstroWizard bundles its own hardened Python** (PyInstaller, `Python.framework`).
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
-- **StackingWizard still takes no arguments** — re-verified against the 2026.08.27
-  and again the 2026.10.05 build; no `argv`, no document types, no URL types, no Apple events. Its folder
+- **StackingWizard still takes no arguments** — re-verified against the 2026.08.27,
+  2026.10.05 and 2026.10.20 builds; no `argv`, no document types, no URL types, and
+  no Apple event that carries a path (2026.10.20 added `::tk::mac::Quit` and
+  `::tk::mac::ReopenApplication` only — see [`BUGS.md`](BUGS.md)). Its folder
   picker seeds `initialdir` from `last_folder` in
   `~/Library/Application Support/StackingWizard/settings.json`, read once in
   `__init__`, which is the only seam for a folder hand-off and is another app's
@@ -337,6 +339,11 @@ artifact every time a cheap one is redone.
   Also noted in the 2026.10.05 build: Workbench knobs persist under a `workbench`
   key in the same `settings.json` (global, not per folder); the "set aside" folder
   (`SET_ASIDE_DIR`) must be skipped by any M110 walk of a StackingWizard folder.
+  New in the 2026.10.20 build: StackingWizard's Handoff page has its own **Send to
+  AstroWizard**, launching it with `open -a … --args <stack>` (the same route M110's
+  `launch_with_file` uses, so that route is confirmed). A user can now go
+  StackingWizard → AstroWizard without the stack passing through M110's
+  `astrowizard/` sandbox, so the import side must not assume M110 made the handoff.
 - **A sandbox that hardlinks a directory of frames must say so in
   `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file —
   `stacking.apply_handoff` hardlinks the stack into `astrowizard/` root — so its

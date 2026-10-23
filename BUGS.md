@@ -296,6 +296,18 @@ Legend: `[ ]` open · `[~]` partially done
   `OpenDocument`, `tk::mac` or any Apple-event handling. So `launch._TOOLS`'
   `workdir_args=[]` and the reveal-the-folder affordance both remain correct.
 
+  **Re-verified against 2026.10.20** (bundle dated 2026-10-19; changelog again silent
+  on it): still no folder hand-off. `Info.plist` is unchanged on this point, and none
+  of the four code units now shipped — `stacking_wizard_app`, `wizard_stack`, plus
+  the new `wizard_canvas` and `wizard_lang` — reads `argv`. The "zero `tk::mac`"
+  finding above **no longer holds**: `__init__` now registers `::tk::mac::Quit`
+  (beside `WM_DELETE_WINDOW`) and `::tk::mac::ReopenApplication` (Dock click
+  re-shows the window). Neither carries a path, and there is still no
+  `::tk::mac::OpenDocument`, so this changes nothing for us. `pick_folder` still
+  seeds `initialdir` from `last_folder`. Checked by extracting the PyInstaller
+  archive (`PyInstaller.archive.readers`) and string-scanning the marshalled code —
+  the bundle's Python is 3.11, so it can't be unmarshalled on our 3.14 venv.
+
   One red herring worth recording so it isn't re-investigated: `wizard_stack` *does*
   carry an argparse `main()` with `--out` / `--progressive` / `--trim`. It is
   unreachable in the frozen app — PyInstaller's entry is `stacking_wizard_app`, which
