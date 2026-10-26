@@ -308,6 +308,13 @@ Legend: `[ ]` open · `[~]` partially done
   archive (`PyInstaller.archive.readers`) and string-scanning the marshalled code —
   the bundle's Python is 3.11, so it can't be unmarshalled on our 3.14 venv.
 
+  **Re-verified against 2026.10.25** (bundle dated 2026-10-24; release notes not
+  updated since 2026.10.20): no change. `Info.plist` still declares no document or URL
+  types; no code unit reads `argv`; the only Apple-event hooks are still
+  `::tk::mac::Quit` and `::tk::mac::ReopenApplication`; `pick_folder` still seeds
+  `initialdir` from `last_folder`. The developer's site now says feedback is read but
+  not answered, so don't count on the upstream argument arriving.
+
   One red herring worth recording so it isn't re-investigated: `wizard_stack` *does*
   carry an argparse `main()` with `--out` / `--progressive` / `--trim`. It is
   unreachable in the frozen app — PyInstaller's entry is `stacking_wizard_app`, which

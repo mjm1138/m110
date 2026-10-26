@@ -321,7 +321,7 @@ artifact every time a cheap one is redone.
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
 - **StackingWizard still takes no arguments** — re-verified against the 2026.08.27,
-  2026.10.05 and 2026.10.20 builds; no `argv`, no document types, no URL types, and
+  2026.10.05, 2026.10.20 and 2026.10.25 builds; no `argv`, no document types, no URL types, and
   no Apple event that carries a path (2026.10.20 added `::tk::mac::Quit` and
   `::tk::mac::ReopenApplication` only — see [`BUGS.md`](BUGS.md)). Its folder
   picker seeds `initialdir` from `last_folder` in
