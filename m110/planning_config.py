@@ -233,11 +233,19 @@ def device_for(key: str, registry: dict | None = None) -> Device:
 
 def planning_devices() -> list[dict]:
     """The telescopes Planning can plan for: every non-retired device M110 knows,
-    most recently used first (the `derived/devices.json` order) — ``[{device, label}]``."""
-    from . import derived
-    return [{"device": d["device"], "label": d.get("label") or d["device"]}
-            for d in derived.load_devices()
-            if not d.get("retired") and d["device"] != "unknown"]
+    most recently used first (the `derived/devices.json` order) — ``[{device, label}]``.
+    Nickname and retirement are read from the registry, not the rollup, so an edit
+    on the Devices page shows here before the next Sync rewrites devices.json."""
+    from . import derived, devices
+    reg = devices.load_registry()
+    out = []
+    for d in derived.load_devices():
+        key, edits = d["device"], reg.get(d["device"], {})
+        if key == "unknown" or edits.get("retired", d.get("retired")):
+            continue
+        out.append({"device": key,
+                    "label": edits.get("nickname") or d.get("label") or key})
+    return out
 
 
 def active_device_key() -> str | None:

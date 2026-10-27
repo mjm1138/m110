@@ -61,6 +61,12 @@ changes a **user** would notice, per release.
 - The assistant's `get_object` and `get_image` report the goal for the telescope
   you're planning with, and every telescope's progress on the object.
 
+### Fixed
+- **Choosing a telescope on the Devices page now reaches Planning.** "Use for planning",
+  a new nickname, retiring a telescope or saving its limits changed the setting, but
+  Planning's Telescope picker kept showing the old one until the next sync, even
+  though the ranking and night plan already used the new telescope.
+
 ## [0.3.0-beta.9] - 2026-10-22
 
 ### Added
