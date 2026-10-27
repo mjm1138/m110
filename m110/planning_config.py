@@ -106,6 +106,18 @@ class Device:
     one_exposure_per_plan: bool = True
     gain: int = 80
     retry_wait_s: int = 300
+    # Main-camera optics (None = not known). The f-ratio scales the per-type
+    # integration-goal defaults (`integration_goals.speed_factor`); aperture and
+    # pixel size ride along so a later basis can use them.
+    aperture_mm: float | None = 50.0
+    focal_length_mm: float | None = 250.0
+    pixel_um: float | None = 2.9
+
+    @property
+    def f_ratio(self) -> float | None:
+        if self.aperture_mm and self.focal_length_mm:
+            return self.focal_length_mm / self.aperture_mm
+        return None
 
 
 # Per-device ceiling presets (2026-07-14 research — PLANNING_ROADMAP Phase 3):
@@ -120,14 +132,29 @@ class Device:
 # * EQ mode (any device) removes field rotation — the soft ceiling stops
 #   applying; whether the Seestar app still enforces its hard check in EQ mode
 #   is undocumented, so the Seestar presets stay hard until falsified.
+#
+# Optics (main/telephoto camera), 2026-10-27 research:
+# * S50: 50 mm / 250 mm (f/5), IMX462 2.9 µm — verified from its own FITS headers
+#   (XPIXSZ/FOCALLEN; BUGS.md "plate scale").
+# * S30: 30 mm / 150 mm (f/5), IMX662 2.9 µm — retailer comparison tables
+#   (skiesandscopes.com). S30 Pro: 30 mm / 160 mm (f/5.3), IMX585 2.9 µm —
+#   highpointscientific.com and astrobackyard.com reviews (early coverage said
+#   150 mm; launched listings agree on 160).
+# * Dwarf 3: 35 mm / 150 mm (f/4.3), IMX678 2.0 µm — explorescientific.com spec
+#   sheet. Dwarf Mini: 30 mm / 150 mm (f/5), IMX662 2.9 µm — astronomics.com,
+#   B&H listings.
 DEVICE_PRESETS: dict[str, Device] = {
     "seestar_s50": Device(),
-    "seestar_s30": Device(name="ZWO Seestar S30"),
-    "seestar_s30_pro": Device(name="ZWO Seestar S30 Pro"),
+    "seestar_s30": Device(name="ZWO Seestar S30", aperture_mm=30.0,
+                          focal_length_mm=150.0, pixel_um=2.9),
+    "seestar_s30_pro": Device(name="ZWO Seestar S30 Pro", aperture_mm=30.0,
+                              focal_length_mm=160.0, pixel_um=2.9),
     "dwarf_3": Device(name="DwarfLab Dwarf 3", start_alt_ceiling_deg=80.0,
-                      ceiling_is_hard=False),
+                      ceiling_is_hard=False, aperture_mm=35.0,
+                      focal_length_mm=150.0, pixel_um=2.0),
     "dwarf_mini": Device(name="DwarfLab Dwarf Mini", start_alt_ceiling_deg=80.0,
-                         ceiling_is_hard=False),
+                         ceiling_is_hard=False, aperture_mm=30.0,
+                         focal_length_mm=150.0, pixel_um=2.9),
 }
 
 

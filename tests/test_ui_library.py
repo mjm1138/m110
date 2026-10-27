@@ -34,6 +34,24 @@ def test_status_label_and_colours():
     assert widgets.status_color("initial").name() == tokens.LIGHT.status_initial
 
 
+def test_in_progress_reads_as_its_share_of_the_goal():
+    from m110.ui import widgets
+    from m110.ui.theme import tokens
+    assert widgets.status_label("in_progress", True, 0.625) == "62% of goal"
+    assert widgets.status_label("in_progress", True) == "In progress"
+    assert widgets.status_label("in_progress", False, 0.5) == "—"
+    # the share only changes the in-progress text
+    assert widgets.status_label("initial", True, 0.1) == "Initial"
+    tokens.set_active(tokens.LIGHT)
+    assert widgets.status_color("in_progress").name() == tokens.LIGHT.status_progress
+    tokens.set_active(tokens.DARK)
+    assert widgets.status_color("in_progress").name() == tokens.DARK.status_progress
+    tokens.set_active(tokens.LIGHT)
+    # a status column sorts by state, not label text ("62% of goal" < "Deep Stack")
+    rank = widgets.STATUS_RANK
+    assert rank["initial"] < rank["in_progress"] < rank["deep_stack"]
+
+
 def test_numitem_sorts_by_key_not_lexically():
     from m110.ui.widgets import NumItem
     # natural M-number order: M2 before M10 (lexical would put M10 first)
@@ -315,3 +333,15 @@ def test_processing_sorts_by_new_desc_and_survives_reload(tmp_path, monkeypatch,
     finally:
         page.deleteLater()
         qapp.processEvents()
+
+
+def test_a_selected_status_chip_takes_the_selection_text_colour(qapp):
+    """A blue "in progress" chip would vanish into a blue selection highlight."""
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
+    from m110.ui import widgets
+    opt = QStyleOptionViewItem()
+    assert widgets.chip_color("in_progress", opt) == widgets.status_color("in_progress")
+    opt.state |= QStyle.StateFlag.State_Selected
+    assert widgets.chip_color("in_progress", opt) == \
+        opt.palette.color(QPalette.ColorRole.HighlightedText)

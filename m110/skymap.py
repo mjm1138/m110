@@ -34,19 +34,22 @@ from __future__ import annotations
 from . import catalog, derived, objects
 
 # Capture status drives marker color. These are the status strings
-# `build_derived` already computes (via the type-aware `deep_threshold`, so the
-# map, the status chips and the prioritizer cannot disagree), plus our own name
-# for "in the Library but never shot".
+# `build_derived` already computes (graded against each telescope's integration
+# goal, so the map, the status chips and the prioritizer cannot disagree), plus our
+# own name for "in the Library but never shot".
 STATUS_DEEP = "deep_stack"
+STATUS_PROGRESS = "in_progress"
 STATUS_INITIAL = "initial"
 STATUS_UNCAPTURED = "uncaptured"
 
 # Defaults mirror the light-theme semantic roles (`ui.theme.status_color`:
-# deep=green, initial=amber, everything else muted) so an unthemed render still
+# deep=green, in progress=blue, initial=amber, everything else muted) so an
+# unthemed render still
 # reads the way the rest of the app does. The UI passes live tokens over these,
 # which is what makes the chart follow light/dark.
 DEFAULT_COLORS = {
     STATUS_DEEP: "#2f9e44",
+    STATUS_PROGRESS: "#1971c2",
     STATUS_INITIAL: "#b9770a",
     STATUS_UNCAPTURED: "#6b7077",
 }
@@ -103,7 +106,8 @@ def object_status(slug: str, by_slug: dict | None = None) -> str:
     entry = by_slug.get(slug)
     if not entry:
         return STATUS_UNCAPTURED
-    return STATUS_DEEP if entry.get("status") == STATUS_DEEP else STATUS_INITIAL
+    status = entry.get("status")
+    return status if status in (STATUS_DEEP, STATUS_PROGRESS) else STATUS_INITIAL
 
 
 def _label_for(slug: str, entry: dict) -> str:

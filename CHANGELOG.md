@@ -10,6 +10,30 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **A third capture status: how far along you are.** Objects now read **Initial**
+  (yellow) when you've barely started, **"62% of goal"** (blue) once you're a
+  quarter of the way, and **Deep Stack** (green) when you reach the goal — in the
+  Library, the object pane, the sky map (with a new legend entry) and on your
+  published site.
+- **Goals are per telescope.** Each telescope model now has its own integration
+  goal for an object: a Dwarf 3 or an S30 is no longer measured against the S50's
+  numbers. Defaults come from the object type, scaled by the telescope's f-ratio
+  (a faster scope needs less time). Two units of the same model count together.
+  Hover the status in the Library to see each telescope's progress. Setting your
+  own goal for an object arrives in a following update.
+
+### Changed
+- **Status is judged per telescope, not on all your time added together.** Minutes
+  from two different telescopes don't stack into one picture, so an object no longer
+  turns Deep Stack from their sum; it shows its best telescope's progress. If you
+  shoot with more than one telescope, or with anything other than an S50, some
+  objects will change status after this update.
+- The sky map legend says **Initial** where it said **Captured**, matching the
+  status pill.
+- The assistant's `get_object` and `get_image` report the goal for the telescope
+  you're planning with, and every telescope's progress on the object.
+
 ## [0.3.0-beta.9] - 2026-10-22
 
 ### Added

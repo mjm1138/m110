@@ -90,14 +90,24 @@ def preset_key(telescop: str | None) -> str | None:
 #   retired = false
 #   preset = "seestar_s50"      # only when TELESCOP is not recognised
 #
+#   [devices."MyScope".optics]  # only for a telescope with no preset
+#   aperture_mm = 61.0
+#   focal_length_mm = 275.0
+#   pixel_um = 3.76
+#
 # Additive and lazily created (absence = no edits) → no .store_version bump.
 # A malformed file reads as empty rather than failing a refresh.
 
 REGISTRY_FIELDS = ("nickname", "retired", "preset")
+# Nested tables of numbers: the planning-limit overrides, and the optics of a
+# telescope no preset describes.
+_SUBTABLES = ("planning", "optics")
+OPTICS_FIELDS = ("aperture_mm", "focal_length_mm", "pixel_um")
 
 
 def load_registry() -> dict[str, dict]:
-    """``{device key: {nickname?, retired?, preset?, planning?}}`` — the user's edits."""
+    """``{device key: {nickname?, retired?, preset?, planning?, optics?}}`` — the
+    user's edits."""
     from . import config
     path = config.DEVICES_TOML
     if not path.is_file():
@@ -124,6 +134,12 @@ def load_registry() -> dict[str, dict]:
         if isinstance(entry.get("planning"), dict):
             clean["planning"] = {k: v for k, v in entry["planning"].items()
                                  if isinstance(v, (int, float, bool))}
+        if isinstance(entry.get("optics"), dict):
+            optics = {k: float(v) for k, v in entry["optics"].items()
+                      if k in OPTICS_FIELDS and isinstance(v, (int, float))
+                      and not isinstance(v, bool) and v > 0}
+            if optics:
+                clean["optics"] = optics
         out[str(key)] = clean
     return out
 
@@ -134,7 +150,7 @@ def save_device(key: str, **fields) -> dict:
     reg = load_registry()
     entry = dict(reg.get(key, {}))
     for name, value in fields.items():
-        if name not in REGISTRY_FIELDS + ("planning",):
+        if name not in REGISTRY_FIELDS + _SUBTABLES:
             raise ValueError(f"unknown device field {name!r}")
         if value is None or value == "" or value == {} or value is False and name == "retired":
             entry.pop(name, None)
@@ -206,10 +222,11 @@ def _write_registry(reg: dict[str, dict]) -> None:
         for name in REGISTRY_FIELDS:
             if name in entry:
                 lines.append(f"{name} = {_toml_value(entry[name])}")
-        if entry.get("planning"):
-            lines += ["", f"[devices.{_q(key)}.planning]"]
-            for k in sorted(entry["planning"]):
-                lines.append(f"{k} = {_toml_value(entry['planning'][k])}")
+        for sub in _SUBTABLES:
+            if entry.get(sub):
+                lines += ["", f"[devices.{_q(key)}.{sub}]"]
+                for k in sorted(entry[sub]):
+                    lines.append(f"{k} = {_toml_value(entry[sub][k])}")
         lines.append("")
     config.DEVICES_TOML.parent.mkdir(parents=True, exist_ok=True)
     config.DEVICES_TOML.write_text("\n".join(lines), encoding="utf-8")

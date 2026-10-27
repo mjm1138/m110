@@ -176,7 +176,7 @@ def _apply(root: Path) -> None:
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
     global MEDIA_RENDERS_DIR
     global PROFILES_DIR, PINS_TOML, PLANS_DIR, ASSISTANT_DIR, ASSISTANT_OUTBOX
-    global DEVICES_TOML
+    global DEVICES_TOML, INTEGRATION_GOALS_TOML
     global CALIBRATION_DIR
     DATA_ROOT = root
     # Visible content axes
@@ -193,6 +193,8 @@ def _apply(root: Path) -> None:
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
     PINS_TOML = INTERNAL_DIR / "pins.toml"         # manual Pin/Deprioritize overrides (#3)
     DEVICES_TOML = INTERNAL_DIR / "devices.toml"   # the user's edits per telescope (devices.py)
+    # per-object, per-telescope-model integration goals (integration_goals.py)
+    INTEGRATION_GOALS_TOML = INTERNAL_DIR / "integration_goals.toml"
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
     DERIVED_DIR = INTERNAL_DIR / "derived"
