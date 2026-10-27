@@ -62,6 +62,10 @@ changes a **user** would notice, per release.
   you're planning with, and every telescope's progress on the object.
 
 ### Fixed
+- **An object no longer loses its cover image to one damaged file.** If the image
+  M110 would normally pick (say, a truncated or half-copied PNG) can't be opened,
+  it now uses the next best one, such as the JPG or the FITS stack beside it,
+  instead of showing no image at all.
 - **Choosing a telescope on the Devices page now reaches Planning.** "Use for planning",
   a new nickname, retiring a telescope or saving its limits changed the setting, but
   Planning's Telescope picker kept showing the old one until the next sync, even

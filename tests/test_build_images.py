@@ -215,3 +215,82 @@ def test_hero_rerenders_when_a_different_source_is_picked(tmp_path, monkeypatch)
     assert dominant(hero)[2] > dominant(hero)[0]        # now blue-dominant (B)
     # sidecar records the source identity
     assert "B_final.png" in (hero.with_suffix(".src")).read_text()
+
+
+def _truncated_png(path):
+    """A real PNG cut short — the header parses (Image.open succeeds lazily), the
+    pixel data doesn't (a partially copied file)."""
+    _png(path, size=(300, 200), color=(10, 200, 10))
+    data = path.read_bytes()
+    path.write_bytes(data[: len(data) // 2])
+
+
+@pytest.mark.parametrize("corrupt", ["placeholder", "truncated"])
+def test_hero_falls_back_past_an_undecodable_raster(tmp_path, monkeypatch, corrupt):
+    """The preferred raster (PNG beats JPG) doesn't decode → the hero comes from
+    the next candidate instead of leaving the object with none, and the `.src`
+    sidecar names the file actually used (the Dwarf `stacked-16_*.png` case)."""
+    import numpy as np
+    from astropy.io import fits
+    root, internal = _setup(tmp_path, monkeypatch)
+    d = config.seestar_stacks_dir("M99")
+    d.mkdir(parents=True)
+    bad = d / "stacked-16_M99.png"
+    if corrupt == "placeholder":
+        bad.write_bytes(b"png")
+    else:
+        _truncated_png(bad)
+    _png(d / "stacked.jpg", color=(200, 30, 30))
+    fits.PrimaryHDU((np.random.rand(3, 40, 40) * 1000).astype("float32")).writeto(
+        d / "stacked-16_M99.fits")
+
+    catalog = {"m99": {"id": "M99", "name": "Test"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}
+    build_images.render_images(catalog, totals)
+    hero = internal / "renders" / "hero" / "m99.jpg"
+    assert hero.is_file()
+    px = Image.open(hero).convert("RGB").resize((1, 1)).getpixel((0, 0))
+    assert px[0] > px[1]                                # the red stacked.jpg
+    assert hero.with_suffix(".src").read_text().splitlines()[0] == \
+        "Images/M99/seestar-stacks/stacked.jpg"
+    assert build_images.hero_source_path("m99") == d / "stacked.jpg"
+
+    # A second pass is a cache hit on the fallback, not a flip-flop.
+    before = hero.stat().st_mtime_ns
+    build_images.render_images(catalog, totals)
+    assert hero.stat().st_mtime_ns == before
+
+
+def test_hero_falls_back_to_fits_when_no_raster_decodes(tmp_path, monkeypatch):
+    import numpy as np
+    from astropy.io import fits
+    root, internal = _setup(tmp_path, monkeypatch)
+    d = config.seestar_stacks_dir("M99")
+    d.mkdir(parents=True)
+    (d / "stacked-16_M99.png").write_bytes(b"png")
+    (d / "stacked.jpg").write_bytes(b"jpg")
+    fits.PrimaryHDU((np.random.rand(40, 40) * 1000).astype("float32")).writeto(
+        d / "stacked-16_M99.fits")
+
+    build_images.render_images({"m99": {"id": "M99"}},
+                               {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}})
+    hero = internal / "renders" / "hero" / "m99.jpg"
+    assert hero.is_file()
+    assert build_images.hero_source_path("m99") == d / "stacked-16_M99.fits"
+
+
+def test_rebuild_hero_skips_an_undecodable_override(tmp_path, monkeypatch):
+    """A frontmatter `hero` pick that no longer decodes falls back to the tier
+    order rather than leaving the hero unrendered."""
+    root, internal = _setup(tmp_path, monkeypatch)
+    fin = config.finished_dir("M99")
+    _png(fin / "good_final.png", color=(30, 30, 200))
+    fin.joinpath("broken_final.jpg").write_bytes(b"\xff\xd8\xff")
+    (internal / "derived").mkdir(parents=True, exist_ok=True)
+    (internal / "derived" / "totals.json").write_text(
+        '{"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}')
+    from m110 import objects
+    objects.set_frontmatter_key("m99", "hero", "broken_final.jpg")
+
+    assert build_images.rebuild_hero("m99") is True
+    assert build_images.hero_source_path("m99") == fin / "good_final.png"
