@@ -106,6 +106,42 @@ def test_goals_page_toggle_emits_dirty(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_manage_goals_sets_a_goals_telescope_and_tracks_a_copy(tmp_path, monkeypatch,
+                                                                 qapp):
+    """The Telescope picker scopes a goal; "Track for another telescope…" makes a
+    scoped copy (#184). Both rebuild derived data and tell the shell."""
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    from m110 import derived, goals
+    from m110.ui.pages.overview import OverviewPage
+    from PySide6.QtWidgets import QComboBox, QInputDialog, QPushButton
+    page = OverviewPage()
+    try:
+        fired = []
+        page.goals_changed.connect(lambda: fired.append(True))
+        box = next(b for b in page._content.findChildren(QComboBox)
+                   if b.itemText(0) == "Any telescope")
+        box.setCurrentIndex(box.findData("seestar_s30"))
+        qapp.processEvents()
+        assert goals.goal_scope("messier") == "seestar_s30"
+        assert next(g for g in derived.load_goals()
+                    if g["id"] == "messier")["scope"] == "seestar_s30"   # rederived
+        assert fired
+
+        monkeypatch.setattr(QInputDialog, "getItem",
+                            staticmethod(lambda *a, **k: ("ZWO Seestar S50", True)))
+        btn = next(b for b in page._content.findChildren(QPushButton)
+                   if b.text() == "Track for another telescope…")
+        btn.click()
+        qapp.processEvents()
+        copies = [g for g in goals.custom_goals() if g["name"].endswith("ZWO Seestar S50")]
+        assert len(copies) == 1 and goals.goal_scope(copies[0]["id"]) == "seestar_s50"
+        assert len(fired) == 2
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_catalog_parity_columns_search_and_stat(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)

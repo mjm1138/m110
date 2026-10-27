@@ -755,6 +755,31 @@ palette's highlighted-text colour, for both the table pill and the grid tile.
 default; goal-list telescope scope; the goal editor and Devices-page optics;
 retiring `priorities.toml`.
 
+## Integration goals — the editors + retiring `priorities.toml` *(done 2026-10-27, `feature/integration-goals-editors`, #184 PR 3 of 3)*
+
+**Editors.** The detail pane's **Integration goals** section (one row per model that
+shot the object, plus the active one) sits with Processing/Sessions rather than under
+the status line as first planned — the pane deliberately opens on the hero and notes
+with controls below. **Set goal…** opens `ui/goal_dialog.GoalDialog`; a save writes the
+goal, `refresh.rederive()` (derive only — `build_derived.main`, no scan), and re-renders
+**deferred**, because the re-render tears down the button whose click is still running.
+Manage goals gets a per-goal telescope combo (`goals.set_goal_scope`) and **Track for
+another telescope…** (`goals.copy_for_telescope`: a member snapshot, uniquified name,
+scoped + activated). The Devices page's **Optics** block is read-only for a preset and
+editable for an unrecognised telescope (`devices.toml` `.optics`); saving optics or
+changing a telescope's model re-derives too, since both move goals. Every one of these
+emits `goals_changed`, which the shell answers by reloading every page.
+
+**`priorities.toml` retired** — store **v5**. No longer seeded; `migrate._mark_priorities_
+retired` prepends a header saying it isn't read, once, keeping the user's text.
+
+**Corpus.** M51 carries user goals sized to its few minutes (S50 18 min → blue, S30
+2 min → green → the object is green), and an S30-scoped *Travel scope* goal; `verify`
+asserts both.
+
+**Correction caught by a test:** the Dwarf 3's factor is ×0.73, not the ×0.74 quoted
+while designing — (150/35/5)² = 0.735.
+
 ## Integration goals — goal scope + per-model ranking *(done 2026-10-27, `feature/integration-goals-ranking`, #184 PR 2 of 3)*
 
 **Goal scope.** `goals.toml` gained a `[scope]` table (goal id → model; absent =

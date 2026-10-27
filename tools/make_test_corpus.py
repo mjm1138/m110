@@ -559,6 +559,18 @@ def build(out: Path):
     from m110 import devices
     devices.save_device(S30_TELESCOP, nickname=S30_NICKNAME)
 
+    # Integration goals (#184), sized to the corpus's few minutes so a tester sees
+    # every state on one object: M51 is "in progress" on the S50 (11 of 18 min) and
+    # Deep Stack on the S30 (3 of 2 min) → its Library pill is green (its most
+    # advanced telescope), and its detail pane shows one row per telescope.
+    from m110 import integration_goals
+    integration_goals.set_goal("m51", "seestar_s50", 18, "corpus: shows the blue state")
+    integration_goals.set_goal("m51", "seestar_s30", 2, "corpus: shows Deep Stack")
+    # …and a goal list scoped to the S30: only the S30's captures count toward it
+    # (M13 + M51 captured; M42 is Dwarf-only, so it's unticked here).
+    travel = goals.create_custom_goal("Travel scope", ["m13", "m51", "m42"])
+    goals.set_goal_scope(travel, "seestar_s30")
+
     from m110 import refresh
     refresh.run_refresh()
 
@@ -959,12 +971,23 @@ def verify(out: Path):
     print(f"  devices: {[d['label'] for d in derived.load_devices()]} · M51 "
           f"{first_night} split {split}")
 
+    # Integration goals per telescope (#184): M51 is blue on the S50, green on the
+    # S30 and green overall; the S30-scoped "Travel scope" goal counts M13 + M51.
+    m51 = derived.load_totals()["by_slug"]["m51"]
+    states = {m: e["status"] for m, e in m51["by_model"].items()}
+    assert states == {"seestar_s50": "in_progress", "seestar_s30": "deep_stack"}, states
+    assert m51["status"] == "deep_stack", m51["status"]
+    (travel,) = [g for g in derived.load_goals() if g["name"] == "Travel scope"]
+    assert travel["scope"] == "seestar_s30" and travel["captured"] == 2, travel
+    print(f"  integration goals: M51 {states} → {m51['status']} · Travel scope "
+          f"(S30 only) {travel['captured']}/{travel['total']} captured")
+
     # Phase 5 (5d): Caldwell goal active; the Library is the captured collection
     # (only *captured* Caldwell members land here, not the whole catalog), and the
     # stale stub is left incomplete for the Fill-missing demo.
     from m110 import goals
     lib = catalog.load_library()
-    assert goals.active_goal_ids() == ["messier", "caldwell"], "Caldwell not activated"
+    assert goals.active_goal_ids()[:2] == ["messier", "caldwell"], "Caldwell not activated"
     assert "ngc-7000" in lib and "ngc-6992" in lib, "captured Caldwell objects not promoted"
     stub = lib["ngc-6992"]
     assert not stub.get("name") and stub.get("type") == "unknown", \

@@ -251,3 +251,49 @@ def test_a_rollup_from_an_older_version_does_not_crash_launch(tmp_path, monkeypa
         assert win.devices.library_table.rowCount() == 1
     finally:
         win.deleteLater(); qapp.processEvents()
+
+
+def test_a_recognised_telescope_shows_its_models_optics_read_only(tmp_path, monkeypatch,
+                                                                  qtbot):
+    seed_root(tmp_path, monkeypatch)
+    page = _page(qtbot, [DWARF])
+    text = page.optics_summary.text()
+    assert "35 mm aperture" in text and "f/4.3" in text and "×0.73" in text
+    assert page._optics_form.isHidden()                 # nothing to edit for a preset
+
+
+def test_optics_entered_for_an_unrecognised_telescope_calibrate_its_goals(
+        tmp_path, monkeypatch, qtbot, qapp):
+    from m110 import devices, integration_goals
+    seed_root(tmp_path, monkeypatch)
+    mystery = dict(DWARF, device="MyScope", label="MyScope", preset=None, model=None)
+    page = _page(qtbot, [mystery])
+    assert not page._optics_form.isHidden()
+    assert "unknown" in page.optics_summary.text()
+    fired = []
+    page.goals_changed.connect(lambda: fired.append(True))
+    page.aperture.setValue(61.0)
+    page.focal_length.setValue(274.5)
+    page.optics_save_btn.click()
+    qapp.processEvents()
+    assert devices.load_registry()["MyScope"]["optics"] == {"aperture_mm": 61.0,
+                                                           "focal_length_mm": 274.5}
+    assert integration_goals.speed_factor("MyScope")[1] is True
+    assert "f/4.5" in page.optics_summary.text()
+    assert fired
+
+
+def test_changing_a_telescopes_model_tells_the_shell(tmp_path, monkeypatch, qtbot, qapp):
+    seed_root(tmp_path, monkeypatch)
+    mystery = dict(DWARF, device="MyScope", label="MyScope", preset=None, model=None)
+    page = _page(qtbot, [mystery])
+    fired = []
+    page.goals_changed.connect(lambda: fired.append(True))
+    page.nickname.setText("Backyard")
+    page.save_btn.click()                              # nickname only → same model
+    qapp.processEvents()
+    assert not fired
+    page.model.setCurrentIndex(page.model.findData("dwarf_3"))
+    page.save_btn.click()
+    qapp.processEvents()
+    assert fired

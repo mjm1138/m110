@@ -11,6 +11,13 @@ from __future__ import annotations
 from . import scan_sessions, build_derived, catalog
 
 
+def rederive() -> None:
+    """Rebuild only the derived rollups from the sessions already scanned — for a
+    preference change that moves statuses (an integration goal, a goal's telescope,
+    a telescope's optics). No FITS scan, no rendering: instant."""
+    build_derived.main()
+
+
 def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
     """Rescan sessions, rebuild derived rollups, and (re)generate gallery/hero
     images for the data store. Returns a small summary dict for the UI.
