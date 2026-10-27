@@ -39,10 +39,10 @@ DEEP_STACK_MIN = 90
 # Type-aware deep-stack threshold (minutes) for the types that need *more* than the
 # floor. Required integration scales with surface brightness — galaxies want time
 # for faint outer arms, diffuse nebulae (incl. Sharpless) want hours. Calibrated to
-# S50 experience with the user. This single table drives BOTH the status badge
-# (below) and the prioritizer's completion factor, so they always agree. Types not
-# listed fall back to DEEP_STACK_MIN. A per-object user-set integration target is a
-# planned override (ROADMAP).
+# S50 experience with the user. Types not listed fall back to DEEP_STACK_MIN. It is
+# the *default* integration goal: `integration_goals` scales it by each telescope's
+# f-ratio and lets the user override it per object and model, and that one resolver
+# drives both the status badge and the prioritizer, so they always agree.
 DEEP_MIN_BY_TYPE = {
     "planetary": 180,       # bright core comes fast; faint halo/colour wants more
     "galaxy": 240,
@@ -124,12 +124,59 @@ def _device_totals(by_device: dict) -> dict:
             for dev, d in sorted(by_device.items())}
 
 
-def build_totals(catalog: dict, sessions: list[dict]) -> dict:
+def _by_model(by_device: dict, goal_for, registry: dict) -> dict:
+    """Pool a ``by_device`` bucket map by telescope model and grade each model
+    against its integration goal. `goal_for(model)` → ``(minutes, source)``."""
+    from . import integration_goals as ig
+    pooled: dict[str, dict] = {}
+    for dev, d in sorted(by_device.items()):
+        m = pooled.setdefault(ig.model_key(dev, registry),
+                              {"integration_min": 0.0, "frames": 0, "devices": []})
+        m["integration_min"] += d["integration_min"]
+        m["frames"] += d["frames"]
+        m["devices"].append(dev)
+    out = {}
+    for model, m in sorted(pooled.items()):
+        goal, source = goal_for(model)
+        out[model] = {
+            "integration_min": round(m["integration_min"], 2),
+            "frames": m["frames"],
+            "devices": m["devices"],
+            "goal_min": goal,
+            "goal_source": source,
+            "fraction": round(ig.fraction(m["integration_min"], goal), 3),
+            "status": ig.state(m["integration_min"], goal),
+        }
+    return out
+
+
+def _status_fields(by_model: dict) -> dict:
+    """The object/folder-level ``status`` — its most advanced model — plus that
+    model's ``progress`` (0..1), for the "62% of goal" pill."""
+    from . import integration_goals as ig
+    best = ig.rollup(by_model)
+    if best is None:
+        return {"status": ig.INITIAL, "progress": 0.0, "progress_model": None}
+    model, entry = best
+    return {"status": entry["status"], "progress": entry["fraction"],
+            "progress_model": model}
+
+
+def build_totals(catalog: dict, sessions: list[dict], registry: dict | None = None,
+                 goals: dict | None = None) -> dict:
     """For each captured slug, aggregate sessions and compute status.
 
     A "captured slug" is any catalog slug that appears in at least one
-    session's `slugs` list.
+    session's `slugs` list. Status is graded per telescope model against its
+    integration goal (`integration_goals`); the object's ``status`` is its most
+    advanced model. `registry` / `goals` default to the store's files.
     """
+    from . import devices, integration_goals as ig
+    registry = devices.load_registry() if registry is None else registry
+    goals = ig.load() if goals is None else goals
+
+    def _type(slug):
+        return (catalog.get(slug) or {}).get("type")
     by_slug: dict[str, dict] = defaultdict(lambda: {
         "frames": 0,
         "integration_min": 0.0,
@@ -237,6 +284,10 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
     out = {}
     for slug, t in by_slug.items():
         dates = sorted(t["session_dates"])
+        by_model = _by_model(
+            t["by_device"],
+            lambda model, slug=slug: ig.resolve(slug, _type(slug), model, goals, registry),
+            registry)
         out[slug] = {
             "id": slug_to_priority_id(slug, catalog),
             "frames": t["frames"],
@@ -254,14 +305,25 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "framings": t["framings"],
             # The same counted integration, split by the telescope that shot it.
             "by_device": _device_totals(t["by_device"]),
-            "status": ("deep_stack" if t["integration_min"]
-                       >= deep_threshold((catalog.get(slug) or {}).get("type"))
-                       else "initial"),
+            # ...and pooled by telescope model, each graded against its own goal.
+            "by_model": by_model,
+            **_status_fields(by_model),
         }
+
+    def _folder_goal(slugs, model):
+        # A folder can feed several objects (e.g. "M81 M82"); per model, use the
+        # most demanding of their goals so a faint member isn't marked done early.
+        resolved = [ig.resolve(s, _type(s), model, goals, registry) for s in slugs]
+        return max(resolved, default=(ig.default_goal(None, model, registry),
+                                      ig.SOURCE_DEFAULT))
 
     folders = {}
     for fname, f in folder_totals.items():
         dates = sorted(f["session_dates"])
+        by_model = _by_model(
+            f["by_device"],
+            lambda model, slugs=sorted(f["slugs"]): _folder_goal(slugs, model),
+            registry)
         folders[fname] = {
             "frames": f["frames"],
             "integration_min": round(f["integration_min"], 2),
@@ -274,11 +336,8 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "slugs": sorted(f["slugs"]),
             "has_pre_new_start": f["has_pre_new_start"],
             "by_device": _device_totals(f["by_device"]),
-            # A folder can feed several objects (e.g. "M81 M82"); use the most
-            # demanding of their thresholds so a faint member isn't marked done early.
-            "status": ("deep_stack" if f["integration_min"] >= max(
-                (deep_threshold((catalog.get(s) or {}).get("type")) for s in f["slugs"]),
-                default=DEEP_STACK_MIN) else "initial"),
+            "by_model": by_model,
+            **_status_fields(by_model),
         }
 
     return {"by_slug": out, "by_folder": folders}

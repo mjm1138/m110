@@ -33,10 +33,10 @@ from m110.ui.widgets import (
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
 
 
-def _status_pill(status) -> QLabel:
+def _status_pill(status, progress=None) -> QLabel:
     """A small tinted rounded status chip (matches the Library table pill), colored
     from the active theme. Built per render, so it re-themes on reload."""
-    lbl = QLabel(status_label(status, True))
+    lbl = QLabel(status_label(status, True, progress))
     c = theme.status_color(status)
     lbl.setStyleSheet(
         f"color:{c.name()}; "
@@ -257,7 +257,7 @@ class DetailPane(QScrollArea):
         if captured:
             stat_row = QHBoxLayout()
             stat_row.setSpacing(theme.tokens.SPACE["sm"])
-            stat_row.addWidget(_status_pill(t.get("status")))
+            stat_row.addWidget(_status_pill(t.get("status"), t.get("progress")))
             stats = QLabel(f"{t.get('integration_hms', '')} · "
                            f"{t.get('session_count', '')} sessions · "
                            f"{t.get('frames', '')} frames")

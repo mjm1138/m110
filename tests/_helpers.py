@@ -29,6 +29,8 @@ def seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
     monkeypatch.setattr(config, "PINS_TOML", internal / "pins.toml")
     monkeypatch.setattr(config, "DEVICES_TOML", internal / "devices.toml")
+    monkeypatch.setattr(config, "INTEGRATION_GOALS_TOML",
+                        internal / "integration_goals.toml")
     monkeypatch.setattr(config, "PROFILES_DIR", internal / "profiles")
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
     config.ensure_data_root(root)

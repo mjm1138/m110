@@ -10,7 +10,7 @@ model has no way to know that unless told. `was_linear_fits` and
 """
 from __future__ import annotations
 
-from m110 import build_derived, catalog, derived, objects as journals
+from m110 import catalog, derived, integration_goals, objects as journals
 from m110.assistant import vision
 from m110.assistant.registry import ToolError, register
 from m110.assistant.serialize import ImageBlob, ToolResult
@@ -57,7 +57,7 @@ from m110.assistant.store import require_store
     engine=("m110.build_images.hero_source_path", "m110.build_images._open_image",
             "m110.derived.images_for", "m110.objects.get_curation",
             "m110.objects.image_state", "m110.webexport.resize_long_edge",
-            "m110.webexport.encode_jpeg"),
+            "m110.webexport.encode_jpeg", "m110.integration_goals.capture_report"),
 )
 def get_image(slug: str, which: str = "hero", name: str | None = None,
               max_long_edge: int = vision.DEFAULT_LONG_EDGE) -> ToolResult:
@@ -75,7 +75,6 @@ def get_image(slug: str, which: str = "hero", name: str | None = None,
     obj_type = entry.get("type") or "unknown"
     totals = (derived.totals_by_slug() if derived.derived_available() else {}).get(slug, {})
     integration = totals.get("integration_min", 0.0) or 0.0
-    deep_min = build_derived.deep_threshold(obj_type)
 
     meta = {
         "slug": slug,
@@ -100,9 +99,7 @@ def get_image(slug: str, which: str = "hero", name: str | None = None,
             "filters": totals.get("filters", []),
             "exposures_s": totals.get("exposures", []),
             "status": totals.get("status", "uncaptured"),
-            "deep_threshold_min": deep_min,
-            "fraction_of_deep": (round(min(integration / deep_min, 1.0), 3)
-                                 if deep_min else None),
+            **integration_goals.capture_report(slug, obj_type, totals),
         },
         "journal": {"has_notes": journals.has_notes(slug)},
     }

@@ -468,7 +468,7 @@ def test_the_legend_keys_only_the_tiers_on_the_chart(tmp_path, monkeypatch, qapp
         assert plotted == {skymap.STATUS_INITIAL}     # only what was captured
         legend = page.map_view._legend.text()
         assert "Uncaptured" not in legend        # nothing unshot is plotted
-        assert "Captured" in legend
+        assert "Initial" in legend               # the pill's own word
 
         # Filter to the goal and its unshot members arrive — and so does the key.
         page._catalog_combo.setCurrentIndex(page._catalog_combo.findData("messier"))

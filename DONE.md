@@ -718,6 +718,43 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
+
+**What changed.** "Deep" stopped being one type-keyed number compared against an
+object's total minutes. `integration_goals.py` resolves a goal per **(object,
+telescope model)**: the user's goal from `integration_goals.toml` if set, else
+`deep_threshold(type) × (f_model / f_S50)²` rounded to 5 min. `build_totals` pools
+`by_device` into `by_model` (units of one model pool; a device with no preset is its
+own model) and grades each model `initial` (<25%) / `in_progress` / `deep_stack`;
+the object's and folder's `status` is the most advanced model (`rollup`), with
+`progress` + `progress_model` for the "62% of goal" pill.
+
+**Why per model and not summed.** Minutes from two telescopes don't stack into one
+picture (the calibration matcher already refuses a two-telescope target), so the old
+sum could mark an object deep that no single stack was. `by_device` is kept exactly
+as it was — `devices.json` and its tests read it.
+
+**Optics.** `Device` gained `aperture_mm` / `focal_length_mm` / `pixel_um` and an
+`f_ratio` property; presets carry sourced values (comment in `planning_config.py`).
+A telescope with no preset can carry user-entered optics in `devices.toml`
+`[devices."<key>".optics]`; without them its speed factor is 1.0 and "uncalibrated".
+
+**Every reader of the status shipped with it:** theme token `status_progress`,
+`widgets.status_label(…, progress)` + `STATUS_RANK` (the Library sorts the status
+column by state, then progress — not label text), the per-model tooltip
+(`integration_goals.progress_lines`), sky map `STATUS_PROGRESS` + legend (which now
+says "Initial", the pill's word, not "Captured"), the publish badge, and the
+assistant's `capture_report` (`deep_threshold_min`/`fraction_of_deep` are now the
+**active** telescope's goal; `goals` lists every model).
+
+**Found in the render check:** a blue chip on a selected row vanished into the blue
+selection highlight. `widgets.chip_color` paints a selected item's chip in the
+palette's highlighted-text colour, for both the table pill and the grid tile.
+
+**Not yet (PRs 2–3):** the prioritizer still scores total minutes against the type
+default; goal-list telescope scope; the goal editor and Devices-page optics;
+retiring `priorities.toml`.
+
 ## Frame-selection tiers revised on M1 *(done 2026-10-20, `feature/filter-tiers-m1`)*
 
 #174's table (roundness 95/92/90, background off on dual-band, star count off) was

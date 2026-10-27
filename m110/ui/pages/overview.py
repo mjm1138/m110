@@ -226,7 +226,7 @@ class OverviewPage(QScrollArea):
             ci.setItem(r, 2, NumItem(str(t.get("frames", 0)), t.get("frames", 0)))
             ci.setItem(r, 3, NumItem(t.get("integration_hms", ""), t.get("integration_min", 0)))
             ci.setItem(r, 4, QTableWidgetItem("/".join(t.get("filters", []))))
-            ci.setItem(r, 5, QTableWidgetItem(status_label(t.get("status"), True)))
+            ci.setItem(r, 5, QTableWidgetItem(status_label(t.get("status"), True, t.get("progress"))))
         ci.resizeColumnsToContents()
         fit_table_height(ci, max_rows=10)
         self._wire_open(ci)

@@ -47,9 +47,11 @@ def active_tokens() -> Tokens:
 
 
 def status_color(status: str | None) -> QColor:
-    """Theme color for a capture status ('deep_stack'/'initial'); muted otherwise."""
+    """Theme color for a capture status ('deep_stack'/'in_progress'/'initial');
+    muted otherwise."""
     t = active()
     return QColor({"deep_stack": t.status_deep,
+                   "in_progress": t.status_progress,
                    "initial": t.status_initial}.get(status, t.text_secondary))
 
 

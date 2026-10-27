@@ -124,7 +124,8 @@ DONE.md's archived reference — grep the module name there.
 | `derived.py` | read generated rollups (`derived/*.json`) |
 | `processing.py` | workflow registry (Siril + AstroWizard), `run_autoprep`, `prepare_missing` (creates only absent sandboxes), `reconcile_rejected` |
 | `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path; capture facts (TELESCOP/GAIN/CCD-TEMP) from a bounded, per-file-cached header sample (`_HeaderCache`) + the inferred on-device dark (`dark_*`) |
-| `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
+| `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold`; per-model `by_model` + the three-state `status` (rolled up to the most advanced model) |
+| `integration_goals.py` | integration goals per (object, telescope model): `integration_goals.toml` (`set_goal`/`clear_goal`), `model_key` (preset, else device key), `speed_factor` = (f/f_S50)², `default_goal`, `resolve`, `state` (Initial <25% · in progress · deep), `rollup`, `capture_report` (assistant) |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
 | `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
 | `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim = the device key), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar); the registry `devices.toml` (`load_registry`/`save_device`: nickname, retired, preset) + `label`/`model_name`/`serial` |

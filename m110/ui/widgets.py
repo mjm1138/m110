@@ -8,7 +8,7 @@ from PySide6.QtCore import (
     QUrl, Signal,
 )
 from PySide6.QtGui import (
-    QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPixmap,
+    QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPalette, QPixmap,
 )
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMenu, QMessageBox,
@@ -112,16 +112,26 @@ class FlowLayout(QLayout):
             line_height = max(line_height, hint.height())
         return y + line_height - rect.y() + m.bottom()
 
-STATUS_LABEL = {"deep_stack": "Deep Stack", "initial": "Initial"}
+STATUS_LABEL = {"deep_stack": "Deep Stack", "in_progress": "In progress",
+                "initial": "Initial"}
 # Per-cell role carrying the raw status key (e.g. "deep_stack") so the pill delegate
 # can pick a theme color while the cell still sorts by its visible text.
 STATUS_ROLE = Qt.ItemDataRole.UserRole + 7
 
 
-def status_label(status: str | None, captured: bool) -> str:
+def status_label(status: str | None, captured: bool,
+                 progress: float | None = None) -> str:
+    """A capture status's pill text. ``in_progress`` reads as its share of the
+    integration goal ("62% of goal") when `progress` (0..1) is known."""
     if not captured:
         return "—"
+    if status == "in_progress" and progress is not None:
+        return f"{int(progress * 100)}% of goal"
     return STATUS_LABEL.get(status, status or "—")
+
+
+# Capture status order, for sorting a status column by state, not by label text.
+STATUS_RANK = {"initial": 0, "in_progress": 1, "deep_stack": 2}
 
 
 def paint_status_chip(painter: QPainter, rect: QRectF, text: str, color: QColor):
@@ -137,6 +147,15 @@ def paint_status_chip(painter: QPainter, rect: QRectF, text: str, color: QColor)
     painter.setPen(color)
     painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
     painter.restore()
+
+
+def chip_color(status: str | None, option) -> QColor:
+    """The status chip's colour for one painted item: the status's theme colour,
+    except on a selected item, where it takes the selection's text colour — a blue
+    "in progress" chip would otherwise vanish into a blue selection highlight."""
+    if option.state & QStyle.StateFlag.State_Selected:
+        return option.palette.color(QPalette.ColorRole.HighlightedText)
+    return status_color(status)
 
 
 class StatusPillDelegate(QStyledItemDelegate):
@@ -160,7 +179,7 @@ class StatusPillDelegate(QStyledItemDelegate):
             painter.drawText(option.rect, Qt.AlignmentFlag.AlignCenter, text or "—")
             painter.restore()
             return
-        color = status_color(status)
+        color = chip_color(status, option)
         fm = opt.fontMetrics
         h = fm.height() + 4
         w = fm.horizontalAdvance(text) + self._HPAD * 2

@@ -79,6 +79,16 @@ def test_status_and_color_follow_the_derived_verdict(tmp_path, monkeypatch):
     ]
 
 
+def test_in_progress_has_its_own_marker_status():
+    by_slug = {"m77": {"status": "in_progress"}, "m31": {"status": "deep_stack"},
+               "m1": {"status": "initial"}, "m2": {"status": "something-new"}}
+    assert skymap.object_status("m77", by_slug) == skymap.STATUS_PROGRESS
+    assert skymap.object_status("m31", by_slug) == skymap.STATUS_DEEP
+    assert skymap.object_status("m1", by_slug) == skymap.STATUS_INITIAL
+    assert skymap.object_status("m2", by_slug) == skymap.STATUS_INITIAL
+    assert skymap.STATUS_PROGRESS in skymap.DEFAULT_COLORS
+
+
 def test_status_colors_are_overridable(tmp_path, monkeypatch):
     # The UI passes live theme tokens so the chart follows light/dark.
     root = seed_root(tmp_path, monkeypatch)

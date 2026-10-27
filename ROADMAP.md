@@ -673,9 +673,14 @@ the noted refinements, none blocking:
   is on: past-peak-and-falling (closing opportunity) outranks
   rising-toward-peak at the same altitude (sign+slope of dark-window peak
   altitude a few nights out — a finer partner to `nights_to_close`).
-- **Per-object integration target.** A user-set override of the type-default
-  deep threshold (object detail carries it; badge + scorer read it), and a
-  **v2 surface-brightness basis** (mag + size) refining the per-type table.
+- **Per-object integration goals** ([#184](https://github.com/mjm1138/m110/issues/184)) —
+  🔶 in progress, three PRs. **Engine (PR 1):** goals per (object, telescope
+  model), defaults = type table × (f_model/f_S50)², the three-state status
+  (Initial / "n% of goal" / Deep Stack), rolled up to the most advanced model.
+  **Next:** goal-list telescope scope + the prioritizer ranking per active model +
+  `propose_integration_goal` (PR 2); the detail-pane goal editor, Devices-page
+  optics, retiring `priorities.toml` (PR 3). Still open after: a **v2
+  surface-brightness basis** (mag + size) refining the per-type table.
 - Data/robustness follow-ups tracked in BUGS: **#38b** (reference V-mag audit),
   **#40b/#40d**. (#44, the assistant foundation, shipped with item 4 M0.)
 

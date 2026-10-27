@@ -29,8 +29,8 @@ from looking.
 > `<render.height>` from `<render.source_width>×<render.source_height>`.
 > `<capture.frames>` frames, `<capture.integration_hms>` total, filter(s)
 > `<capture.filters>` — `<capture.fraction_of_deep>` of the
-> `<capture.deep_threshold_min>`-minute deep threshold for a
-> `<type>`.
+> `<capture.deep_threshold_min>`-minute integration goal for a
+> `<type>` on `<capture.active_model>`.
 
 It tells the user what you actually judged, and it stops you critiquing the
 wrong thing.
@@ -72,7 +72,7 @@ resolution" is a useful, honest sentence.
 ## Recommendations must be bounded
 
 "More integration" is not advice. **"Another ~3 hours would take you from 42
-minutes to roughly a quarter of the 240-minute galaxy threshold"** is, because
+minutes to roughly a quarter of the 240-minute galaxy goal"** is, because
 it uses `deep_threshold_min` and `fraction_of_deep` from the tool.
 
 Prefer one or two changes that would most improve *this* image over a list of
