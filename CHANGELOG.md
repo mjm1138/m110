@@ -62,6 +62,10 @@ changes a **user** would notice, per release.
   you're planning with, and every telescope's progress on the object.
 
 ### Fixed
+- **Planning's priority targets show proper names for objects you haven't shot
+  yet.** A goal member not yet in your Library showed an internal id such as
+  `ngc-7009` or `m92`. It now shows its catalog designations, e.g. **C55 (NGC 7009,
+  Ben 126)**, the same label the Overview checklists use.
 - **An object no longer loses its cover image to one damaged file.** If the image
   M110 would normally pick (say, a truncated or half-copied PNG) can't be opened,
   it now uses the next best one, such as the JPG or the FITS stack beside it,

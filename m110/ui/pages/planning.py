@@ -406,9 +406,10 @@ class PlanningPage(QScrollArea):
             lib = catalog.load_library()
         except Exception:
             lib = {}
+        ref = catalog.load_reference()
 
         def obj_name(slug):
-            entry = lib.get(slug) or catalog.load_reference().get(slug) or {}
+            entry = lib.get(slug) or ref.get(slug) or {}
             return catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
 
         def moon_item(row):
@@ -752,6 +753,9 @@ class PlanningPage(QScrollArea):
             lib = catalog.load_library()
         except Exception:
             lib = {}
+        # Uncaptured goal members aren't in the Library — label them from the
+        # reference, as the Overview checklists do (not the raw slug).
+        ref = catalog.load_reference()
         tbl = make_table(["#", "Object", "Type", "Integ", "Of goal", "Score", "Season",
                           "Closes"], stretch_last=True)
         tbl.setSortingEnabled(False)
@@ -761,10 +765,11 @@ class PlanningPage(QScrollArea):
             r = tbl.rowCount()
             tbl.insertRow(r)
             slug = row["slug"]
-            e = lib.get(slug) or {}
+            entry = lib.get(slug) or ref.get(slug)
             st = pin_state.get(slug)
             marker = "▲ " if st == pins.PIN else ""
-            label = marker + (e.get("id") or slug)
+            label = marker + (catalog.object_label(
+                catalog.object_identifiers(slug, entry)) or slug)
             n2c = row.get("nights_to_close")
             closes = f"{n2c}d" if isinstance(n2c, int) and n2c < 60 else ""
             # Integration + progress are the active telescope's (or, for a member of
