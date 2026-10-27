@@ -61,6 +61,12 @@ changes a **user** would notice, per release.
 - The assistant's `get_object` and `get_image` report the goal for the telescope
   you're planning with, and every telescope's progress on the object.
 
+### Fixed
+- **Planning's priority targets show proper names for objects you haven't shot
+  yet.** A goal member not yet in your Library showed an internal id such as
+  `ngc-7009` or `m92`. It now shows its catalog designations, e.g. **C55 (NGC 7009,
+  Ben 126)**, the same label the Overview checklists use.
+
 ## [0.3.0-beta.9] - 2026-10-22
 
 ### Added

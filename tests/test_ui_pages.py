@@ -1700,6 +1700,34 @@ def test_planning_page_ranks_cached_contexts(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_planning_ranking_labels_uncaptured_targets_by_designation(
+        tmp_path, monkeypatch, qapp):
+    """A goal member not yet in the Library (uncaptured) shows its catalog
+    designation from the reference — "NGC 7009", not the slug "ngc-7009"."""
+    root = seed_root(tmp_path, monkeypatch)
+    _no_prioritizer_worker(monkeypatch)
+    from m110 import catalog, prioritize
+    from m110.prioritize import TargetContext
+    assert "ngc-7009" not in catalog.load_library()
+    obs = {"observable": True, "hours_clear": 3.0, "transit_alt": 60.0,
+           "nights_to_close": 20, "season": "spring"}
+    prioritize.write_contexts([
+        TargetContext("ngc-7009", "planetary_nebula", 0, True, obs)])
+    from m110.ui.pages.planning import PlanningPage
+    page = PlanningPage()
+    try:
+        from PySide6.QtWidgets import QTableWidget
+        tbl = next(t for t in page.findChildren(QTableWidget) if t.rowCount() >= 1)
+        cell = tbl.item(0, 1)
+        assert cell.data(Qt.UserRole) == "ngc-7009"
+        assert cell.text() == catalog.object_label(catalog.object_identifiers(
+            "ngc-7009", catalog.load_reference()["ngc-7009"]))
+        assert "NGC 7009" in cell.text() and "ngc-7009" not in cell.text()
+    finally:
+        page.deleteLater()
+        qapp.processEvents()
+
+
 def test_planning_plan_ready_distinguishes_engine_failure_from_no_dark(
         tmp_path, monkeypatch, qapp):
     """A planner-worker failure (plan is None — e.g. astropy didn't load) must read as
