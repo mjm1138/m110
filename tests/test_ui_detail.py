@@ -376,3 +376,20 @@ def test_the_goal_dialog_says_cancel_only_with_edits(qapp):
     dlg._minutes.setValue(420)
     assert dlg._reject_btn.text() == "Cancel"
     assert dlg.minutes() == 420 and dlg.reason() == ""
+
+
+def test_the_goal_rows_never_widen_the_pane(tmp_path, monkeypatch, qapp):
+    """At the default window size the pane is ~440 px wide. Unwrapped, a goal row
+    (model name · progress · whose + two buttons) set a ~510 px minimum → the pane
+    scrolled sideways and clipped "Use default" (found in the 2026-10-27 GUI pass)."""
+    from m110 import catalog, derived, integration_goals
+    from m110.ui.detail import DetailPane
+    from tests._helpers import seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    slug, _tid = seed_capture(root)
+    model = next(iter(derived.totals_by_slug()[slug]["by_model"]))
+    integration_goals.set_goal(slug, model, 420, "a reason")     # adds "Use default"
+    d = DetailPane()
+    d.show_object(slug, catalog.load_library()[slug], derived.totals_by_slug()[slug])
+    qapp.processEvents()
+    assert d._content.minimumSizeHint().width() < 400

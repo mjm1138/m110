@@ -61,6 +61,12 @@ changes a **user** would notice, per release.
 - The assistant's `get_object` and `get_image` report the goal for the telescope
   you're planning with, and every telescope's progress on the object.
 
+### Fixed
+- **The object pane no longer scrolls sideways when it shows integration goals.** At the
+  default window size a goal row was wider than the pane, so the pane scrolled
+  horizontally and **Use default** was cut off. The goal dialog is also wider, so its
+  title isn't truncated.
+
 ## [0.3.0-beta.9] - 2026-10-22
 
 ### Added
