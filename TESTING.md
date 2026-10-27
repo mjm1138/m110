@@ -367,6 +367,8 @@ re-run when its area changes and you want eyes on the visuals).
       literal `Unknown` target is created.
 - [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
       (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
+      The import source's `stacked-16_*.png` is a 3-byte placeholder that can't decode: the
+      hero must still appear (it falls through to `stacked.jpg`), not go blank.
 
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.

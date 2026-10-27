@@ -27,6 +27,19 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **One undecodable image left an object with no hero** (done —
+  `feature/hero-fallback`). 2026-10-27, TESTING.md walk-through: the Dwarf 3 `M1`
+  from `M110-test-import-source` has a 3-byte placeholder `stacked-16_…png` beside a
+  valid `stacked-16_….fits` and `stacked.jpg`. Hero selection preferred the PNG,
+  `_render_hero` couldn't open it, and nothing else was tried — M1 had no hero after
+  Refresh. The real-world trigger is a truncated or partially copied raster. Fix:
+  `build_images._hero_candidates` lists every source in the existing preference
+  order (frontmatter `hero` → `hero_image` → tiers, PNG > JPG, newest → every
+  discovered image newest first, FITS included) and `_render_first_hero` uses the
+  first that renders; the `.src` sidecar names the file used. A truncated PNG
+  (header parses, pixels don't) fails at `thumbnail()`, which `_render_hero`
+  already caught, so both shapes fall through. Costs one failed decode per refresh
+  while the bad file stays ahead of the good one.
 - [x] **An import mid-stack swept the running stack's scratch into the archive**
   (done — `feature/stack-in-progress-guard`). 2026-10-20, M1: *Import finished
   work* ran while `m110-stack --run` was between its plate-solve and registration

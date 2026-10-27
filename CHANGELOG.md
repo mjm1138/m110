@@ -61,6 +61,12 @@ changes a **user** would notice, per release.
 - The assistant's `get_object` and `get_image` report the goal for the telescope
   you're planning with, and every telescope's progress on the object.
 
+### Fixed
+- **An object no longer loses its cover image to one damaged file.** If the image
+  M110 would normally pick (say, a truncated or half-copied PNG) can't be opened,
+  it now uses the next best one, such as the JPG or the FITS stack beside it,
+  instead of showing no image at all.
+
 ## [0.3.0-beta.9] - 2026-10-22
 
 ### Added

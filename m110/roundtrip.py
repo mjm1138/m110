@@ -663,7 +663,7 @@ def apply_import(target: str, sandbox: Sandbox, selected_srcs,
                 "cleaned": "none", "cancelled": True}
 
     # Hero: the chosen render now lives in finished/ — pin it by the filename it
-    # actually landed under (build_images._hero_source matches frontmatter `hero`
+    # actually landed under (build_images._hero_candidates matches frontmatter `hero`
     # to the image name; a re-processed render can land as `<stem>-N`, so we can't
     # just use the source name). hero_src=None → leave the current hero.
     if hero_src and hero_slug:
