@@ -10,6 +10,57 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **A third capture status: how far along you are.** Objects now read **Initial**
+  (yellow) when you've barely started, **"62% of goal"** (blue) once you're a
+  quarter of the way, and **Deep Stack** (green) when you reach the goal — in the
+  Library, the object pane, the sky map (with a new legend entry) and on your
+  published site.
+- **Goals are per telescope.** Each telescope model now has its own integration
+  goal for an object: a Dwarf 3 or an S30 is no longer measured against the S50's
+  numbers. Defaults come from the object type, scaled by the telescope's f-ratio
+  (a faster scope needs less time). Two units of the same model count together.
+  Hover the status in the Library to see each telescope's progress.
+- **Priority targets are ranked for the telescope you're planning with.** An object
+  you've finished on one scope still counts as new work on another, unless it's in
+  a goal that any telescope can satisfy (more below). Switching telescope in
+  Planning re-ranks at once, and the ranking shows each target's **Of goal**
+  progress; hover it to see which telescope that's for.
+- **A goal can belong to one telescope.** A goal such as Messier can count captures
+  from **any telescope** (the default, as before) or from **one telescope model**
+  only, so "Messier again, on the new scope" isn't marked done by the old one.
+  Goal counts, the Overview checklists and the sky map follow the goal's telescope.
+- **The assistant can suggest an integration goal.** `propose_integration_goal`
+  proposes how many minutes an object needs on a telescope (say, after measuring
+  the noise in the faint outer disk), with the before/after progress and ranking.
+  You accept it from the assistant banner, as with its other suggestions.
+- **Set an object's integration goal yourself.** The object's detail pane has an
+  **Integration goals** section: one row per telescope with its progress, **Set
+  goal…** (minutes, plus an optional reason kept with the number) and **Use
+  default**. Statuses and the Planning ranking follow at once.
+- **Choose which telescope a goal counts.** Under Overview → Manage goals, each
+  active goal has a telescope choice (Any telescope, or one), and **Track for
+  another telescope…** copies a goal for one telescope — e.g. *Messier · Draco*
+  alongside your everyday Messier.
+- **Optics on the Devices page.** Each telescope shows its aperture, focal length,
+  f-ratio and pixel size, and how that scales its goals. For a telescope M110 doesn't
+  recognise you can enter them, which gives its goals a proper default.
+
+### Changed
+- **Status is judged per telescope, not on all your time added together.** Minutes
+  from two different telescopes don't stack into one picture, so an object no longer
+  turns Deep Stack from their sum; it shows its best telescope's progress. If you
+  shoot with more than one telescope, or with anything other than an S50, some
+  objects will change status after this update.
+- The sky map legend says **Initial** where it said **Captured**, matching the
+  status pill.
+- **`priorities.toml` is retired.** M110 stopped reading it long ago (the ranking is
+  automatic), yet every library still got one, so editing it silently did nothing.
+  New libraries no longer get it, and an existing one gains a comment at the top
+  saying it isn't read — your text is kept. Library format version 5.
+- The assistant's `get_object` and `get_image` report the goal for the telescope
+  you're planning with, and every telescope's progress on the object.
+
 ## [0.3.0-beta.9] - 2026-10-22
 
 ### Added

@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
 )
 
 from m110.ui import theme
-from m110.ui.theme import active_tokens, muted_color, status_color
-from m110.ui.widgets import ThumbnailLoader, paint_status_chip, status_label
+from m110.ui.theme import active_tokens, muted_color
+from m110.ui.widgets import ThumbnailLoader, chip_color, paint_status_chip, status_label
 
 # Tile (zoom) size bounds, shared by every consumer of this grid.
 GRID_ZOOM_MIN = 80
@@ -32,6 +32,7 @@ STATUS_ROLE = Qt.ItemDataRole.UserRole + 2
 SUBTITLE_ROLE = Qt.ItemDataRole.UserRole + 3
 MUTED_ROLE = Qt.ItemDataRole.UserRole + 4
 BADGE_ROLE = Qt.ItemDataRole.UserRole + 5
+STATUS_TEXT_ROLE = Qt.ItemDataRole.UserRole + 6
 
 
 @dataclass
@@ -43,6 +44,7 @@ class TileItem:
     title: str
     subtitle: str = ""
     status: str | None = None
+    status_text: str | None = None   # chip text override (else the status's label)
     muted: bool = False
     badge: str = ""     # short glyph drawn over the thumbnail (e.g. "\u25b6" for video)
 
@@ -88,6 +90,8 @@ class TileModel(QAbstractListModel):
             return it.key
         if role == STATUS_ROLE:
             return it.status
+        if role == STATUS_TEXT_ROLE:
+            return it.status_text
         if role == SUBTITLE_ROLE:
             return it.subtitle
         if role == MUTED_ROLE:
@@ -186,12 +190,12 @@ class TileDelegate(QStyledItemDelegate):
                                rect.width() - pad * 2, fm.height())
         x = caption_rect.left()
         if status and not muted:
-            text = status_label(status, True)
+            text = index.data(STATUS_TEXT_ROLE) or status_label(status, True)
             chip_w = fm.horizontalAdvance(text) + 16
             chip_h = fm.height()
             chip_rect = QRectF(x, caption_rect.top() + (caption_rect.height() - chip_h) / 2,
                                chip_w, chip_h)
-            paint_status_chip(painter, chip_rect, text, status_color(status))
+            paint_status_chip(painter, chip_rect, text, chip_color(status, option))
             x = chip_rect.right() + s["xs"]
         remaining = caption_rect.right() - x
         if subtitle and remaining > 12:

@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QApplication, QDateEdit, QInputDialog, QMessageBox, QSpinBox, QCheckBox,
 )
 
-from m110 import catalog, pins, prioritize
+from m110 import catalog, devices, integration_goals, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
     make_table, fit_table_height, CollapsibleSection, connect_context_menu,
@@ -310,7 +310,8 @@ class PlanningPage(QScrollArea):
             self._plan_status.setText("No ranking yet — open Priority targets to "
                                       "compute it, then try again.")
             return
-        ranked = prioritize.rank(contexts, self._weights, self._strategy, pins.load())
+        ranked = prioritize.rank_for_active(contexts, self._weights, self._strategy,
+                                            pins.load())
         cand = prioritize.plan_candidates(ranked)      # visible tonight, capped for astropy
         scores = {r["slug"]: r["score"] for r in ranked}
         filters = {r["slug"]: prioritize.filter_for_type(r.get("type", ""))
@@ -686,6 +687,7 @@ class PlanningPage(QScrollArea):
             return
         pc.set_active_device(key)
         self._invalidate_plan()               # a plan is device-specific (its ceiling)
+        self._render_ranking()                # …and so is the ranking: its goals
 
     def reload(self):
         # Cheap: refresh the selector + re-rank the cached contexts. The heavy astropy
@@ -734,7 +736,8 @@ class PlanningPage(QScrollArea):
             hint.setWordWrap(True)
             self._ptable_holder.addWidget(hint)
             return
-        rows = prioritize.rank(contexts, self._weights, self._strategy, pins.load())
+        rows = prioritize.rank_for_active(contexts, self._weights, self._strategy,
+                                          pins.load())
         total = len(rows)
         if self._visible_only:
             rows = prioritize.filter_visible_tonight(rows)
@@ -749,10 +752,11 @@ class PlanningPage(QScrollArea):
             lib = catalog.load_library()
         except Exception:
             lib = {}
-        tbl = make_table(["#", "Object", "Type", "Integ", "Score", "Season", "Closes"],
-                         stretch_last=True)
+        tbl = make_table(["#", "Object", "Type", "Integ", "Of goal", "Score", "Season",
+                          "Closes"], stretch_last=True)
         tbl.setSortingEnabled(False)
         pin_state = pins.load()
+        registry = devices.load_registry()
         for row in rows[:40]:
             r = tbl.rowCount()
             tbl.insertRow(r)
@@ -763,14 +767,24 @@ class PlanningPage(QScrollArea):
             label = marker + (e.get("id") or slug)
             n2c = row.get("nights_to_close")
             closes = f"{n2c}d" if isinstance(n2c, int) and n2c < 60 else ""
+            # Integration + progress are the active telescope's (or, for a member of
+            # an any-telescope goal, its best telescope's — the tooltip says which).
             integ = row["integration_min"]
+            goal = row.get("goal_min") or 0
+            pct = f"{int(min(integ / goal, 1.0) * 100)}%" if goal else ""
             cells = [str(row["rank"]), label, (row.get("type") or "").replace("_", " "),
                      (f"{integ/60:.1f}h" if integ >= 60 else f"{integ:.0f}m") if integ else "—",
-                     f"{row['score']:.2f}", row.get("season") or "", closes]
+                     pct, f"{row['score']:.2f}", row.get("season") or "", closes]
+            tip = ""
+            if row.get("progress_model"):
+                tip = (f"{integration_goals.model_label(row['progress_model'], registry)}"
+                       f": {integ:.0f} of {goal:.0f} min")
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c == 1:
                     item.setData(Qt.UserRole, slug)
+                if c in (3, 4) and tip:
+                    item.setToolTip(tip)
                 tbl.setItem(r, c, item)
         tbl.resizeColumnsToContents()
         fit_table_height(tbl, max_rows=15)

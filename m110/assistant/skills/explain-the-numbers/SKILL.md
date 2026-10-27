@@ -13,8 +13,8 @@ call, and you say which one.
 **Every numeric claim carries the tool and the engine function that produced it.**
 
 > M51 has 4h 12m of integration (`get_object` → `m110.derived.totals_by_slug`),
-> which is 5% of the 240-minute deep threshold for a galaxy
-> (`m110.build_derived.deep_threshold`).
+> which is 5% of the 240-minute integration goal for a galaxy on an S50
+> (`m110.integration_goals.capture_report`).
 
 Every tool descriptor lists its `engine` functions for exactly this purpose, and
 they are echoed in results. Use them.
@@ -50,12 +50,16 @@ The full factor set (`rank_targets` → `factors`):
 | `type_weight` | The user's per-type multiplier |
 | `feasibility` | Brightness and size sanity |
 
-## Thresholds are type-aware
+## Goals are per object and per telescope
 
-"Deep" is **not** one number. The baseline is 90 minutes, galaxies 240, diffuse
-nebulae 360 (`m110.build_derived.deep_threshold`). Never quote a single global
-figure — say which threshold applies to the object in question, and prefer
-`get_object`'s `fraction_of_deep`, which has already done the division.
+"Deep" is **not** one number. Each object has an **integration goal per telescope
+model**: the user's own goal when they set one (`goal_source: "user"`), else a
+default — the type threshold (S50 baseline 90 minutes, galaxies 240, diffuse
+nebulae 360) scaled by the telescope's f-ratio. Never quote a single global figure.
+`get_object`'s `capture.deep_threshold_min` / `fraction_of_deep` are the **active
+telescope's** goal and progress; `capture.goals` lists every model that has shot
+the object. Say which telescope a number is for, and whether it's the user's goal
+or a default.
 
 ## States you must always disclose
 
@@ -81,6 +85,6 @@ set, say that what you are looking at was stretched by M110 for display. See the
 
 ## When the user asks you to change something
 
-You cannot. This server is read-only. Use `propose_weights`, `propose_pins`, or
-`propose_journal_entry`, then show the user the proposal's `summary`, which
+You cannot. This server is read-only. Use `propose_weights`, `propose_pins`,
+`propose_integration_goal`, or `propose_journal_entry`, then show the user the proposal's `summary`, which
 carries the exact steps. Never imply a change has been made.

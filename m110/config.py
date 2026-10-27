@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import tomllib
 from pathlib import Path
 
@@ -34,9 +33,6 @@ _SUBDIRS = [
     f"{INTERNAL_DIRNAME}/renders/hero",
     f"{INTERNAL_DIRNAME}/profiles",
 ]
-# Static files copied verbatim from the bundled seed if missing. (library.toml is
-# generated from the object reference — see _seed_library.)
-_SEED_FILES = ["priorities.toml"]
 
 _README_TEXT = """\
 M110 — internal application data
@@ -176,7 +172,7 @@ def _apply(root: Path) -> None:
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
     global MEDIA_RENDERS_DIR
     global PROFILES_DIR, PINS_TOML, PLANS_DIR, ASSISTANT_DIR, ASSISTANT_OUTBOX
-    global DEVICES_TOML
+    global DEVICES_TOML, INTEGRATION_GOALS_TOML
     global CALIBRATION_DIR
     DATA_ROOT = root
     # Visible content axes
@@ -193,6 +189,8 @@ def _apply(root: Path) -> None:
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
     PINS_TOML = INTERNAL_DIR / "pins.toml"         # manual Pin/Deprioritize overrides (#3)
     DEVICES_TOML = INTERNAL_DIR / "devices.toml"   # the user's edits per telescope (devices.py)
+    # per-object, per-telescope-model integration goals (integration_goals.py)
+    INTEGRATION_GOALS_TOML = INTERNAL_DIR / "integration_goals.toml"
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
     DERIVED_DIR = INTERNAL_DIR / "derived"
@@ -526,11 +524,8 @@ def ensure_data_root(root=None) -> Path:
     for sub in _SUBDIRS:
         (r / sub).mkdir(parents=True, exist_ok=True)
     internal = r / INTERNAL_DIRNAME
-    for name in _SEED_FILES:
-        dst = internal / name
-        src = SEED_DIR / name
-        if not dst.exists() and src.is_file():
-            shutil.copy(src, dst)
+    # library.toml is generated from the object reference (the retired
+    # priorities.toml is no longer seeded — migrate._mark_priorities_retired).
     _seed_library(internal / "library.toml")
     readme = internal / "README.txt"
     if not readme.exists():

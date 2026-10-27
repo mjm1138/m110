@@ -136,7 +136,7 @@ class JournalPage(QWidget):
         if totals:
             captured = True
             stats = " · ".join(filter(None, [
-                status_label(totals.get("status"), captured),
+                status_label(totals.get("status"), captured, totals.get("progress")),
                 f"{totals.get('integration_hms', '')} integration"
                 if totals.get("integration_hms") else "",
                 f"last capture {totals.get('last_capture')}"

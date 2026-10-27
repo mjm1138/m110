@@ -14,10 +14,11 @@ from PySide6.QtGui import QPixmap, QIcon, QImageReader, QDesktopServices
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
-    QToolButton, QMenu, QMessageBox,
+    QToolButton, QMenu, QMessageBox, QDialog,
 )
 
-from m110 import build_images, config, derived, devices, objects, processing, siril
+from m110 import (build_images, config, derived, devices, integration_goals, objects,
+                  processing, refresh, siril)
 from m110.build_derived import session_device
 from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
@@ -33,10 +34,10 @@ from m110.ui.widgets import (
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
 
 
-def _status_pill(status) -> QLabel:
+def _status_pill(status, progress=None) -> QLabel:
     """A small tinted rounded status chip (matches the Library table pill), colored
     from the active theme. Built per render, so it re-themes on reload."""
-    lbl = QLabel(status_label(status, True))
+    lbl = QLabel(status_label(status, True, progress))
     c = theme.status_color(status)
     lbl.setStyleSheet(
         f"color:{c.name()}; "
@@ -132,6 +133,9 @@ class DetailPane(QScrollArea):
     # The user dismissed the pane (✕) — the host page decides what that means
     # (e.g. clear the table selection, go back to a full-width table).
     closed = Signal()
+    # An integration goal was set or cleared; derived data is already rebuilt, so
+    # every view showing a status should reload.
+    goals_changed = Signal()
 
     def __init__(self):
         super().__init__()
@@ -257,7 +261,7 @@ class DetailPane(QScrollArea):
         if captured:
             stat_row = QHBoxLayout()
             stat_row.setSpacing(theme.tokens.SPACE["sm"])
-            stat_row.addWidget(_status_pill(t.get("status")))
+            stat_row.addWidget(_status_pill(t.get("status"), t.get("progress")))
             stats = QLabel(f"{t.get('integration_hms', '')} · "
                            f"{t.get('session_count', '')} sessions · "
                            f"{t.get('frames', '')} frames")
@@ -331,12 +335,88 @@ class DetailPane(QScrollArea):
             self._gallery = self._galleries[0] if self._galleries else None
 
         if captured:
+            self._add_goals_section(slug, e, t)
             self._add_processing_section(slug)
             self._add_sessions_section(slug)
         self._add_metadata_section(slug, e, t)
 
         self._lay.addStretch(1)
 
+
+    def _add_goals_section(self, slug: str, e: dict, t: dict):
+        """One row per telescope model that captured the object, plus the one
+        Planning is set to: its progress against its integration goal, and Set
+        goal… / Use default."""
+        reg = devices.load_registry()
+        goals = integration_goals.load()
+        by_model = t.get("by_model") or {}
+        models = sorted(by_model, key=lambda m: (-by_model[m].get("fraction", 0.0), m))
+        active = integration_goals.active_model(reg)
+        if active not in models:
+            models.append(active)
+        self._lay.addWidget(_section_label("Integration goals"))
+        for model in models:
+            have = (by_model.get(model) or {}).get("integration_min", 0.0)
+            goal, source = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
+            _factor, calibrated = integration_goals.speed_factor(model, reg)
+            whose = ("your goal" if source == integration_goals.SOURCE_USER
+                     else "default" if calibrated else "default — f-ratio unknown")
+            frac = integration_goals.fraction(have, goal)
+            row = QHBoxLayout()
+            text = QLabel(
+                f"<b>{integration_goals.model_label(model, reg)}</b> · "
+                f"{have:.0f} of {goal:.0f} min ({int(frac * 100)}%) · {whose}")
+            text.setTextFormat(Qt.RichText)
+            reason = goals.get(slug, {}).get(model, {}).get("reason")
+            if reason:
+                text.setToolTip(reason)
+            row.addWidget(text, 1)
+            set_btn = QPushButton("Set goal…")
+            set_btn.clicked.connect(
+                lambda _=False, m=model: self._set_goal(slug, e, m))
+            row.addWidget(set_btn)
+            if source == integration_goals.SOURCE_USER:
+                default_btn = QPushButton("Use default")
+                default_btn.setToolTip(
+                    f"Back to {integration_goals.default_goal(e.get('type'), model, reg):.0f}"
+                    " min for this telescope")
+                default_btn.clicked.connect(
+                    lambda _=False, m=model: self._clear_goal(slug, m))
+                row.addWidget(default_btn)
+            self._lay.addLayout(row)
+
+    def _set_goal(self, slug: str, e: dict, model: str):
+        from m110 import catalog
+        from m110.ui.goal_dialog import GoalDialog
+        reg = devices.load_registry()
+        goals = integration_goals.load()
+        goal, _src = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
+        _f, calibrated = integration_goals.speed_factor(model, reg)
+        dlg = GoalDialog(
+            catalog.object_label(catalog.object_identifiers(slug, e)) or slug,
+            integration_goals.model_label(model, reg), goal,
+            integration_goals.default_goal(e.get("type"), model, reg),
+            goals.get(slug, {}).get(model, {}).get("reason", ""),
+            calibrated=calibrated, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        integration_goals.set_goal(slug, model, dlg.minutes(), dlg.reason())
+        self._goals_saved(slug, e)
+
+    def _clear_goal(self, slug: str, model: str):
+        integration_goals.clear_goal(slug, model)
+        self._goals_saved(slug, self._current[1])
+
+    def _goals_saved(self, slug: str, e: dict):
+        """Statuses follow the goal at once: rebuild derived data (no scan), show
+        this object afresh, and tell the host every other view is stale. Deferred:
+        the re-render tears down the very button whose click is still running."""
+        refresh.rederive()
+
+        def rerender():
+            self.show_object(slug, e, derived.totals_by_slug().get(slug, {}))
+            self.goals_changed.emit()
+        defer(self, rerender)
 
     def _add_action_row(self, slug: str):
         """The object's processing actions, as one wrapping row.

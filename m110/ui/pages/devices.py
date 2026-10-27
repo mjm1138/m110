@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from m110 import config, derived, devices
+from m110 import config, derived, devices, integration_goals, refresh
 from m110 import planning_config as pc
 from m110.planning_config import DEVICE_PRESETS
 from m110.ui import theme
@@ -136,6 +136,9 @@ class DevicesPage(QWidget):
     """The Devices nav page: a device list and the selected device's detail."""
 
     open_object = Signal(str)
+    # A telescope's model or optics changed, which moves integration goals and so
+    # statuses; derived data is already rebuilt.
+    goals_changed = Signal()
 
     def __init__(self, parent=None, devices_data: list[dict] | None = None):
         super().__init__(parent)
@@ -258,6 +261,34 @@ class DevicesPage(QWidget):
         lbtns.addWidget(self.limits_save_btn)
         self._plan_sec.body.addLayout(lbtns)
 
+        # optics (#184): the f-ratio that scales this telescope's integration goals
+        self._optics_sec = CollapsibleSection("Optics")
+        self.optics_summary = QLabel()
+        self.optics_summary.setWordWrap(True)
+        self.optics_summary.setTextFormat(Qt.RichText)
+        self._optics_sec.body.addWidget(self.optics_summary)
+        self._optics_form = QWidget()
+        oform = QFormLayout(self._optics_form)
+        oform.setContentsMargins(0, 0, 0, 0)
+        self.aperture = QDoubleSpinBox()
+        self.focal_length = QDoubleSpinBox()
+        self.pixel = QDoubleSpinBox()
+        for spin, top, suffix, label in ((self.aperture, 1000.0, " mm", "Aperture"),
+                                         (self.focal_length, 5000.0, " mm", "Focal length"),
+                                         (self.pixel, 30.0, " µm", "Pixel size")):
+            spin.setRange(0.0, top)
+            spin.setDecimals(2 if spin is self.pixel else 1)
+            spin.setSuffix(suffix)
+            spin.setSpecialValueText("unknown")       # 0 = not entered
+            oform.addRow(label, spin)
+        obtns = QHBoxLayout()
+        obtns.addStretch(1)
+        self.optics_save_btn = QPushButton("Save optics")
+        self.optics_save_btn.clicked.connect(self._save_optics)
+        obtns.addWidget(self.optics_save_btn)
+        oform.addRow(obtns)
+        self._optics_sec.body.addWidget(self._optics_form)
+
         self._obj_sec = CollapsibleSection("Objects")
         self.objects_table = make_table(_OBJ_COLS)
         self.objects_table.sortByColumn(1, Qt.DescendingOrder)     # most integration first
@@ -288,8 +319,8 @@ class DevicesPage(QWidget):
         self._health_sec.body.addWidget(self.level_chart)
         self._health_sec.body.addWidget(self.hot_chart)
 
-        for sec in (self._id_sec, self._plan_sec, self._obj_sec, self._lib_sec, self._cap_sec,
-                    self._health_sec):
+        for sec in (self._id_sec, self._plan_sec, self._optics_sec, self._obj_sec,
+                    self._lib_sec, self._cap_sec, self._health_sec):
             self._body.addWidget(sec)
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -402,6 +433,8 @@ class DevicesPage(QWidget):
         self._id_sec.setVisible(d["device"] != devices.UNKNOWN)
         self._plan_sec.setVisible(d["device"] != devices.UNKNOWN and not d.get("retired"))
         self._load_planning(d)
+        self._optics_sec.setVisible(d["device"] != devices.UNKNOWN)
+        self._load_optics(d)
 
     # identity (the registry) ------------------------------------------------
 
@@ -439,6 +472,7 @@ class DevicesPage(QWidget):
             return
         key = self._current["device"]
         f = self._identity_fields()
+        model_before = integration_goals.model_key(key)
         devices.save_device(key, **f)
         # reflect it now; the next Sync rewrites devices.json with the same facts
         reg = devices.load_registry()
@@ -452,6 +486,73 @@ class DevicesPage(QWidget):
         self._set_dirty(False)
         self._fill_list(select=key if (not f["retired"] or self.show_retired.isChecked())
                         else None)
+        if integration_goals.model_key(key) != model_before:
+            self._goals_moved()               # a new model means different goals
+
+    # optics -----------------------------------------------------------------
+
+    def _load_optics(self, d: dict):
+        """A recognised telescope shows its model's published optics (read-only);
+        one no preset describes can have them entered here, which is what gives it
+        a calibrated integration-goal default."""
+        key = d["device"]
+        preset = devices.effective_preset(key)
+        if preset in DEVICE_PRESETS:
+            dev = DEVICE_PRESETS[preset]
+            optics = {"aperture_mm": dev.aperture_mm, "focal_length_mm": dev.focal_length_mm,
+                      "pixel_um": dev.pixel_um}
+        else:
+            optics = devices.load_registry().get(key, {}).get("optics", {})
+        self._optics_form.setVisible(preset not in DEVICE_PRESETS)
+        for spin, name in ((self.aperture, "aperture_mm"),
+                           (self.focal_length, "focal_length_mm"), (self.pixel, "pixel_um")):
+            spin.setValue(optics.get(name) or 0.0)
+        self.optics_summary.setText(self._optics_text(key, optics, preset in DEVICE_PRESETS))
+
+    @staticmethod
+    def _optics_text(key: str, optics: dict, recognised: bool) -> str:
+        ap, fl, px = (optics.get(n) for n in ("aperture_mm", "focal_length_mm", "pixel_um"))
+        bits = []
+        if ap:
+            bits.append(f"{ap:g} mm aperture")
+        if fl:
+            bits.append(f"{fl:g} mm focal length")
+        if ap and fl:
+            bits.append(f"f/{fl / ap:.1f}")
+        if px:
+            bits.append(f"{px:g} µm pixels")
+        model = integration_goals.model_key(key)
+        factor, calibrated = integration_goals.speed_factor(model)
+        if model == integration_goals.REFERENCE_MODEL:
+            scale = "The reference telescope: integration-goal defaults are its numbers."
+        elif calibrated:
+            scale = (f"Integration goals here are ×{factor:.2f} the S50's "
+                     f"({'faster' if factor < 1 else 'slower' if factor > 1 else 'same'} "
+                     f"f-ratio).")
+        else:
+            scale = ("Its f-ratio is unknown, so its integration goals use the S50's "
+                     "numbers — enter the aperture and focal length to scale them.")
+        source = "From the model's published specs. " if recognised else ""
+        head = " · ".join(bits) if bits else "No optics entered."
+        return f"{head}<br><span>{source}{scale}</span>"
+
+    def _save_optics(self):
+        if not self._current:
+            return
+        key = self._current["device"]
+        optics = {name: spin.value() for spin, name in (
+            (self.aperture, "aperture_mm"), (self.focal_length, "focal_length_mm"),
+            (self.pixel, "pixel_um")) if spin.value() > 0}
+        devices.save_device(key, optics=optics or None)
+        self.optics_summary.setText(self._optics_text(key, optics, False))
+        self._goals_moved()
+
+    def _goals_moved(self):
+        """Statuses depend on a telescope's model and optics: rebuild derived data
+        (no scan) and let the shell reload — deferred, as that reload rebuilds this
+        page under the button that asked for it."""
+        refresh.rederive()
+        defer(self, self.goals_changed.emit)
 
     # planning (the active telescope + its limits) ------------------------------
 

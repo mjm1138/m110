@@ -234,14 +234,17 @@ class MainWindow(QMainWindow):
         self.catalog.dirty.connect(self._do_refresh)
         self.catalog.notes_saved.connect(self._on_notes_saved)
         self.catalog.pins_changed.connect(self._on_pins_changed)
+        self.catalog.goals_changed.connect(self._on_goals_changed)
         self.overview.open_object.connect(self.open_object)
         self.overview.go_to_import.connect(self._open_ingest)   # empty-state CTA
         self.overview.pins_changed.connect(self._on_pins_changed)
         self.overview.dirty.connect(self._do_refresh)           # goal set changed
+        self.overview.goals_changed.connect(self._on_goals_changed)
         self.planning.open_object.connect(self.open_object)
         self.planning.pins_changed.connect(self._on_pins_changed)
         self.processing.open_object.connect(self.open_object)
         self.devices.open_object.connect(self.open_object)
+        self.devices.goals_changed.connect(self._on_goals_changed)
         self.import_page.imported.connect(
             lambda moved: self._do_refresh() if moved else None)
 
@@ -608,6 +611,12 @@ class MainWindow(QMainWindow):
         for p in self.pages:
             if p is not self.catalog:
                 p.reload()
+
+    def _on_goals_changed(self):
+        # An integration goal or a goal's telescope changed. Derived data was already
+        # rebuilt (no scan), so every page — the Library's pills included — reloads.
+        for p in self.pages:
+            p.reload()
 
     def _on_pins_changed(self):
         # A Pin/Deprioritize override toggled (Library, Goals, or the Summary priority

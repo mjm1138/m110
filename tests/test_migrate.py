@@ -165,3 +165,32 @@ def test_migrate_v3_to_v4_prunes_combined_target_objects(tmp_path):
     assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
     # idempotent
     assert migrate.migrate_store(root) is False
+
+
+def test_migrate_v4_to_v5_marks_a_retired_priorities_file(tmp_path):
+    """v4 → v5: a hand-edited priorities.toml (no longer read by anything) gets a
+    header saying so; the user's text is kept verbatim, and only once."""
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    mine = '[[priority]]\nid = "M77"\ntarget_integration_min = 420\n'
+    (internal / "priorities.toml").write_text(mine)
+    (internal / ".store_version").write_text("4")
+
+    assert migrate.migrate_store(root) is True
+    text = (internal / "priorities.toml").read_text()
+    assert text.startswith("# M110 no longer reads this file")
+    assert text.endswith(mine)
+    assert (internal / ".store_version").read_text().strip() == "5"
+    (internal / ".store_version").write_text("4")      # even re-run from v4…
+    assert migrate.migrate_store(root) is False         # …it isn't prepended twice
+    assert text == (internal / "priorities.toml").read_text()
+
+
+def test_migrate_v4_to_v5_without_a_priorities_file_is_a_noop(tmp_path):
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    (internal / ".store_version").write_text("4")
+    assert migrate.migrate_store(root) is False
+    assert not (internal / "priorities.toml").exists()

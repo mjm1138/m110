@@ -7,6 +7,7 @@
   --accent: #58a6ff;
   --deep: #4ade80;
   --initial: #fbbf24;
+  --progress: #60a5fa;
   --obstructed: #f87171;
   --border: #2a313a;
   --card: #1a2029;
@@ -156,6 +157,7 @@ table tr.total td { font-weight: 600; border-top: 1px solid var(--border); }
   letter-spacing: 0.02em;
 }
 .badge.deep_stack { background: rgba(74,222,128,.15); color: var(--deep); }
+.badge.in_progress { background: rgba(96,165,250,.15); color: var(--progress); }
 .badge.initial    { background: rgba(251,191,36,.13); color: var(--initial); }
 .badge.obstructed { background: rgba(248,113,113,.13); color: var(--obstructed); }
 .badge.none       { background: rgba(255,255,255,.05); color: var(--muted); }

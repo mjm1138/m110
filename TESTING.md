@@ -469,7 +469,28 @@ re-run when its area changes and you want eyes on the visuals).
       `N captured / N total`. (Uncaptured catalog members live in **Goals**.)
 - [ ] **Object column sorts naturally** (M1, M2, … M10, M100 — *not* lexical),
       and NGC after Messier; click headers to sort each column. *(eyes-on check.)*
-- [ ] Status colours: deep-stack green, initial amber, uncaptured muted.
+- [ ] Status colours: deep-stack green, in-progress blue ("n% of goal"), initial amber,
+      uncaptured muted. A **selected** row/tile draws its chip in the selection's text
+      colour (a blue chip must not vanish into a blue highlight).
+
+#### Integration goals (#184)  ⚙ *(engine, buttons + scope picker automated — `test_integration_goals.py`, `test_goal_scope.py`, `test_ui_detail.py`, `test_ui_devices.py`)*
+- [ ] Corpus **M51**: Library pill **Deep Stack** (its S30 reached 2 min); hover the
+      status → one line per telescope ("ZWO Seestar S50: 11 of 18 min (61%, your goal)").
+- [ ] M51 detail → **Integration goals**: an S50 row and a Travel S30 row. **Set goal…**
+      on the S50 → 10 min → the S50 row and the Library pill update at once (no Sync);
+      **Use default** restores it. The dialog's button reads Close until you edit.
+- [ ] **Overview → Manage goals**: the corpus **Travel scope** goal shows *Travel S30*
+      and counts 2/3 (M42 is Dwarf-only). Set **Messier** to the S30 → its captured
+      count drops to the S30's objects; back to *Any telescope* restores it.
+- [ ] **Track for another telescope…** on Messier → pick the Dwarf 3 → a *Messier ·
+      DwarfLab Dwarf 3* goal appears, active, counting only M42.
+- [ ] **Planning** with two telescopes: switching the telescope re-ranks at once; the
+      **Of goal** column's tooltip names the telescope.
+- [ ] **Devices**: the S50 shows 50 mm · 250 mm · f/5.0 · 2.9 µm, read-only; a telescope
+      with no preset shows editable Optics, and **Save optics** turns "f-ratio unknown"
+      into a scale factor.
+- [ ] An old library with a hand-edited `priorities.toml` gains the "no longer reads
+      this file" header on first launch (text kept); a new library has no such file.
 
 #### Add object / metadata enrichment (5c/5d)
 - [ ] **Add object…** (Library menu): type a name/designation (e.g. `NGC 6888`) → an

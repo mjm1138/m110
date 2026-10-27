@@ -14,12 +14,14 @@ from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
     QHeaderView, QPushButton, QMenu, QCheckBox, QInputDialog, QMessageBox, QFrame,
+    QComboBox,
 )
 
-from m110 import catalog, config, derived, pins, goals as goals_mod
+from m110 import (catalog, config, derived, devices, integration_goals, pins, refresh,
+                  goals as goals_mod)
 from m110.ui.widgets import (
     NumItem, status_label, make_table, CollapsibleSection, fit_table_height,
-    connect_context_menu,
+    connect_context_menu, defer,
 )
 from m110.ui.theme import status_color
 
@@ -37,6 +39,7 @@ class OverviewPage(QScrollArea):
     go_to_import = Signal()        # empty-state CTA → shell switches to Import
     pins_changed = Signal()        # Pin/Deprioritize toggled from a priority/member row
     dirty = Signal()               # active goal set / custom goals changed → shell refresh
+    goals_changed = Signal()       # a goal's telescope changed; derived already rebuilt
 
     # (key, title, default_expanded)
     SECTIONS = [
@@ -106,6 +109,7 @@ class OverviewPage(QScrollArea):
     # ---- build ----
     def reload(self):
         self._building = True
+        self.__dict__.pop("_models_cache", None)     # telescopes may have changed
         self._clear()
         title = QLabel("<h2>Overview</h2>")
         title.setTextFormat(Qt.RichText)
@@ -226,7 +230,7 @@ class OverviewPage(QScrollArea):
             ci.setItem(r, 2, NumItem(str(t.get("frames", 0)), t.get("frames", 0)))
             ci.setItem(r, 3, NumItem(t.get("integration_hms", ""), t.get("integration_min", 0)))
             ci.setItem(r, 4, QTableWidgetItem("/".join(t.get("filters", []))))
-            ci.setItem(r, 5, QTableWidgetItem(status_label(t.get("status"), True)))
+            ci.setItem(r, 5, QTableWidgetItem(status_label(t.get("status"), True, t.get("progress"))))
         ci.resizeColumnsToContents()
         fit_table_height(ci, max_rows=10)
         self._wire_open(ci)
@@ -302,7 +306,7 @@ class OverviewPage(QScrollArea):
         goals_data = {g["id"]: g for g in derived.load_goals()}
         for gid in active:
             g = goals_data.get(gid)
-            head = QLabel(f"<b>{goals_mod.goal_name(gid)}</b>")
+            head = QLabel(f"<b>{goals_mod.goal_name(gid)}</b>{self._scope_suffix(gid)}")
             head.setTextFormat(Qt.RichText)
             body.addWidget(head)
             if g:
@@ -349,6 +353,16 @@ class OverviewPage(QScrollArea):
             inner.addWidget(section)
         body.addWidget(frame)
 
+    def _scope_suffix(self, gid: str) -> str:
+        """" · <telescope>" for a goal scoped to one telescope; " · any telescope"
+        only when some other active goal is scoped, so the contrast means something."""
+        scope = goals_mod.goal_scope(gid)
+        if scope:
+            return f" · {integration_goals.model_label(scope)}"
+        if any(goals_mod.goal_scope(o) for o in goals_mod.active_goal_ids()):
+            return " · any telescope"
+        return ""
+
     # ---- goal-row + membership table (from the former Goals page) ----
     def _goal_row(self, g: dict) -> QWidget:
         w = QWidget()
@@ -362,6 +376,23 @@ class OverviewPage(QScrollArea):
         self._checks[g["id"]] = cb
         top.addWidget(cb)
         top.addStretch(1)
+        if g["active"]:
+            # Which telescope's captures count toward this goal (#184).
+            scope = QComboBox()
+            scope.setToolTip("Count captures from any telescope, or from one only")
+            scope.addItem("Any telescope", None)
+            for model, label in self._models():
+                scope.addItem(label, model)
+            idx = scope.findData(g.get("scope"))
+            scope.setCurrentIndex(idx if idx >= 0 else 0)
+            scope.currentIndexChanged.connect(
+                lambda _i, gid=g["id"], box=scope: self._on_scope_changed(gid, box))
+            top.addWidget(scope)
+            track = QPushButton("Track for another telescope…")
+            track.setToolTip("A copy of this goal that counts only one telescope's "
+                             "captures — e.g. Messier again on a new scope")
+            track.clicked.connect(lambda _=False, gid=g["id"]: self._track_for(gid))
+            top.addWidget(track)
         if g["kind"] == "custom":
             edit = QPushButton("Edit…")
             edit.clicked.connect(lambda _=False, gid=g["id"]: self._edit_custom(gid))
@@ -389,6 +420,8 @@ class OverviewPage(QScrollArea):
 
     def _catalog_table(self, gid: str, totals: dict):
         members = goals_mod.goal_members(gid)
+        # A goal scoped to one telescope ticks only what that telescope captured.
+        totals = goals_mod.scoped_totals(totals, goals_mod.goal_scope(gid))
         try:
             lib = catalog.load_library()
         except Exception:
@@ -474,6 +507,37 @@ class OverviewPage(QScrollArea):
                 self, "Goal deactivated",
                 f"Removed {len(removed)} uncaptured object(s) from your Library.")
         self.dirty.emit()
+
+    def _models(self) -> list[tuple[str, str]]:
+        if not hasattr(self, "_models_cache"):
+            self._models_cache = integration_goals.known_models()
+        return self._models_cache
+
+    def _goal_scope_saved(self):
+        """A goal's telescope moved what counts toward it: rebuild derived data (no
+        scan) and let the shell reload everything — deferred, because the reload
+        tears down the control whose signal is still running."""
+        refresh.rederive()
+        defer(self, self.goals_changed.emit)
+
+    def _on_scope_changed(self, gid: str, box: QComboBox):
+        if self._building:
+            return
+        goals_mod.set_goal_scope(gid, box.currentData())
+        self._goal_scope_saved()
+
+    def _track_for(self, gid: str):
+        models = self._models()
+        labels = [label for _m, label in models]
+        label, ok = QInputDialog.getItem(
+            self, "Track for another telescope",
+            f"Track “{goals_mod.goal_name(gid)}” again, counting only captures from:",
+            labels, 0, False)
+        if not ok:
+            return
+        model = models[labels.index(label)][0]
+        goals_mod.copy_for_telescope(gid, model, label)
+        self._goal_scope_saved()
 
     def _new_custom(self):
         name, ok = QInputDialog.getText(self, "New custom goal", "Goal name:")

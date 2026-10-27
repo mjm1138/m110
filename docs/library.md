@@ -50,7 +50,8 @@ The **Map** view draws a star atlas of your Library: constellation figures, star
 coordinate grid, and a marker for every object you're tracking, in its real position.
 
 Markers carry the same colors as the status chips elsewhere in the app — green for a
-**deep stack**, amber for an **initial capture**, muted grey for **uncaptured** — so a few
+**deep stack**, blue for **in progress**, amber for an **initial capture**, muted grey for
+**uncaptured** — so a few
 months' work shows up as a bright patch of sky, and the gaps show you what's still to come.
 The key lists only the colors actually on the chart, so an unfiltered map of a collection
 you've shot every object in doesn't explain a grey you can't see.
@@ -75,6 +76,41 @@ you've shot every object in doesn't explain a grey you can't see.
 The chart is drawn by [uranometria](https://github.com/devonjones/uranometria), an
 optional component. If it isn't installed, the Map view says so and tells you what to
 install; nothing else in the Library is affected.
+
+## Integration goals: how deep is deep enough
+
+Every object has an **integration goal** for each telescope you shoot it with: the
+minutes of captured light it needs before you'd call it done. Its status follows it:
+
+- **Initial** (amber) — under a quarter of the way there;
+- **62% of goal** (blue) — on its way;
+- **Deep Stack** (green) — goal reached.
+
+Unless you set one, the goal is a **default** for the object's type (a faint nebula
+needs far more than a cluster), scaled by the telescope's speed: a faster f-ratio
+gathers the same depth in less time, so a Dwarf 3 at f/4.3 is asked for about three
+quarters of what an S50 at f/5 is. Two units of the same model count together; two
+different telescopes don't, because their frames don't stack into one picture. An
+object shows the status of its most advanced telescope — hover the status in the List
+to see each one.
+
+To set your own, open the object and use **Set goal…** under **Integration goals** in
+its detail pane: one row per telescope that has shot it (and the one you plan with).
+Add a reason if you like ("outer disk still noisy at 3′") — it's kept with the number.
+**Use default** puts it back. Planning ranks by these goals too, so an object you've
+marked as needing seven hours keeps coming up until it gets them.
+
+A telescope M110 doesn't recognise has no f-ratio until you give it one: enter its
+aperture and focal length under **Optics** on the **Devices** page.
+
+### Goals for one telescope
+
+Under **Overview → Manage goals**, each active goal has a **telescope** choice. **Any
+telescope** (the default) counts a capture from any of them; pick one telescope and only
+its captures count toward that goal. **Track for another telescope…** makes a copy of a
+goal for one telescope — for instance *Messier · Draco* alongside your everyday Messier
+— so you can work through a catalog again on a new scope without the old one marking
+it done. (A copy keeps the goal's list as it was when you made it.)
 
 ## Adding objects
 

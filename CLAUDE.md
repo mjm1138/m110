@@ -95,8 +95,8 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
     darks/ flats/ biases/           per-target Images/<t>/darks/… overrides it
   Inbox/                            ingest holding area
   Plans/                            saved field guides
-  .m110_internal_data/              library.toml goals.toml priorities.toml pins.toml devices.toml
-                                    sessions.jsonl profiles/ derived/ renders/ .store_version (=4)
+  .m110_internal_data/              library.toml goals.toml pins.toml devices.toml integration_goals.toml
+                                    sessions.jsonl profiles/ derived/ renders/ .store_version (=5)
 ```
 
 - **Data-root resolution** (`config.py`): `M110_DATA_ROOT` env → saved preference
@@ -119,12 +119,13 @@ DONE.md's archived reference — grep the module name there.
 | Module | Role |
 |---|---|
 | `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes), `SANDBOX_SCRATCH` (tool scratch: not archived, not backed up) |
-| `migrate.py` | in-place idempotent store migration to the two-axis layout |
+| `migrate.py` | in-place idempotent store migration (two-axis layout; v5 marks the retired `priorities.toml` as unread) |
 | `catalog.py` | Library (`library.toml`) vs bundled reference/catalog lists; add/remove/enrich entries; `season_from_ra`; `object_identifiers`; Simbad via optional astroquery (`OnlineLookupError`) |
 | `derived.py` | read generated rollups (`derived/*.json`) |
 | `processing.py` | workflow registry (Siril + AstroWizard), `run_autoprep`, `prepare_missing` (creates only absent sandboxes), `reconcile_rejected` |
 | `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path; capture facts (TELESCOP/GAIN/CCD-TEMP) from a bounded, per-file-cached header sample (`_HeaderCache`) + the inferred on-device dark (`dark_*`) |
-| `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
+| `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold`; per-model `by_model` + the three-state `status` (rolled up to the most advanced model) |
+| `integration_goals.py` | integration goals per (object, telescope model): `integration_goals.toml` (`set_goal`/`clear_goal`), `model_key` (preset, else device key), `speed_factor` = (f/f_S50)², `default_goal`, `resolve`, `state` (Initial <25% · in progress · deep), `rollup`, `capture_report` (assistant) |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
 | `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
 | `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim = the device key), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar); the registry `devices.toml` (`load_registry`/`save_device`: nickname, retired, preset) + `label`/`model_name`/`serial` |
@@ -136,7 +137,7 @@ DONE.md's archived reference — grep the module name there.
 | `launch.py` | external-app launcher (`_TOOLS` registry: Siril, AstroWizard, StackingWizard); `find_app`, `launch_processing`, `launch_with_file`, sanitized `_child_env()` |
 | `hints.py` | user-editable finished/intermediate filename vocabulary (`finished_hints` setting) |
 | `objects.py` | journal read/write, frontmatter upserts, per-image curation |
-| `refresh.py` | `run_refresh()` = add_captured_objects → scan → derive → render |
+| `refresh.py` | `run_refresh()` = add_captured_objects → scan → derive → render; `rederive()` = derive only (a goal/scope/optics change) |
 | `logsetup.py` | rotating log at `~/.m110/logs/m110.log` |
 | `media.py` | recursive non-catalog media listing, poster resolution, sidecar cleanup |
 | `webexport.py` | size-budgeted PNG/JPEG export for sharing |
@@ -146,10 +147,10 @@ DONE.md's archived reference — grep the module name there.
 | `planning_config.py` | site profiles (`profiles/*.toml`), glow layer, `DEVICE_PRESETS`, active-profile selection, the **active telescope** (`active_device_key`/`set_active_device`, `device_for` = preset + `devices.toml` planning overrides; `load_device()` resolves to it), `geocode` |
 | `prioritize.py` | deterministic ranker; slow `build_contexts` split from instant `rank`; cached `derived/prioritized.json` |
 | `horizon.py` / `glow.py` | horizon mask + light-dome floor (Walker's Law over GeoNames `cities1000`) |
-| `goals.py` / `pins.py` | per-store active goals + custom lists; manual pin/deprioritize overrides |
+| `goals.py` / `pins.py` | per-store active goals + custom lists, each optionally scoped to one telescope model (`goal_scope`, `scoped_totals`); manual pin/deprioritize overrides |
 | `updates.py` | GitHub release check (`packaging`), throttle prefs, `version_tag`/`user_guide_url` (pinned to the release tag) |
-| `assistant/` | MCP assistant: `registry` (tools populated by importing `tools/`), 16 provider-neutral tools, `serialize`, `proposals`, `outbox` (the only writer, create-only), `apply` (app-side only), `mcp_server` (SDK v2, stdout→stderr) |
-| `seed/` | bundled `objects.toml` reference, `catalogs/*.toml`, empty `priorities.toml`, GeoNames subset; generated by `tools/gen_*.py` at build time |
+| `assistant/` | MCP assistant: `registry` (tools populated by importing `tools/`), 17 provider-neutral tools, `serialize`, `proposals`, `outbox` (the only writer, create-only), `apply` (app-side only), `mcp_server` (SDK v2, stdout→stderr) |
+| `seed/` | bundled `objects.toml` reference, `catalogs/*.toml`, GeoNames subset; generated by `tools/gen_*.py` at build time |
 | `publish/` | publisher registry: `site` (Jinja2 static site + stale sweep), `ghpages` (system git, replace/incremental modes, streamed progress, cancel kills push), `select`, `images` (gallery levels), `options` |
 
 **UI (`m110/ui/`, PySide6):**
@@ -159,7 +160,7 @@ DONE.md's archived reference — grep the module name there.
 | `main.py` | shell: nav rail → 6 pages **Library · Overview · Planning · Import · Processing · Devices**; `_build_menus()` (File/View/Library/Tools/Help, `MenuRole` hoisting); `RefreshWorker`; auto-sync on launch/focus/ingest; `open_object(slug)`; `_ready` gates launch workers |
 | `widgets.py` | shared table/thumbnail helpers (`ThumbnailLoader`, `fit_table_height`, `fit_cell_widgets`), launch helpers, **`drain_worker`**, **`modal_loop_active`/`defer`/`connect_context_menu`** |
 | `image_grid.py` | reusable tile grid (model + delegate), app-data-agnostic |
-| `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, processing/sessions tables, handoff/import buttons |
+| `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, integration goals (per model, Set goal… → `goal_dialog`), processing/sessions tables, handoff/import buttons |
 | `pages/catalog.py` | the Library: List/Grid/Feed views + Deep-sky/Media scope, filters, right-click actions |
 | `pages/overview.py` | landing dashboard of collapsible sections (goals, pins, integration, checklists, manage goals) |
 | `pages/processing.py` · `pages/sessions.py` · `pages/journal.py` · `pages/media.py` | Siril queue · session log (dialog) · feed view · media browser |

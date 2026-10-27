@@ -43,7 +43,7 @@
       <td>{{ obj.entry.season or '' }}</td>
       <td>
         {% if obj.totals %}
-          <span class="badge {{ obj.totals.status }}">{{ obj.totals.status|status_label }}</span>
+          <span class="badge {{ obj.totals.status }}">{{ obj.totals.status|status_label(obj.totals.progress) }}</span>
         {% else %}
           <span class="badge none">—</span>
         {% endif %}
