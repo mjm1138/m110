@@ -66,6 +66,14 @@ changes a **user** would notice, per release.
   M110 would normally pick (say, a truncated or half-copied PNG) can't be opened,
   it now uses the next best one, such as the JPG or the FITS stack beside it,
   instead of showing no image at all.
+- **Choosing a telescope on the Devices page now reaches Planning.** "Use for planning",
+  a new nickname, retiring a telescope or saving its limits changed the setting, but
+  Planning's Telescope picker kept showing the old one until the next sync, even
+  though the ranking and night plan already used the new telescope.
+- **The object pane no longer scrolls sideways when it shows integration goals.** At the
+  default window size a goal row was wider than the pane, so the pane scrolled
+  horizontally and **Use default** was cut off. The goal dialog is also wider, so its
+  title isn't truncated.
 
 ## [0.3.0-beta.9] - 2026-10-22
 

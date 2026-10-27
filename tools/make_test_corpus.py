@@ -15,7 +15,7 @@ small rendered PNGs) that exercises the whole app:
         10 °C on its one dark, M 76 started right after a fresh one — plus FOUR of the
         five REAL master darks (tests/data/seestar_darklibrary) in
         `Calibration/S50_c0ffee00/darks/`, and all five on the fake device mount → the
-        Sessions "Dark" column, Tools → Devices…, the never-apply guard in prep, and a
+        Sessions "Dark" column, the Devices page, the never-apply guard in prep, and a
         device import that offers exactly one new dark
   * **video media** (a Timelapse_video/*.mp4) → the Media page's video-row path
   * a **per-image curation override** (#17) on M42 → the detail pane's
@@ -1077,7 +1077,7 @@ def main():
           f"(#110: only the 2 new subs are offered — the rejected pair is withheld)")
     print(f"  #      (the same MyWorks also offers the darklibrary/ beside it: one new "
           f"master dark → Calibration/{S50_TELESCOP}/darks/)")
-    print("  # and  Tools → Devices…  (dark library, captures with their dark gap, sensor health)")
+    print("  # and  the Devices page  (dark library, captures with their dark gap, sensor health)")
 
 
 if __name__ == "__main__":
