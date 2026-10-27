@@ -62,6 +62,10 @@ changes a **user** would notice, per release.
   you're planning with, and every telescope's progress on the object.
 
 ### Fixed
+- **Choosing a telescope on the Devices page now reaches Planning.** "Use for planning",
+  a new nickname, retiring a telescope or saving its limits changed the setting, but
+  Planning's Telescope picker kept showing the old one until the next sync, even
+  though the ranking and night plan already used the new telescope.
 - **The object pane no longer scrolls sideways when it shows integration goals.** At the
   default window size a goal row was wider than the pane, so the pane scrolled
   horizontally and **Use default** was cut off. The goal dialog is also wider, so its

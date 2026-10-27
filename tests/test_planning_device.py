@@ -99,7 +99,10 @@ def test_devices_page_sets_the_planning_telescope_and_its_limits(tmp_path, monke
     from tests.test_ui_devices import S50 as S50_ROLLUP, _page
     page = _page(qtbot, devices=[dict(S50_ROLLUP, device=S50, label="S50")])
     assert "another telescope" in page.planning_state.text()
+    told = []
+    page.devices_changed.connect(lambda: told.append(True))
     page.use_for_planning.click()
+    assert told                                  # the shell re-reads Planning's picker
     assert pc.active_device_key() == S50 and page.use_for_planning.isHidden()
     assert page.ceiling.value() == 78.0 and not page.limits_defaults_btn.isEnabled()
     page.ceiling.setValue(74.0)
@@ -111,3 +114,32 @@ def test_devices_page_sets_the_planning_telescope_and_its_limits(tmp_path, monke
     page.limits_defaults_btn.click()
     page.limits_save_btn.click()
     assert "planning" not in devices.load_registry().get(S50, {})
+
+
+def test_a_telescope_chosen_on_devices_reaches_planning(tmp_path, monkeypatch, qapp):
+    """Found in the 2026-10-27 GUI pass: "Use for planning" (and a rename) on the
+    Devices page changed the setting, but Planning's picker kept showing the old
+    telescope — while its ranking and night plan already used the new one."""
+    seed_root(tmp_path, monkeypatch)
+    from m110 import prioritize
+    monkeypatch.setattr(prioritize, "load_contexts", lambda *a, **k: None)
+    _devices_json((S50, "S50", False), (DWARF, "DwarfLab Dwarf 3", False))
+    from m110.ui.main import MainWindow
+    win = MainWindow()
+    win._ready = False
+    try:
+        assert win.planning.device_picker.currentData() == S50     # most recent
+        win.devices.select_device(DWARF)
+        win.devices.use_for_planning.click()
+        qapp.processEvents()
+        assert win.planning.device_picker.currentData() == DWARF
+        # a rename shows in the picker too
+        win.devices.select_device(S50)
+        win.devices.nickname.setText("Backyard S50")
+        win.devices.save_btn.click()
+        qapp.processEvents()
+        labels = [win.planning.device_picker.itemText(i)
+                  for i in range(win.planning.device_picker.count())]
+        assert "Backyard S50" in labels
+    finally:
+        win.deleteLater(); qapp.processEvents()
