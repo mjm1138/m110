@@ -178,6 +178,7 @@ you for it.
 |---|---|
 | `propose_weights` | Proposes a change to the prioritizer's strategy, factor weights or per-type multipliers, and returns the **engine-computed before/after ranking** it would produce. You apply it in M110, or don't. |
 | `propose_pins` | Proposes pinning targets to the top, deprioritizing them, or clearing overrides — with the resulting ranking. |
+| `propose_integration_goal` | Proposes how many minutes an object needs on one telescope (or clearing it back to the default) — with the object's progress before and after, and the ranking change when it's the telescope you're planning with. |
 | `propose_journal_entry` | Proposes text for an object's journal (a critique, a session note, a processing decision). Returns markdown for you to paste — it does not write. |
 | `list_pending` | What's been handed to you and not yet accepted. |
 

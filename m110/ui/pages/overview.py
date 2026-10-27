@@ -389,6 +389,8 @@ class OverviewPage(QScrollArea):
 
     def _catalog_table(self, gid: str, totals: dict):
         members = goals_mod.goal_members(gid)
+        # A goal scoped to one telescope ticks only what that telescope captured.
+        totals = goals_mod.scoped_totals(totals, goals_mod.goal_scope(gid))
         try:
             lib = catalog.load_library()
         except Exception:

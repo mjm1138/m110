@@ -22,6 +22,20 @@ changes a **user** would notice, per release.
   (a faster scope needs less time). Two units of the same model count together.
   Hover the status in the Library to see each telescope's progress. Setting your
   own goal for an object arrives in a following update.
+- **Priority targets are ranked for the telescope you're planning with.** An object
+  you've finished on one scope still counts as new work on another, unless it's in
+  a goal that any telescope can satisfy (more below). Switching telescope in
+  Planning re-ranks at once, and the ranking shows each target's **Of goal**
+  progress; hover it to see which telescope that's for.
+- **A goal can belong to one telescope.** A goal such as Messier can count captures
+  from **any telescope** (the default, as before) or from **one telescope model**
+  only, so "Messier again, on the new scope" isn't marked done by the old one.
+  Goal counts, the Overview checklists and the sky map follow the goal's telescope.
+  Choosing a goal's telescope in Manage goals arrives in a following update.
+- **The assistant can suggest an integration goal.** `propose_integration_goal`
+  proposes how many minutes an object needs on a telescope (say, after measuring
+  the noise in the faint outer disk), with the before/after progress and ranking.
+  You accept it from the assistant banner, as with its other suggestions.
 
 ### Changed
 - **Status is judged per telescope, not on all your time added together.** Minutes

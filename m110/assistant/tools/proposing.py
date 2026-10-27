@@ -28,8 +28,8 @@ def _ranked(weights, strategy, pin_state=None):
             "needs to Recompute on M110's Planning page first — a proposal without the "
             "engine's own preview would be guesswork."
         )
-    return prioritize.rank(contexts, weights, strategy,
-                           pin_state if pin_state is not None else pins.load())
+    return prioritize.rank_for_active(contexts, weights, strategy,
+                                      pin_state if pin_state is not None else pins.load())
 
 
 @register(
@@ -274,4 +274,122 @@ def propose_journal_entry(slug: str, markdown: str, rationale: str,
         journal_slug=slug,
         tools=("get_object", "get_image"),
         functions=("m110.objects.read_journal",),
+    )
+
+
+@register(
+    name="propose_integration_goal",
+    title="Propose an integration goal",
+    description=(
+        "Propose how many minutes of integration an object needs on one telescope "
+        "model — e.g. after measuring a stack's SNR in the faint feature the user is "
+        "after — or clear it back to the default. Shows the object's progress before "
+        "and after, and the ranking change when it's the telescope being planned "
+        "for. Does NOT apply anything. Instant. Read-only."
+    ),
+    params={
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["slug", "rationale"],
+        "properties": {
+            "slug": {"type": "string", "description": "Library slug, e.g. 'm77'."},
+            "rationale": {"type": "string",
+                          "description": "Why this number, in the user's terms."},
+            "minutes": {"type": "number", "exclusiveMinimum": 0,
+                        "description": "The goal, in minutes of captured integration."},
+            "clear": {"type": "boolean",
+                      "description": "Remove the user's goal so the default applies."},
+            "model": {"type": "string",
+                      "description": ("Telescope model key (e.g. 'seestar_s50', "
+                                      "'dwarf_3'; get_object lists the object's under "
+                                      "capture.goals). Default: the telescope "
+                                      "Planning is set to.")},
+            "reason": {"type": "string",
+                       "description": ("One line stored beside the goal so the number "
+                                       "keeps its justification.")},
+        },
+    },
+    cost="instant",
+    engine=("m110.integration_goals.resolve", "m110.integration_goals.active_model",
+            "m110.derived.totals_by_slug", "m110.prioritize.rank"),
+)
+def propose_integration_goal(slug: str, rationale: str, minutes: float | None = None,
+                             clear: bool = False, model: str | None = None,
+                             reason: str | None = None) -> dict:
+    from m110 import catalog, derived, devices, integration_goals as ig
+    from m110.planning_config import DEVICE_PRESETS
+
+    require_store()
+    slug = slug.strip().lower()
+    entry = catalog.load_library().get(slug)
+    if entry is None:
+        raise ToolError(f"No object {slug!r} in this library. Use list_objects to search.")
+    if bool(clear) == (minutes is not None):
+        raise ToolError("Give exactly one of: minutes, clear.")
+
+    registry = devices.load_registry()
+    totals = (derived.totals_by_slug() if derived.derived_available() else {}).get(slug, {})
+    by_model = totals.get("by_model") or {}
+    model = (model or ig.active_model(registry)).strip()
+    known = set(DEVICE_PRESETS) | set(by_model) | set(registry)
+    if model not in known:
+        raise ToolError(f"Unknown telescope model {model!r}. Known: {', '.join(sorted(known))}.")
+
+    obj_type = entry.get("type")
+    current = ig.load()
+    proposed = {s: dict(per) for s, per in current.items()}
+    if clear:
+        proposed.get(slug, {}).pop(model, None)
+    else:
+        item = {"min": float(minutes)}
+        if reason and reason.strip():
+            item["reason"] = reason.strip()
+        proposed.setdefault(slug, {})[model] = item
+
+    have = (by_model.get(model) or {}).get("integration_min", 0.0)
+    before_min, before_src = ig.resolve(slug, obj_type, model, current, registry)
+    after_min, after_src = ig.resolve(slug, obj_type, model, proposed, registry)
+
+    def progress(goal):
+        return {"goal_min": goal, "fraction": round(ig.fraction(have, goal), 3),
+                "status": ig.state(have, goal)}
+
+    preview = {"model": model, "integration_min": have,
+               "before": {**progress(before_min), "goal_source": before_src},
+               "after": {**progress(after_min), "goal_source": after_src}}
+    contexts = prioritize.load_contexts()
+    active = ig.active_model(registry)
+    if contexts and model == active:
+        weights, strategy, state = (prioritize.load_weights(), prioritize.load_strategy(),
+                                    pins.load())
+        preview["ranking"] = proposals.rank_delta(
+            prioritize.rank(contexts, weights, strategy, state, model=active, goals=current),
+            prioritize.rank(contexts, weights, strategy, state, model=active, goals=proposed))
+
+    label = ig.model_label(model, registry)
+    goal_text = (f"back to the default **{after_min:.0f} min**" if clear
+                 else f"**{after_min:.0f} min**")
+    summary = (
+        f"**Proposed integration goal — not applied.**\n\n"
+        f"- {slug.upper()} on the {label}: {goal_text} "
+        f"(was {before_min:.0f} min, {'your goal' if before_src == 'user' else 'default'})\n"
+        f"- Progress: {have:.0f} min → {int(preview['before']['fraction'] * 100)}% now, "
+        f"{int(preview['after']['fraction'] * 100)}% of the new goal\n\n"
+        "To apply: accept it in M110's assistant banner."
+        + ("" if "ranking" not in preview or preview["ranking"]["unchanged"] else
+           "\n\nResulting top of the ranking:\n\n"
+           + proposals.markdown_table(preview["ranking"]["after"])))
+
+    return proposals.emit(
+        action="set_integration_goal",
+        title=f"Integration goal for {slug.upper()}",
+        rationale=rationale,
+        payload={"slug": slug, "model": model,
+                 "minutes": None if clear else float(minutes),
+                 "reason": (reason or "").strip() or None},
+        preview=preview,
+        summary=summary,
+        target={"slug": slug},
+        tools=("get_object",),
+        functions=("m110.integration_goals.resolve",),
     )

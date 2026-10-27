@@ -1728,7 +1728,7 @@ def test_planning_visible_tonight_toggle_filters(tmp_path, monkeypatch, qapp):
             # The ranking table is rebuilt on each re-render (old one deleteLater'd
             # but briefly still in the tree) — take the freshest 7-col table.
             return [t for t in page.findChildren(QTableWidget)
-                    if t.columnCount() == 7][-1]          # #,Object,…,Closes
+                    if t.columnCount() == 8][-1]          # #,Object,…,Of goal,…,Closes
 
         def slugs():
             t = ptable()

@@ -6,10 +6,18 @@ A goal is either a **bundled catalog** id (e.g. "messier", "caldwell") or a
 
     active = ["messier", "my-veil-project"]
 
+    [scope]
+    my-veil-project = "dwarf_3"
+
     [[custom]]
     id = "my-veil-project"
     name = "Veil Project"
     members = ["C33", "C34", "NGC6960"]
+
+A goal's **scope** (#184) says which telescope's captures count toward it: absent =
+**any telescope** (a member counts if any of them shot it), else one telescope
+**model** key (`integration_goals.model_key`) — only that model's captures count,
+so "Messier again, on the new scope" isn't satisfied by the old one.
 
 Per-store (not a global setting) so each data store tracks its own goals and a
 fresh store starts at the default (Messier). Per-goal progress is computed in
@@ -51,6 +59,35 @@ def active_goal_ids() -> list[str]:
     if isinstance(val, list) and val:
         return [str(x) for x in val]
     return list(DEFAULT)
+
+
+def scopes() -> dict[str, str]:
+    """``{goal id: model}`` for every goal scoped to one telescope model."""
+    raw = _load().get("scope", {})
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items() if isinstance(v, str) and v}
+
+
+def goal_scope(gid: str) -> str | None:
+    """The telescope model `gid` counts captures from, or None for any telescope."""
+    return scopes().get(gid)
+
+
+def scoped_totals(by_slug: dict, scope: str | None) -> dict:
+    """``totals.json`` ``by_slug`` as a goal scoped to `scope` sees it: only objects
+    that model captured, each with that model's integration, status and progress.
+    Unscoped (None) → `by_slug` unchanged."""
+    if not scope:
+        return by_slug
+    out = {}
+    for slug, t in by_slug.items():
+        m = (t.get("by_model") or {}).get(scope)
+        if m and (m.get("integration_min") or 0) > 0:
+            out[slug] = {**t, "integration_min": m["integration_min"],
+                         "status": m.get("status"), "progress": m.get("fraction"),
+                         "progress_model": scope}
+    return out
 
 
 def custom_goals() -> list[dict]:
@@ -95,7 +132,7 @@ def goal_name(gid: str) -> str:
 
 def list_goals() -> list[dict]:
     """Every selectable goal — bundled catalogs + custom lists — as
-    `[{id, name, kind, active, total, hemisphere, description, source_url}]`,
+    `[{id, name, kind, active, total, scope, hemisphere, description, source_url}]`,
     sorted bundled-first then by name. `hemisphere` is one of "northern",
     "southern", "allsky" (bundled) or "custom" (custom goals); the Goals page
     uses it to bucket goals into expandable groups."""
@@ -104,12 +141,14 @@ def list_goals() -> list[dict]:
     for c in catalog.list_bundled_catalogs():
         out.append({"id": c["id"], "name": c["name"], "kind": "bundled",
                     "active": c["id"] in active, "total": len(c["members"]),
+                    "scope": goal_scope(c["id"]),
                     "hemisphere": c.get("hemisphere", "") or "allsky",
                     "description": c.get("description", ""),
                     "source_url": c.get("source_url", "")})
     for c in custom_goals():
         out.append({"id": c["id"], "name": c["name"], "kind": "custom",
                     "active": c["id"] in active, "total": len(c["members"]),
+                    "scope": goal_scope(c["id"]),
                     "hemisphere": "custom", "description": "", "source_url": ""})
     out.sort(key=lambda g: (g["kind"] != "bundled", g["name"].lower()))
     return out
@@ -161,6 +200,16 @@ def edit_custom_goal(gid: str, *, name: str | None = None, members=None) -> None
     _write(active_goal_ids(), existing)
 
 
+def set_goal_scope(gid: str, model: str | None) -> None:
+    """Scope `gid` to one telescope model, or back to any telescope (None/"")."""
+    sc = scopes()
+    if model:
+        sc[gid] = model
+    else:
+        sc.pop(gid, None)
+    _write(active_goal_ids(), custom_goals(), sc)
+
+
 def delete_custom_goal(gid: str) -> dict:
     """Delete a custom goal (and deactivate it, pruning the Library like a
     deactivation). Returns {"removed": [slugs]}."""
@@ -168,18 +217,26 @@ def delete_custom_goal(gid: str) -> dict:
     members_snapshot = goal_members(gid)
     remaining = [c for c in custom_goals() if c["id"] != gid]
     active = [g for g in active_goal_ids() if g != gid]
-    _write(active, remaining)
+    sc = scopes()
+    sc.pop(gid, None)
+    _write(active, remaining, sc)
     removed: list[str] = []
     if was_active and members_snapshot:
         removed = catalog.remove_goal_members_from_library(gid, members=members_snapshot)
     return {"removed": removed}
 
 
-def _write(active: list[str], custom: list[dict]) -> None:
-    """Rewrite goals.toml preserving both the active set and the custom goals."""
+def _write(active: list[str], custom: list[dict], scope: dict | None = None) -> None:
+    """Rewrite goals.toml preserving the active set, the scopes (the file's, unless
+    `scope` replaces them) and the custom goals."""
+    scope = scopes() if scope is None else scope
     config.GOALS_TOML.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# Active goals (catalogs / lists being tracked) for this store.",
              "active = [" + ", ".join(_q(i) for i in active) + "]\n"]
+    if scope:
+        lines.append("[scope]")
+        lines += [f"{_q(gid)} = {_q(model)}" for gid, model in sorted(scope.items())]
+        lines.append("")
     for c in custom:
         lines.append("[[custom]]")
         lines.append("id = " + _q(c["id"]))

@@ -677,9 +677,11 @@ the noted refinements, none blocking:
   🔶 in progress, three PRs. **Engine (PR 1):** goals per (object, telescope
   model), defaults = type table × (f_model/f_S50)², the three-state status
   (Initial / "n% of goal" / Deep Stack), rolled up to the most advanced model.
-  **Next:** goal-list telescope scope + the prioritizer ranking per active model +
-  `propose_integration_goal` (PR 2); the detail-pane goal editor, Devices-page
-  optics, retiring `priorities.toml` (PR 3). Still open after: a **v2
+  **Ranking (PR 2):** goal lists scoped to any telescope or one model; the
+  prioritizer ranks for the active telescope (scoped goal → that model's progress,
+  any-telescope goal → best model, else the active model's own);
+  `propose_integration_goal`. **Next (PR 3):** the detail-pane goal editor, the
+  Manage-goals telescope picker, Devices-page optics, retiring `priorities.toml`. Still open after: a **v2
   surface-brightness basis** (mag + size) refining the per-type table.
 - Data/robustness follow-ups tracked in BUGS: **#38b** (reference V-mag audit),
   **#40b/#40d**. (#44, the assistant foundation, shipped with item 4 M0.)
