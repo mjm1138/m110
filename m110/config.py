@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import tomllib
 from pathlib import Path
 
@@ -34,9 +33,6 @@ _SUBDIRS = [
     f"{INTERNAL_DIRNAME}/renders/hero",
     f"{INTERNAL_DIRNAME}/profiles",
 ]
-# Static files copied verbatim from the bundled seed if missing. (library.toml is
-# generated from the object reference — see _seed_library.)
-_SEED_FILES = ["priorities.toml"]
 
 _README_TEXT = """\
 M110 — internal application data
@@ -528,11 +524,8 @@ def ensure_data_root(root=None) -> Path:
     for sub in _SUBDIRS:
         (r / sub).mkdir(parents=True, exist_ok=True)
     internal = r / INTERNAL_DIRNAME
-    for name in _SEED_FILES:
-        dst = internal / name
-        src = SEED_DIR / name
-        if not dst.exists() and src.is_file():
-            shutil.copy(src, dst)
+    # library.toml is generated from the object reference (the retired
+    # priorities.toml is no longer seeded — migrate._mark_priorities_retired).
     _seed_library(internal / "library.toml")
     readme = internal / "README.txt"
     if not readme.exists():

@@ -329,3 +329,50 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
         assert flow.heightForWidth(widest + 8) > flow.heightForWidth(4000)
     finally:
         d.deleteLater(); qapp.processEvents()
+
+
+def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatch, qapp):
+    """Click Set goal… (dialog accepted with 420 min) then Use default (#184)."""
+    from m110 import derived, integration_goals
+    from m110.ui import goal_dialog
+    from m110.ui.detail import DetailPane
+    from tests._helpers import seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    slug, _tid = seed_capture(root)
+    from m110 import catalog
+    e = catalog.load_library()[slug]
+    model = next(iter(derived.totals_by_slug()[slug]["by_model"]))
+    from PySide6.QtWidgets import QDialog
+    monkeypatch.setattr(goal_dialog.GoalDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(goal_dialog.GoalDialog, "minutes", lambda self: 420)
+    monkeypatch.setattr(goal_dialog.GoalDialog, "reason", lambda self: "outer disk")
+
+    d = DetailPane()
+    fired = []
+    d.goals_changed.connect(lambda: fired.append(True))
+    d.show_object(slug, e, derived.totals_by_slug()[slug])
+    btn = next(b for b in d._content.findChildren(QPushButton) if b.text() == "Set goal…")
+    btn.click()
+    qapp.processEvents()
+    assert integration_goals.load()[slug][model] == {"min": 420.0, "reason": "outer disk"}
+    assert derived.totals_by_slug()[slug]["by_model"][model]["goal_min"] == 420  # rederived
+    assert fired == [True]
+    labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
+    assert "of 420 min" in labels and "your goal" in labels
+
+    reset = next(b for b in d._content.findChildren(QPushButton)
+                 if b.text() == "Use default")
+    reset.click()
+    qapp.processEvents()
+    assert integration_goals.load() == {}
+    assert _count(d._content, "Use default") == 0
+
+
+def test_the_goal_dialog_says_cancel_only_with_edits(qapp):
+    from m110.ui.goal_dialog import GoalDialog
+    dlg = GoalDialog("M77", "ZWO Seestar S50", 240, 240, calibrated=False)
+    assert dlg._reject_btn.text() == "Close"
+    dlg._minutes.setValue(420)
+    assert dlg._reject_btn.text() == "Cancel"
+    assert dlg.minutes() == 420 and dlg.reason() == ""

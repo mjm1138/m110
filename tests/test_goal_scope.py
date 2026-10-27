@@ -170,3 +170,25 @@ def test_contexts_round_trip_and_an_old_cache_is_stale(store):
     data.pop("v")                                       # written before #184
     path.write_text(json.dumps(data))
     assert prioritize.is_stale(date.today())
+
+
+def test_copy_for_telescope_makes_a_scoped_snapshot(store):
+    messier = goals.goal_members("messier")
+    gid = goals.copy_for_telescope("messier", "draco", "DwarfLab Draco")
+    assert goals.goal_name(gid) == "Messier · DwarfLab Draco"
+    assert set(goals.goal_members(gid)) == set(messier)
+    assert goals.goal_scope(gid) == "draco" and goals.goal_scope("messier") is None
+    assert gid in goals.active_goal_ids() and "messier" in goals.active_goal_ids()
+    again = goals.copy_for_telescope("messier", "draco", "DwarfLab Draco")
+    assert again != gid                                   # a second copy, uniquified
+    with pytest.raises(ValueError):
+        goals.copy_for_telescope("no-such-goal", "draco")
+
+
+def test_known_models_lead_with_the_users_telescopes(store, monkeypatch):
+    monkeypatch.setattr("m110.derived.load_devices", lambda: [
+        {"device": "S30_bbbb0002"}, {"device": "unknown"}, {"device": "MyScope"}])
+    models = [m for m, _label in ig.known_models()]
+    assert models[:2] == [S30, "MyScope"]
+    assert S50 in models and "unknown" not in models
+    assert len(models) == len(set(models))

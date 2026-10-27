@@ -14,7 +14,9 @@ The store originally mixed machine state and content across `data/`, `Images/`
 store hasn't reached the current version — an old-layout marker triggers the v0→v2
 two-axis reshape, and later version bumps run regardless (v2→v3 renames the
 per-store `catalog.toml` → `library.toml`; v3→v4 purges capture targets that were
-wrongly promoted into the object axis — see `_prune_combined_target_objects`).
+wrongly promoted into the object axis — see `_prune_combined_target_objects`;
+v4→v5 marks the retired `priorities.toml` as no longer read —
+`_mark_priorities_retired`).
 Moves use same-filesystem renames
 (cheap); a re-run resumes a partial move rather than duplicating or destroying
 anything. Qt-free, and only ever exercised on temp/throwaway roots in tests —
@@ -25,7 +27,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-STORE_VERSION = 4
+STORE_VERSION = 5
 INTERNAL_DIRNAME = ".m110_internal_data"
 VERSION_FILE = ".store_version"
 
@@ -149,9 +151,36 @@ def migrate_store(root) -> bool:
     # v3 → v4: purge capture targets that were wrongly promoted into the object axis.
     if _prune_combined_target_objects(root):
         changed = True
+    # v4 → v5: say so in priorities.toml, which nothing has read since the prioritizer.
+    if _mark_priorities_retired(root):
+        changed = True
     if internal.is_dir():
         (internal / VERSION_FILE).write_text(str(STORE_VERSION), encoding="utf-8")
     return changed
+
+
+PRIORITIES_RETIRED_HEADER = (
+    "# M110 no longer reads this file (retired in 0.3; nothing parses it any more).\n"
+    "# Priorities are ranked automatically on the Planning page; pin or deprioritize\n"
+    "# objects there or in the Library, and set an object's integration goal in its\n"
+    "# detail pane. Kept only so nothing you wrote here is lost — safe to delete.\n\n"
+)
+
+
+def _mark_priorities_retired(root: Path) -> bool:
+    """v4 → v5: prepend a "no longer read" header to a hand-edited `priorities.toml`.
+
+    The curated priority list was replaced by the prioritizer long ago, but every
+    store was still seeded with it — so editing it silently did nothing. Prepends
+    only (the user's text is kept verbatim), and only once."""
+    path = root / INTERNAL_DIRNAME / "priorities.toml"
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if text.startswith(PRIORITIES_RETIRED_HEADER.splitlines()[0]):
+        return False
+    path.write_text(PRIORITIES_RETIRED_HEADER + text, encoding="utf-8")
+    return True
 
 
 def _prune_combined_target_objects(root: Path) -> bool:

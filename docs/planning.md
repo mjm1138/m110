@@ -35,8 +35,11 @@ you've captured), weighing:
 - **seasonal urgency** — an object about to leave the evening sky outranks one that
   will keep for months;
 - **completion** — read through the **Strategy** toggle: *capture many* favors
-  untouched targets, *go deep* favors started-but-shallow ones. Thresholds are
-  type-aware (a faint nebula needs far more integration than a cluster);
+  untouched targets, *go deep* favors started-but-shallow ones. Progress is measured
+  against each object's [integration goal](library.md#integration-goals-how-deep-is-deep-enough)
+  **for the telescope you're planning with** — an object finished on one scope is still
+  new work on another, unless it's in a goal any telescope can satisfy. Switching
+  telescope re-ranks at once, and the **Of goal** column shows where each target stands;
 - **tonight** — how high, and for how long, it sits in *your* dark sky.
 
 The **tuning weights** re-rank instantly as you adjust them. Right-click

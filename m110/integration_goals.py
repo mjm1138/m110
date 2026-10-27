@@ -266,3 +266,21 @@ def capture_report(slug: str, obj_type: str | None, totals: dict,
                    "fraction": e.get("fraction"), "status": e.get("status")}
                   for m, e in sorted(by_model.items())],
     }
+
+
+def known_models(registry: dict | None = None) -> list[tuple[str, str]]:
+    """``[(model, label)]`` a goal or a goal list can be set for: every model your
+    telescopes belong to (from `derived/devices.json`), then the remaining presets."""
+    from . import derived, devices
+    from .planning_config import DEVICE_PRESETS
+    reg = devices.load_registry() if registry is None else registry
+    seen: list[str] = []
+    for d in derived.load_devices():
+        key = d.get("device")
+        if not key or key == devices.UNKNOWN:
+            continue
+        m = model_key(key, reg)
+        if m not in seen:
+            seen.append(m)
+    seen += [p for p in DEVICE_PRESETS if p not in seen]
+    return [(m, model_label(m, reg)) for m in seen]

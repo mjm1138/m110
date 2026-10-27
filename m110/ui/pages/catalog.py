@@ -62,6 +62,7 @@ class CatalogPage(QWidget):
     dirty = Signal()                 # disk changed (import) → shell should refresh
     notes_saved = Signal(str)        # Object Notes saved → shell reloads other views
     pins_changed = Signal()          # Pin/Deprioritize override toggled → lightweight reload (#3)
+    goals_changed = Signal()         # integration goal / goal scope changed; derived rebuilt
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -129,6 +130,7 @@ class CatalogPage(QWidget):
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
         self.detail.saved.connect(self.notes_saved)      # re-emit to the shell
+        self.detail.goals_changed.connect(self.goals_changed)
         self.detail.closed.connect(self._on_detail_closed)
         self.detail.hide()                                # nothing selected yet
 

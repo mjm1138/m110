@@ -342,6 +342,10 @@ def test_a_selected_status_chip_takes_the_selection_text_colour(qapp):
     from m110.ui import widgets
     opt = QStyleOptionViewItem()
     assert widgets.chip_color("in_progress", opt) == widgets.status_color("in_progress")
-    opt.state |= QStyle.StateFlag.State_Selected
+    opt.state |= QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_Active
     assert widgets.chip_color("in_progress", opt) == \
-        opt.palette.color(QPalette.ColorRole.HighlightedText)
+        opt.palette.color(QPalette.ColorGroup.Active, QPalette.ColorRole.HighlightedText)
+    # an unfocused view's selection is drawn in the Inactive group (grey on macOS)
+    opt.state &= ~QStyle.StateFlag.State_Active
+    assert widgets.chip_color("in_progress", opt) == \
+        opt.palette.color(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText)

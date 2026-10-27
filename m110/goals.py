@@ -210,6 +210,18 @@ def set_goal_scope(gid: str, model: str | None) -> None:
     _write(active_goal_ids(), custom_goals(), sc)
 
 
+def copy_for_telescope(gid: str, model: str, model_label: str | None = None) -> str:
+    """Track goal `gid` again for one telescope: a new custom goal with the same
+    members (a snapshot — a later change to a bundled list won't reach it), named
+    "<goal> · <telescope>", scoped to `model` and activated. Returns its id."""
+    members = goal_members(gid)
+    if not members:
+        raise ValueError(f"goal {gid!r} has no members")
+    new = create_custom_goal(f"{goal_name(gid)} · {model_label or model}", list(members))
+    set_goal_scope(new, model)
+    return new
+
+
 def delete_custom_goal(gid: str) -> dict:
     """Delete a custom goal (and deactivate it, pruning the Library like a
     deactivation). Returns {"removed": [slugs]}."""

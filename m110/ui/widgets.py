@@ -154,7 +154,11 @@ def chip_color(status: str | None, option) -> QColor:
     except on a selected item, where it takes the selection's text colour — a blue
     "in progress" chip would otherwise vanish into a blue selection highlight."""
     if option.state & QStyle.StateFlag.State_Selected:
-        return option.palette.color(QPalette.ColorRole.HighlightedText)
+        # The selection's own text colour, in the group it's drawn in: macOS paints
+        # an unfocused view's selection light grey with dark text, not blue + white.
+        group = (QPalette.ColorGroup.Active if option.state & QStyle.StateFlag.State_Active
+                 else QPalette.ColorGroup.Inactive)
+        return option.palette.color(group, QPalette.ColorRole.HighlightedText)
     return status_color(status)
 
 
