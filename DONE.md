@@ -755,6 +755,36 @@ palette's highlighted-text colour, for both the table pill and the grid tile.
 default; goal-list telescope scope; the goal editor and Devices-page optics;
 retiring `priorities.toml`.
 
+## Integration goals — goal scope + per-model ranking *(done 2026-10-27, `feature/integration-goals-ranking`, #184 PR 2 of 3)*
+
+**Goal scope.** `goals.toml` gained a `[scope]` table (goal id → model; absent =
+any telescope). `goals.scoped_totals(by_slug, scope)` is the one view a scoped goal
+sees — only that model's captures, with its status/progress — and `build_goals`,
+the Overview checklists and `skymap.render(scope=…)` all read through it. `_write`
+now preserves `[scope]` across every other goals write (it used to rewrite only
+`active` + `[[custom]]`), and deleting a custom goal drops its scope.
+
+**Ranking.** Contexts hold facts, ranking applies preferences — the split pins
+already used. `TargetContext` appended `integration_by_model` + `goal_scopes`;
+`score_target(…, model, goals, registry)` picks the progress basis
+(`_progress_basis`): a goal scoped to the model → that model; else an
+any-telescope goal → the best model; else the model's own. The goal boost counts
+only goals that apply to the model. `rank_for_active` is what every app surface
+calls, so a goal edit or a telescope switch re-ranks with no astropy rebuild.
+`prioritized.json` carries `"v": 2` and an older cache is stale; meanwhile a
+legacy context reads `in_active_goal` as any-telescope and its total minutes as the
+active model's, so the first render after an upgrade isn't nonsense.
+
+**`propose_integration_goal`** — the 17th tool. Action `set_integration_goal` is on
+the safe-write list; the fingerprint hashes `integration_goals.toml` so a goal
+changed after drafting is drift; the apply handler re-derives (`build_derived.main`,
+no scan) so the pill follows at once. The ranking preview is only computed when the
+goal is for the planning telescope — for another model it would be an unchanged
+table pretending to be evidence.
+
+**Not yet (PR 3):** the UI to set a goal or a goal's scope; Devices-page optics;
+retiring `priorities.toml`; corpus goals.
+
 ## Frame-selection tiers revised on M1 *(done 2026-10-20, `feature/filter-tiers-m1`)*
 
 #174's table (roundness 95/92/90, background off on dual-band, star count off) was

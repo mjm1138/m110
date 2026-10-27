@@ -861,18 +861,21 @@ def build_summary(catalog: dict, totals: dict) -> dict:
 
 def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
     """Per active goal (bundled catalog *or* custom list), progress over its
-    members: {id, name, total, captured, deep, percent, in_progress}.
-    Captured/deep come from the object-level rollup (by_slug). `in_progress` is
-    the short list of members captured but still below the deep-stack target —
-    {slug, name} — for the "in-progress captures" view."""
+    members: {id, name, scope, total, captured, deep, percent, in_progress}.
+    Captured/deep come from the object-level rollup (by_slug) — or, for a goal
+    scoped to one telescope model, from that model's captures only
+    (`goals.scoped_totals`). `in_progress` is the short list of members captured
+    but still below their integration goal — {slug, name} — for the "in-progress
+    captures" view."""
     from . import catalog, goals as goals_mod
-    by_slug = totals["by_slug"]
     ref = catalog.load_reference()
     out = []
     for gid in active_ids:
         members = goals_mod.goal_members(gid)
         if not members:
             continue
+        scope = goals_mod.goal_scope(gid)
+        by_slug = goals_mod.scoped_totals(totals["by_slug"], scope)
         name = goals_mod.goal_name(gid)
         captured = [s for s in members if s in by_slug]
         deep = [s for s in captured if by_slug[s].get("status") == "deep_stack"]
@@ -882,7 +885,7 @@ def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
         ]
         total = len(members)
         out.append({
-            "id": gid, "name": name, "total": total,
+            "id": gid, "name": name, "scope": scope, "total": total,
             "captured": len(captured), "deep": len(deep),
             "percent": round(100 * len(captured) / total, 1) if total else 0.0,
             "in_progress": in_progress,

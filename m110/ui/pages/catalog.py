@@ -611,7 +611,9 @@ class CatalogPage(QWidget):
         try:
             charts, warnings = skymap.render(
                 self._map_slugs(), colors=status_colors(),
-                palette=chart_palette(), font_family=mono_font().family())
+                palette=chart_palette(), font_family=mono_font().family(),
+                # a goal scoped to one telescope colours by that telescope alone
+                scope=goals.goal_scope(self._catalog_filter or ""))
         except skymap.SkymapDepsMissing as exc:
             self.map_view.show_unavailable(str(exc))
             self._map_dirty = False

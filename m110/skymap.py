@@ -31,7 +31,7 @@ degrade-gracefully contract as `publish.PublishDepsMissing` and
 
 from __future__ import annotations
 
-from . import catalog, derived, objects
+from . import catalog, derived, goals, objects
 
 # Capture status drives marker color. These are the status strings
 # `build_derived` already computes (graded against each telescope's integration
@@ -124,6 +124,7 @@ def build_config(
     title: str | None = None,
     mirror: bool = False,
     heroes: bool = True,
+    scope: str | None = None,
 ) -> tuple[dict, list[str], list[str]]:
     """Build a uranometria chart config as ``(config, charted, skipped)``.
 
@@ -145,7 +146,7 @@ def build_config(
     library = catalog.load_library()
     reference = catalog.load_reference()
     coords = catalog.load_coords()
-    by_slug = derived.totals_by_slug()
+    by_slug = goals.scoped_totals(derived.totals_by_slug(), scope)
     palette = {**DEFAULT_COLORS, **(colors or {})}
 
     # A slug need not be in the Library: charting a goal's *unshot* members is
@@ -199,6 +200,7 @@ def render(
     title: str | None = None,
     mirror: bool = False,
     empty_sky: bool = True,
+    scope: str | None = None,
 ) -> tuple[list, list[str]]:
     """Render the chart as ``(charts, warnings)``.
 
@@ -212,6 +214,9 @@ def render(
     the caller keeps the uid→slug correspondence next to the code that
     establishes it — a caller re-deriving it from its own list would be wrong the
     moment one object lacks coordinates.
+
+    `scope` (a telescope model) colors markers by that model's captures alone —
+    the view of a goal scoped to one telescope (`goals.scoped_totals`).
 
     `colors` overrides the per-status marker colors; `palette` themes the chart
     itself (sky, grid, constellation lines — any subset of
@@ -228,7 +233,7 @@ def render(
     """
     uranometria = _uranometria()
     config, charted, skipped = build_config(
-        slugs, colors=colors, title=title, mirror=mirror
+        slugs, colors=colors, title=title, mirror=mirror, scope=scope
     )
     warnings = []
     if skipped:
@@ -250,7 +255,7 @@ def render(
     charts, chart_warnings = uranometria.render_svg(
         config, palette=palette, font_family=font_family, allow_online=False
     )
-    by_slug = derived.totals_by_slug()
+    by_slug = goals.scoped_totals(derived.totals_by_slug(), scope)
     for chart in charts:
         chart["objects"] = [] if empty else [
             {**m, "slug": charted[m["uid"]],

@@ -49,6 +49,7 @@ ARGS = {
     "get_image": {"slug": "m101"},
     "propose_weights": {"rationale": "test", "strategy": "deep"},
     "propose_pins": {"rationale": "test", "pin": ["m101"]},
+    "propose_integration_goal": {"slug": "m101", "minutes": 420, "rationale": "test"},
     "propose_journal_entry": {"slug": "m101", "markdown": "note", "rationale": "test"},
     "save_field_guide": {"title": "test plan", "markdown": "# Plan\n"},
     "plan_stack": {"target": "M51"},
@@ -250,6 +251,8 @@ ENGINE_WRITERS = {
     # invoked. `build_plan`/`resolve_layout`/`format_report` are pure and stay off
     # this list on purpose — that pure half is exactly what `plan_stack` exposes.
     "run_siril", "apply_handoff",
+    # integration goals + goal scope (#184): the user's prefs; only apply.py writes
+    "set_goal", "clear_goal", "set_goal_scope",
 }
 
 

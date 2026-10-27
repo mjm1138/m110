@@ -85,6 +85,6 @@ set, say that what you are looking at was stretched by M110 for display. See the
 
 ## When the user asks you to change something
 
-You cannot. This server is read-only. Use `propose_weights`, `propose_pins`, or
-`propose_journal_entry`, then show the user the proposal's `summary`, which
+You cannot. This server is read-only. Use `propose_weights`, `propose_pins`,
+`propose_integration_goal`, or `propose_journal_entry`, then show the user the proposal's `summary`, which
 carries the exact steps. Never imply a change has been made.

@@ -73,5 +73,8 @@ which targets recur, which are best on which night, and what closes soonest.
 Reach for a proposal rather than hand-editing the target list. If they want more
 galaxies, `propose_weights` with a galaxy multiplier and show them the
 engine-computed before/after. If they want one specific object first,
-`propose_pins`. Both return the ranking that *would* result, which is a real
-answer rather than a promise.
+`propose_pins`. If an object they consider finished keeps ranking (or one
+they want deeper has dropped out), its integration goal is wrong for them:
+`propose_integration_goal`. Each returns the ranking that *would* result, which
+is a real answer rather than a promise. The ranking is always for the telescope
+Planning is set to — say which.
