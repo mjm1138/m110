@@ -367,6 +367,9 @@ class DetailPane(QScrollArea):
                 f"<b>{integration_goals.model_label(model, reg)}</b> · "
                 f"{have:.0f} of {goal:.0f} min ({int(frac * 100)}%) · {whose}")
             text.setTextFormat(Qt.RichText)
+            # Wraps, so a long model name + progress never sets the pane's minimum
+            # width (unwrapped, it clipped the buttons at the default window size).
+            text.setWordWrap(True)
             reason = goals.get(slug, {}).get(model, {}).get("reason")
             if reason:
                 text.setToolTip(reason)

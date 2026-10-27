@@ -873,8 +873,10 @@ checklist, computed on the fly. Consequences:
   keys (`objects.get_curation`/`set_curation`, one list each; hero stays the existing
   `hero:` key). The detail-pane galleries are *derived* from tier + these overrides.
   Hero rendering keys on **source identity** (a `renders/hero/<slug>.src` sidecar), so
-  set-hero to an older image re-renders correctly. All authored (mutable, persistent),
-  no `.store_version` impact (journal frontmatter + settings only).
+  set-hero to an older image re-renders correctly; the sidecar names the source
+  actually rendered (an undecodable pick falls through to the next candidate). All
+  authored (mutable, persistent), no `.store_version` impact (journal frontmatter +
+  settings only).
 
 ### Reference images for uncaptured objects + attribution (decided 2026-06-30)
 - **Goal:** show a thumbnail/hero for objects the user hasn't captured yet (and let
@@ -888,7 +890,7 @@ checklist, computed on the fly. Consequences:
 - **New data seam:** a **reference-image tier** distinct from the capture tiers
   (`finished/ → stacks/ → seestar-stacks/`) — proposed `seed/object_images/<slug>.jpg`
   (bundled) and/or a cached `.m110_internal_data/renders/ref/<slug>.jpg` (fetched).
-  `build_images._hero_source` consults it **only when there is no real capture**, so a
+  `build_images._hero_candidates` consults it **only when there is no real capture**, so a
   capture always wins. The Library/grid/detail must visibly distinguish a reference
   image from the user's own data.
 - **Attribution is mandatory, authored/reference state:** per reference image, store

@@ -245,6 +245,7 @@ class MainWindow(QMainWindow):
         self.processing.open_object.connect(self.open_object)
         self.devices.open_object.connect(self.open_object)
         self.devices.goals_changed.connect(self._on_goals_changed)
+        self.devices.devices_changed.connect(self._on_devices_changed)
         self.import_page.imported.connect(
             lambda moved: self._do_refresh() if moved else None)
 
@@ -610,6 +611,14 @@ class MainWindow(QMainWindow):
         # place) — used for changes with no image impact (notes edit).
         for p in self.pages:
             if p is not self.catalog:
+                p.reload()
+
+    def _on_devices_changed(self):
+        # The Devices page renamed or retired a telescope, made one the planning
+        # telescope, or changed its limits — every other page re-reads telescopes
+        # (Planning's picker and ranking, the session tables' Device column).
+        for p in self.pages:
+            if p is not self.devices:
                 p.reload()
 
     def _on_goals_changed(self):

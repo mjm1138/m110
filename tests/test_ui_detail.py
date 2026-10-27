@@ -349,30 +349,58 @@ def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatc
     monkeypatch.setattr(goal_dialog.GoalDialog, "reason", lambda self: "outer disk")
 
     d = DetailPane()
-    fired = []
-    d.goals_changed.connect(lambda: fired.append(True))
-    d.show_object(slug, e, derived.totals_by_slug()[slug])
-    btn = next(b for b in d._content.findChildren(QPushButton) if b.text() == "Set goal…")
-    btn.click()
-    qapp.processEvents()
-    assert integration_goals.load()[slug][model] == {"min": 420.0, "reason": "outer disk"}
-    assert derived.totals_by_slug()[slug]["by_model"][model]["goal_min"] == 420  # rederived
-    assert fired == [True]
-    labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
-    assert "of 420 min" in labels and "your goal" in labels
+    try:
+        fired = []
+        d.goals_changed.connect(lambda: fired.append(True))
+        d.show_object(slug, e, derived.totals_by_slug()[slug])
+        btn = next(b for b in d._content.findChildren(QPushButton)
+                   if b.text() == "Set goal…")
+        btn.click()
+        qapp.processEvents()
+        assert integration_goals.load()[slug][model] == {"min": 420.0,
+                                                         "reason": "outer disk"}
+        assert derived.totals_by_slug()[slug]["by_model"][model]["goal_min"] == 420
+        assert fired == [True]
+        labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
+        assert "of 420 min" in labels and "your goal" in labels
 
-    reset = next(b for b in d._content.findChildren(QPushButton)
-                 if b.text() == "Use default")
-    reset.click()
-    qapp.processEvents()
-    assert integration_goals.load() == {}
-    assert _count(d._content, "Use default") == 0
+        reset = next(b for b in d._content.findChildren(QPushButton)
+                     if b.text() == "Use default")
+        reset.click()
+        qapp.processEvents()
+        assert integration_goals.load() == {}
+        assert _count(d._content, "Use default") == 0
+    finally:
+        d.deleteLater(); qapp.processEvents()
 
 
 def test_the_goal_dialog_says_cancel_only_with_edits(qapp):
     from m110.ui.goal_dialog import GoalDialog
     dlg = GoalDialog("M77", "ZWO Seestar S50", 240, 240, calibrated=False)
-    assert dlg._reject_btn.text() == "Close"
-    dlg._minutes.setValue(420)
-    assert dlg._reject_btn.text() == "Cancel"
-    assert dlg.minutes() == 420 and dlg.reason() == ""
+    try:
+        assert dlg._reject_btn.text() == "Close"
+        dlg._minutes.setValue(420)
+        assert dlg._reject_btn.text() == "Cancel"
+        assert dlg.minutes() == 420 and dlg.reason() == ""
+    finally:
+        dlg.deleteLater(); qapp.processEvents()
+
+
+def test_the_goal_rows_never_widen_the_pane(tmp_path, monkeypatch, qapp):
+    """At the default window size the pane is ~440 px wide. Unwrapped, a goal row
+    (model name · progress · whose + two buttons) set a ~510 px minimum → the pane
+    scrolled sideways and clipped "Use default" (found in the 2026-10-27 GUI pass)."""
+    from m110 import catalog, derived, integration_goals
+    from m110.ui.detail import DetailPane
+    from tests._helpers import seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    slug, _tid = seed_capture(root)
+    model = next(iter(derived.totals_by_slug()[slug]["by_model"]))
+    integration_goals.set_goal(slug, model, 420, "a reason")     # adds "Use default"
+    d = DetailPane()
+    try:
+        d.show_object(slug, catalog.load_library()[slug], derived.totals_by_slug()[slug])
+        qapp.processEvents()
+        assert d._content.minimumSizeHint().width() < 400
+    finally:
+        d.deleteLater(); qapp.processEvents()

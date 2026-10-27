@@ -175,7 +175,7 @@ What it contains (and what each fixture exercises):
 | **AppleDouble `._` sidecars** beside one M51 light, the M51 Seestar stack, the M63 finished render, `profiles/default.toml` and the M51 journal (the real 48-byte header) | **#161 — a data root on NFS/SMB from a Mac**: the app must start (the `._default.toml` is not a profile), sessions count M51's real subs only, Siril prep links no `._` file, the gallery shows no `._` render, and a backup copies none of them. A tester on a real NFS mount gets these for free; a local-disk tester gets them from the corpus | §2.1, §2.4 |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
 | **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one | §2.2, §2.4 |
-| `M 72` + `M 76` (Seestar S50 `S50_c0ffee00`, TELESCOP/GAIN/CCD-TEMP subs replaying 2026-10-15) + `Calibration/S50_c0ffee00/darks/` (4 **real** masters from `tests/data/seestar_darklibrary/`); the device mount adds `Seestar S50/darklibrary/20s/` (all 5) + `MyWorks/M 72_sub` | **Seestar dark library**: the never-apply guard, the Sessions **Dark** column (M 72 Δ10.5 ⚠ confirmed), Tools → Devices…, a device import offering exactly one new dark | §2.2 |
+| `M 72` + `M 76` (Seestar S50 `S50_c0ffee00`, TELESCOP/GAIN/CCD-TEMP subs replaying 2026-10-15) + `Calibration/S50_c0ffee00/darks/` (4 **real** masters from `tests/data/seestar_darklibrary/`); the device mount adds `Seestar S50/darklibrary/20s/` (all 5) + `MyWorks/M 72_sub` | **Seestar dark library**: the never-apply guard, the Sessions **Dark** column (M 72 Δ10.5 ⚠ confirmed), the **Devices** page, a device import offering exactly one new dark | §2.2 |
 | A second scope `S30_deadbeef` ("Travel S30" in `devices.toml`): all of M13 + a 6-frame M51 session the same night as the S50's; every synthetic Seestar sub carries `TELESCOP` | **Devices page**: three devices, a nickname from the registry, per-device objects/integration, and the same-night **session split** | §2.2 |
 
 The generator is covered by `tests/test_make_test_corpus.py`, which builds and
@@ -308,7 +308,7 @@ re-run when its area changes and you want eyes on the visuals).
       (selected object + scroll preserved; no flicker).
 - [ ] An auto-refresh that **does** find changes preserves the selected object.
 - [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
-- [ ] Manual override still works: View menu → Refresh (Ctrl+R).
+- [ ] Manual override still works: **Library** menu → Refresh (Ctrl+R).
 
 #### Updates — banner + Preferences  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
 - [ ] **Help → Check for updates…**: an up-to-date build shows "You're up to date"; a
@@ -367,6 +367,8 @@ re-run when its area changes and you want eyes on the visuals).
       literal `Unknown` target is created.
 - [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
       (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
+      The import source's `stacked-16_*.png` is a 3-byte placeholder that can't decode: the
+      hero must still appear (it falls through to `stacked.jpg`), not go blank.
 
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
@@ -479,8 +481,8 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] M51 detail → **Integration goals**: an S50 row and a Travel S30 row. **Set goal…**
       on the S50 → 10 min → the S50 row and the Library pill update at once (no Sync);
       **Use default** restores it. The dialog's button reads Close until you edit.
-- [ ] **Overview → Manage goals**: the corpus **Travel scope** goal shows *Travel S30*
-      and counts 2/3 (M42 is Dwarf-only). Set **Messier** to the S30 → its captured
+- [ ] **Overview → Manage goals**: the corpus **Travel scope** goal's picker shows the
+      **model**, *ZWO Seestar S30* (goals are per model, not per unit), and counts 2/3 (M42 is Dwarf-only). Set **Messier** to the S30 → its captured
       count drops to the S30's objects; back to *Any telescope* restores it.
 - [ ] **Track for another telescope…** on Messier → pick the Dwarf 3 → a *Messier ·
       DwarfLab Dwarf 3* goal appears, active, counting only M42.
@@ -1123,7 +1125,8 @@ A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
       day number and weekday name renders (no "…"), the selected date is a clear
       accent block, and the **Night:** field itself is readable in **dark mode**.
 - [ ] **Generate plan:** pick a date + **Targets** count → schedule rows are
-      back-to-back (each Start = previous end), starts on 10-minute marks, no
+      back-to-back (each Start = previous end) — except a gap of whole 10-minute ticks
+      where no candidate is startable yet — starts on 10-minute marks, no
       **Alt** above ~75° (regression, #37), and the **Moon** column shows "—"
       whenever the moon is down at that slot (regression, #36). Changing **Targets**
       re-sequences instantly; changing the date **clears** the plan ("Night
@@ -1283,7 +1286,8 @@ data / a packaged build where noted).
 - [ ] **Planning date-picker readable** (#43): the **Night:** calendar popup renders every
       day/weekday, the selection is a clear accent block, and the field reads in **dark
       mode**.
-- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks, no
+- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks (a gap
+      only where nothing is startable yet), no
       **Alt** above ~75°, **Moon** reads "—" when the moon is down, and changing the date
       **clears** the stale plan. *(`test_planning_night.py`.)*
 - [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends

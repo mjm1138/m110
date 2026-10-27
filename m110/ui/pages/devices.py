@@ -139,6 +139,9 @@ class DevicesPage(QWidget):
     # A telescope's model or optics changed, which moves integration goals and so
     # statuses; derived data is already rebuilt.
     goals_changed = Signal()
+    # A telescope's name, the planning telescope or its limits changed: pages that
+    # show telescopes (Planning's picker, session tables) must re-read them.
+    devices_changed = Signal()
 
     def __init__(self, parent=None, devices_data: list[dict] | None = None):
         super().__init__(parent)
@@ -488,6 +491,8 @@ class DevicesPage(QWidget):
                         else None)
         if integration_goals.model_key(key) != model_before:
             self._goals_moved()               # a new model means different goals
+        else:
+            self.devices_changed.emit()       # a new name or retirement shows elsewhere
 
     # optics -----------------------------------------------------------------
 
@@ -630,11 +635,13 @@ class DevicesPage(QWidget):
         devices.save_device(key, planning=self._limits_overrides(key) or None)
         self.limits_save_btn.setEnabled(False)
         self._refresh_limits_note(key)
+        self.devices_changed.emit()
 
     def _use_for_planning(self):
         if self._current:
             pc.set_active_device(self._current["device"])
             self._load_planning(self._current)
+            self.devices_changed.emit()
 
     # objects ------------------------------------------------------------------
 
