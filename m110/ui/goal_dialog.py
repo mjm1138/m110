@@ -17,6 +17,7 @@ class GoalDialog(QDialog):
                  parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Integration goal — {object_label}")
+        self.setMinimumWidth(440)        # else the title truncates and the intro wraps tall
         lay = QVBoxLayout(self)
         intro = QLabel(
             f"How many minutes of captured integration {object_label} needs on the "
