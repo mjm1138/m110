@@ -44,6 +44,12 @@ as photos rather than staying hidden.
 Click any object to open its **detail pane**: the hero, object notes, the gallery, its
 capture sessions, and its processing status.
 
+The sessions table has a **Device** column naming the telescope that shot each
+session, so two telescopes on the same object on the same night are two sessions, not
+one merged row. For a Seestar, the **Dark** column shows which dark the telescope
+applied and how far the sensor drifted from it (see
+**[the Devices page](devices.md#the-dark-library-seestar)**).
+
 ## The sky map
 
 The **Map** view draws a star atlas of your Library: constellation figures, stars, the
@@ -101,7 +107,7 @@ Add a reason if you like ("outer disk still noisy at 3′") — it's kept with t
 marked as needing seven hours keeps coming up until it gets them.
 
 A telescope M110 doesn't recognise has no f-ratio until you give it one: enter its
-aperture and focal length under **Optics** on the **Devices** page.
+aperture and focal length under **Optics** on the **[Devices](devices.md#optics)** page.
 
 ### Goals for one telescope
 
@@ -168,10 +174,11 @@ which folder it's in, and you can override any image:
   (saved per-object, so it sticks).
 - **Set as hero** makes that image the object's headline thumbnail — even an *older* image
   than the current hero (the hero re-renders rather than going stale).
-- **Open in default app** / **Reveal in file manager** hand the file off to your OS.
+- **Open in default app** / **Reveal in Finder** (**Reveal in file manager** on Windows
+  and Linux) hand the file off to your OS; Reveal opens the folder with the file selected.
 
 What counts as a "finished" render versus an intermediate by-product is decided by
 filename keywords you control in **Preferences → Finished-image hints** (defaults:
 `processed`, `final`, `finished`, and the intermediates `starless`, `starmask`).
 
-Next: **[Processing prep & hardlinks →](processing.md)**
+Next: **[Your telescopes — the Devices page →](devices.md)**

@@ -40,11 +40,11 @@ record of what the telescope did:
   it during the capture — "24.9 °C · Δ10.5 ⚠". A ⚠ means more than 3 °C: hot pixels
   in the drifted subs are over- or under-subtracted. `m110-stack --max-dark-gap 3`
   leaves those subs out of a stack.
-- The **Devices** page (last on the rail) shows each telescope's dark library, the
-  captures each dark served, and its sensor health over time (dark level and
+- The **[Devices](devices.md)** page (last on the rail) shows each telescope's dark
+  library, the captures each dark served, and its sensor health (dark level and
   hot-pixel count against temperature). Darks are named by when the telescope made
   them and at what temperature ("Oct 15 21:52 · 13.9 °C") in both tables; select a
-  capture to highlight its darks, and right-click either to reveal the file.
+  capture to highlight its darks, and right-click a dark to reveal its file.
 
 Which dark a capture got is *inferred* — the Seestar doesn't record it — from
 when each dark was made (its filename time) and the sensor temperature. A link says

@@ -71,7 +71,7 @@ def test_nav_follows_the_order_the_readme_links_them_in(built):
     html = (built / TAG / "index.html").read_text()
     block = re.search(r"<nav>(.*?)</nav>", html, re.S).group(1)
     nav = re.findall(r'<a href="([a-z]+)\.html"', block)
-    assert nav[:4] == ["index", "ingest", "library", "processing"]
+    assert nav[:5] == ["index", "ingest", "library", "devices", "processing"]
     assert nav[-1] == "changelog"
 
 
@@ -146,7 +146,8 @@ def test_from_tag_publishes_what_that_release_shipped(tmp_path, monkeypatch):
     build_docs.build(tag, quiet=True, from_tag=True)
     for slug, heading in added:
         page = tmp_path / "docs" / tag / f"{slug}.html"
-        assert heading not in page.read_text(), (
+        # A page written after the tag isn't published under it at all.
+        assert not page.exists() or heading not in page.read_text(), (
             f"{heading!r} was added after {tag} but appears in its directory")
 
 
