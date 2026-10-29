@@ -1683,6 +1683,10 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
     tool genuinely read-only, at the cost of two warnings it cannot raise.
     """
     ov = ov or Overrides()
+    # 0 is how both overrides say "off"; below that there is no meaning to guess.
+    for flag, value in (("--drizzle", ov.drizzle), ("--feather", ov.feather)):
+        if value is not None and value < 0:
+            raise StackingError(f"{flag} {value:g} is negative; use 0 to turn it off.")
     working, lights = resolve_layout(resolve_input(directory))
 
     all_frames, geom = read_frames(lights)
@@ -1718,13 +1722,16 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
         p.warnings.append(gap_warning)
 
     # ---- apply overrides -------------------------------------------------
-    if ov.drizzle is not None:
+    # A numeric 0 is a value the user typed, never "not given": for drizzle and
+    # feather it means off. `--drizzle 0` once meant drizzle ON at scale 0, and
+    # `--feather 0` was dropped so a mosaic kept its 30px default (#193).
+    if ov.drizzle:
         p.set("drizzle", True, "set on the command line")
         p.set("drizzle_scale", ov.drizzle, "")
         p.set("debayer", False, "drizzle is on, so the CFA must stay raw")
     if ov.pixfrac is not None:
         p.set("pixfrac", ov.pixfrac, "")
-    if ov.no_drizzle:
+    if ov.no_drizzle or ov.drizzle == 0:
         p.set("drizzle", False, "disabled on the command line")
         p.set("drizzle_scale", 1.0, "")
         p.set("debayer", True, "drizzle is off, so the CFA must be debayered here")
@@ -1739,8 +1746,14 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
     if ov.no_bg_extract:
         p.set("bg_extract", False, "disabled on the command line")
     apply_filter_overrides(p, s, ov)
-    if ov.feather:
-        p.set("feather", ov.feather, "set on the command line")
+    if ov.feather is not None:
+        p.set("feather", ov.feather or None,
+              "set on the command line" if ov.feather else "disabled on the command line")
+        if not ov.feather and s.is_mosaic:
+            p.warnings.append(
+                "Feathering is off on a mosaic: each frame's contribution will end "
+                "abruptly at its border, which is what produced visible tiling at "
+                "the edges of NGC 7000.")
     if ov.no_compress:
         p.set("compress", False, "disabled on the command line")
     if ov.compress_quant is not None:
@@ -2033,7 +2046,8 @@ def main() -> int:
                    help="stack only frames from this night (repeatable)")
     g.add_argument("--exclude-night", action="append", metavar="YYYY-MM-DD",
                    help="drop a night, e.g. one with poor seeing (repeatable)")
-    g.add_argument("--drizzle", type=float, metavar="SCALE")
+    g.add_argument("--drizzle", type=float, metavar="SCALE",
+                   help="drizzle at this scale (0 = off, same as --no-drizzle)")
     g.add_argument("--pixfrac", type=float)
     g.add_argument("--no-drizzle", action="store_true")
     g.add_argument("--rejection", help='e.g. "w 3 3", "l 5 5", "p 0.2 0.1", "none"')
@@ -2051,7 +2065,8 @@ def main() -> int:
                        ("bkg", "background"), ("nbstars", "star-count")):
         g.add_argument(f"--filter-{flag}", type=float, metavar="PCT",
                        help=f"set only the {name} threshold (100 = off)")
-    g.add_argument("--feather", type=int, metavar="PX")
+    g.add_argument("--feather", type=int, metavar="PX",
+                   help="blend frame borders over PX pixels (0 = off; mosaics default to 30)")
     g.add_argument("--no-compress", action="store_true")
     g.add_argument("--compress-quant", type=int, metavar="Q",
                    help="Rice quantisation 0-256 (default 16; higher = less loss)")

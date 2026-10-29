@@ -1371,3 +1371,56 @@ def test_check_preset_flags_label_mismatch(label, filt, warns):
     p = Proposal()
     _stk.check_preset({"filter": label}, _filter_survey(50, filt), p)
     assert bool(p.warnings) is warns
+
+
+# --------------------------------------------------------------------------
+# zero-valued overrides — 0 is a value the user typed, not "not given" (#193)
+# --------------------------------------------------------------------------
+
+
+def _mosaic_dir(tmp_path):
+    """Two tiles well apart, so the surveyor calls it a mosaic (feather 30)."""
+    d = tmp_path / "siril"
+    for tile, ra in enumerate((300.0, 300.05)):
+        for i in range(4):
+            _sub(d / "lights" / f"T{tile}_{i}.fit", OBJECT="NGC 7000",
+                 RA=ra, DEC=44.0, **_GEOM)
+    return d
+
+
+def test_mosaic_proposes_feathering_by_default(tmp_path):
+    plan = build_plan(_mosaic_dir(tmp_path), deep_measure=False)
+    assert plan.survey.is_mosaic
+    assert plan.proposal.get("feather") == 30
+    assert "-feather=30" in plan.stack_ssf
+
+
+def test_feather_override_reaches_the_stack_script(tmp_path):
+    plan = build_plan(_mosaic_dir(tmp_path), Overrides(feather=10), deep_measure=False)
+    assert "-feather=10" in plan.stack_ssf
+
+
+def test_feather_zero_turns_feathering_off_and_warns_on_a_mosaic(tmp_path):
+    plan = build_plan(_mosaic_dir(tmp_path), Overrides(feather=0), deep_measure=False)
+    assert plan.proposal.get("feather") is None
+    assert "-feather" not in plan.stack_ssf
+    assert "disabled" in plan.proposal.settings["feather"].why
+    assert any("Feathering is off on a mosaic" in w for w in plan.proposal.warnings)
+
+
+def test_drizzle_zero_means_no_drizzle_not_scale_zero(tmp_path):
+    d = _mosaic_dir(tmp_path)
+    zero = build_plan(d, Overrides(drizzle=0), deep_measure=False)
+    off = build_plan(d, Overrides(no_drizzle=True), deep_measure=False)
+    assert zero.proposal.get("drizzle") is False
+    assert zero.proposal.get("drizzle_scale") == 1.0
+    assert zero.proposal.get("debayer") is True
+    assert "-drizzle" not in zero.register_ssf
+    assert zero.register_ssf == off.register_ssf
+    assert zero.stack_ssf == off.stack_ssf
+
+
+@pytest.mark.parametrize("ov", [Overrides(drizzle=-1.0), Overrides(feather=-5)])
+def test_negative_drizzle_or_feather_is_refused(tmp_path, ov):
+    with pytest.raises(StackingError, match="negative"):
+        build_plan(_mosaic_dir(tmp_path), ov, deep_measure=False)
