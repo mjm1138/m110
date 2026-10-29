@@ -253,6 +253,9 @@ ENGINE_WRITERS = {
     "run_siril", "apply_handoff",
     # integration goals + goal scope (#184): the user's prefs; only apply.py writes
     "set_goal", "clear_goal", "set_goal_scope",
+    # m110.running_app: the GUI's own record of itself in ~/.m110; a tool only
+    # ever reads it (`stacker`)
+    "record",
 }
 
 

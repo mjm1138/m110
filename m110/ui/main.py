@@ -932,6 +932,8 @@ def main() -> None:
     app.setWindowIcon(theme.app_icon())  # dock / taskbar icon (parchment tile)
     from m110.ui.first_run_dialog import run_first_run_if_needed
     run_first_run_if_needed()            # first launch: prompt for a data folder
+    from m110 import running_app
+    running_app.record()                 # so the assistant names THIS install's m110-stack
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

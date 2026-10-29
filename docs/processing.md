@@ -121,6 +121,11 @@ mosaic it runs for hours. So M110 will do it for you, from the command line:
 m110-stack "M101"
 ```
 
+`m110-stack` comes with M110 but isn't on your PATH, so type its full path:
+`/Applications/M110.app/Contents/MacOS/m110-stack` on a Mac, the `m110-stack.exe`
+in M110's install folder on Windows, or the M110 AppImage followed by `--stack` on Linux. If you
+plan the stack with the assistant, it gives you the complete command.
+
 That **measures and proposes — it doesn't stack**. You get how many frames you have,
 whether exposures or gain are mixed, whether it's a mosaic, how deep the coverage
 actually is, and the settings that supports (drizzle, rejection, weighting,

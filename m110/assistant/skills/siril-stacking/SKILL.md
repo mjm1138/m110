@@ -36,6 +36,14 @@ matter here. That is what the second half of this document is about.
   scripts. It writes nothing and it does **not** stack.
 - **You cannot run the stack.** M110's assistant tools never modify the store.
   Present the proposal, get agreement, then give them `how_to_run`.
+- **Give `how_to_run` verbatim — never shorten it to a bare `m110-stack`.** The
+  command names `m110-stack` by its full path, because the bare name is on nobody's
+  PATH: it lives inside the M110 app, or in a development venv. Below, `<m110-stack>`
+  stands for that path.
+- **Say which install it runs.** `stacker` tells you: the M110 app the user has open
+  (`matches_running_app: true`), or — when none is running for this library — the
+  assistant server's own install, which may be a different build. Pass its `note` on
+  in your own words, and quote `install` and `version`.
 - If they ask you to run it and you have a shell, that is their call to make
   explicitly — still show the proposal and get agreement first.
 
@@ -81,7 +89,8 @@ Worth saying in prose rather than burying in the table:
   FWHM pass the tool cannot know whether the longer subs are also the softer ones,
   so it proposes wFWHM as the safe default and says so. Present it that way.
 
-`m110-stack <folder>` with no flags runs both and may change the recommendation.
+`how_to_measure` (the same command without `--run`) runs both and may change the
+recommendation.
 
 ## 3 — Explore alternatives with real numbers
 
@@ -158,7 +167,8 @@ The workflow is: **stack each filter separately, then combine the stacks.**
    different scales do not register to each other, and re-running one is far
    cheaper than discovering that after both. Take the deeper filter's proposal as
    the reference and pass `drizzle` explicitly for the other.
-3. Give one command per filter (`m110-stack 'M81 M82/LP' --run`), and say plainly
+3. Give one command per filter (`<m110-stack> 'M81 M82/LP' --run`, each from its
+   own `plan_stack` call), and say plainly
    that combining is a separate manual step.
 4. Combining is **not** something M110 or this skill does. It happens afterwards in
    Siril (`rgbcomp`, or pixel math for an HOO/SHO palette) or in AstroWizard. Say
@@ -215,8 +225,7 @@ stacks would be combined afterwards.
 The decisive question is whether the longer subs are also the *softer* ones. If
 they are, noise weighting rewards them for having better per-frame SNR and drags
 resolution down. Measured on M15: 10s subs median FWHM 3.09, 20s subs 4.85 — which
-flips the answer. The read-only path cannot see this; `m110-stack <folder>` with no
-flags measures it.
+flips the answer. The read-only path cannot see this; `how_to_measure` measures it.
 
 ## Dropping a night
 
