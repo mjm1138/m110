@@ -68,6 +68,18 @@ Legend: `[ ]` open · `[~]` partially done
   coincide. Fix: `calib_links` are built per job inside the filter loop.
   `tests/test_siril.py::test_prep_multi_filter_links_calibration_into_each_job_dir`.
 
+- [x] **`m110-stack --feather 0` was ignored; `--drizzle 0` turned drizzle on at
+  scale 0** ([#193](https://github.com/mjm1138/m110/issues/193); done —
+  `feature/stack-zero-overrides`). `build_plan`'s override block tested `if
+  ov.feather:`, so 0 read as "not given" and a mosaic kept `-feather=30` — through the
+  assistant's `plan_stack(feather=0)` too, whose `overrides_applied` and `how_to_run`
+  then disagreed with its `stack_script`. `--drizzle 0` hit `if ov.drizzle is not
+  None:` → `drizzle=True, drizzle_scale=0`, `debayer=False`. Fix: numeric overrides
+  test against `None`; `feather=0` stores `None` (so `build_ssf_stack` omits the flag)
+  with "disabled on the command line" and, on a mosaic, the NGC 7000 tiling warning;
+  `drizzle=0` takes the `--no-drizzle` branch; negative values raise `StackingError`.
+  `tests/test_stacking.py` (zero-valued overrides section, on a two-tile mosaic).
+
 - [ ] **A library re-match leaves the previous master linked in a Siril job.**
   `apply_prep` is idempotent and never removes a link, so when the matched master
   changes (new library darks arrive, or the lights' temperature shifts) the job's

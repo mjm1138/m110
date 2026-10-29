@@ -78,6 +78,13 @@ changes a **user** would notice, per release.
   default window size a goal row was wider than the pane, so the pane scrolled
   horizontally and **Use default** was cut off. The goal dialog is also wider, so its
   title isn't truncated.
+- **`m110-stack --feather 0` now turns feathering off.** It was ignored, so a mosaic
+  still stacked with its default 30 px feathering. The same was true when the assistant
+  proposed `feather: 0`, although its command said `--feather 0`. Turning feathering off
+  on a mosaic now also warns that it can leave visible tile edges.
+- **`m110-stack --drizzle 0` now turns drizzle off,** the same as `--no-drizzle`. It
+  used to turn drizzle on at scale 0, which also skipped debayering. A negative
+  `--drizzle` or `--feather` is now refused with a message.
 
 ## [0.3.0-beta.9] - 2026-10-22
 
