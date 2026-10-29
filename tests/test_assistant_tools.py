@@ -716,6 +716,47 @@ def test_plan_stack_adds_no_verbosity_flag_by_default(captured):
     assert out["how_to_run"].split("   #")[0].endswith("--run")
 
 
+def test_plan_stack_names_the_running_apps_m110_stack_not_a_bare_name(captured, monkeypatch):
+    """#192: a bare `m110-stack` is on nobody's PATH, and this server may be a
+    different install from the app the user is driving — so the command names the
+    running app's own helper, and says which install that is."""
+    import json
+    import os
+    from m110 import running_app
+
+    _root, _slug, target = captured
+    rec = config.APP_CONFIG_DIR / running_app.RECORD_NAME
+    rec.parent.mkdir(parents=True, exist_ok=True)
+    rec.write_text(json.dumps({
+        "pid": os.getpid(), "data_root": str(config.DATA_ROOT),
+        "stack_command": ["/Applications/M110.app/Contents/MacOS/m110-stack"],
+        "install": "installed app", "version": "0.3.0b9"}))
+    try:
+        out = call("plan_stack", target=target, rejection="w 3 3")
+    finally:
+        rec.unlink()
+
+    assert out["how_to_run"].startswith(
+        "/Applications/M110.app/Contents/MacOS/m110-stack ")
+    assert "--rejection 'w 3 3'" in out["how_to_run"]
+    assert out["how_to_measure"].startswith("/Applications/M110.app/Contents/MacOS/")
+    assert "--run" not in out["how_to_measure"]
+    assert out["stacker"]["matches_running_app"] is True
+    assert out["stacker"]["install"] == "installed app"
+    assert "0.3.0b9" in out["stacker"]["note"]
+
+
+def test_plan_stack_without_a_running_app_uses_its_own_install_and_says_so(captured):
+    from m110 import running_app
+
+    _root, _slug, target = captured
+    (config.APP_CONFIG_DIR / running_app.RECORD_NAME).unlink(missing_ok=True)
+    out = call("plan_stack", target=target)
+    assert not out["how_to_run"].startswith("m110-stack ")
+    assert out["stacker"]["matches_running_app"] is False
+    assert "No running M110 app" in out["stacker"]["note"]
+
+
 def test_plan_stack_names_the_known_folders_when_the_target_is_wrong(captured):
     _root, _slug, target = captured
     with pytest.raises(registry.ToolError, match="Known capture folders"):

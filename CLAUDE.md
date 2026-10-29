@@ -139,6 +139,7 @@ DONE.md's archived reference — grep the module name there.
 | `objects.py` | journal read/write, frontmatter upserts, per-image curation |
 | `refresh.py` | `run_refresh()` = add_captured_objects → scan → derive → render; `rederive()` = derive only (a goal/scope/optics change) |
 | `logsetup.py` | rotating log at `~/.m110/logs/m110.log` |
+| `running_app.py` | the GUI's record of itself (`~/.m110/running.json`: pid, data root, its own `m110-stack` argv) so the assistant names the running app's install (`stacker`, `shell_command`: `~`-for-home + `shlex.quote`) |
 | `media.py` | recursive non-catalog media listing, poster resolution, sidecar cleanup |
 | `webexport.py` | size-budgeted PNG/JPEG export for sharing |
 | `backup/` | snapshot engine: `destination` (folder or `s3://`), `backends/` (local, memory, S3), `mirrored` + `pooled` formats, `scope` (denylist + `essentials` tier), `slots` (Local + Cloud, each its own settings; `update_slot` is the writer), `retention` (24h-grace GC), `probe`, `schedule` (per slot), `recovery`; façade in `__init__` |

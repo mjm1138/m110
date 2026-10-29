@@ -1255,6 +1255,17 @@ python tools/smoke_mcp.py
 - [ ] Point the client at a **data root that doesn't exist** → a clear
       "store unavailable" message rather than a bare `FileNotFoundError`.
 
+**The stacking command names the right install** (#192):
+
+- [ ] With M110 open, ask the assistant to plan a stack. Paste `how_to_run` into a
+      fresh terminal with no venv active: it runs (no *command not found*), and it is
+      the `m110-stack` of the app you have open — the assistant says which install
+      (installed app or development environment) and its version.
+- [ ] Run the GUI from the dev venv while the client's server is the installed
+      bundle (or the reverse): the command still names the **GUI's** copy.
+- [ ] Quit M110 and ask again: `~/.m110/running.json` is gone, and the assistant says
+      no running app was found and which install the command uses instead.
+
 ---
 
 ### 2.9 Cross-check with the source workflow (optional)

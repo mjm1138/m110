@@ -62,6 +62,11 @@ changes a **user** would notice, per release.
   you're planning with, and every telescope's progress on the object.
 
 ### Fixed
+- **The assistant's stacking command now runs as pasted.** It gave a bare
+  `m110-stack`, which isn't on your PATH, so the terminal answered *command not
+  found*. It now gives the full path of the `m110-stack` that comes with the M110
+  app you have open, and says which install that is. If several copies of M110 are
+  installed, it picks the one you're running.
 - **Planning's priority targets show proper names for objects you haven't shot
   yet.** A goal member not yet in your Library showed an internal id such as
   `ngc-7009` or `m92`. It now shows its catalog designations, e.g. **C55 (NGC 7009,

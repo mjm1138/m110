@@ -94,6 +94,25 @@ Legend: `[ ]` open · `[~]` partially done
   (`facts_from_frames` over that job's lights). Latent until a device ships
   library flats for more than one filter.
 
+- [x] **`plan_stack`'s `how_to_run` gave a bare `m110-stack` that isn't on PATH**
+  ([#192](https://github.com/mjm1138/m110/issues/192); done —
+  `feature/stack-how-to-run`). The helper lives in the bundle
+  (`M110.app/Contents/MacOS/`) or a venv's `bin/`, so the pasted command failed
+  with *command not found*, and the skill's examples taught the bare name too.
+  The server's own sibling isn't the answer either: Claude's MCP server can be the
+  bundle while the GUI runs from the dev venv. Fix: new `m110/running_app.py` —
+  the GUI records itself in `~/.m110/running.json` (pid, data root, the argv of its
+  own `m110-stack`, install kind, version; removed at exit, and only by its owner);
+  `stacker()` trusts the record while the pid lives and the data root matches,
+  else falls back to the server's own install (`stack_command`, mirroring
+  `client_config.server_command`, AppImage via `--stack`). `shell_command` writes
+  `$HOME` as an unquoted `~` and `shlex.quote`s every word (repr broke on `$`,
+  backslashes, both quote characters). `plan_stack` adds `how_to_measure` and a
+  `stacker` block (install, version, `matches_running_app`, note); the skill says
+  to give the command verbatim and name the install. Known limit: a GUI run from a
+  worktree via `python -m` records the shared venv's `m110-stack`, i.e. main's code.
+  `tests/test_running_app.py`, `tests/test_assistant_tools.py`.
+
 - [ ] **`m110-stack` heartbeat repeats a stale "100.00%" through the whole stack
   pass.** Seen on NGC 6543/IRCUT (1360 frames, 2.0× drizzle, `-vv`,
   2026-09-24): after `Computing normalization...` finished, every 10 s line read

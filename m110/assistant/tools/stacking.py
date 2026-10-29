@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from m110 import config, launch
+from m110 import config, launch, running_app
 from m110.assistant.registry import ToolError, register
 from m110.assistant.serialize import ToolResult
 from m110.assistant.store import require_store
@@ -104,27 +104,28 @@ def _resolve_dir(target: str, filt: str | None) -> Path:
     )
 
 
-# Tool argument -> the CLI flag that reproduces it, so `how_to_run` stays a true
-# statement of what was proposed. An override with no entry here would be
+# Tool argument -> the CLI arguments that reproduce it, so `how_to_run` stays a
+# true statement of what was proposed. An override with no entry here would be
 # silently dropped from the command, which is how a user ends up running
-# something other than what they agreed to.
+# something other than what they agreed to. Lists, not strings: every word is
+# shell-quoted once, in `running_app.shell_command`.
 _CLI_FLAGS = {
-    "only_exposure": lambda v: f" --only-exposure {v:g}",
-    "exclude_night": lambda v: f" --exclude-night {v}",
-    "max_dark_gap": lambda v: f" --max-dark-gap {v:g}",
-    "drizzle": lambda v: " --no-drizzle" if not v else f" --drizzle {v:g}",
-    "pixfrac": lambda v: f" --pixfrac {v:g}",
-    "rejection": lambda v: f' --rejection "{v}"',
-    "weight": lambda v: f" --weight {v}",
-    "overlap_norm": lambda v: " --overlap-norm" if v else " --no-overlap-norm",
-    "feather": lambda v: f" --feather {int(v)}",
-    "no_bg_extract": lambda v: " --no-bg-extract",
-    "no_filters": lambda v: " --no-filters",
-    "filter_pct": lambda v: f" --filter-pct {v:g}",
-    "filter_round": lambda v: f" --filter-round {v:g}",
-    "filter_wfwhm": lambda v: f" --filter-wfwhm {v:g}",
-    "filter_bkg": lambda v: f" --filter-bkg {v:g}",
-    "filter_nbstars": lambda v: f" --filter-nbstars {v:g}",
+    "only_exposure": lambda v: ["--only-exposure", f"{v:g}"],
+    "exclude_night": lambda v: ["--exclude-night", v],
+    "max_dark_gap": lambda v: ["--max-dark-gap", f"{v:g}"],
+    "drizzle": lambda v: ["--no-drizzle"] if not v else ["--drizzle", f"{v:g}"],
+    "pixfrac": lambda v: ["--pixfrac", f"{v:g}"],
+    "rejection": lambda v: ["--rejection", v],
+    "weight": lambda v: ["--weight", v],
+    "overlap_norm": lambda v: ["--overlap-norm"] if v else ["--no-overlap-norm"],
+    "feather": lambda v: ["--feather", str(int(v))],
+    "no_bg_extract": lambda v: ["--no-bg-extract"],
+    "no_filters": lambda v: ["--no-filters"],
+    "filter_pct": lambda v: ["--filter-pct", f"{v:g}"],
+    "filter_round": lambda v: ["--filter-round", f"{v:g}"],
+    "filter_wfwhm": lambda v: ["--filter-wfwhm", f"{v:g}"],
+    "filter_bkg": lambda v: ["--filter-bkg", f"{v:g}"],
+    "filter_nbstars": lambda v: ["--filter-nbstars", f"{v:g}"],
 }
 
 
@@ -144,7 +145,10 @@ _CLI_FLAGS = {
         "STRICTLY READ-ONLY: this measures and proposes, it does NOT stack. Present "
         "the proposal, get the user's agreement, then give them the `how_to_run` "
         "command to run themselves — a large mosaic costs hours and over 100 GB, so "
-        "starting one unasked is the failure to avoid."
+        "starting one unasked is the failure to avoid. Give `how_to_run` VERBATIM: "
+        "it names `m110-stack` by its full path because the bare name is not on the "
+        "user's PATH, and `stacker` says which M110 install that path belongs to — "
+        "tell the user."
     ),
     params={
         "type": "object",
@@ -325,14 +329,32 @@ def plan_stack(target: str, filter: str | None = None,
     # user's home directory into the model's context, and `serialize` can only
     # relativize a Path — a path baked into a command string sails straight
     # through. `m110-stack` resolves the name against the store itself.
-    flags = "".join(_CLI_FLAGS[k](v) for k, v in applied.items())
+    args = [a for k, v in applied.items() for a in _CLI_FLAGS[k](v)]
     # Not an override — it changes what the run prints, not what it stacks — so it
     # rides in the command without appearing in `overrides_applied`.
     level = max(0, min(3, int(verbosity or 0)))
-    flags += f" -{'v' * level}" if level else ""
+    if level:
+        args.append(f"-{'v' * level}")
     name = f"{target}/{filter}" if filter else target
+    # The `m110-stack` of the app the user is running, by absolute path: a bare
+    # name is on nobody's PATH, and this server may be a different install from
+    # that app (#192). `shell_command` writes the home directory as `~`.
+    stk = running_app.stacker()
     payload["how_to_run"] = (
-        f"m110-stack {name!r} --run{flags}"
-        "   # add --handoff to send the finished stack to AstroWizard"
+        running_app.shell_command(stk["argv"], name, "--run", *args)
+        + "   # add --handoff to send the finished stack to AstroWizard"
     )
+    payload["how_to_measure"] = running_app.shell_command(stk["argv"], name)
+    payload["stacker"] = {
+        "install": stk["install"],
+        "version": stk["version"],
+        "matches_running_app": stk["matches_running_app"],
+        "note": (f"The command runs the M110 app you have open ({stk['install']}, "
+                 f"{stk['version']})."
+                 if stk["matches_running_app"] else
+                 f"No running M110 app was found for this library, so the command "
+                 f"uses the assistant server's own install ({stk['install']}, "
+                 f"{stk['version']}). If you run M110 from somewhere else, that "
+                 "app's m110-stack may be a different build."),
+    }
     return ToolResult(payload, drop_keys=_BULK_KEYS)
