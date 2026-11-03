@@ -90,6 +90,9 @@ changes a **user** would notice, per release.
 - **`m110-stack --drizzle 0` now turns drizzle off,** the same as `--no-drizzle`. It
   used to turn drizzle on at scale 0, which also skipped debayering. A negative
   `--drizzle` or `--feather` is now refused with a message.
+- **The assistant's object list shows how many sessions each object has.** `list_objects`
+  reported 0 sessions for every object, even ones you've shot on many nights; asking
+  about a single object (`get_object`) already gave the right number.
 
 ## [0.3.0-beta.9] - 2026-10-22
 

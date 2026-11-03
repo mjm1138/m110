@@ -63,6 +63,15 @@ def test_list_objects_captured_only_and_limit(captured):
     assert out["returned"] == 1 and out["total_matched"] >= 1
 
 
+def test_list_objects_counts_sessions_like_get_object(captured):
+    # The derived rollup calls it `session_count`; reading `sessions` made every
+    # row say 0 while get_object, on the same totals, gave the real number.
+    _, slug, _ = captured
+    row = next(r for r in call("list_objects", query=slug)["objects"] if r["slug"] == slug)
+    assert row["sessions"] >= 1
+    assert row["sessions"] == call("get_object", slug=slug)["capture"]["sessions"]
+
+
 def test_list_objects_reports_total_beyond_the_limit(captured):
     out = call("list_objects", limit=1)
     assert out["total_matched"] >= out["returned"]
