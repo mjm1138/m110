@@ -1312,6 +1312,11 @@ data / a packaged build where noted).
       Best on a large store, where the sync is slow enough to overlap.
       *(Policy half: `test_ui_modal_safety.py` — a real nested loop can't be pumped
       offscreen.)*
+- [ ] **Quit right after clicking into the window is prompt** (beta.10): switch to another
+      app and back (this starts a sync), then **Cmd+Q** at once. The app is gone within a
+      second, not after the sync. On a large library, relaunch: the Library looks the same,
+      and a Refresh completes normally. *(`test_refresh_cancel.py`,
+      `test_ui_detail.py::test_quit_cancels_a_running_sync_instead_of_waiting_it_out`.)*
 - [ ] **Backup on a destination that can't share files** (#92) — **real hardware**, see
       [§2.5a](#25a-local-destinations): the format
       switches to **pooled**, the window says why, and a second backup stores ~no new

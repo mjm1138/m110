@@ -115,6 +115,44 @@ def test_quit_waits_for_running_refresh_worker(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
+def test_quit_cancels_a_running_sync_instead_of_waiting_it_out(tmp_path, monkeypatch, qapp):
+    """Every focus-in starts a sync, so Cmd+Q right after clicking into the window
+    used to block until a whole scan finished (18 s on a large library)."""
+    import threading
+    import time
+    from m110 import refresh
+    seed_root(tmp_path, monkeypatch)
+    started = threading.Event()
+
+    def slow_sync(should_cancel=None, **_):
+        started.set()
+        deadline = time.monotonic() + 30           # a sync far longer than quit may wait
+        while time.monotonic() < deadline:
+            if should_cancel and should_cancel():
+                raise refresh.RefreshCancelled
+            time.sleep(0.01)
+        return {"sessions": 0}
+    monkeypatch.setattr(refresh, "run_refresh", slow_sync)
+
+    from m110.ui.main import MainWindow
+    win = MainWindow()
+    win._ready = True
+    try:
+        win._do_refresh()
+        assert started.wait(5)
+        t = time.monotonic()
+        win._stop_worker()
+        assert time.monotonic() - t < 2
+        assert not win._worker.isRunning()
+        assert not win._refreshing and win.refresh_action.isEnabled()   # a later sync can run
+    finally:
+        win._ready = False
+        win._stop_worker()
+        win.close()
+        win.deleteLater()
+        qapp.processEvents()
+
+
 def test_detail_edit_buttons_clear_on_cancel(tmp_path, monkeypatch, qapp):
     _isolate(tmp_path, monkeypatch)
     from m110.ui.detail import DetailPane

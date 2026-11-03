@@ -630,8 +630,10 @@ def _split_session(s: dict, stacked_at: str) -> tuple[int, int]:
 
 def build_processing(totals: dict, overrides: dict | None,
                      catalog: dict | None = None,
-                     sessions: list[dict] | None = None) -> dict:
-    """For each captured FITS folder, derive processing status.
+                     sessions: list[dict] | None = None,
+                     checkpoint=None) -> dict:
+    """For each captured FITS folder, derive processing status. `checkpoint()`,
+    when given, is polled per folder (this pass byte-compares sandbox outputs).
 
     Statuses:
       not_processed — no processed output (stack or finished render) yet
@@ -671,6 +673,8 @@ def build_processing(totals: dict, overrides: dict | None,
         return {"folders": {}, "queue": [], "generated_at": now_iso}
 
     for fname, t in by_folder.items():
+        if checkpoint:
+            checkpoint()
         folder = config.target_dir(fname)
         if not folder.is_dir():
             continue
@@ -893,23 +897,39 @@ def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
     return out
 
 
-def main():
+def compute(sessions: list[dict] | None = None, checkpoint=None) -> dict:
+    """Every derived rollup, in memory — nothing is written. `sessions` defaults to
+    `sessions.jsonl`; a refresh passes the rows it just scanned so it can write
+    sessions and derived together after its last cancel point. `checkpoint()` is
+    polled between rollups and per folder in the processing pass (the slow one)."""
+    tick = checkpoint or (lambda: None)
     overrides_path = config.OVERRIDES_TOML
     # A fresh store seeds an empty library.toml with no [catalog] table (5d), so a
     # brand-new user's first launch has an empty catalog — default to {} rather than
     # KeyError (which surfaced as "Sync failed" on first launch).
     catalog = load_toml(config.LIBRARY_TOML).get("catalog", {})
-    sessions = load_sessions()
+    if sessions is None:
+        sessions = load_sessions()
     overrides = load_toml(overrides_path) if overrides_path.exists() else None
 
     from . import goals as goals_mod
     totals = build_totals(catalog, sessions)
     summary = build_summary(catalog, totals)
-    processing = build_processing(totals, overrides, catalog, sessions)
+    tick()
+    processing = build_processing(totals, overrides, catalog, sessions, checkpoint=tick)
+    tick()
     goals = build_goals(totals, goals_mod.active_goal_ids())
     from . import calibration
     device_info = calibration.device_rollup(sessions, totals)
+    return {"totals": totals, "summary": summary, "processing": processing,
+            "goals": goals, "devices": device_info}
 
+
+def write(outputs: dict) -> None:
+    """Write what `compute` built to `derived/*.json`."""
+    totals, summary, processing = (outputs["totals"], outputs["summary"],
+                                   outputs["processing"])
+    goals, device_info = outputs["goals"], outputs["devices"]
     out_dir = config.DERIVED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "totals.json").write_text(
@@ -933,6 +953,10 @@ def main():
           f"{pc['not_processed']} not processed, "
           f"{pc['up_to_date']} up-to-date"
           + (f", {pc['dismissed']} dismissed" if pc['dismissed'] else ""))
+
+
+def main():
+    write(compute())
 
 
 if __name__ == "__main__":

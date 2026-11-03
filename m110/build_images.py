@@ -299,8 +299,13 @@ def rebuild_hero(slug: str) -> bool:
     return _render_first_hero(cands, config.HERO_DIR / f"{slug}.jpg")
 
 
-def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dict:
-    """Generate thumbnails + heroes for captured objects and write images.json."""
+def render_images(catalog: dict, totals: dict, slugs=None, progress=None,
+                  checkpoint=None) -> dict:
+    """Generate thumbnails + heroes for captured objects and write images.json.
+
+    `checkpoint()`, when given, is called per object and may raise to abandon the
+    render: images.json and the orphan prune only happen at the end, so the
+    previous manifest stays intact and still points at files that exist."""
     by_folder = totals.get("by_folder", {})
     renders = config.RENDERS_DIR
     hero_dir = config.HERO_DIR
@@ -310,6 +315,8 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
     manifest: dict[str, list] = {}
     targets = list(slugs) if slugs is not None else list(catalog.keys())
     for i, slug in enumerate(targets, 1):
+        if checkpoint:
+            checkpoint()
         folders = folders_for_slug(slug, by_folder)
         if not folders:
             continue
