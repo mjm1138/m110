@@ -440,10 +440,21 @@ Legend: `[ ]` open · `[~]` partially done
   `-d` has — `_load_cfg` runs once at startup, so if the app is already open our
   write does nothing *and* is liable to be clobbered on its next save. If we take it,
   it is best-effort polish wrapped in a `try/except` that can never block or fail the
-  launch, with reveal-the-folder staying the primary affordance. **Waiting on
-  developer outreach first** (`wizard@lukomatico.com`, the address in the app's own
-  "bugs and thoughts" string) — a supported argument or documented hand-off would be
-  strictly better than reaching into a file we don't own, and asking costs one email.
+  launch, with reveal-the-folder staying the primary affordance.
+
+  **The outreach has happened, and it did not land.** The feature request went to
+  `wizard@lukomatico.com` on **2026-10-05** and was **unanswered as of 2026-11-03**,
+  across four further builds; their site says feedback is read but not answered, so
+  the silence is not a refusal and not a queue position. That retires the "asking
+  costs one email" argument this entry used to rest on — it was asked, and the answer
+  is no information.
+
+  So this stays **shelved rather than blocked**: the pre-seed is still the only
+  alternative (see the swept surface above), the reveal-the-folder step works, and
+  nothing downstream is waiting on it. Reopen if a build gains an argument or an
+  `odoc` route — ROADMAP item 14 lists the triggers — or if the hand-off becomes
+  load-bearing for something new, at which point the pre-seed's trade-off is worth
+  re-weighing on its own merits rather than as a stopgap for an expected upstream fix.
 
 - [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
   If Siril's working directory was set to `Images/<target>/` instead of its `siril/`

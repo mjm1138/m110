@@ -329,13 +329,26 @@ artifact every time a cheap one is redone.
   `__init__`, which is the only seam for a folder hand-off and is another app's
   private config. Open item + the trade-off in [`BUGS.md`](BUGS.md) → Processing &
   curation UX; developer outreach pending before we reach into it.
-  **Feature request to be sent (2026-10-05)** to the developer (Luke, Lukomatico —
-  `wizard@lukomatico.com`, the address in the app's own footer): accept a folder as
-  the first argument (`StackingWizard <folder>`, or `--folder`), treated as if chosen
-  in the picker; optionally a per-run way to supply Workbench settings (JSON/flags)
-  without touching the saved defaults. Decision: **no `last_folder` pre-seed** —
-  wait for the upstream argument. When it ships, fill `workdir_args` in
-  `launch._TOOLS["stackingwizard"]` and drop the reveal-the-folder workaround.
+  **Feature request sent 2026-10-05, unanswered as of 2026-11-03** — to the developer
+  (Luke, Lukomatico — `wizard@lukomatico.com`, the address in the app's own footer):
+  accept a folder as the first argument (`StackingWizard <folder>`, or `--folder`),
+  treated as if chosen in the picker; optionally a per-run way to supply Workbench
+  settings (JSON/flags) without touching the saved defaults. Four builds have shipped
+  since (10.20, 10.25, 10.31 among them) with no sign of it, and their site says
+  feedback is read but not answered — so read the silence as neither refusal nor
+  queue position, and **don't re-send or chase it**.
+
+  **Status: shelved, not blocked.** Decision stands — **no `last_folder` pre-seed**;
+  the folder hand-off waits. This costs us only the reveal-the-folder step, which
+  works, so there is nothing to design around in the meantime. The triggers to watch
+  for, any one of which reopens this: a build whose `Info.plist` gains
+  `CFBundleDocumentTypes`/`CFBundleURLTypes`, whose code gains `argv` or
+  `::tk::mac::OpenDocument`; the parent-folder line leaving their published "not built
+  yet" list; or AstroWizard's 2026-10-31 `odoc` support propagating to its sibling.
+  When one lands, fill `workdir_args` in `launch._TOOLS["stackingwizard"]` and drop
+  the reveal-the-folder workaround. The check itself is cheap and the method is
+  recorded in [`BUGS.md`](BUGS.md) — one extract-and-scan per release, no need to
+  re-derive the ruled-out surface.
   Also noted in the 2026.10.05 build: Workbench knobs persist under a `workbench`
   key in the same `settings.json` (global, not per folder); the "set aside" folder
   (`SET_ASIDE_DIR`) must be skipped by any M110 walk of a StackingWizard folder.
