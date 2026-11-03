@@ -359,6 +359,67 @@ Legend: `[ ]` open · `[~]` partially done
   `initialdir` from `last_folder`. The developer's site now says feedback is read but
   not answered, so don't count on the upstream argument arriving.
 
+  **Re-verified against 2026.10.31** (bundle dated 2026-10-30; nothing in the app, but
+  the *site* changelog documents it fully as Beta 4.8.5 "Broad Sweep" — the in-app
+  notes lag the website, which is the authoritative source). This is a large release
+  (entry script 260 KB → 921 KB, engine 77 KB → 356 KB, new `wizard_canvas` /
+  `wizard_engine_room` modules, `rawpy` + `psutil` + 13 `lang_*` locales) and the
+  answer is still no: `Info.plist` declares no document or URL types, **none of the
+  five code units reads `argv`**, and the Apple-event hooks are still only
+  `::tk::mac::Quit` and `::tk::mac::ReopenApplication` — no `::tk::mac::OpenDocument`.
+  `pick_folder` still seeds `initialdir` from `last_folder`, and `settings.json` keeps
+  the same shape, so everything below still applies unchanged.
+
+  Three features we had been waiting on *did* land, which matters because our user
+  docs asserted the opposite: **mono/filter sets** (Beta 2.4, 2026-08-31 — one canvas
+  and one stack per filter, `filter_family()` classifying SHO / LRGB / LRGB+Ha /
+  HaRGB / mixed, the set going to AstroWizard's *Combine Mono Channels*), **Drizzle
+  2x** (Beta 4.5, off by default, pixel fraction derived from the night's measured
+  star size: 0.6 px at FWHM ≤2.0, 1.0 px at ≥3.5, 0.80 unmeasured), and **camera RAW**
+  via LibRaw (Beta 4.5; X-Trans still unread). Two consequences for us, both now
+  recorded where they belong: a night can produce **several** masters, not one
+  (`<object>_wizardstack.fits` per filter, plus `_mosaic_wizardstack_<n>f.fits` and
+  `_combined_wizardstack.fits` — `astrowizard.is_master` matches all of them, since
+  `MASTER_TOKEN` is a substring test, and the new `<master>_receipts.txt` is in
+  neither `_RASTER_EXTS` nor `_FIT_EXTS` so it stays out of the import preview), and a
+  **drizzled stack carries no usable WCS** (see ROADMAP item 13's gotchas). Beware
+  their site's summary "Not yet supported" lists — they go stale and contradicted the
+  dated beta notes on camera RAW for over a month; trust the dated notes.
+
+  **The whole input surface, swept on the 2026.10.31 build — one folder picker and
+  nothing else.** Earlier passes only ruled out arguments and the `odoc`/URL routes,
+  which left "is there some *other* stable hook?" open; it is now closed, so don't
+  re-derive it:
+
+  | Candidate | Result |
+  |---|---|
+  | CLI arguments | no `argv`/`sys.argv` in any of the five code units |
+  | argparse / getopt | only `wizard_stack.main()`, unreachable when frozen |
+  | Finder "Open With" / Dock drop | no `CFBundleDocumentTypes`, no `::tk::mac::OpenDocument` |
+  | URL scheme | no `CFBundleURLTypes` |
+  | AppleScript / `osascript` / `.sdef` | zero hits — no scripting support |
+  | Environment variables | all 7 `environ` reads accounted for, none an input (below) |
+  | IPC / socket / single-instance | none; `psutil` only reports RAM + core count |
+  | Watch / drop folder | none; `watch` is the UI label "watch the night build" |
+  | Recent-folders list | none; `recent` is a section header in the Fellowship file |
+  | stdin | a `Popen` kwarg, not an input channel |
+
+  The env-var negative is the load-bearing one, since it was the most plausible
+  remaining hook. All seven reads: four in the PyInstaller `*_ORIG` child-env
+  sanitizer (our `launch._child_env()`'s counterpart), one in the Linux `xdg-open`
+  helper, one in `wizard_stack.cache_candidates` for `LOCALAPPDATA`/`XDG_CACHE_HOME`,
+  one in `wizard_lang.computer_language` for `LANG`/`LC_ALL`. The `SW_*` tokens
+  (`SW_BETA`, `SW_BUILD_DATE`, `SW_DEV_ASTROWIZARD`, `SW_PAGE_URL`) are module
+  constants, not lookups, and `CACHE_OVERRIDE`/`BAYER_OVERRIDE` are Engine Room UI
+  settings placing the scratch cache and forcing a Bayer pattern — neither selects
+  the night's folder. On-disk state agrees: the app keeps only `settings.json`,
+  `fellowship_cache.txt` (fetched from their site) and `crash.log`, and nothing else
+  is read at startup.
+
+  So the "wait for the upstream argument" decision in ROADMAP item 14 is not a choice
+  between routes — the `last_folder` pre-seed is the *only* alternative to it. Weigh
+  it on that basis rather than looking for a side door again.
+
   One red herring worth recording so it isn't re-investigated: `wizard_stack` *does*
   carry an argparse `main()` with `--out` / `--progressive` / `--trim`. It is
   unreachable in the frozen app — PyInstaller's entry is `stacking_wizard_app`, which
@@ -379,10 +440,21 @@ Legend: `[ ]` open · `[~]` partially done
   `-d` has — `_load_cfg` runs once at startup, so if the app is already open our
   write does nothing *and* is liable to be clobbered on its next save. If we take it,
   it is best-effort polish wrapped in a `try/except` that can never block or fail the
-  launch, with reveal-the-folder staying the primary affordance. **Waiting on
-  developer outreach first** (`wizard@lukomatico.com`, the address in the app's own
-  "bugs and thoughts" string) — a supported argument or documented hand-off would be
-  strictly better than reaching into a file we don't own, and asking costs one email.
+  launch, with reveal-the-folder staying the primary affordance.
+
+  **The outreach has happened, and it did not land.** The feature request went to
+  `wizard@lukomatico.com` on **2026-10-05** and was **unanswered as of 2026-11-03**,
+  across four further builds; their site says feedback is read but not answered, so
+  the silence is not a refusal and not a queue position. That retires the "asking
+  costs one email" argument this entry used to rest on — it was asked, and the answer
+  is no information.
+
+  So this stays **shelved rather than blocked**: the pre-seed is still the only
+  alternative (see the swept surface above), the reveal-the-folder step works, and
+  nothing downstream is waiting on it. Reopen if a build gains an argument or an
+  `odoc` route — ROADMAP item 14 lists the triggers — or if the hand-off becomes
+  load-bearing for something new, at which point the pre-seed's trade-off is worth
+  re-weighing on its own merits rather than as a stopgap for an expected upstream fix.
 
 - [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
   If Siril's working directory was set to `Images/<target>/` instead of its `siril/`
