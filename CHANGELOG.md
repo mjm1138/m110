@@ -62,6 +62,10 @@ changes a **user** would notice, per release.
   you're planning with, and every telescope's progress on the object.
 
 ### Fixed
+- **Quitting no longer stalls for several seconds.** Clicking back into M110 starts a
+  sync of your library, so quitting right afterwards waited for the whole sync to
+  finish (up to 18 seconds on a large library). Quit now stops the sync where it is,
+  and nothing is left half-written. The next launch syncs as usual.
 - **The assistant's stacking command now runs as pasted.** It gave a bare
   `m110-stack`, which isn't on your PATH, so the terminal answered *command not
   found*. It now gives the full path of the `m110-stack` that comes with the M110

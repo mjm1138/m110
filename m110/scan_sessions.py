@@ -424,7 +424,9 @@ def load_catalog_slugs() -> set[str]:
     return slugs
 
 
-def scan() -> list[dict]:
+def scan(checkpoint=None) -> list[dict]:
+    """`checkpoint()`, when given, is called per object folder and per session
+    segment and may raise to abandon the scan (it only reads, so that's safe)."""
     images = config.IMAGES_DIR
     if not images.is_dir():
         print(f"Images dir not found: {images}", file=sys.stderr)
@@ -436,6 +438,8 @@ def scan() -> list[dict]:
     libraries: dict = {}                     # device → its library darks (one read)
 
     for obj_dir in sorted(images.iterdir()):
+        if checkpoint:
+            checkpoint()
         if not obj_dir.is_dir() or obj_dir.name in SKIP_DIRS:
             continue
         lights = obj_dir / "lights"
@@ -464,6 +468,8 @@ def scan() -> list[dict]:
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
         for (iso, exp, filt, device), n in sorted(bucket.items()):
+            if checkpoint:
+                checkpoint()
             session_date = datetime.strptime(iso, "%Y-%m-%d").date()
             # One header read per session-segment (mount mode is constant within a
             # capture run) — negligible next to the filename fast-path for the subs.

@@ -36,15 +36,23 @@ from m110.ui import theme
 
 
 class RefreshWorker(QThread):
-    """Runs the (potentially slow) scan+derive+prepare-missing off the UI thread."""
+    """Runs the (potentially slow) scan+derive+prepare-missing off the UI thread.
+    `cancel` stops it at the next safe point, emitting nothing (quit uses it)."""
     done = Signal(dict)
     failed = Signal(str)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.cancel = threading.Event()
+
     def run(self):
+        from m110.refresh import RefreshCancelled
         try:
             from m110.refresh import run_refresh
             from m110 import processing
-            summary = run_refresh()
+            summary = run_refresh(should_cancel=self.cancel.is_set)
+            if self.cancel.is_set():
+                return                          # quitting: skip the sandbox upkeep
             prep = processing.prepare_missing()   # heal missing working folders
             summary["prepared"] = sum(len(r.get("prepared", []))
                                       for r in prep.values())
@@ -53,6 +61,8 @@ class RefreshWorker(QThread):
             pruned = processing.reconcile_rejected()
             summary["pruned"] = sum(r.get("pruned", 0) for r in pruned.values())
             self.done.emit(summary)
+        except RefreshCancelled:
+            return                              # nothing half-written; nothing to report
         except Exception as exc:  # surface to the UI rather than crash
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -870,11 +880,17 @@ class MainWindow(QMainWindow):
     # ---- clean shutdown ----
     def _stop_worker(self) -> None:
         """Block until the refresh thread finishes, so teardown never destroys a
-        running QThread (which Qt turns into a fatal abort). run_refresh isn't
-        cancellable, so we wait it out — quit pauses briefly rather than crashing."""
+        running QThread (which Qt turns into a fatal abort). The sync is cancelled
+        first and stops at its next safe point, so quit no longer waits out a whole
+        scan — which every focus-in starts, so Cmd+Q right after clicking into the
+        window used to stall for the length of a sync (18 s on a large library)."""
         w = self._worker
         if w is not None and w.isRunning():
+            w.cancel.set()
             w.wait()
+            if self._refreshing:                # cancelled: it emitted nothing
+                self._refreshing = False
+                self.refresh_action.setEnabled(True)
         # Cancel + drain a background backup so teardown never destroys a live
         # QThread (create_snapshot aborts promptly and cleans up its temp dir).
         self._backup_queue = []                 # no next slot after quit
