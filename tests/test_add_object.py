@@ -345,7 +345,8 @@ def test_resolve_online_unreachable_message_is_plain(monkeypatch, caplog):
     finally:
         log.removeHandler(caplog.handler)
     msg = str(ei.value)
-    assert "simbad.cds.unistra.fr" in msg and "simbad.harvard.edu" in msg
+    assert msg.startswith("Couldn't reach Simbad "
+                          "(simbad.cds.unistra.fr or simbad.harvard.edu).")
     assert "capabilities" not in msg and "Nothing was changed" in msg
     assert "capabilities" in caplog.text                  # the detail is logged
 
@@ -404,7 +405,8 @@ def test_resolve_online_fails_fast_when_no_server_connects(monkeypatch):
     monkeypatch.setattr(catalog, "_server_reachable", lambda host, timeout=4.0: False)
     with pytest.raises(catalog.OnlineLookupError) as ei:
         catalog.resolve_object_online(["M 51"])
-    assert "simbad.harvard.edu" in str(ei.value)
+    assert str(ei.value) == catalog._unreachable_message(
+        ["simbad.cds.unistra.fr", "simbad.harvard.edu"])
 
 
 def test_resolve_online_asks_for_fluxes_without_dropping_objects(monkeypatch):
