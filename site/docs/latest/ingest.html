@@ -13,10 +13,11 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.9</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html" class="on">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
+      <a href="devices.html">Your telescopes — the Devices page</a>
       <a href="processing.html">Processing prep & hardlinks</a>
       <a href="backup.html">Backing up your library</a>
       <a href="planning.html">Session planning</a>
@@ -63,11 +64,11 @@ record of what the telescope did:</p>
   it during the capture — "24.9 °C · Δ10.5 ⚠". A ⚠ means more than 3 °C: hot pixels
   in the drifted subs are over- or under-subtracted. <code>m110-stack --max-dark-gap 3</code>
   leaves those subs out of a stack.</li>
-<li>The <strong>Devices</strong> page (last on the rail) shows each telescope's dark library, the
-  captures each dark served, and its sensor health over time (dark level and
+<li>The <strong><a href="devices.html">Devices</a></strong> page (last on the rail) shows each telescope's dark
+  library, the captures each dark served, and its sensor health (dark level and
   hot-pixel count against temperature). Darks are named by when the telescope made
   them and at what temperature ("Oct 15 21:52 · 13.9 °C") in both tables; select a
-  capture to highlight its darks, and right-click either to reveal the file.</li>
+  capture to highlight its darks, and right-click a dark to reveal its file.</li>
 </ul>
 <p>Which dark a capture got is <em>inferred</em> — the Seestar doesn't record it — from
 when each dark was made (its filename time) and the sensor temperature. A link says
@@ -113,7 +114,7 @@ finished renders in separate folders on purpose:</p>
 <strong>Library</strong> page and each object's <strong>detail pane</strong>, which groups the gallery into
 "Finished" and "Working files."</p>
 <p>Next: <strong><a href="library.html">The library &amp; object metadata →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.9 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

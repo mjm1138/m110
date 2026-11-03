@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your telescopes — the Devices page — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/devices.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="devices.html" class="on">Your telescopes — the Devices page</a>
+      <a href="processing.html">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="your-telescopes-the-devices-page">Your telescopes — the Devices page</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>The <strong>Devices</strong> page (the last entry on the rail, Ctrl+6) has one entry for every
+telescope you've imported from. M110 learns a telescope from the <code>TELESCOP</code> card in
+its FITS headers, so there's nothing to register: import from it once and it
+appears here. Two units of the same model are two entries (each has its own serial),
+but they count together toward an object's
+<a href="library.html#integration-goals-how-deep-is-deep-enough">integration goal</a>.</p>
+<p>The list is ordered by most recent capture. Pick a telescope to see its details on
+the right.</p>
+<h2 id="identity">Identity</h2>
+<ul>
+<li><strong>Nickname</strong> — call it what you call it ("Backyard S50", "Travel S30"). The
+  nickname is used everywhere the telescope is named: the session tables, Planning's
+  Telescope picker, field guides. <strong>Save</strong> / <strong>Revert</strong> light up once you've changed
+  something.</li>
+<li><strong>Model</strong> — M110 recognises Seestar and DwarfLab telescopes from their headers and
+  says so. For anything else, tell it the model here so it gets the right planning
+  limits and goal scaling.</li>
+<li><strong>Retired</strong> — hides a telescope you no longer use from the list and from the
+  pickers. Its captures stay in your Library. <strong>Show retired</strong> brings it back into
+  the list.</li>
+</ul>
+<h2 id="planning-limits">Planning limits</h2>
+<p><strong>Use for planning</strong> makes this the telescope the <strong><a href="planning.html">Planning</a></strong> page
+plans for. You can also switch telescopes there. Each model comes with its own limits,
+which you can adjust per telescope:</p>
+<ul>
+<li><strong>Start ceiling</strong> — the highest altitude a capture may <em>start</em> at. A Seestar
+  refuses to start near the zenith, so its ceiling is <strong>hard</strong>; a Dwarf's is softer.</li>
+<li><strong>Low-altitude floor</strong>, <strong>Longest exposure</strong>, <strong>Default exposure</strong>, <strong>Gain</strong>.</li>
+</ul>
+<p><strong>Save limits</strong> keeps your changes; <strong>Model defaults</strong> puts the model's values back.</p>
+<h2 id="optics">Optics</h2>
+<p>Aperture, focal length, f-ratio and pixel size, and what they mean for your goals:
+"Integration goals here are ×0.73 the S50's" for a faster telescope, for example.
+A recognised model shows its published specs, read-only. For a telescope M110
+doesn't recognise you can enter them yourself (<strong>Save optics</strong>); until you do, its
+goals use the S50's numbers.</p>
+<h2 id="what-it-captured">What it captured</h2>
+<ul>
+<li><strong>Objects</strong> — every object this telescope has shot, with its integration time and
+  last capture. Right-click → <strong>Open object</strong> jumps to it in the Library.</li>
+<li><strong>Captures</strong> — every capture session with its sensor temperature and the
+  <strong>Dark</strong> it used (see below).</li>
+<li><strong>Sensor health</strong> — two charts built from its darks: the dark level (median ADU)
+  and the hot-pixel count, each against sensor temperature.</li>
+</ul>
+<h2 id="the-dark-library-seestar">The dark library (Seestar)</h2>
+<p>A Seestar keeps its own master darks and subtracts one from every sub before saving
+it. When you import from the telescope, M110 copies those masters into
+<code>Calibration/&lt;telescope&gt;/darks/</code> (see <strong><a href="ingest.html">Ingest</a></strong>) and lists them here,
+each with a preview, its median level and hot-pixel count. A dark is named by when the
+telescope made it and at what temperature ("Oct 15 21:52 · 13.9 °C"). It's named the
+same way everywhere in M110.</p>
+<p>M110 never applies these darks again: that would subtract the dark twice. They're
+here so you can see <strong>which dark each capture got</strong>:</p>
+<ul>
+<li>Select a capture and the dark(s) it used highlight; select a dark and right-click
+  → <strong>Select the captures it served</strong>.</li>
+<li>The <strong>Dark</strong> column shows how far the sensor drifted from that dark
+  ("24.9 °C · Δ10.5 ⚠"). Past about 3 °C, hot pixels come out over- or
+  under-subtracted; <code>m110-stack --max-dark-gap 3</code> leaves those frames out (see
+  <strong><a href="processing.html#stacking-without-opening-siril">Processing</a></strong>).</li>
+<li>The Seestar switches to a better-matched dark mid-capture once the sensor has
+  moved about 2.5 °C. A capture that switched shows each dark it used
+  ("24.9→23.2→13.9 °C").</li>
+<li>The Seestar doesn't record which dark it used, so M110 works it out from when each
+  dark was made and the sensor temperature. It says whether a link is confirmed or
+  inferred.</li>
+</ul>
+<p>Right-click a dark → <strong>Reveal in Finder</strong> (<strong>Reveal in file manager</strong> on Windows and
+Linux) to see the file; right-click a capture to reveal the dark it used.</p>
+<p>Next: <strong><a href="processing.html">Processing prep &amp; hardlinks →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

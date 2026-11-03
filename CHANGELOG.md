@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [0.3.0-beta.10] - 2026-11-03
+
 ### Added
 - **A third capture status: how far along you are.** Objects now read **Initial**
   (yellow) when you've barely started, **"62% of goal"** (blue) once you're a

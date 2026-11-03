@@ -13,10 +13,11 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.9</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html" class="on">The library & object metadata</a>
+      <a href="devices.html">Your telescopes — the Devices page</a>
       <a href="processing.html">Processing prep & hardlinks</a>
       <a href="backup.html">Backing up your library</a>
       <a href="planning.html">Session planning</a>
@@ -64,11 +65,17 @@ next to a video, or a whole folder of output from a tool like AutoStakkert, show
 as photos rather than staying hidden.</p>
 <p>Click any object to open its <strong>detail pane</strong>: the hero, object notes, the gallery, its
 capture sessions, and its processing status.</p>
+<p>The sessions table has a <strong>Device</strong> column naming the telescope that shot each
+session, so two telescopes on the same object on the same night are two sessions, not
+one merged row. For a Seestar, the <strong>Dark</strong> column shows which dark the telescope
+applied and how far the sensor drifted from it (see
+<strong><a href="devices.html#the-dark-library-seestar">the Devices page</a></strong>).</p>
 <h2 id="the-sky-map">The sky map</h2>
 <p>The <strong>Map</strong> view draws a star atlas of your Library: constellation figures, stars, the
 coordinate grid, and a marker for every object you're tracking, in its real position.</p>
 <p>Markers carry the same colors as the status chips elsewhere in the app — green for a
-<strong>deep stack</strong>, amber for an <strong>initial capture</strong>, muted grey for <strong>uncaptured</strong> — so a few
+<strong>deep stack</strong>, blue for <strong>in progress</strong>, amber for an <strong>initial capture</strong>, muted grey for
+<strong>uncaptured</strong> — so a few
 months' work shows up as a bright patch of sky, and the gaps show you what's still to come.
 The key lists only the colors actually on the chart, so an unfiltered map of a collection
 you've shot every object in doesn't explain a grey you can't see.</p>
@@ -93,6 +100,35 @@ you've shot every object in doesn't explain a grey you can't see.</p>
 <p>The chart is drawn by <a href="https://github.com/devonjones/uranometria">uranometria</a>, an
 optional component. If it isn't installed, the Map view says so and tells you what to
 install; nothing else in the Library is affected.</p>
+<h2 id="integration-goals-how-deep-is-deep-enough">Integration goals: how deep is deep enough</h2>
+<p>Every object has an <strong>integration goal</strong> for each telescope you shoot it with: the
+minutes of captured light it needs before you'd call it done. Its status follows it:</p>
+<ul>
+<li><strong>Initial</strong> (amber) — under a quarter of the way there;</li>
+<li><strong>62% of goal</strong> (blue) — on its way;</li>
+<li><strong>Deep Stack</strong> (green) — goal reached.</li>
+</ul>
+<p>Unless you set one, the goal is a <strong>default</strong> for the object's type (a faint nebula
+needs far more than a cluster), scaled by the telescope's speed: a faster f-ratio
+gathers the same depth in less time, so a Dwarf 3 at f/4.3 is asked for about three
+quarters of what an S50 at f/5 is. Two units of the same model count together; two
+different telescopes don't, because their frames don't stack into one picture. An
+object shows the status of its most advanced telescope — hover the status in the List
+to see each one.</p>
+<p>To set your own, open the object and use <strong>Set goal…</strong> under <strong>Integration goals</strong> in
+its detail pane: one row per telescope that has shot it (and the one you plan with).
+Add a reason if you like ("outer disk still noisy at 3′") — it's kept with the number.
+To go back to the default, open <strong>Set goal…</strong> again and choose <strong>Use default</strong>. Planning ranks by these goals too, so an object you've
+marked as needing seven hours keeps coming up until it gets them.</p>
+<p>A telescope M110 doesn't recognise has no f-ratio until you give it one: enter its
+aperture and focal length under <strong>Optics</strong> on the <strong><a href="devices.html#optics">Devices</a></strong> page.</p>
+<h3 id="goals-for-one-telescope">Goals for one telescope</h3>
+<p>Under <strong>Overview → Manage goals</strong>, each active goal has a <strong>telescope</strong> choice. <strong>Any
+telescope</strong> (the default) counts a capture from any of them; pick one telescope and only
+its captures count toward that goal. <strong>Track for another telescope…</strong> makes a copy of a
+goal for one telescope — for instance <em>Messier · Draco</em> alongside your everyday Messier
+— so you can work through a catalog again on a new scope without the old one marking
+it done. (A copy keeps the goal's list as it was when you made it.)</p>
 <h2 id="adding-objects">Adding objects</h2>
 <p>Most objects appear in your Library automatically — when you ingest a capture, M110
 promotes that target into the Library and pulls its reference details (type, magnitude,
@@ -142,13 +178,14 @@ which folder it's in, and you can override any image:</p>
   (saved per-object, so it sticks).</li>
 <li><strong>Set as hero</strong> makes that image the object's headline thumbnail — even an <em>older</em> image
   than the current hero (the hero re-renders rather than going stale).</li>
-<li><strong>Open in default app</strong> / <strong>Reveal in file manager</strong> hand the file off to your OS.</li>
+<li><strong>Open in default app</strong> / <strong>Reveal in Finder</strong> (<strong>Reveal in file manager</strong> on Windows
+  and Linux) hand the file off to your OS; Reveal opens the folder with the file selected.</li>
 </ul>
 <p>What counts as a "finished" render versus an intermediate by-product is decided by
 filename keywords you control in <strong>Preferences → Finished-image hints</strong> (defaults:
 <code>processed</code>, <code>final</code>, <code>finished</code>, and the intermediates <code>starless</code>, <code>starmask</code>).</p>
-<p>Next: <strong><a href="processing.html">Processing prep &amp; hardlinks →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.9 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+<p>Next: <strong><a href="devices.html">Your telescopes — the Devices page →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>
