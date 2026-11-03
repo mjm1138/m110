@@ -370,7 +370,7 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
 
 
 def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatch, qapp):
-    """Click Set goal… (dialog accepted with 420 min) then Use default (#184)."""
+    """Set goal… with 420 min, then Set goal… → Use default clears it (#184)."""
     from m110 import derived, integration_goals
     from m110.ui import goal_dialog
     from m110.ui.detail import DetailPane
@@ -402,12 +402,16 @@ def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatc
         labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
         assert "of 420 min" in labels and "your goal" in labels
 
-        reset = next(b for b in d._content.findChildren(QPushButton)
-                     if b.text() == "Use default")
-        reset.click()
+        # One button per row: Use default lives in the dialog now.
+        assert _count(d._content, "Use default") == 0
+        monkeypatch.setattr(goal_dialog.GoalDialog, "use_default", lambda self: True)
+        btn = next(b for b in d._content.findChildren(QPushButton)
+                   if b.text() == "Set goal…")
+        btn.click()
         qapp.processEvents()
         assert integration_goals.load() == {}
-        assert _count(d._content, "Use default") == 0
+        labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
+        assert "your goal" not in labels
     finally:
         d.deleteLater(); qapp.processEvents()
 
@@ -424,6 +428,19 @@ def test_the_goal_dialog_says_cancel_only_with_edits(qapp):
         dlg.deleteLater(); qapp.processEvents()
 
 
+def test_the_goal_dialog_offers_use_default_only_for_your_goal(qapp):
+    from m110.ui.goal_dialog import GoalDialog
+    plain = GoalDialog("M77", "ZWO Seestar S50", 240, 240)
+    mine = GoalDialog("M77", "ZWO Seestar S50", 420, 240, "outer disk", custom=True)
+    try:
+        assert plain._default_btn is None
+        assert mine._default_btn is not None and not mine.use_default()
+        mine._default_btn.click()
+        assert mine.result() == mine.DialogCode.Accepted and mine.use_default()
+    finally:
+        plain.deleteLater(); mine.deleteLater(); qapp.processEvents()
+
+
 def test_the_goal_rows_never_widen_the_pane(tmp_path, monkeypatch, qapp):
     """At the default window size the pane is ~440 px wide. Unwrapped, a goal row
     (model name · progress · whose + two buttons) set a ~510 px minimum → the pane
@@ -434,7 +451,7 @@ def test_the_goal_rows_never_widen_the_pane(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     slug, _tid = seed_capture(root)
     model = next(iter(derived.totals_by_slug()[slug]["by_model"]))
-    integration_goals.set_goal(slug, model, 420, "a reason")     # adds "Use default"
+    integration_goals.set_goal(slug, model, 420, "a reason")     # "· your goal"
     d = DetailPane()
     try:
         d.show_object(slug, catalog.load_library()[slug], derived.totals_by_slug()[slug])

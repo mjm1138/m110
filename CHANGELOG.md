@@ -35,9 +35,10 @@ changes a **user** would notice, per release.
   the noise in the faint outer disk), with the before/after progress and ranking.
   You accept it from the assistant banner, as with its other suggestions.
 - **Set an object's integration goal yourself.** The object's detail pane has an
-  **Integration goals** section: one row per telescope with its progress, **Set
-  goal…** (minutes, plus an optional reason kept with the number) and **Use
-  default**. Statuses and the Planning ranking follow at once.
+  **Integration goals** section: one row per telescope with its progress and a
+  **Set goal…** button (minutes, plus an optional reason kept with the number; for
+  a goal you've set, the same dialog has **Use default**). Statuses and the Planning
+  ranking follow at once.
 - **Choose which telescope a goal counts.** Under Overview → Manage goals, each
   active goal has a telescope choice (Any telescope, or one), and **Track for
   another telescope…** copies a goal for one telescope — e.g. *Messier · Draco*
@@ -60,6 +61,15 @@ changes a **user** would notice, per release.
   saying it isn't read — your text is kept. Library format version 5.
 - The assistant's `get_object` and `get_image` report the goal for the telescope
   you're planning with, and every telescope's progress on the object.
+- **The StackingWizard guide is up to date again.** It said mono and filter sets
+  weren't supported and sent you to Siril for those targets; StackingWizard has
+  handled them since the end of August — a night of Ha/OIII/SII or LRGB stacks per
+  filter, and the set goes on to AstroWizard's *Combine Mono Channels*. The guide
+  also now says a night can leave **several** stacks in the folder rather than one
+  (one per filter, plus mosaic and combined-night forms — M110 already recognised
+  all of them), and warns that a stack made with StackingWizard's Drizzle option
+  won't plate-solve, because drizzling drops the header cards that tie the picture
+  to the sky.
 
 ### Fixed
 - **Enrich online works when Simbad's main server is down.** It now uses Simbad's
@@ -91,7 +101,7 @@ changes a **user** would notice, per release.
   though the ranking and night plan already used the new telescope.
 - **The object pane no longer scrolls sideways when it shows integration goals.** At the
   default window size a goal row was wider than the pane, so the pane scrolled
-  horizontally and **Use default** was cut off. The goal dialog is also wider, so its
+  horizontally and the goal buttons were cut off. The goal dialog is also wider, so its
   title isn't truncated.
 - **`m110-stack --feather 0` now turns feathering off.** It was ignored, so a mosaic
   still stacked with its default 30 px feathering. The same was true when the assistant
