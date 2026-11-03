@@ -386,6 +386,40 @@ Legend: `[ ]` open · `[~]` partially done
   their site's summary "Not yet supported" lists — they go stale and contradicted the
   dated beta notes on camera RAW for over a month; trust the dated notes.
 
+  **The whole input surface, swept on the 2026.10.31 build — one folder picker and
+  nothing else.** Earlier passes only ruled out arguments and the `odoc`/URL routes,
+  which left "is there some *other* stable hook?" open; it is now closed, so don't
+  re-derive it:
+
+  | Candidate | Result |
+  |---|---|
+  | CLI arguments | no `argv`/`sys.argv` in any of the five code units |
+  | argparse / getopt | only `wizard_stack.main()`, unreachable when frozen |
+  | Finder "Open With" / Dock drop | no `CFBundleDocumentTypes`, no `::tk::mac::OpenDocument` |
+  | URL scheme | no `CFBundleURLTypes` |
+  | AppleScript / `osascript` / `.sdef` | zero hits — no scripting support |
+  | Environment variables | all 7 `environ` reads accounted for, none an input (below) |
+  | IPC / socket / single-instance | none; `psutil` only reports RAM + core count |
+  | Watch / drop folder | none; `watch` is the UI label "watch the night build" |
+  | Recent-folders list | none; `recent` is a section header in the Fellowship file |
+  | stdin | a `Popen` kwarg, not an input channel |
+
+  The env-var negative is the load-bearing one, since it was the most plausible
+  remaining hook. All seven reads: four in the PyInstaller `*_ORIG` child-env
+  sanitizer (our `launch._child_env()`'s counterpart), one in the Linux `xdg-open`
+  helper, one in `wizard_stack.cache_candidates` for `LOCALAPPDATA`/`XDG_CACHE_HOME`,
+  one in `wizard_lang.computer_language` for `LANG`/`LC_ALL`. The `SW_*` tokens
+  (`SW_BETA`, `SW_BUILD_DATE`, `SW_DEV_ASTROWIZARD`, `SW_PAGE_URL`) are module
+  constants, not lookups, and `CACHE_OVERRIDE`/`BAYER_OVERRIDE` are Engine Room UI
+  settings placing the scratch cache and forcing a Bayer pattern — neither selects
+  the night's folder. On-disk state agrees: the app keeps only `settings.json`,
+  `fellowship_cache.txt` (fetched from their site) and `crash.log`, and nothing else
+  is read at startup.
+
+  So the "wait for the upstream argument" decision in ROADMAP item 14 is not a choice
+  between routes — the `last_folder` pre-seed is the *only* alternative to it. Weigh
+  it on that basis rather than looking for a side door again.
+
   One red herring worth recording so it isn't re-investigated: `wizard_stack` *does*
   carry an argparse `main()` with `--out` / `--progressive` / `--trim`. It is
   unreachable in the frozen app — PyInstaller's entry is `stacking_wizard_app`, which
