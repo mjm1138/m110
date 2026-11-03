@@ -194,6 +194,13 @@ class _FakeTable:
         return self._rows[i]
 
 
+@pytest.fixture(autouse=True)
+def _simbad_hosts_reachable(monkeypatch):
+    """The lookup first checks a Simbad server accepts a connection; tests that fake
+    Simbad must not touch the network for it."""
+    monkeypatch.setattr(catalog, "_server_reachable", lambda host, timeout=4.0: True)
+
+
 def _install_fake_simbad(monkeypatch, simbad_cls):
     import types
     mod = types.ModuleType("astroquery.simbad")
@@ -281,3 +288,138 @@ def test_filter_is_not_an_enrichable_gap():
     assert catalog._has_gaps({**complete, "filter": None}) is False
     missing_mag = {k: v for k, v in complete.items() if k != "magnitude"}
     assert catalog._has_gaps(missing_mag) is True                  # a real fillable gap still counts
+
+
+def _install_fake_simbad_with_mirror(monkeypatch, simbad_cls):
+    import types
+    _install_fake_simbad(monkeypatch, simbad_cls)
+    sys.modules["astroquery.simbad"].conf = types.SimpleNamespace(
+        server="simbad.cds.unistra.fr",
+        servers_list=["simbad.cds.unistra.fr", "simbad.harvard.edu"])
+
+
+_ROW = {"ra": 202.47, "dec": 47.2, "V": 8.4, "otype": "Sy2"}
+
+
+def test_resolve_online_falls_back_to_the_simbad_mirror(monkeypatch):
+    """CDS Strasbourg was unreachable for days (Nov 2026) while the Harvard mirror
+    answered: the lookup moves on to the mirror instead of failing."""
+    class CdsDown:
+        server = "simbad.cds.unistra.fr"
+
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_object(self, name):
+            if self.server == "simbad.cds.unistra.fr":
+                raise ConnectionError("Unable to access the capabilities endpoint")
+            return _FakeTable([_ROW])
+
+    _install_fake_simbad_with_mirror(monkeypatch, CdsDown)
+    out = catalog.resolve_object_online(["M 51", "M 101"])
+    assert set(out) == {"M 51", "M 101"}
+    assert out["M 51"]["magnitude"] == 8.4
+
+
+def test_resolve_online_unreachable_message_is_plain(monkeypatch, caplog):
+    """Every server down → a short message naming both, not pyvo's list of causes;
+    the raw error goes to the log."""
+    import logging
+
+    class AllDown:
+        server = "simbad.cds.unistra.fr"
+
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_object(self, name):
+            raise ConnectionError(f"Unable to access the capabilities endpoint at {self.server}")
+
+    _install_fake_simbad_with_mirror(monkeypatch, AllDown)
+    log = logging.getLogger("m110")
+    log.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="m110")
+    try:
+        with pytest.raises(catalog.OnlineLookupError) as ei:
+            catalog.resolve_object_online(["M 51"])
+    finally:
+        log.removeHandler(caplog.handler)
+    msg = str(ei.value)
+    assert "simbad.cds.unistra.fr" in msg and "simbad.harvard.edu" in msg
+    assert "capabilities" not in msg and "Nothing was changed" in msg
+    assert "capabilities" in caplog.text                  # the detail is logged
+
+
+def test_resolve_online_keeps_a_server_that_answered(monkeypatch):
+    """Once a server has answered, a later per-name error is that name's problem, not
+    a reason to switch mirrors."""
+    calls = []
+
+    class Flaky:
+        server = "simbad.cds.unistra.fr"
+
+        def add_votable_fields(self, *a):
+            pass
+
+        def query_object(self, name):
+            calls.append((self.server, name))
+            if name == "bad":
+                raise ValueError("bad name")
+            return _FakeTable([_ROW])
+
+    _install_fake_simbad_with_mirror(monkeypatch, Flaky)
+    out = catalog.resolve_object_online(["M 51", "bad", "M 101"])
+    assert set(out) == {"M 51", "M 101"}
+    assert {s for s, _ in calls} == {"simbad.cds.unistra.fr"}
+
+
+def test_resolve_online_skips_a_server_that_wont_connect(monkeypatch):
+    """CDS dropped connections silently, so each pyvo attempt waited out its timeout
+    (~75 s to fail). A server that doesn't accept a connection is skipped up front."""
+    used = []
+
+    class Rec:
+        server = "simbad.cds.unistra.fr"
+
+        def add_votable_fields(self, *a):
+            used.append(self.server)
+
+        def query_object(self, name):
+            used.append(self.server)
+            return _FakeTable([_ROW])
+
+    _install_fake_simbad_with_mirror(monkeypatch, Rec)
+    monkeypatch.setattr(catalog, "_server_reachable",
+                        lambda host, timeout=4.0: host != "simbad.cds.unistra.fr")
+    assert "M 51" in catalog.resolve_object_online(["M 51"])
+    assert set(used) == {"simbad.harvard.edu"}
+
+
+def test_resolve_online_fails_fast_when_no_server_connects(monkeypatch):
+    class Never:
+        def add_votable_fields(self, *a):
+            raise AssertionError("must not reach Simbad setup")
+
+    _install_fake_simbad_with_mirror(monkeypatch, Never)
+    monkeypatch.setattr(catalog, "_server_reachable", lambda host, timeout=4.0: False)
+    with pytest.raises(catalog.OnlineLookupError) as ei:
+        catalog.resolve_object_online(["M 51"])
+    assert "simbad.harvard.edu" in str(ei.value)
+
+
+def test_resolve_online_asks_for_fluxes_without_dropping_objects(monkeypatch):
+    """The "V" flux field inner-joins Simbad's flux table, so an object with no V
+    magnitude (M 1, NGC 6992, IC 434) came back as no match. `allfluxes` is a left
+    join: one row per object, V masked when absent."""
+    fields = []
+
+    class Rec:
+        def add_votable_fields(self, *a):
+            fields.extend(a)
+
+        def query_object(self, name):
+            return _FakeTable([{"ra": 83.63, "dec": 22.01, "otype": "SNR"}])
+
+    _install_fake_simbad(monkeypatch, Rec)
+    assert catalog.resolve_object_online(["M 1"])["M 1"]["type"] == "emission_snr"
+    assert "allfluxes" in fields and "V" not in fields

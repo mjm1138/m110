@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+import warnings
 
 from . import config
 
@@ -672,7 +673,8 @@ def resolve_object_online(names) -> dict[str, dict]:
     try:
         import socket
         socket.setdefaulttimeout(15)
-        from astroquery.simbad import Simbad
+        import astroquery.simbad as simbad_mod
+        Simbad = simbad_mod.Simbad
     except Exception as e:                                # astroquery absent OR failing to import
         # Log the real error with its traceback. astroquery can import cleanly from
         # source yet FAIL in a packaged build (e.g. #74: KeyError('astropy') because
@@ -684,11 +686,35 @@ def resolve_object_online(names) -> dict[str, dict]:
             "online lookup: astroquery.simbad could not be imported (%s: %s)",
             type(e).__name__, e, exc_info=True)
         raise OnlineLookupError(_astroquery_missing_message()) from e
-    try:
-        sim = Simbad()
-        sim.add_votable_fields("V", "dim", "otype")
-    except Exception as e:                                # bad astroquery setup
-        raise OnlineLookupError(f"Simbad lookup failed: {e}") from e
+    # Simbad has a mirror (astroquery lists CDS Strasbourg, then Harvard). CDS was
+    # unreachable for days in Nov 2026 while Harvard answered, and "Enrich online"
+    # failed — after ~75 s, because CDS dropped connections and every pyvo attempt
+    # (add_votable_fields already talks to the server) waited out its timeout. So:
+    # start on the first server that accepts a connection within a few seconds, and
+    # until one has answered a query, a failure moves on to the next.
+    servers = _simbad_servers(simbad_mod)
+    start = next((i for i, host in enumerate(servers) if _server_reachable(host)), None)
+    if start is None:
+        raise OnlineLookupError(_unreachable_message(servers))
+    servers = servers[start:]
+    sim, setup_error = None, None
+    for host in servers:
+        try:
+            sim = Simbad()
+            sim.server = host
+            # `allfluxes` (left-joined, one row per object) rather than the "V" flux
+            # filter: that inner-joins, so an object with no V magnitude — M 1, NGC 6992,
+            # IC 434 — came back as no match at all and enrich silently skipped it.
+            sim.add_votable_fields("allfluxes", "dim", "otype")
+            break
+        except Exception as e:                            # bad setup, or this server
+            setup_error, sim = setup_error or e, None
+    if sim is None:
+        import logging
+        logging.getLogger("m110").warning("online lookup: Simbad setup failed",
+                                          exc_info=setup_error)
+        raise OnlineLookupError(f"Simbad lookup failed: {setup_error}") from setup_error
+    servers = servers[servers.index(sim.server):]
     # Query one name at a time with query_object (singular), NOT the batch
     # query_objects: the batch path injects Simbad's int64 `object_number_id` (oid)
     # column, and astropy's VOTable parser overflows converting it on **Windows**, where
@@ -697,25 +723,72 @@ def resolve_object_online(names) -> dict[str, dict]:
     # cross-platform safe. We key by the *input* name (the singular query resolves the
     # name itself and needs no echo column). Per-name is fine: single lookups are the
     # common case, and bulk enrich is a backgrounded, cancellable action.
+    tried = [servers[0]]
+    answered = False
     out: dict[str, dict] = {}
     first_error: Exception | None = None
     for name in names:
-        try:
-            res = sim.query_object(name)
-        except Exception as e:                            # network / Simbad hiccup
-            if first_error is None:
-                first_error = e
-            continue
+        while True:
+            try:
+                res = sim.query_object(name)
+                answered = True
+                break
+            except Exception as e:                        # network / Simbad hiccup
+                if first_error is None:
+                    first_error = e
+                if answered or len(tried) == len(servers):
+                    res = None
+                    break
+                import logging
+                logging.getLogger("m110").warning(
+                    "online lookup: Simbad at %s failed (%s: %s); trying %s",
+                    tried[-1], type(e).__name__, e, servers[len(tried)])
+                sim.server = servers[len(tried)]
+                tried.append(servers[len(tried)])
         if res is None or len(res) == 0:                  # unresolved name → skip quietly
             continue
-        entry = _simbad_row_to_entry(res[0])
+        with warnings.catch_warnings():                   # masked (absent) values → NaN,
+            warnings.simplefilter("ignore")               # which the reader skips
+            entry = _simbad_row_to_entry(res[0])
         if entry:
             out[name] = entry
     # Nothing resolved AND a query errored → Simbad/network is down; surface it. All-empty
     # with no error just means none of the names matched — return {} quietly (not an error).
     if not out and first_error is not None:
-        raise OnlineLookupError(f"Simbad lookup failed: {first_error}") from first_error
+        import logging
+        logging.getLogger("m110").warning(
+            "online lookup failed on %s", ", ".join(tried), exc_info=first_error)
+        raise OnlineLookupError(_unreachable_message(tried)) from first_error
     return out
+
+
+def _simbad_servers(simbad_mod) -> list[str]:
+    """Simbad and its mirrors, in astroquery's order. Never empty."""
+    conf = getattr(simbad_mod, "conf", None)
+    servers = [s for s in (getattr(conf, "servers_list", None) or []) if s]
+    default = getattr(conf, "server", None) or "simbad.cds.unistra.fr"
+    return servers or [default]
+
+
+def _server_reachable(host: str, timeout: float = 4.0) -> bool:
+    """Does `host` accept an HTTPS connection within `timeout`? A dead Simbad drops
+    the connection silently, so without this every attempt waits the full timeout."""
+    import socket
+    try:
+        socket.create_connection((host, 443), timeout=timeout).close()
+        return True
+    except OSError:
+        import logging
+        logging.getLogger("m110").warning("online lookup: %s is unreachable", host)
+        return False
+
+
+def _unreachable_message(servers: list[str]) -> str:
+    """What the user reads when no Simbad server answered: where we tried and what to
+    do — not the VO library's paragraph of possible causes (the full error is logged)."""
+    where = " or ".join(servers)
+    return (f"Couldn't reach Simbad ({where}). It may be down, or blocked on your "
+            "network. Nothing was changed; try again later.")
 
 
 def _designation_index() -> dict[str, str]:

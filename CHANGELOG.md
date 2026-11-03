@@ -62,6 +62,12 @@ changes a **user** would notice, per release.
   you're planning with, and every telescope's progress on the object.
 
 ### Fixed
+- **Enrich online works when Simbad's main server is down.** It now uses Simbad's
+  Harvard mirror when the Strasbourg server doesn't answer (it was unreachable for
+  days in early November), and it gives up in seconds rather than over a minute. If
+  neither answers, the message says so plainly instead of listing possible causes.
+- **Enrich online fills in objects that have no V magnitude.** M 1, NGC 6992, IC 434
+  and others came back as "not found", so their type and size were never filled in.
 - **Quitting no longer stalls for several seconds.** Clicking back into M110 starts a
   sync of your library, so quitting right afterwards waited for the whole sync to
   finish (up to 18 seconds on a large library). Quit now stops the sync where it is,
