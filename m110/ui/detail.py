@@ -345,8 +345,8 @@ class DetailPane(QScrollArea):
 
     def _add_goals_section(self, slug: str, e: dict, t: dict):
         """One row per telescope model that captured the object, plus the one
-        Planning is set to: its progress against its integration goal, and Set
-        goal… / Use default."""
+        Planning is set to: its progress against its integration goal, and one Set
+        goal… button (its dialog also offers Use default for a goal you set)."""
         reg = devices.load_registry()
         goals = integration_goals.load()
         by_model = t.get("by_model") or {}
@@ -377,15 +377,7 @@ class DetailPane(QScrollArea):
             set_btn = QPushButton("Set goal…")
             set_btn.clicked.connect(
                 lambda _=False, m=model: self._set_goal(slug, e, m))
-            row.addWidget(set_btn)
-            if source == integration_goals.SOURCE_USER:
-                default_btn = QPushButton("Use default")
-                default_btn.setToolTip(
-                    f"Back to {integration_goals.default_goal(e.get('type'), model, reg):.0f}"
-                    " min for this telescope")
-                default_btn.clicked.connect(
-                    lambda _=False, m=model: self._clear_goal(slug, m))
-                row.addWidget(default_btn)
+            row.addWidget(set_btn, 0, Qt.AlignTop)
             self._lay.addLayout(row)
 
     def _set_goal(self, slug: str, e: dict, model: str):
@@ -393,22 +385,22 @@ class DetailPane(QScrollArea):
         from m110.ui.goal_dialog import GoalDialog
         reg = devices.load_registry()
         goals = integration_goals.load()
-        goal, _src = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
+        goal, src = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
         _f, calibrated = integration_goals.speed_factor(model, reg)
         dlg = GoalDialog(
             catalog.object_label(catalog.object_identifiers(slug, e)) or slug,
             integration_goals.model_label(model, reg), goal,
             integration_goals.default_goal(e.get("type"), model, reg),
             goals.get(slug, {}).get(model, {}).get("reason", ""),
-            calibrated=calibrated, parent=self)
+            calibrated=calibrated, custom=src == integration_goals.SOURCE_USER,
+            parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        integration_goals.set_goal(slug, model, dlg.minutes(), dlg.reason())
+        if dlg.use_default():
+            integration_goals.clear_goal(slug, model)
+        else:
+            integration_goals.set_goal(slug, model, dlg.minutes(), dlg.reason())
         self._goals_saved(slug, e)
-
-    def _clear_goal(self, slug: str, model: str):
-        integration_goals.clear_goal(slug, model)
-        self._goals_saved(slug, self._current[1])
 
     def _goals_saved(self, slug: str, e: dict):
         """Statuses follow the goal at once: rebuild derived data (no scan), show

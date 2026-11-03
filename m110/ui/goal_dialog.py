@@ -2,7 +2,9 @@
 
 A minutes spinbox (seeded with the current goal; the model's default shown beside
 it) and an optional one-line reason, kept with the goal so the number doesn't lose
-its justification. The caller writes it — this dialog only collects it.
+its justification. When the goal is the user's own, **Use default** goes back to the
+model's default — the one place to change a goal, so the detail pane's row needs a
+single button. The caller writes it — this dialog only collects it.
 """
 from __future__ import annotations
 
@@ -14,7 +16,7 @@ from PySide6.QtWidgets import (
 class GoalDialog(QDialog):
     def __init__(self, object_label: str, model_label: str, goal_min: float,
                  default_min: float, reason: str = "", *, calibrated: bool = True,
-                 parent=None):
+                 custom: bool = False, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Integration goal — {object_label}")
         self.setMinimumWidth(440)        # else the title truncates and the intro wraps tall
@@ -46,6 +48,13 @@ class GoalDialog(QDialog):
         lay.addLayout(form)
 
         buttons = QDialogButtonBox()
+        self._use_default = False
+        self._default_btn = None
+        if custom:                       # only a goal you set has a default to go back to
+            self._default_btn = buttons.addButton("Use default",
+                                                  QDialogButtonBox.ResetRole)
+            self._default_btn.setToolTip(f"Back to {default_min:.0f} min")
+            self._default_btn.clicked.connect(self._choose_default)
         self._save_btn = buttons.addButton("Save", QDialogButtonBox.AcceptRole)
         self._reject_btn = buttons.addButton("Close", QDialogButtonBox.RejectRole)
         buttons.accepted.connect(self.accept)
@@ -59,6 +68,14 @@ class GoalDialog(QDialog):
     def _mark_dirty(self, *_):
         self._dirty = True
         self._reject_btn.setText("Cancel")       # "Cancel" only while there are edits
+
+    def _choose_default(self):
+        self._use_default = True
+        self.accept()
+
+    def use_default(self) -> bool:
+        """True when the dialog closed on **Use default** (clear the goal)."""
+        return self._use_default
 
     def minutes(self) -> int:
         return self._minutes.value()

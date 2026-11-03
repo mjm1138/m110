@@ -103,7 +103,7 @@ to see each one.
 To set your own, open the object and use **Set goal…** under **Integration goals** in
 its detail pane: one row per telescope that has shot it (and the one you plan with).
 Add a reason if you like ("outer disk still noisy at 3′") — it's kept with the number.
-**Use default** puts it back. Planning ranks by these goals too, so an object you've
+To go back to the default, open **Set goal…** again and choose **Use default**. Planning ranks by these goals too, so an object you've
 marked as needing seven hours keeps coming up until it gets them.
 
 A telescope M110 doesn't recognise has no f-ratio until you give it one: enter its

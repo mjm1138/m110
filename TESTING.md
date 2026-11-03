@@ -480,7 +480,8 @@ re-run when its area changes and you want eyes on the visuals).
       status → one line per telescope ("ZWO Seestar S50: 11 of 18 min (61%, your goal)").
 - [ ] M51 detail → **Integration goals**: an S50 row and a Travel S30 row. **Set goal…**
       on the S50 → 10 min → the S50 row and the Library pill update at once (no Sync);
-      **Use default** restores it. The dialog's button reads Close until you edit.
+      **Set goal…** again → **Use default** (only offered for a goal you set) restores it.
+      Each row has one button. The dialog's button reads Close until you edit.
 - [ ] **Overview → Manage goals**: the corpus **Travel scope** goal's picker shows the
       **model**, *ZWO Seestar S30* (goals are per model, not per unit), and counts 2/3 (M42 is Dwarf-only). Set **Messier** to the S30 → its captured
       count drops to the S30's objects; back to *Any telescope* restores it.
