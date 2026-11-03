@@ -55,7 +55,7 @@ def list_objects(query: str | None = None, captured_only: bool = False,
             "type": entry.get("type"),
             "season": entry.get("season"),
             "integration_min": integration,
-            "sessions": total.get("sessions", 0),
+            "sessions": total.get("session_count", 0),
         })
 
     rows.sort(key=lambda r: (-r["integration_min"], r["slug"]))
