@@ -321,7 +321,7 @@ artifact every time a cheap one is redone.
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
 - **StackingWizard still takes no arguments** — re-verified against the 2026.08.27,
-  2026.10.05, 2026.10.20 and 2026.10.25 builds; no `argv`, no document types, no URL types, and
+  2026.10.05, 2026.10.20, 2026.10.25 and 2026.10.31 builds; no `argv`, no document types, no URL types, and
   no Apple event that carries a path (2026.10.20 added `::tk::mac::Quit` and
   `::tk::mac::ReopenApplication` only — see [`BUGS.md`](BUGS.md)). Its folder
   picker seeds `initialdir` from `last_folder` in
@@ -344,6 +344,17 @@ artifact every time a cheap one is redone.
   `launch_with_file` uses, so that route is confirmed). A user can now go
   StackingWizard → AstroWizard without the stack passing through M110's
   `astrowizard/` sandbox, so the import side must not assume M110 made the handoff.
+  **Two things in the 2026.10.31 build strengthen the request, if it has not gone
+  yet.** First, the *sibling app shipped the affordance on the same day*:
+  AstroWizard's 2026-10-31 build added "drop a FITS, TIFF or XISF on AstroWizard's
+  Dock icon, or open one with it from the Finder" — the `odoc` route StackingWizard
+  still lacks, from the same developer, so the ask becomes "do for StackingWizard
+  what you just did for AstroWizard." Second, their **own** published "Not built
+  yet" list on
+  [stackingwizard.html](https://astrowizard.lukomatico.com/stackingwizard.html) now
+  carries *"Pointing at a parent folder and letting the wizard handle each night
+  inside it"* — our use case, acknowledged upstream as a known gap, which makes this
+  a vote for something already on their list rather than a new request.
 - **A sandbox that hardlinks a directory of frames must say so in
   `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file —
   `stacking.apply_handoff` hardlinks the stack into `astrowizard/` root — so its
@@ -1016,6 +1027,18 @@ per-object lookup misses degrade to warning strings.
   explicitly, and we can enforce it for free: `hints.is_intermediate_name`
   already recognises `starless` / `starmask`, so those tiles simply don't offer
   the action.
+- **A drizzled StackingWizard stack arrives with no WCS, and says so.** Its
+  2026.10.31 build (Beta 4.5 onward) offers **Drizzle 2x**, and a drizzled stack's
+  header divides the per-pixel cards (`XPIXSZ`/`PIXSIZE*`/`CD*`/`CDELT*`) by the
+  factor while **dropping `CRPIX*`/`CRVAL*`/`CTYPE*` entirely** — deliberately,
+  since the drizzled canvas is wider than the frame those cards described and a
+  plausible-looking wrong WCS misleads worse than none (their note cites a user
+  whose drizzled stack would not solve where the plain one did). `RA`/`DEC` stay,
+  and the stack is stamped `DRZWCS` plus `DRIZZLE` (output pixels per frame pixel).
+  So this is a *solve-from-scratch* input, not a re-use-the-header one: `DRZWCS` is
+  a reliable tell, the surviving `RA`/`DEC` still feed the pointing hint, and the
+  factor matters if we ever cache a solve against pixel scale. Siril's own drizzle
+  (`siril.drizzle_for`, 1.5×) is a separate convention — don't assume one factor.
 - **Online vs offline.** Field-star identity comes from CDS (VizieR Gaia DR3
   for magnitudes/distances, Tycho-2 designations, SIMBAD named stars).
   `allow_online=False` degrades to bundled-catalog DSOs only — wire it to the

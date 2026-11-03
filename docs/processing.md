@@ -253,23 +253,34 @@ disk, and they're skipped by backup because the originals are already in it.
 
 Then use **Stack in StackingWizard…** on the object. M110 opens the app and
 reveals that folder; point StackingWizard at it. It reads the frames, sorts them by
-header, stacks, and writes `<object>_wizardstack.fits` back into the same folder —
-which is exactly where AstroWizard expects to find it, and where **Import finished
-work** looks for your finish afterwards.
+header, stacks, and writes its stack back into the same folder — which is exactly
+where AstroWizard expects to find it, and where **Import finished work** looks for
+your finish afterwards.
 
-M110 treats that stack as the folder's *input*, so tidying up after a finish never
-archives it. Re-finish as often as you like; the stack stays put.
+The stack is named `<object>_wizardstack.fits`, and you may get more than one: a
+mono or filtered night produces **one stack per filter**, a mosaic lands as
+`<object>_mosaic_wizardstack_<n>f.fits`, and combining several nights writes
+`<object>_combined_wizardstack.fits`. M110 recognises all of them.
 
-Two things worth knowing:
+M110 treats those stacks as the folder's *input*, so tidying up after a finish never
+archives them. Re-finish as often as you like; the stacks stay put.
+
+Three things worth knowing:
 
 - **Point it at the `astrowizard/` folder, not `siril/`.** Its scan is recursive,
   so pointing it at the Siril folder also works — but then its stack and
   AstroWizard's working files land in Siril's workspace, where M110 reads them as
   Siril's leftovers. If you've already done that, move those files into
   `astrowizard/` and everything lines up.
-- **Mono/filter sets aren't supported by StackingWizard yet** (its own beta notes
-  say so). For those targets, stack in Siril or with `m110-stack` and use **Send to
-  AstroWizard** instead.
+- **Mono and filter sets work.** A night of Ha/OIII/SII (or LRGB) sorts, grades and
+  stacks per filter, and the set goes on to AstroWizard's *Combine Mono Channels*.
+  Note that AstroWizard combines one family at a time, so RGB and narrowband stacks
+  go through it separately.
+- **If you use its Drizzle option, the stack won't plate-solve.** Drizzle rebuilds
+  the stack on a grid twice as fine, and StackingWizard restates the header's
+  per-pixel scale to match but drops the cards that pin the sky to the original
+  pixel grid (it marks the stack `DRZWCS`). The stack imports and finishes normally;
+  it just has no usable plate solution until something solves it afresh.
 
 ### Bringing the finish back
 

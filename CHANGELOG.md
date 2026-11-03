@@ -60,6 +60,15 @@ changes a **user** would notice, per release.
   saying it isn't read — your text is kept. Library format version 5.
 - The assistant's `get_object` and `get_image` report the goal for the telescope
   you're planning with, and every telescope's progress on the object.
+- **The StackingWizard guide is up to date again.** It said mono and filter sets
+  weren't supported and sent you to Siril for those targets; StackingWizard has
+  handled them since the end of August — a night of Ha/OIII/SII or LRGB stacks per
+  filter, and the set goes on to AstroWizard's *Combine Mono Channels*. The guide
+  also now says a night can leave **several** stacks in the folder rather than one
+  (one per filter, plus mosaic and combined-night forms — M110 already recognised
+  all of them), and warns that a stack made with StackingWizard's Drizzle option
+  won't plate-solve, because drizzling drops the header cards that tie the picture
+  to the sky.
 
 ### Fixed
 - **Quitting no longer stalls for several seconds.** Clicking back into M110 starts a
