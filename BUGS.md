@@ -751,16 +751,30 @@ dark from the 20 matching raw 30 s darks and calibrated with it.
   device, library and Devices entry. Sessions record the path (`capture`). Evidence it
   is one sensor: the app's 20 s master and the NINA 20 s darks share a pedestal
   (476 vs 480 ADU) and their hot pixels coincide (85 of the top 200; 0 under any flip).
-- [ ] **A target mixing Seestar-app subs and NINA subs stacks without darks.** Every
-  11-06 NINA target already has Seestar-app subs in the library: M110 (20 s), M74 (20 s)
-  and IC 434 (20 s), against NINA's 30 s and 20 s. With one device key, a target folder
-  holds both. After `feature/nina-import`:
-  - `--only-exposure 30` now isolates the NINA subs and **does** apply a dark (the
-    per-frame flag says they need one).
-  - A same-exposure mix (IC 434, 20 s + 20 s) is refused with its own note
-    (`facts_from_frames` → `mixed_capture`), rather than silently left undarked.
-  - Mixing still needs **per-subset calibration**: dark the Alpaca subs and leave the
-    app subs alone, then merge before registration.
+- [x] **A target mixing Seestar-app subs and NINA subs stacked without darks** (done;
+  m110-stack). Every 11-06 NINA target already has Seestar-app subs: M110 (20 s), M74
+  (20 s) and IC 434 (20 s), against NINA's 30 s and 20 s. With one device key, a target
+  folder holds both. `stacking.calibration_subsets` now groups the selected frames by
+  (dark-subtracted on the telescope, exposure, gain, binning) and matches each group
+  on its own (`calibration_for_stack`). Groups with the same result are rejoined.
+  When more than one calibration remains, the solve script picks each subset out of
+  `lights_` (`unselect` all, then `select` its positions), runs
+  `calibrate … -prefix=ppN_` with that subset's masters (built by a suffixed prelude,
+  `master_darks_N.fit`), and `merge`s them into `pp_lights_`. So everything after is
+  unchanged. Merge renumbers in subset order, and `seq_order` maps solve failures back
+  to frames. Verified with a real Siril 1.4.5 run on a mixed M74: 30 live-store app
+  subs (20 s, no dark) plus 30 NINA subs (30 s, master built from 20 raw darks) →
+  merged, solved, stacked (34 frames). This also calibrates a **mixed-exposure** target
+  per exposure; it used to be refused. Siril prep (the Naztronomy script) still gets
+  no darks for a mixed target, and its note points to m110-stack.
+  Needed with it: N.I.N.A.'s Seestar filter `IR` is the app's `IRCUT` (the ZWO Alpaca
+  name for the same UV/IR-cut slot). `capture_profiles.filter_name` renames it, so
+  the two populations share a job folder instead of splitting by filter.
+- [ ] **The failures-by-night report undercounts** (found 2026-11-07, not fixed).
+  `parse_solve_log` collects only `Image … did not solve` lines, but Siril reports
+  most failures as `Image N: no stars found`. On the mixed M74 run the tally said
+  "34 of 60 solved", while the per-night table listed 5 + 6 = 11 failures, not 26.
+  The `--exclude-night` advice built on it is too optimistic.
 - [x] **"Remember alias?" after a retarget stores the folder name** (done). Ops and
   groups carry `source_name`, the name `canonical_target` resolved from (the `OBJECT`
   header after the panel fold). `IngestGroup.alias_key` is what both the Import page and

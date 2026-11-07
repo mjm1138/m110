@@ -269,7 +269,7 @@ def read_frames(lights: Path) -> tuple[list[Frame], dict]:
         frames.append(Frame(
             name=p.name,
             exposure=float(exp) if exp is not None else None,
-            filter=(h.get("FILTER") or "").strip() or "UNKNOWN",
+            filter=capture_profiles.filter_name(h) or "UNKNOWN",
             gain=int(h["GAIN"]) if h.get("GAIN") is not None else None,
             temp=float(temp) if temp is not None else None,
             date=str(h.get("DATE-OBS") or "")[:10],
@@ -952,6 +952,31 @@ def _siril_opt(name: str, path: str) -> str:
     return f'"-{name}={path}"'
 
 
+def _calibrate_flags(cal: dict, suffix: str = "") -> str:
+    """The calibrate options for one calibration (`` "-dark=…" -cc=dark … -cfa``,
+    with a leading space), or "" when there is nothing to apply. A raw set's tier
+    names the master the prelude builds (`_stage_names`)."""
+    ref = {t: (_stage_names(t, suffix)[1] if isinstance(v, list) else v)
+           for t, v in (cal or {}).items() if v}
+    flags: list[str] = []
+    if ref.get("darks"):
+        flags += [_siril_opt("dark", ref["darks"]), "-cc=dark"]
+    if ref.get("flats"):
+        flags += [_siril_opt("flat", ref["flats"]), "-equalize_cfa"]
+    if ref.get("biases"):
+        flags += [_siril_opt("bias", ref["biases"])]
+    if flags:
+        flags.append("-cfa")
+    return (" " + " ".join(flags)) if flags else ""
+
+
+def _cal_summary(cal: dict | None) -> str:
+    """'dark ✓ (20 raw) · flat — · biase —', or '' when there is no calibration."""
+    if not cal:
+        return ""
+    return " · ".join(f"{t[:-1]} " + _cal_mark(cal.get(t)) for t in calibration.TIERS)
+
+
 def _cal_mark(v) -> str:
     """How the proposal table shows one tier: ✓ a master, ✓ (n raw) a set, — none."""
     if isinstance(v, list):
@@ -959,7 +984,7 @@ def _cal_mark(v) -> str:
     return "✓" if v else "—"
 
 
-def build_master_prelude(cal: dict) -> list[str]:
+def build_master_prelude(cal: dict, suffix: str = "") -> list[str]:
     """Siril lines (run in ``process/``) that turn each staged raw set
     (`stage_calibration_sets`) into a master named ``master_<tier>``, the way
     Siril's own OSC preprocessing script does: bias and dark by a plain sigma-
@@ -977,7 +1002,7 @@ def build_master_prelude(cal: dict) -> list[str]:
             # not the name calibrate is given. Masters are written plain.
             L += ["# Masters are written uncompressed (setcompress persists in Siril).",
                   "setcompress 0", ""]
-        stage, master = _CAL_STAGE[tier]
+        stage, master = _stage_names(tier, suffix)
         L += [f"# Build the master {tier[:-1]} from {len(frames)} raw frames "
               "(matched by exposure/gain/binning and sensor temperature).",
               f"cd {stage}", f"link {stage} -out=..", "cd .."]
@@ -985,7 +1010,7 @@ def build_master_prelude(cal: dict) -> list[str]:
         if tier == "flats":
             bias = cal.get("biases")
             if bias:
-                bref = _CAL_STAGE["biases"][1] if isinstance(bias, list) else bias
+                bref = _stage_names("biases", suffix)[1] if isinstance(bias, list) else bias
                 L.append(f"calibrate {seq} {_siril_opt('bias', bref)}")
                 seq = f"pp_{seq}"
             L += [f"stack {seq} rej 3 3 -norm=mul -out={master}", ""]
@@ -1033,10 +1058,15 @@ def build_ssf_solve(lights_name: str, p: Proposal,
         "cd ../process",
         "",
     ]
+    subsets = p.get("calibration_subsets") or []
     # Masters from raw calibration sets first — before `unselect` (which names the
     # lights sequence) and before `setcompress`, so a master is never quantised.
-    L += build_master_prelude(p.get("calibration") or {})
-    if unselect:
+    if subsets:
+        for k, sub in enumerate(subsets, 1):
+            L += build_master_prelude(sub.get("calibration") or {}, f"_{k}")
+    else:
+        L += build_master_prelude(p.get("calibration") or {})
+    if unselect and not subsets:     # subsets select their own frames below
         L.append("# Frame selection: calibrate and everything after skip excluded "
                  "frames.")
         L += [f"unselect {seq} {a} {b}" for a, b in as_ranges(unselect)]
@@ -1056,27 +1086,35 @@ def build_ssf_solve(lights_name: str, p: Proposal,
     # CFA channels of the flat, -cfa tells Siril the frames are colour-filter-array.
     # Each option is quoted as a whole token (`_siril_opt`) — a target name can
     # contain spaces.
-    cal = p.get("calibration") or {}
-    ref = {t: (_CAL_STAGE[t][1] if isinstance(v, list) else v)
-           for t, v in cal.items() if v}
-    cal_flags: list[str] = []
-    if ref.get("darks"):
-        cal_flags += [_siril_opt("dark", ref["darks"]), "-cc=dark"]
-    if ref.get("flats"):
-        cal_flags += [_siril_opt("flat", ref["flats"]), "-equalize_cfa"]
-    if ref.get("biases"):
-        cal_flags += [_siril_opt("bias", ref["biases"])]
-    if cal_flags:
-        cal_flags.append("-cfa")
-        L.append("# Calibrate against the master frames the plan matched "
-                 f"({', '.join(t[:-1] for t in calibration.TIERS if cal.get(t))}).")
-    tail = (" " + " ".join(cal_flags)) if cal_flags else ""
-    if p.get("debayer"):
-        L += ["# -debayer because drizzle is off; without it the stack is monochrome.",
-              f"calibrate {seq}{tail} -debayer", ""]
+    debayer = " -debayer" if p.get("debayer") else ""
+    L.append("# -debayer because drizzle is off; without it the stack is monochrome."
+             if debayer else
+             "# No -debayer: drizzle needs raw CFA and demosaics as it resamples.")
+    if subsets:
+        # Per-subset calibration: frames that need different masters — a Seestar's
+        # app subs (dark-subtracted on the telescope) beside its N.I.N.A. subs (not),
+        # or two exposures — are each calibrated with their own match, then merged
+        # into the sequence everything after expects (`calibration_subsets`).
+        n = max(max(sub["positions"]) for sub in subsets)
+        n = max([n, *(unselect or [])])
+        for k, sub in enumerate(subsets, 1):
+            flags = _calibrate_flags(sub.get("calibration") or {}, f"_{k}")
+            L += [f"# Subset {k}: {sub['label']} — "
+                  + (_cal_summary(sub.get("calibration")) or "no calibration"),
+                  f"unselect {seq} 1 {n}"]
+            L += [f"select {seq} {a} {b}" for a, b in as_ranges(sub["positions"])]
+            L += [f"calibrate {seq}{flags} -prefix=pp{k}_{debayer}", ""]
+        L += ["# One sequence again, in subset order (m110-stack maps solve failures "
+              "back through it).",
+              "merge " + " ".join(f"pp{k}_{seq}" for k in range(1, len(subsets) + 1))
+              + f" pp_{seq}", ""]
     else:
-        L += ["# No -debayer: drizzle needs raw CFA and demosaics as it resamples.",
-              f"calibrate {seq}{tail}", ""]
+        cal = p.get("calibration") or {}
+        flags = _calibrate_flags(cal)
+        if flags:
+            L.append("# Calibrate against the master frames the plan matched "
+                     f"({', '.join(t[:-1] for t in calibration.TIERS if cal.get(t))}).")
+        L += [f"calibrate {seq}{flags}{debayer}", ""]
     seq = f"pp_{seq}"
 
     if p.get("bg_extract"):
@@ -1239,6 +1277,11 @@ def parse_solve_log(text: str) -> SolveOutcome:
     return o
 
 
+def _to_lights_positions(failed: list[int], order: list[int]) -> list[int]:
+    """Solve-failure indices of the calibrated sequence → lights-list positions."""
+    return [order[i - 1] for i in failed if 0 < i <= len(order)]
+
+
 def failures_by_night(failed: list[int], frames: list[Frame],
                       excluded: list[int] | None = None) -> dict[str, tuple[int, int]]:
     """night -> (frames that failed to solve, frames offered to the solver).
@@ -1380,10 +1423,10 @@ def format_report(s: Survey, p: Proposal, siril: str, working: Path,
         ("bg extraction", "on" if p.get("bg_extract") else "off"),
         ("quality filters", filters_label(p.get("filters"))),
         ("compression", f"rice q{p.get('compress_quant')}" if p.get("compress") else "off"),
-        ("calibration", " · ".join(
-            f"{t[:-1]} " + _cal_mark((p.get('calibration') or {}).get(t))
-            for t in ("darks", "flats", "biases"))
-            if p.get("calibration") else "off"),
+        ("calibration", _cal_summary(p.get("calibration"))
+            or ("; ".join(f"{sb['label']}: {_cal_summary(sb['calibration']) or 'none'}"
+                          for sb in p.get("calibration_subsets") or []))
+            or "off"),
     ]
     for k, v in rows:
         why = p.settings[{"overlap norm": "overlap_norm", "bg extraction": "bg_extract",
@@ -1693,7 +1736,13 @@ def _raw_set_problem(tier: str, files: list[Path], frames: list) -> str | None:
 _CAL_STAGE = {t: (f"cal_{t}", f"master_{t}.fit") for t in calibration.TIERS}
 
 
-def stage_calibration_sets(working: Path, cal: dict | None) -> list[str]:
+def _stage_names(tier: str, suffix: str = "") -> tuple[str, str]:
+    """(staging dir, master file) for one tier; `suffix` tells calibration subsets
+    apart (``cal_darks_2`` / ``master_darks_2.fit``)."""
+    return f"cal_{tier}{suffix}", f"master_{tier}{suffix}.fit"
+
+
+def stage_calibration_sets(working: Path, cal: dict | None, suffix: str = "") -> list[str]:
     """Hardlink (copy across devices) every raw set the plan matched into
     ``process/cal_<tier>/`` for the solve script's master prelude. The run half
     only — `build_plan` still writes nothing. Returns the tiers staged. A stale
@@ -1703,7 +1752,7 @@ def stage_calibration_sets(working: Path, cal: dict | None) -> list[str]:
     for tier, val in (cal or {}).items():
         if not isinstance(val, list):
             continue
-        d = working / "process" / _CAL_STAGE[tier][0]
+        d = working / "process" / _stage_names(tier, suffix)[0]
         if d.is_dir():
             shutil.rmtree(d)
         d.mkdir(parents=True)
@@ -1715,6 +1764,71 @@ def stage_calibration_sets(working: Path, cal: dict | None) -> list[str]:
                 shutil.copyfile(src, dst)
         staged.append(tier)
     return staged
+
+
+def _subset_label(key: tuple, n: int) -> str:
+    applied, exp, gain, binning = key
+    bits = [f"{n} × {exp:g} s" if exp is not None else f"{n} frames"]
+    if applied:
+        bits.append("dark-subtracted on the telescope")
+    return ", ".join(bits)
+
+
+def calibration_subsets(working: Path, all_frames: list, kept: list, geom: dict
+                        ) -> tuple[list[dict] | None, list[str]]:
+    """Split the selected frames into the sets that need DIFFERENT calibration, or
+    None when one calibration serves them all (the `calibration_for_stack` path).
+
+    A target can hold frames that no single master suits: a Seestar's app subs
+    (dark-subtracted on the telescope) beside the same scope's N.I.N.A. subs (not),
+    or two exposures. Frames are grouped by (dark-subtracted, exposure, gain,
+    binning); each group is matched on its own (`calibration_for_stack`), and groups
+    that came out with the same calibration are rejoined. Each subset is
+    ``{"label", "calibration", "frames": [names], "positions": [1-based indices in
+    the full lights list]}``, in first-frame order. The job folder's own darks/
+    flats/biases (processing prep's link, or the user's) are one set for the whole
+    folder, so their presence means no split."""
+    groups: dict[tuple, list] = {}
+    for f in kept:
+        key = (bool(f.darks_applied), f.exposure, f.gain, f.binning)
+        groups.setdefault(key, []).append(f)
+    if len(groups) <= 1:
+        return None, []
+    for tier in calibration.TIERS:
+        d = working / tier
+        if d.is_dir() and any(x.is_file() and config.is_fits_file(x.name)
+                              for x in d.iterdir()):
+            return None, []
+    pos = {f.name: i for i, f in enumerate(all_frames, start=1)}
+    merged: dict[str, dict] = {}
+    notes: list[str] = []
+    for key, frs in groups.items():
+        cal, _why, sub_notes = calibration_for_stack(working, frs, geom)
+        label = _subset_label(key, len(frs))
+        notes += [n.replace("calibration: ", f"calibration [{label}]: ", 1)
+                  for n in sub_notes]
+        sub = merged.setdefault(json.dumps(cal, sort_keys=True),
+                                {"calibration": cal, "frames": [], "labels": []})
+        sub["frames"] += [f.name for f in frs]
+        sub["labels"].append(label)
+    subs = []
+    for sub in merged.values():
+        names = sorted(sub["frames"], key=pos.__getitem__)
+        subs.append({"label": " + ".join(sub["labels"]),
+                     "calibration": sub["calibration"], "frames": names,
+                     "positions": [pos[n] for n in names]})
+    subs.sort(key=lambda sb: sb["positions"][0])
+    return subs, notes
+
+
+def seq_order(p: "Proposal", n_frames: int) -> list[int]:
+    """Lights-list position (1-based) of each frame of the calibrated sequence, in
+    its order: subset by subset after a per-subset `merge`, else the lights list
+    itself. Maps a solve failure's sequence index back to its frame."""
+    subsets = p.get("calibration_subsets") or []
+    if subsets:
+        return [i for sub in subsets for i in sub["positions"]]
+    return list(range(1, n_frames + 1))
 
 
 def calibration_for_stack(working: Path, frames: list, geom: dict
@@ -1879,9 +1993,22 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
     if ov.no_calibration:
         p.set("calibration", None, "disabled on the command line")
     else:
-        cal, why, notes = calibration_for_stack(working, kept, geom)
-        p.set("calibration", cal, why)
-        p.warnings.extend(notes)
+        subsets, sub_notes = calibration_subsets(working, all_frames, kept, geom)
+        if subsets and len(subsets) > 1:
+            p.set("calibration", None, "per subset (calibration_subsets)")
+            p.set("calibration_subsets", subsets,
+                  f"{len(subsets)} sets of frames need different calibration "
+                  "(a dark-subtracted-on-device mix, or exposures): each is "
+                  "calibrated with its own match, then merged before registration")
+            p.warnings.extend(sub_notes)
+        elif subsets:                       # every group matched the same thing
+            p.set("calibration", subsets[0]["calibration"],
+                  "the same match for every exposure in the selection")
+            p.warnings.extend(sub_notes)
+        else:
+            cal, why, notes = calibration_for_stack(working, kept, geom)
+            p.set("calibration", cal, why)
+            p.warnings.extend(notes)
 
     # After overrides, so a hand-picked combination is checked too.
     reconcile(p)
@@ -2312,6 +2439,8 @@ def _execute(a, plan, siril: str, mark) -> int:
         # Raw calibration sets the plan matched are staged for the solve script,
         # which builds their masters before calibrating (build_master_prelude).
         staged = stage_calibration_sets(working, p.get("calibration"))
+        for k, sub in enumerate(p.get("calibration_subsets") or [], 1):
+            staged += stage_calibration_sets(working, sub.get("calibration"), f"_{k}")
         if staged:
             print("  Building master " + ", ".join(t[:-1] for t in staged)
                   + " from raw frames before calibrating.\n", flush=True)
@@ -2329,7 +2458,9 @@ def _execute(a, plan, siril: str, mark) -> int:
             carry_on = outcome.solved > 0 and outcome.fraction >= min_solved
             print(format_solve_report(
                 outcome,
-                failures_by_night(outcome.failed, plan.frames, dropped),
+                failures_by_night(_to_lights_positions(
+                    outcome.failed, seq_order(p, len(plan.frames))),
+                    plan.frames, dropped),
                 min_solved, carry_on), flush=True)
             if not carry_on:
                 print(f"Log: {log_path}\n")

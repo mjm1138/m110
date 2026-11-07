@@ -71,7 +71,8 @@ def _session_key(path: Path) -> tuple[str, float, str] | None:
         exp = float(hdr.get("EXPTIME"))
         if len(iso) != 10 or exp <= 0:
             return None
-        filt = str(hdr.get("FILTER") or "").strip().upper()
+        from . import capture_profiles      # renames (N.I.N.A.'s Seestar IR → IRCUT)
+        filt = (capture_profiles.filter_name(hdr) or "").upper()
         return iso, exp, filt
     except Exception:
         return None

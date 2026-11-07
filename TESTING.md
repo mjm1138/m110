@@ -389,6 +389,12 @@ re-run when its area changes and you want eyes on the visuals).
       **dark ✓ (4 raw)**, the solve script starts with `setcompress 0` and
       `stack cal_darks_ … -out=master_darks.fit`, and the calibrate line is
       `calibrate lights_ "-dark=master_darks.fit" …` (the whole option quoted).
+- [ ] **Mixed target:** copy a few app subs of an object into the same object as some
+      N.I.N.A. subs (e.g. corpus `M 72` subs into `M92/lights/`, or real data).
+      `m110-stack` on it shows the calibration row as two subsets ("… dark-subtracted
+      on the telescope: none" and "…: dark ✓"). The solve script has one
+      `calibrate … -prefix=ppN_` per subset, then `merge … pp_lights_`, and
+      `--run` finishes.
 - [ ] *(real data, optional)* Point Import at a real PINS night: panels fold to one
       `<object>_mosaic`, no-OBJECT darks go to the S50's library, and
       `m110-stack --run` on a NINA-only target builds the master and finishes.

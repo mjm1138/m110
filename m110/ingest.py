@@ -412,7 +412,7 @@ def frame_info(path: str) -> dict | None:
         # folded onto "<object>_mosaic" (capture_profiles.object_name)
         "object": capture_profiles.object_name(hdr, profile),
         "imagetyp": _normalize_imagetyp(hdr.get("IMAGETYP")),
-        "filter": (str(hdr.get("FILTER")).strip() or None) if hdr.get("FILTER") else None,
+        "filter": capture_profiles.filter_name(hdr, profile),
         "ra_deg": ra_deg,
         "dec_deg": dec_deg,
         "telescop": str(tel).strip() if tel not in (None, "") else None,

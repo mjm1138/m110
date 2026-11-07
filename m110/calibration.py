@@ -146,7 +146,6 @@ def frame_facts(path) -> dict | None:
         h = fits.getheader(str(path))
     except Exception:
         return None
-    filt = h.get("FILTER")
     tel = h.get("TELESCOP")
     temp = h.get("CCD-TEMP")
     if temp is None:
@@ -159,7 +158,7 @@ def frame_facts(path) -> dict | None:
         "binning": _num(h.get("XBINNING"), int),
         # rounded: a float32 card reads 13.8999996185303 for the 13.9 °C it means
         "temp_c": round(t, 2) if (t := _num(temp)) is not None else None,
-        "filter": (str(filt).strip() or None) if filt not in (None, "") else None,
+        "filter": capture_profiles.filter_name(h),       # profile renames applied
         # frames averaged into a master: NCOMBINE, or the Seestar's STACKCNT
         "ncombine": (ncomb := _num(h.get("NCOMBINE") if h.get("NCOMBINE") is not None
                                    else h.get("STACKCNT"), int)),
@@ -470,7 +469,8 @@ def match_for_facts(facts: dict, device: str | None) -> MatchResult:
         return MatchResult(device=device, notes=[
             "frames that were dark-subtracted when saved (the telescope's own app) "
             "mixed with frames that were not (other capture software, e.g. N.I.N.A.)"
-            " — no one dark suits both; stack them as separate targets"])
+            " — no one dark suits both. m110-stack calibrates each set with its "
+            "own match and merges them; the Naztronomy script cannot"])
     if facts.get("mixed"):
         groups = ", ".join(f"{k} ×{n}" for k, n in facts["groups"].items())
         return MatchResult(device=device, notes=[

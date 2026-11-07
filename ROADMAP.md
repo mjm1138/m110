@@ -1155,9 +1155,8 @@ remaining device-source gaps collect here:
     `CaptureProfile` shape), the profile that matched shown per group in the Import
     preview, and "save this retarget as a rule" alongside the alias. For SharpCap,
     ASIAIR, KStars/Ekos, APT, and any N.I.N.A. setup the built-in doesn't cover.
-  - **Per-subset calibration** for a target mixing Seestar-app subs (already
-    dark-subtracted) with N.I.N.A. subs (not): calibrate each subset with its own
-    match, merge, then register (BUGS.md → Import → NINA).
+  - Per-subset calibration for mixed targets **landed** with it, in m110-stack
+    (`calibration_subsets`). The Naztronomy script path still can't do it.
 - **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers. The
   device-level library they route into **landed on `main` 2026-10-18**
   (`feature/calibration-library`): `Calibration/<TELESCOP>/{darks,flats,biases}/`,

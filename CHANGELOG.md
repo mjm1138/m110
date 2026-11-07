@@ -27,8 +27,13 @@ changes a **user** would notice, per release.
     the Seestar app.
 - **Calibration follows how a frame was captured.** The Seestar app subtracts a dark
   on the telescope before saving each sub. The same telescope driven by N.I.N.A.
-  does not, so those frames are now calibrated with darks. A target that mixes app
-  subs and N.I.N.A. subs is not calibrated, and M110 explains why.
+  does not, so those frames are now calibrated with darks.
+- **One object can mix Seestar-app and N.I.N.A. captures.** When the frames you stack
+  need different calibration, **m110-stack** calibrates each set with its own match
+  and then stacks them together. That covers app subs (no dark) beside N.I.N.A. subs
+  (dark), and also two exposures, which used to stack with no calibration at all.
+  N.I.N.A.'s name for the Seestar's UV/IR-cut filter ("IR") now reads as the app's
+  "IRCUT", so both kinds of capture land in the same folder.
 - **Raw darks become a master automatically.** Calibration frames shot one at a
   time (as N.I.N.A. takes them) are grouped by exposure, gain, night and
   temperature. Siril prep links the matching set, and **m110-stack** builds the

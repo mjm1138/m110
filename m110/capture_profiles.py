@@ -61,6 +61,9 @@ class CaptureProfile:
     # Where a dark/flat/bias with no object goes: the device library, or the
     # holding area for the user to place.
     uncategorized_calibration: str = "library"
+    # FILTER renames, each applied when its condition holds: ((card, regex),
+    # ((from, to), …)). Matching is case-insensitive on `from`.
+    filter_maps: tuple = ()
 
 
 # N.I.N.A. localises the panel label (its `LblPanel` resource); the framing assistant
@@ -87,6 +90,10 @@ BUILTIN: tuple[CaptureProfile, ...] = (
         device_rules=(_SEESTAR_SERIAL_RULE,
                       ("TELESCOP", r".+", "{0}"), ("INSTRUME", r".+", "{0}")),
         darks_applied=False,
+        # The ZWO Alpaca driver names the S50's UV/IR-cut slot "IR"; the Seestar
+        # app calls the same filter "IRCUT" (its wheel has only that, LP and Dark).
+        # One name, so a target's N.I.N.A. and app subs land in one job folder.
+        filter_maps=((("INSTRUME", r"\bSeestar\b"), (("IR", "IRCUT"),)),),
     ),
     CaptureProfile(
         id="seestar-app", label="Seestar app",
@@ -161,6 +168,21 @@ def darks_applied(hdr: Mapping | None, profile: CaptureProfile | None = None) ->
     if p.darks_applied is not None:
         return p.darks_applied
     return devices.darks_applied_on_device(device_key(hdr, p))
+
+
+def filter_name(hdr: Mapping | None, profile: CaptureProfile | None = None) -> str | None:
+    """The FILTER card under the profile's renames (N.I.N.A.'s Seestar ``IR`` →
+    ``IRCUT``), or None when the card is blank."""
+    raw = _card(hdr, "FILTER")
+    if not raw:
+        return None
+    p = profile or profile_for(hdr)
+    for cond, pairs in p.filter_maps:
+        if _holds(hdr, cond):
+            for frm, to in pairs:
+                if raw.lower() == frm.lower():
+                    return to
+    return raw
 
 
 def fold_panel(name: str | None, profile: CaptureProfile) -> str | None:

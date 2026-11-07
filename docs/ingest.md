@@ -70,8 +70,11 @@ preview labels these rows **N.I.N.A.**
   subtracting a dark. M110 groups N.I.N.A.'s single dark frames by exposure, gain,
   night and temperature. When you stack, `m110-stack` builds a master from the
   matching group first, and Siril prep links the group for the Naztronomy script.
-  Keep N.I.N.A. captures and Seestar-app captures of one object apart if you want
-  both calibrated. A target that mixes them isn't calibrated, and M110 says why.
+  An object can hold both N.I.N.A. and Seestar-app captures: `m110-stack` calibrates
+  each set with its own match (no dark for the app subs, a dark for N.I.N.A.'s) and
+  then stacks them together. N.I.N.A.'s "IR" filter on a Seestar is the app's
+  "IRCUT", so both kinds land in the same folder. (Siril prep's Naztronomy script
+  can't calibrate such a mix; use m110-stack for it.)
 - A target named for a field, such as "NGC 2024 IC 434", gets a dropdown in the
   preview offering the catalog objects in its name. If you accept **Remember
   alias?**, M110 remembers that target name, not the folder.

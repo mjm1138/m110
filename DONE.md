@@ -816,8 +816,34 @@ evening on the next day. Rows gain `capture` and are bucketed by it too.
 `ingest_aliases.toml` is read straight off it, so an alias saved in one test leaked
 into the next.
 
-**Open (BUGS.md):** per-subset calibration for a target that mixes app subs and
-NINA subs. Also #203 part 2.
+**Per-subset calibration (same PR).** A target can hold frames no single master
+suits, for example the Seestar's app subs beside its N.I.N.A. subs, or two exposures.
+`calibration_subsets` groups the selected frames by (darks_applied, exposure, gain,
+binning), matches each group with `calibration_for_stack`, and rejoins groups with
+identical results. Two or more calibrations means the solve script does this per
+subset:
+```
+unselect lights_ 1 N ; select lights_ <positions…>
+calibrate lights_ "-dark=master_darks_k.fit" … -prefix=ppk_
+```
+then `merge pp1_lights_ pp2_lights_ pp_lights_`, so `seq_names` and phases 2–3 are
+unchanged. Design notes:
+- **No staging of lights.** Siril's own selection does it, and dropped frames are
+  simply never selected.
+- **Index mapping.** Siril keeps the source numbering in a `-prefix` sequence
+  (`pp2_lights_ 31->60`), but `merge` renumbers 1..M in subset order. So
+  `seq_order` / `_to_lights_positions` map solve failures back to lights positions.
+- **Job folders stay whole.** A job folder that already holds darks/flats/biases
+  (prep's link, or the user's) is never split around.
+
+Real run: a mixed M74 (30 live-store app subs at 20 s plus 30 NINA subs at 30 s, with
+20 raw darks) merged, solved and stacked. N.I.N.A.'s Seestar `IR` filter is renamed
+to the app's `IRCUT` (`CaptureProfile.filter_maps`, `capture_profiles.filter_name`,
+read by every filter reader). Otherwise prep's per-filter job folders keep the two
+populations apart and they never stack together.
+
+**Open (BUGS.md):** the solve report's per-night failure count misses Siril's
+"no stars found" lines. Also #203 part 2.
 
 ## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
 
