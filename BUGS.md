@@ -745,9 +745,14 @@ fixing. NINA identifies itself in `SWCREATE` (`'PI N Stars (N.I.N.A. 3.3.0.1058 
   telescope device name), with the serial only in
   `INSTRUME='Seestar S50_15e7e390 Telephoto Camera'`. That gives two Devices
   entries and two calibration libraries, and two NINA-driven S50s can't be told apart.
-  `calibration.py` refuses calibration for a target whose subs carry more than one
-  `TELESCOP`. That will hit IC 434 (10-24 Seestar-app subs plus 11-06 NINA subs)
-  as soon as both are in one target.
+  `calibration.match_for_facts` refuses library masters for a target whose subs
+  carry more than one `TELESCOP`, and again for mixed exposures. Every 11-06 NINA
+  target already has Seestar-app subs in the library: M110 (20 s), M74 (20 s) and
+  IC 434 (20 s), against NINA's 30 s and 20 s. So importing them into the same
+  `lights/` folder leaves a target that stacks without darks: right for the app subs,
+  wrong for the NINA ones. `--only-exposure 30` isolates the NINA subs but still
+  applies no dark (see the previous entry). Mixing needs per-subset calibration
+  (dark the Alpaca subs, leave the app subs alone) before integration.
 - [ ] **"Remember alias?" after a retarget stores the folder name.**
   `ingest_dialog._on_remap` calls `add_alias(g.group, new_id)`. `group` is the
   source directory's name, which for NINA output is `LIGHT` for every target, so
