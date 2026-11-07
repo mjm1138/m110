@@ -1164,6 +1164,12 @@ remaining device-source gaps collect here:
     matched for them, with the reasons. Stackhammer's `prepare` recomputes the
     subsets from headers, refuses a disagreement, checks each master and writes its
     own Siril commands (stackhammer#22, decision 1; its M3+ work).
+  - **Dark flats (not yet handled).** N.I.N.A.'s flat wizard can save dark flats
+    (`IMAGETYP = 'DARKFLAT'`, exposure matched to the flats), which Siril uses in
+    place of a bias to calibrate flats. M110 has no `DARKFLAT` kind, library tier
+    or manifest tier yet. When flats work starts: route them on import, match them
+    by the flats' exposure, and add a `darkflats` tier (manifest v2). No flats in
+    Mike's data yet, so not blocking (raised by the Stackhammer spike, 2026-11-07).
 - **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers. The
   device-level library they route into **landed on `main` 2026-10-18**
   (`feature/calibration-library`): `Calibration/<TELESCOP>/{darks,flats,biases}/`,
