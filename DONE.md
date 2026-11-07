@@ -880,9 +880,33 @@ stacked all 60 in one pass (34 solved).
 - **WCS is right.** Siril's WCS on TOP-DOWN NINA frames describes the stored
   pixels: 0.1–0.2 px, against 42–59 px with the rows flipped.
 
+**The Stackhammer hand-over: a masters manifest (same PR).** Mike chose it over
+handing Stackhammer the whole recipe. The split of truth is the spike's proposal:
+headers for the subsets (both apps compute them with the one capture rule), M110
+for the masters (it owns and matches `Calibration/<device>/`).
+- `siril.calibration_manifest` builds it inside `plan_prep` (pure, kept on
+  `PrepPlan.manifest`); `apply_prep` writes `siril/.m110_calibration.json`
+  atomically (`.part` → `os.replace`), and removes it when there are no jobs.
+- One entry per **job folder**, not per subset key: after the rejoin, a folder is
+  exactly one calibration subset, and a folder is what Stackhammer's `prepare` is
+  pointed at. `group` names the siblings to stack with (the same record as
+  `.m110_jobs.json`, so neither reader parses names).
+- `lights` lists file names, the contract a reader checks its own grouping against.
+  Calibration `files` are relative to `siril/` (the hardlinks Naztronomy also
+  reads); `library` is the source relative to the data root, for provenance.
+- Each master's header facts come from `MatchResult.chosen` (new: `_take` records
+  the `MasterInfo` it chose), so the manifest never re-reads a header. A raw set
+  says `kind: "raw-set"`, its frame count and night: the reader builds the master.
+- `notes` carry the match's reasons verbatim, refusals included, so an empty
+  `calibration` is always explained (app subs: dark-subtracted on the telescope).
+- Archive cleanup (`_ARCHIVE_KEEP`) keeps both prep records. In a single-job
+  sandbox the root *is* the archived job folder, and the manifest would have been
+  filed away as run output; `.m110_jobs.json` only exists when split, where the root
+  is never archived, so it was safe by accident.
+
 **Open (BUGS.md):** the solve report's per-night failure count misses Siril's
 "no stars found" lines, and a mixed-exposure stack is named for one exposure.
-Also #203 part 2, and the Stackhammer manifest question.
+Also #203 part 2, and Stackhammer's reader of the manifest (its side).
 
 ## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
 

@@ -1157,10 +1157,13 @@ remaining device-source gaps collect here:
     ASIAIR, KStars/Ekos, APT, and any N.I.N.A. setup the built-in doesn't cover.
   - Per-subset calibration for mixed targets **landed** with it: in m110-stack
     (`calibration_subsets`), and for the Naztronomy script as split job folders.
-  - **Stackhammer's GUI** (its Siril script's `prepare`) is to compute the same
-    subsets from headers. A manifest from M110 carrying the matched masters per
-    subset is the proposed hand-over; masters only, or the whole recipe, is Mike's
-    call (stackhammer#22, decision 1).
+  - **Stackhammer hand-over: a masters manifest** (Mike, 2026-11-07, over "the
+    whole recipe"). **M110's side landed** with it: every Siril prep writes
+    `siril/.m110_calibration.json` (`siril.calibration_manifest`, schema in
+    DATA_MODEL.md) — per job folder, its lights by name and the master or raw set
+    matched for them, with the reasons. Stackhammer's `prepare` recomputes the
+    subsets from headers, refuses a disagreement, checks each master and writes its
+    own Siril commands (stackhammer#22, decision 1; its M3+ work).
 - **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers. The
   device-level library they route into **landed on `main` 2026-10-18**
   (`feature/calibration-library`): `Calibration/<TELESCOP>/{darks,flats,biases}/`,

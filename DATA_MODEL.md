@@ -169,6 +169,33 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                      Naztronomy script calibrates a whole folder with its darks/;
                      m110-stack reads this to stack the group together. Rewritten
                      by every prep, removed when nothing is split.)
+    (.m110_calibration.json — app-written, at the siril/ root, by every prep: the
+                     MASTERS MANIFEST — which calibration goes with which lights,
+                     per job folder — for Stackhammer's `prepare` (stackhammer#22).
+                     M110 is the source of truth for the masters; the lights'
+                     headers stay the source of truth for the subsets, so a reader
+                     recomputes them (capture_profiles rule) and refuses when they
+                     disagree with `lights`, then checks each master itself.
+                     {"version": 1, "target", "device", "source": "library" |
+                      "target" | null,
+                      "jobs": [{"folder": "IRCUT_30s" (or "." for the single-job
+                                sandbox root), "filter", "label",
+                                "group": [job folders stacked together] | null,
+                                "lights": [file names in <folder>/lights/],
+                                "darks_applied": true | false | null,
+                                "capture": {profile id: frames},
+                                "settings": [{"exptime", "gain", "binning", "frames"}],
+                                "temp_c": lights' median CCD-TEMP,
+                                "calibration": {"darks" | "flats" | "biases": {
+                                  "kind": "master" | "raw-set" | "target",
+                                  "files": [paths relative to siril/, as linked],
+                                  "library": [source paths relative to the data root],
+                                  "frames", "exptime", "gain", "binning", "temp_c",
+                                  "filter", "night" (raw-set), "ncombine" (master)}},
+                                "notes": [the match's reasons and refusals]}]}
+                     An empty `calibration` is deliberate (dark-subtracted on the
+                     telescope, or refused — see `notes`). Read with
+                     `siril.read_manifest`; another version reads as absent.)
     (darks/ flats/ biases/ — per-target calibration; preserved if present, and
                             **import targets** for frames header-routed by IMAGETYP
                             (ROADMAP item 6b); written by ingest, layout unchanged →

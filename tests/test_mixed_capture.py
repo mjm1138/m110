@@ -105,3 +105,86 @@ def test_m110_stack_stacks_a_split_filter_together(tmp_path, monkeypatch):
     assert not (plan.working / "process").exists()           # the plan wrote nothing
     staged = stacking.stage_group_lights(plan.working, plan.group_files)
     assert sorted(p.name for p in staged.iterdir()) == sorted(p.name for p in plan.group_files)
+
+
+def test_prep_writes_the_masters_manifest_stackhammer_reads(tmp_path, monkeypatch):
+    """The hand-over agreed with Stackhammer's calibration spike: M110 names the
+    master (or raw set) for each job's lights; Stackhammer recomputes the subsets
+    from the headers and checks each master itself."""
+    seed_root(tmp_path, monkeypatch)
+    _mixed_m74()
+    plan = siril.plan_prep("M74")
+    base = config.siril_dir("M74")
+    assert not (base / siril.CALIBRATION_MANIFEST_NAME).exists()    # plan wrote nothing
+    siril.apply_prep(plan)
+    m = siril.read_manifest(base)
+    assert m == json.loads((base / siril.CALIBRATION_MANIFEST_NAME).read_text())
+    assert (m["version"], m["target"], m["device"], m["source"]) == (1, "M74", S50, "library")
+    jobs = {j["folder"]: j for j in m["jobs"]}
+    app, nina = jobs["IRCUT"], jobs["IRCUT_30s"]
+    assert app["group"] == nina["group"] == ["IRCUT", "IRCUT_30s"]
+    assert app["filter"] == nina["filter"] == "IRCUT"
+    # the subsets, by light name — what a reader recomputes and compares
+    assert app["lights"] == sorted(p.name for p in (base / "IRCUT" / "lights").iterdir())
+    assert len(nina["lights"]) == 3 and all(n.endswith(".fits") for n in nina["lights"])
+    assert (app["darks_applied"], app["capture"]) == (True, {"seestar-app": 3})
+    assert (nina["darks_applied"], nina["capture"]) == (False, {"nina": 3})
+    assert app["settings"] == [{"exptime": 20.0, "gain": 80, "binning": 1, "frames": 3}]
+    assert nina["temp_c"] == 11.0
+    # the app subs get no calibration, and the note says why
+    assert app["calibration"] == {}
+    assert any("dark-subtracted" in n for n in app["notes"])
+    # the NINA subs: one raw set, linked into their own darks/, with its facts
+    d = nina["calibration"]["darks"]
+    assert d["kind"] == "raw-set" and d["frames"] == 4 and d["night"] == "2026-11-06"
+    assert (d["exptime"], d["gain"], d["binning"], d["temp_c"]) == (30.0, 80, 1, 5.7)
+    assert d["files"] == [f"IRCUT_30s/darks/d{i}.fits" for i in range(4)]
+    assert d["library"] == [f"Calibration/{S50}/darks/d{i}.fits" for i in range(4)]
+    assert all((base / f).is_file() for f in d["files"])
+
+
+def test_an_unsplit_target_gets_a_one_job_manifest(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    _mixed_m74(n_app=0)
+    siril.apply_prep(siril.plan_prep("M74"))
+    m = siril.read_manifest(config.siril_dir("M74"))
+    (job,) = m["jobs"]
+    assert job["folder"] == "." and job["group"] is None
+    assert job["calibration"]["darks"]["files"] == [f"darks/d{i}.fits" for i in range(4)]
+
+
+def test_a_target_with_its_own_darks_says_so(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    _mixed_m74(n_app=0, with_darks=False)
+    for i in range(2):
+        nina_frame(config.darks_dir("M74") / f"own{i}.fits", imagetyp="DARK", obj=None,
+                   exp=30.0, temp=11.0, filt="Dark", date_loc="2026-11-07T05:00:00.0")
+    siril.apply_prep(siril.plan_prep("M74"))
+    m = siril.read_manifest(config.siril_dir("M74"))
+    assert m["source"] == "target"
+    darks = m["jobs"][0]["calibration"]["darks"]
+    assert darks["kind"] == "target" and darks["files"] == ["darks/own0.fits", "darks/own1.fits"]
+    assert darks["library"] == ["Images/M74/darks/own0.fits", "Images/M74/darks/own1.fits"]
+
+
+def test_read_manifest_refuses_another_version(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    base = config.siril_dir("M74")
+    base.mkdir(parents=True)
+    (base / siril.CALIBRATION_MANIFEST_NAME).write_text('{"version": 2, "jobs": []}')
+    assert siril.read_manifest(base) is None
+    (base / siril.CALIBRATION_MANIFEST_NAME).write_text("not json")
+    assert siril.read_manifest(base) is None
+
+
+def test_archive_cleanup_keeps_the_manifest(tmp_path, monkeypatch):
+    """Cleanup after an import files the run away; the manifest is prep's record,
+    not the run's. (A single-job sandbox: its root IS the job folder archived.)"""
+    seed_root(tmp_path, monkeypatch)
+    _mixed_m74(n_app=0)
+    siril.apply_prep(siril.plan_prep("M74"))
+    base = config.siril_dir("M74")
+    (base / "M74_processed.png").write_text("p")
+    assert siril.apply_import("M74", [], cleanup="archive")["cleaned"] == "archive"
+    assert siril.read_manifest(base) is not None
+    assert not any((base / "archive").glob(f"*/{siril.CALIBRATION_MANIFEST_NAME}"))

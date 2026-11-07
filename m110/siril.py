@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import shutil
+import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -262,6 +263,8 @@ class PrepPlan:
     # that needs no calibration first — written to `JOB_GROUPS_NAME` so m110-stack
     # can stack the subsets together (`job_group`)
     job_groups: dict = field(default_factory=dict)
+    # what `CALIBRATION_MANIFEST_NAME` will say (`calibration_manifest`); {} = none
+    manifest: dict = field(default_factory=dict)
 
 
 def _lights(target: str) -> list[Path]:
@@ -304,9 +307,10 @@ _CAPTURE_WORD = {"nina": "N.I.N.A.", "seestar-app": "Seestar app",
 
 
 def _calibration_subsets(filt: str, files: list[Path], device: str | None,
-                         should_cancel=None) -> list[tuple[str, str, list[Path], dict, list[str]]]:
+                         should_cancel=None) -> list[tuple[str, str, list[Path], dict, list[str], dict]]:
     """One filter's lights as the job folders they need: ``[(folder token, label,
-    files, {tier: [calibration frames]}, notes)]``.
+    files, {tier: [calibration frames]}, notes, info)]`` — ``info`` is what the
+    calibration manifest records of the subset (`_subset_info`).
 
     Frames are grouped by (dark-subtracted when saved, exposure, gain, binning) —
     every header read, since a small N.I.N.A. block among thousands of app subs
@@ -336,15 +340,17 @@ def _calibration_subsets(filt: str, files: list[Path], device: str | None,
         sig = json.dumps({t: [str(p) for p in ps] for t, ps in cal.items()},
                          sort_keys=True)
         entry = merged.setdefault(sig, {"cal": cal, "files": [], "notes": [],
-                                        "keys": [], "capture": Counter()})
+                                        "keys": [], "capture": Counter(),
+                                        "facts": [], "match": match})
         entry["files"] += [f for f, _ff in members]
+        entry["facts"] += fr
         entry["keys"].append(key)
         entry["capture"].update(ff.get("capture") or "generic" for ff in fr)
         entry["notes"] += [n for n in match.notes if n not in entry["notes"]]
     entries = list(merged.values())
     if len(entries) == 1:
         e = entries[0]
-        return [(filt, filt, sorted(e["files"]), e["cal"], e["notes"])]
+        return [(filt, filt, sorted(e["files"]), e["cal"], e["notes"], _subset_info(e))]
 
     def _words(e):
         exps = sorted({k[1] for k in e["keys"] if k[1] is not None})
@@ -369,8 +375,30 @@ def _calibration_subsets(filt: str, files: list[Path], device: str | None,
         used.add(token)
         label = " · ".join([filt, exp.replace("s", " s").replace("+", " + "),
                             _CAPTURE_WORD.get(cap, cap)])
-        out.append((token, label, sorted(e["files"]), e["cal"], e["notes"]))
+        out.append((token, label, sorted(e["files"]), e["cal"], e["notes"],
+                    _subset_info(e)))
     return out
+
+
+def _subset_info(e: dict) -> dict:
+    """A calibration subset's facts for the manifest: the capture path, the
+    exposure settings it holds (frames per setting), the lights' median sensor
+    temperature, and the match (`MatchResult`, for each chosen master's facts)."""
+    fr = e["facts"]
+    flags = {ff.get("darks_applied") for ff in fr}
+    settings: Counter = Counter((ff.get("exptime"), ff.get("gain"), ff.get("binning"))
+                                for ff in fr)
+    temps = [ff["temp_c"] for ff in fr if ff.get("temp_c") is not None]
+    return {
+        "darks_applied": next(iter(flags)) if len(flags) == 1 else None,
+        "capture": dict(sorted(e["capture"].items())),
+        "settings": [{"exptime": k[0], "gain": k[1], "binning": k[2], "frames": n}
+                     for k, n in sorted(settings.items(),
+                                        key=lambda kv: tuple(-1 if v is None else v
+                                                             for v in kv[0]))],
+        "temp_c": round(statistics.median(temps), 2) if temps else None,
+        "match": e.get("match"),
+    }
 
 
 def plan_prep(target: str, usable_frames: int | None = None,
@@ -417,19 +445,19 @@ def plan_prep(target: str, usable_frames: int | None = None,
     # exposures — is split into one job folder per subset: the Naztronomy script
     # calibrates a whole folder with its darks/, so a separate folder is the only
     # way to dark one subset and not the other (`_calibration_subsets`).
-    planned: list[tuple[str, str, str, list[Path], dict, list[str]]] = []
+    planned: list[tuple[str, str, str, list[Path], dict, list[str], dict]] = []
     for filt in filters:
         if calib_source == "target" or not by_filter[filt]:
-            planned.append((filt, filt, filt, by_filter[filt], calib, []))
+            planned.append((filt, filt, filt, by_filter[filt], calib, [], {}))
             continue
-        for token, label, files, cal, notes in _calibration_subsets(
+        for token, label, files, cal, notes, info in _calibration_subsets(
                 filt, by_filter[filt], telescop, should_cancel):
-            planned.append((token, label, filt, files, cal, notes))
+            planned.append((token, label, filt, files, cal, notes, info))
     multi = len(planned) > 1
     jobs: list[PrepJob] = []
     calib_links: list[tuple[str, str]] = []
     kinds: set[str] = set(calib)
-    for token, label, filt, files, cal, notes in planned:
+    for token, label, filt, files, cal, notes, info in planned:
         job_dir = config.siril_job_dir(target, token if multi else None)
         # single-job target may pass a post-rejection override
         job_usable = (usable_frames if (usable_frames is not None and not multi)
@@ -459,6 +487,8 @@ def plan_prep(target: str, usable_frames: int | None = None,
     for token, _label, filt, *_rest in planned:
         job_groups.setdefault(filt, []).append(token)
     job_groups = {f: ts for f, ts in job_groups.items() if len(ts) > 1}
+    manifest = calibration_manifest(target, telescop, calib_source, planned, multi,
+                                    job_groups)
 
     return PrepPlan(
         target=target,
@@ -474,6 +504,7 @@ def plan_prep(target: str, usable_frames: int | None = None,
         calib_source=calib_source,
         calib_notes=calib_notes,
         job_groups=job_groups,
+        manifest=manifest,
     )
 
 
@@ -515,6 +546,102 @@ def job_group(job_dir: Path) -> list[Path] | None:
             if all((m / "lights").is_dir() for m in members):
                 return members
     return None
+
+
+# Beside the job folders: which calibration goes with which lights, per job — the
+# masters manifest Stackhammer's `prepare` reads (agreed with its calibration spike,
+# mjm1138/stackhammer#22, 2026-11-07). M110 is the source of truth for the MASTERS
+# (it owns Calibration/<device>/ and matches it); the frames' headers stay the
+# source of truth for the SUBSETS: a reader recomputes them from the lights with
+# the capture rule (capture_profiles) and refuses when they disagree with
+# ``lights`` here, then checks each master against its subset itself. Rewritten by
+# every prep; app-written, never hand-edited. Schema: DATA_MODEL.md.
+CALIBRATION_MANIFEST_NAME = ".m110_calibration.json"
+CALIBRATION_MANIFEST_VERSION = 1
+
+
+def _master_entry(tier: str, m, files: list[Path], job_dir: Path, sandbox: Path) -> dict:
+    """One tier of a job's calibration, as the manifest says it."""
+    def rel(p: Path, base: Path) -> str:
+        try:
+            return Path(p).relative_to(base).as_posix()
+        except ValueError:
+            return Path(p).name
+    linked = [rel(job_dir / tier / Path(f).name, sandbox) for f in files]
+    out: dict = {"files": linked, "library": [rel(f, config.DATA_ROOT) for f in files]}
+    if m is None:                                  # the target's own frames
+        out["kind"] = "target"
+        return out
+    out.update({
+        "kind": "raw-set" if m.is_set else "master",
+        "frames": len(m.frames) if m.is_set else 1,
+        "exptime": m.exptime, "gain": m.gain, "binning": m.binning,
+        "temp_c": m.temp_c, "filter": m.filter,
+    })
+    if m.is_set:
+        out["night"] = m.night
+    if m.ncombine is not None and not m.is_set:
+        out["ncombine"] = m.ncombine
+    return out
+
+
+def calibration_manifest(target: str, device: str | None, source: str,
+                         planned: list, multi: bool, job_groups: dict) -> dict:
+    """The masters manifest for a prep plan (pure: builds, never writes). One entry
+    per job folder: its lights (by name, in ``<folder>/lights/``), the subset's
+    capture path and settings, each tier's master or raw set (paths relative to
+    the ``siril/`` sandbox, as linked into the job's ``darks/`` etc.; the library
+    file it came from relative to the data root; and its header facts), and the
+    match's notes — the reasons, refusals included. {} when there are no jobs."""
+    if not planned:
+        return {}
+    sandbox = config.siril_dir(target)
+    group_of = {t: ts for ts in job_groups.values() for t in ts}
+    jobs = []
+    for token, label, filt, files, cal, notes, info in planned:
+        job_dir = config.siril_job_dir(target, token if multi else None)
+        match = info.get("match")
+        chosen = getattr(match, "chosen", {}) if match is not None else {}
+        jobs.append({
+            "folder": token if multi else ".",
+            "filter": filt,
+            "label": label,
+            "group": group_of.get(token) if multi else None,
+            "lights": [Path(f).name for f in files],
+            "darks_applied": info.get("darks_applied"),
+            "capture": info.get("capture", {}),
+            "settings": info.get("settings", []),
+            "temp_c": info.get("temp_c"),
+            "calibration": {t: _master_entry(t, chosen.get(t), fs, job_dir, sandbox)
+                            for t, fs in cal.items()},
+            "notes": list(notes),
+        })
+    return {"version": CALIBRATION_MANIFEST_VERSION, "target": target,
+            "device": device, "source": source or None, "jobs": jobs}
+
+
+def _write_manifest(siril_dir: Path, manifest: dict) -> None:
+    path = siril_dir / CALIBRATION_MANIFEST_NAME
+    if manifest:
+        siril_dir.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.part")
+        tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def read_manifest(siril_dir: Path) -> dict | None:
+    """The manifest a prep wrote (`calibration_manifest`), or None when absent,
+    unreadable or of another version."""
+    try:
+        data = json.loads((Path(siril_dir) / CALIBRATION_MANIFEST_NAME)
+                          .read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("version") != CALIBRATION_MANIFEST_VERSION:
+        return None
+    return data
 
 
 def _filters_md(preset: dict) -> str:
@@ -735,6 +862,7 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
                     changes=_preset_changes(_read_preset(pp), job.preset)))
         Path(plan.siril_dir).mkdir(parents=True, exist_ok=True)
         _write_job_groups(Path(plan.siril_dir), plan.job_groups)
+        _write_manifest(Path(plan.siril_dir), plan.manifest)
         # next-steps.md is app guidance (not user-owned) — always refreshed so the
         # recommended drizzle/filters for the current count stay visible.
         (Path(plan.siril_dir) / "next-steps.md").write_text(_next_steps_md(plan), encoding="utf-8")
@@ -856,8 +984,11 @@ def prune_rejected(target: str) -> dict:
 # Kept in each job dir on cleanup, so the sandbox is ready for another run. Siril's
 # `process/` scratch stays too: the tools manage it, and an archived copy is
 # regenerable bytes multiplied by keep-N (see `config.SANDBOX_SCRATCH`).
+# The prep's own records (the job groups, the masters manifest) are app guidance
+# like next-steps.md: a run doesn't make them stale, the next prep rewrites them.
 _ARCHIVE_KEEP = ({"lights", "darks", "flats", "biases",
-                  "presets", "archive", "next-steps.md"}
+                  "presets", "archive", "next-steps.md",
+                  JOB_GROUPS_NAME, CALIBRATION_MANIFEST_NAME}
                  | config.SANDBOX_SCRATCH["siril"])
 
 # Sandbox subdirs that never hold fresh, importable output: the hardlinked

@@ -90,6 +90,9 @@ class MatchResult:
     # master: the consumer builds the master (the Naztronomy script in Siril prep,
     # m110-stack's prelude). The tier's own field then names the set's first frame.
     sets: dict = field(default_factory=dict)
+    # {tier: MasterInfo} — what each matched tier was chosen from (its header facts,
+    # for the Stackhammer calibration manifest, `siril.calibration_manifest`)
+    chosen: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Path]:
         """{tier: master path} for the tiers that matched (a raw set's first frame)."""
@@ -281,6 +284,7 @@ def _same(a, b, tol=0.0) -> bool:
 def _take(res: MatchResult, tier: str, m: MasterInfo) -> None:
     """Record `m` as the tier's match; a raw set also lists its frames + a note."""
     setattr(res, tier, m.path)
+    res.chosen[tier] = m
     if m.is_set:
         res.sets[tier] = list(m.frames)
         temp = f", {m.temp_c:g} °C" if m.temp_c is not None else ""

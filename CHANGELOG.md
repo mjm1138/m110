@@ -39,6 +39,9 @@ changes a **user** would notice, per release.
   `siril/IRCUT_30s/` holds the N.I.N.A. subs with their darks. The Naztronomy script
   then calibrates each correctly; stack each folder and combine the stacks in Siril.
   Point **m110-stack** at either folder and it stacks both in one pass.
+  Prep also writes `siril/.m110_calibration.json`, which names the master dark (or
+  raw dark set) chosen for each job folder's lights and why, so other tools such as
+  Stackhammer can use the same calibration.
 - **A Seestar sub that doesn't say how it was captured isn't guessed at.** The
   Seestar app marks its subs (`CREATOR`, `BIAS`), and N.I.N.A. marks its own
   (`SWCREATE`). A sub with none of these is not calibrated, and M110 says why, rather

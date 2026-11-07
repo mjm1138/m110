@@ -389,6 +389,10 @@ re-run when its area changes and you want eyes on the visuals).
       its Seestar-app subs and 3 N.I.N.A. subs. Processing → **Process in Siril**
       offers `IRCUT` (app subs, **no** `darks/`) and `IRCUT_20s` (N.I.N.A. subs + 4
       raw darks); `next-steps.md` explains the split.
+- [ ] Beside them, `siril/.m110_calibration.json` (the masters manifest for
+      Stackhammer) lists both folders with `"group": ["IRCUT", "IRCUT_20s"]`: `IRCUT`
+      has an empty `calibration` and a note that its subs were dark-subtracted on the
+      telescope; `IRCUT_20s` names a `raw-set` of 4 darks (`IRCUT_20s/darks/…`).
 - [ ] `m110-stack "M 72/IRCUT_20s"` (proposal only): "Stacking IRCUT + IRCUT_20s
       together"; calibration shows two subsets (**dark ✓ (4 raw)** for the N.I.N.A.
       subs, none for the app subs); the solve script starts with `setcompress 0` and
