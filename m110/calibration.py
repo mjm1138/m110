@@ -398,6 +398,9 @@ def facts_from_frames(frames: list[dict]) -> dict:
                                    if f.get("telescop") else None)
     flags = {bool(f["darks_applied"]) for f in frames
              if f.get("darks_applied") is not None}
+    # a frame that SAYS it can't tell (key present, value None) — not an older
+    # caller that never passed the key
+    unknown = sum(1 for f in frames if "darks_applied" in f and f["darks_applied"] is None)
     devs = sorted({d for d in map(_dev, frames) if d})
     groups: Counter = Counter()
     for f in frames:
@@ -406,7 +409,7 @@ def facts_from_frames(frames: list[dict]) -> dict:
         return {"exptime": None, "gain": None, "binning": None, "temp_c": None,
                 "filter": None, "telescop": None, "mixed": False, "groups": {},
                 "telescopes": [], "device": None, "devices": [],
-                "darks_applied": None, "mixed_capture": False}
+                "darks_applied": None, "mixed_capture": False, "capture_unknown": 0}
     (exp, gain, binning), _n = groups.most_common(1)[0]
     members = [f for f in frames
                if (f.get("exptime"), f.get("gain"), f.get("binning")) == (exp, gain, binning)]
@@ -423,8 +426,9 @@ def facts_from_frames(frames: list[dict]) -> dict:
         "telescopes": sorted({f["telescop"] for f in frames if f.get("telescop")}),
         "device": next((d for d in map(_dev, frames) if d), None),
         "devices": devs,
-        "darks_applied": (next(iter(flags)) if len(flags) == 1 else None),
+        "darks_applied": (next(iter(flags)) if len(flags) == 1 and not unknown else None),
         "mixed_capture": len(flags) > 1,
+        "capture_unknown": unknown,
     }
 
 
@@ -465,6 +469,14 @@ def match_for_facts(facts: dict, device: str | None) -> MatchResult:
             f"frames from more than one telescope ({', '.join(many)})"
             " — each has its own calibration library; stack them separately or "
             "add per-target darks/flats/biases"])
+    if facts.get("capture_unknown"):
+        n = facts["capture_unknown"]
+        return MatchResult(device=device, notes=[
+            f"can't tell whether {n} frame{'s' if n != 1 else ''} came off the telescope "
+            "already dark-subtracted: a Seestar's own app writes CREATOR and BIAS, "
+            "other capture software writes SWCREATE, and these carry none of the "
+            "three — so no calibration was chosen rather than guess. Which "
+            "software saved them?"])
     if facts.get("mixed_capture"):
         return MatchResult(device=device, notes=[
             "frames that were dark-subtracted when saved (the telescope's own app) "

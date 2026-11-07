@@ -33,7 +33,16 @@ changes a **user** would notice, per release.
   and then stacks them together. That covers app subs (no dark) beside N.I.N.A. subs
   (dark), and also two exposures, which used to stack with no calibration at all.
   N.I.N.A.'s name for the Seestar's UV/IR-cut filter ("IR") now reads as the app's
-  "IRCUT", so both kinds of capture land in the same folder.
+  "IRCUT", so both kinds of capture are treated as one filter.
+- **…in the Siril GUI too.** Siril prep now gives each kind its own job folder: for
+  example `siril/IRCUT/` holds the app subs and gets no darks, and
+  `siril/IRCUT_30s/` holds the N.I.N.A. subs with their darks. The Naztronomy script
+  then calibrates each correctly; stack each folder and combine the stacks in Siril.
+  Point **m110-stack** at either folder and it stacks both in one pass.
+- **A Seestar sub that doesn't say how it was captured isn't guessed at.** The
+  Seestar app marks its subs (`CREATOR`, `BIAS`), and N.I.N.A. marks its own
+  (`SWCREATE`). A sub with none of these is not calibrated, and M110 says why, rather
+  than assume either way.
 - **Raw darks become a master automatically.** Calibration frames shot one at a
   time (as N.I.N.A. takes them) are grouped by exposure, gain, night and
   temperature. Siril prep links the matching set, and **m110-stack** builds the

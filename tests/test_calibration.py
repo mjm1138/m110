@@ -322,3 +322,20 @@ def test_app_and_nina_subs_in_one_target_are_refused(tmp_path, monkeypatch):
     assert facts["devices"] == ["S50_x"]
     res = calibration.match_for_facts(facts, "S50_x")
     assert not res and "dark-subtracted when saved" in res.notes[0]
+
+
+def test_frames_of_unknown_capture_path_are_refused_not_guessed(tmp_path, monkeypatch):
+    """A Seestar-named frame with none of CREATOR / BIAS / SWCREATE: whether it was
+    dark-subtracted on the telescope can't be told, so no calibration is chosen and
+    the note asks (the rule shared with Stackhammer)."""
+    seed_root(tmp_path, monkeypatch)
+    frame = {"exptime": 30.0, "gain": 80, "binning": 1, "temp_c": 10.0,
+             "device": "S50_x", "darks_applied": None}
+    facts = calibration.facts_from_frames([frame, dict(frame, darks_applied=False)])
+    assert facts["capture_unknown"] == 1 and facts["darks_applied"] is None
+    res = calibration.match_for_facts(facts, "S50_x")
+    assert not res and "can't tell whether 1 frame came off the telescope" in res.notes[0]
+    # an older caller that never passes the key is not "unknown"
+    legacy = calibration.facts_from_frames([{k: v for k, v in frame.items()
+                                             if k != "darks_applied"}])
+    assert legacy["capture_unknown"] == 0

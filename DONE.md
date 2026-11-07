@@ -842,8 +842,47 @@ to the app's `IRCUT` (`CaptureProfile.filter_maps`, `capture_profiles.filter_nam
 read by every filter reader). Otherwise prep's per-filter job folders keep the two
 populations apart and they never stack together.
 
+**The GUI path: split job folders (same PR).** The Naztronomy script calibrates a
+whole job folder with its `darks/`, so a filter mixing app and NINA subs gets one
+folder per calibration subset.
+- **Matching per filter.** `siril.plan_prep` now matches each filter on its own
+  frames (it used to match once per target, which a mixed target refused, and which
+  also gave a flat to every filter). `_calibration_subsets` reads every light's
+  header: a sample could miss a small NINA block among thousands of app subs, and
+  2,000 headers take about 1.3 s.
+- **Grouping and naming.** It groups by (darks_applied, exp, gain, bin), matches,
+  and rejoins equal results. The subset needing no calibration keeps the plain
+  filter name, so an existing app job folder stays valid and **never gains a
+  `darks/`**: Naztronomy's maintainer tells users to put one there, and it would
+  subtract twice. The others are suffixed by exposure, then capture id.
+- **The record.** The split goes to `siril/.m110_jobs.json`. `siril.job_group`
+  reads it, so nothing is parsed from names.
+- **m110-stack on a member.** Pointed at any member, it switches its working
+  folder to the group's first member and reads every member's lights
+  (`group_files`). The run step hardlinks them into `process/stack_lights/`, and the
+  solve script `cd`s there to link. Calibration skips the members' own `darks/`
+  (`job_dir_calibration=False`), since those belong to one subset, and matches
+  each subset from the library.
+
+Verified on the mixed M74: prep made `IRCUT/` (30 app subs, no darks) and
+`IRCUT_30s/` (30 NINA subs, 20 raw darks), and `m110-stack M74/IRCUT_30s --run`
+stacked all 60 in one pass (34 solved).
+
+**Coordination with Stackhammer's calibration spike** (stackhammer#22/#25,
+2026-11-07):
+- **The rule, aligned:** an app frame is `CREATOR ~ ^ZWO Seestar`, or `BIAS` with no
+  `SWCREATE`. 1,291 sampled app subs, firmware 6.70–9.31, all carry both. There is
+  no `TELESCOP` fallback; a Seestar-named frame with none of the three cards is
+  `darks_applied = None` and is refused with a note.
+- **Read the lights, never `process/` frames.** Siril drops `SWCREATE` from its output.
+- **Siril honours `XBAYROFF`.** A debayered NINA `pp_` is GRBG, matching the raw
+  sites exactly, so NINA stack colour is right.
+- **WCS is right.** Siril's WCS on TOP-DOWN NINA frames describes the stored
+  pixels: 0.1–0.2 px, against 42–59 px with the rows flipped.
+
 **Open (BUGS.md):** the solve report's per-night failure count misses Siril's
-"no stars found" lines. Also #203 part 2.
+"no stars found" lines, and a mixed-exposure stack is named for one exposure.
+Also #203 part 2, and the Stackhammer manifest question.
 
 ## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
 

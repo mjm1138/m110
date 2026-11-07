@@ -1155,8 +1155,12 @@ remaining device-source gaps collect here:
     `CaptureProfile` shape), the profile that matched shown per group in the Import
     preview, and "save this retarget as a rule" alongside the alias. For SharpCap,
     ASIAIR, KStars/Ekos, APT, and any N.I.N.A. setup the built-in doesn't cover.
-  - Per-subset calibration for mixed targets **landed** with it, in m110-stack
-    (`calibration_subsets`). The Naztronomy script path still can't do it.
+  - Per-subset calibration for mixed targets **landed** with it: in m110-stack
+    (`calibration_subsets`), and for the Naztronomy script as split job folders.
+  - **Stackhammer's GUI** (its Siril script's `prepare`) is to compute the same
+    subsets from headers. A manifest from M110 carrying the matched masters per
+    subset is the proposed hand-over; masters only, or the whole recipe, is Mike's
+    call (stackhammer#22, decision 1).
 - **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers. The
   device-level library they route into **landed on `main` 2026-10-18**
   (`feature/calibration-library`): `Calibration/<TELESCOP>/{darks,flats,biases}/`,

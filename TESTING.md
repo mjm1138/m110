@@ -373,7 +373,7 @@ re-run when its area changes and you want eyes on the visuals).
 #### Import — N.I.N.A. / PINS  (#203)  ⚙ *(profiles/routing/raw sets/stacker prelude automated — `test_capture_profiles.py`, `test_ingest_nina.py`, `test_calibration.py`, `test_stacking.py`, `test_ui_import.py`)*
 - [ ] Browse the corpus import source's **`PINS/Seestar-S50/2026-06-19`** (N.I.N.A.'s
       stock layout: every target in one `LIGHT/`, darks in `DARK/`). The Kind tooltip
-      says **N.I.N.A.**; the rows are **M33_mosaic** (both panels, one row), **M92**,
+      says **N.I.N.A.**; the rows are **M33_mosaic** (both panels, one row), **M 72**,
       **NGC 6960 NGC 6992** (new), and **S50_c0ffee00 dark frames →
       `Calibration/S50_c0ffee00/darks`**. No row is named `LIGHT`, `DARK` or
       `S50 Prime`.
@@ -385,16 +385,17 @@ re-run when its area changes and you want eyes on the visuals).
       Dark library adds a row **"4 raw frames · 2026-06-19 · 14 °C"** beside the app
       masters, and the heading says app subs are dark-subtracted on the telescope and
       N.I.N.A. frames are not. Sessions for the PINS targets show **no** inferred Dark.
-- [ ] `m110-stack Images/M92/siril` (proposal only): the calibration row reads
-      **dark ✓ (4 raw)**, the solve script starts with `setcompress 0` and
-      `stack cal_darks_ … -out=master_darks.fit`, and the calibrate line is
-      `calibrate lights_ "-dark=master_darks.fit" …` (the whole option quoted).
-- [ ] **Mixed target:** copy a few app subs of an object into the same object as some
-      N.I.N.A. subs (e.g. corpus `M 72` subs into `M92/lights/`, or real data).
-      `m110-stack` on it shows the calibration row as two subsets ("… dark-subtracted
-      on the telescope: none" and "…: dark ✓"). The solve script has one
-      `calibrate … -prefix=ppN_` per subset, then `merge … pp_lights_`, and
-      `--run` finishes.
+- [ ] **Mixed target, from the corpus:** after importing the PINS night, M 72 holds
+      its Seestar-app subs and 3 N.I.N.A. subs. Processing → **Process in Siril**
+      offers `IRCUT` (app subs, **no** `darks/`) and `IRCUT_20s` (N.I.N.A. subs + 4
+      raw darks); `next-steps.md` explains the split.
+- [ ] `m110-stack "M 72/IRCUT_20s"` (proposal only): "Stacking IRCUT + IRCUT_20s
+      together"; calibration shows two subsets (**dark ✓ (4 raw)** for the N.I.N.A.
+      subs, none for the app subs); the solve script starts with `setcompress 0` and
+      `stack cal_darks_1_ … -out=master_darks_1.fit`, and each calibrate line quotes
+      the whole option (`"-dark=master_darks_1.fit"`).
+- [ ] *(Siril installed)* `m110-stack "M 72/IRCUT" --run` finishes, stacking both
+      folders (one `calibrate … -prefix=ppN_` per subset, then a `merge`).
 - [ ] *(real data, optional)* Point Import at a real PINS night: panels fold to one
       `<object>_mosaic`, no-OBJECT darks go to the S50's library, and
       `m110-stack --run` on a NINA-only target builds the master and finishes.

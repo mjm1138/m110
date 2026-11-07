@@ -54,7 +54,9 @@ small rendered PNGs) that exercises the whole app:
         + a **PINS / N.I.N.A. night** of the corpus S50 in N.I.N.A.'s stock layout
         (`PINS/Seestar-S50/<date>/LIGHT/` + `DARK/`): two mosaic panels → one
         M33_mosaic, a field-named target ("NGC 6960 NGC 6992") whose retarget
-        dropdown offers both members, and no-OBJECT darks → the S50's library (#203)
+        dropdown offers both members, N.I.N.A. subs of M 72 (already held as app
+        subs → a mixed target, split by Siril prep), and no-OBJECT darks → the S50's
+        library (#203)
 
 The generator is committed (it's small + reproducible); its OUTPUT is meant to
 live OUTSIDE the repo (default ~/m110-testdata) so the repo stays lean.
@@ -112,6 +114,9 @@ def _fits(path: Path, obj: str, ra: float, dec: float,
     h["OBJECT"] = obj
     if telescop:
         h["TELESCOP"] = telescop
+        if telescop.startswith(("S50", "S30")):   # what the Seestar app writes
+            h["CREATOR"] = f"ZWO Seestar {telescop.split('_')[0]}"
+            h["BIAS"] = 468
     h["FILTER"] = filt
     h["EXPTIME"] = exp
     h["DATE-OBS"] = when.strftime("%Y-%m-%dT%H:%M:%S")
@@ -272,6 +277,8 @@ def _s50_lights(folder: str, obj: str, ra: float, dec: float,
             h = hdul[0].header
             h["TELESCOP"] = S50_TELESCOP
             h["INSTRUME"] = "Seestar S50"
+            h["CREATOR"] = "ZWO Seestar S50"
+            h["BIAS"] = 468
             h["GAIN"] = 80
             h["XBINNING"] = 1
             h["EQMODE"] = 1
@@ -685,13 +692,15 @@ def _nina_fits(path: Path, imagetyp: str, obj: str | None, ra: float, dec: float
 
 def _pins_night(night: Path, coords: dict):
     """Two mosaic panels (→ one M33_mosaic), a target named for a field
-    ("NGC 6960 NGC 6992" → retarget offers both), a plain M 92, and 20 s darks
-    with no OBJECT (→ Calibration/<the S50>/darks/ as one raw set)."""
+    ("NGC 6960 NGC 6992" → retarget offers both), M 72 — which the store already
+    holds as Seestar-APP subs, so importing makes a mixed target that Siril prep
+    splits into `siril/IRCUT/` (app, no darks) + `siril/IRCUT_20s/` (N.I.N.A., darks)
+    — and 20 s darks with no OBJECT (→ Calibration/<the S50>/darks/, one raw set)."""
     light = night / "LIGHT"
     start = datetime(2026, 6, 19, 22, 0, 0)
     seed = 7000
     plan = [("M 33 Panel 1", "m33", 3), ("M 33 Panel 2", "m33", 3),
-            ("NGC 6960 NGC 6992", "ngc-6960", 3), ("M 92", "m92", 3)]
+            ("NGC 6960 NGC 6992", "ngc-6960", 3), ("M 72", "m72", 3)]
     t = start
     for obj, slug, n in plan:
         ra, dec = coord(coords, slug)
@@ -939,7 +948,7 @@ def verify(out: Path):
     nina_ops = [o for o in src_ops if o.layout == "nina"]
     nina = {(o.kind, o.object) for o in nina_ops}
     assert nina == {("light", "M33_mosaic"), ("light", "NGC 6960 NGC 6992"),
-                    ("light", "M92"), ("cal-dark", S50_TELESCOP)}, \
+                    ("light", "M 72"), ("cal-dark", S50_TELESCOP)}, \
         f"PINS night routed wrong: {sorted(nina)}"
     assert all(o.dest_rel.startswith(f"Calibration/{S50_TELESCOP}/darks/")
                for o in nina_ops if o.kind == "cal-dark")

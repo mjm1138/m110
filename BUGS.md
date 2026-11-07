@@ -765,11 +765,32 @@ dark from the 20 matching raw 30 s darks and calibrated with it.
   to frames. Verified with a real Siril 1.4.5 run on a mixed M74: 30 live-store app
   subs (20 s, no dark) plus 30 NINA subs (30 s, master built from 20 raw darks) →
   merged, solved, stacked (34 frames). This also calibrates a **mixed-exposure** target
-  per exposure; it used to be refused. Siril prep (the Naztronomy script) still gets
-  no darks for a mixed target, and its note points to m110-stack.
+  per exposure; it used to be refused.
+  **The GUI path (Naztronomy) too:** `siril.plan_prep` matches each filter on its own
+  frames. When a filter's frames need different calibration
+  (`_calibration_subsets`), it makes one job folder per subset. The subset needing no
+  calibration keeps the plain filter name and never gets a `darks/`; the others are
+  suffixed (`IRCUT_30s`). The split is recorded in `siril/.m110_jobs.json`, and
+  m110-stack pointed at any member stacks the whole group together
+  (`siril.job_group`, staged into `process/stack_lights/`, calibrated per subset from
+  the library). Verified on the mixed M74: prep made `IRCUT/` (30 app subs, no darks)
+  and `IRCUT_30s/` (30 NINA subs + 20 raw darks), and `m110-stack M74/IRCUT_30s --run`
+  stacked both in one pass. Agreed with Stackhammer's calibration spike (PR
+  mjm1138/stackhammer#22): subsets come from the headers, Naztronomy gets split
+  folders, and the app folder never has a `darks/`.
+  The app rule was aligned with that spike at the same time: an app frame is
+  `CREATOR ~ ^ZWO Seestar`, or a `BIAS` card with no `SWCREATE`. There is no `TELESCOP`
+  fallback. A Seestar-named frame with none of the three cards has an unknown capture
+  path and is refused with a note. Rule: read the lights, never Siril's `process/`
+  output, because Siril drops `SWCREATE`.
   Needed with it: N.I.N.A.'s Seestar filter `IR` is the app's `IRCUT` (the ZWO Alpaca
   name for the same UV/IR-cut slot). `capture_profiles.filter_name` renames it, so
   the two populations share a job folder instead of splitting by filter.
+- [ ] **A mixed-exposure stack is named for one exposure** (found 2026-11-07, not
+  fixed). The mixed M74 stack (25 × 20 s app subs + 9 × 30 s NINA subs, 13 min) was
+  named `M_74_034x30sec_…`. The integration in the report is right, but the name's
+  `<n>x<exp>sec` reads as 34 × 30 s. Stackhammer names a mix with `+`
+  (`docs/design/result-name.md` there).
 - [ ] **The failures-by-night report undercounts** (found 2026-11-07, not fixed).
   `parse_solve_log` collects only `Image … did not solve` lines, but Siril reports
   most failures as `Image N: no stars found`. On the mixed M74 run the tally said

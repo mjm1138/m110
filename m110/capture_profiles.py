@@ -22,13 +22,20 @@ The four questions every reader asks go through this module:
   dark pedestal, identical hot pixels), so both resolve to ``S50_15e7e390``.
 * `darks_applied` — whether this frame was dark-subtracted before it was saved. A
   property of the **capture path**, not of the telescope model: the Seestar app
-  subtracts on the device, the same S50 driven by N.I.N.A. does not.
+  subtracts on the device, the same S50 driven by N.I.N.A. does not. The rule,
+  word for word the same in Stackhammer: *app frame = `CREATOR` starting
+  `ZWO Seestar`, or a `BIAS` card present (with no `SWCREATE`); never `TELESCOP` or
+  `INSTRUME` alone. A Seestar-named frame with none of `CREATOR`, `BIAS`,
+  `SWCREATE` has an unknown capture path (None): calibration says so and asks.*
 * `object_name` — the target name to resolve (``canonical_target``), with a mosaic
   panel folded onto ``<object>_mosaic``.
 * `profile_for` — which profile matched (the Import page's layout label).
 
 Qt-free; reads no files (callers pass a header mapping — an astropy ``Header`` or a
-plain dict of card → value).
+plain dict of card → value). **Apply it to the original lights only, never to
+Siril's output:** Siril drops ``SWCREATE`` when it writes ``process/`` frames, so a
+N.I.N.A. ``pp_`` frame carries none of the capture-path cards and would read as
+unknown (found by Stackhammer's calibration spike, 2026-11-07).
 """
 from __future__ import annotations
 
@@ -55,9 +62,11 @@ class CaptureProfile:
     # Ordered (card, regex, template): the first card whose value matches gives the
     # device key; the template formats the match ({0} = whole value, {1}… = groups).
     device_rules: tuple[tuple[str, str, str], ...] = (("TELESCOP", r".+", "{0}"),)
-    # True/False = this software's frames are/aren't dark-subtracted before saving;
-    # None = the telescope model decides (devices.darks_applied_on_device).
-    darks_applied: bool | None = False
+    # True/False = this software's frames are/aren't dark-subtracted before saving.
+    # "model" = the telescope model decides (devices.darks_applied_on_device);
+    # "unknown" = False, except for a model whose own app dark-subtracts — there the
+    # capture path can't be told, so the answer is None (`darks_applied`).
+    darks_applied: bool | str = False
     # Where a dark/flat/bias with no object goes: the device library, or the
     # holding area for the user to place.
     uncategorized_calibration: str = "library"
@@ -97,13 +106,20 @@ BUILTIN: tuple[CaptureProfile, ...] = (
     ),
     CaptureProfile(
         id="seestar-app", label="Seestar app",
-        # The app writes CREATOR='ZWO Seestar S50' and a per-unit TELESCOP, and no
-        # SWCREATE. A bare per-unit TELESCOP with no SWCREATE is the app too (older
-        # firmware, and every fixture built before this module).
-        match=((("CREATOR", r"ZWO\s+Seestar"),),
-               (("SWCREATE", None), ("TELESCOP", r"^\s*(?:Seestar\s+)?S\d+")),),
+        # THE RULE (shared with Stackhammer, docs/design/calibration.md): a frame
+        # saved by the Seestar's own app says CREATOR = 'ZWO Seestar …' and carries
+        # a BIAS card (its pedestal). Every one of 1,291 app subs sampled across
+        # 2026-03…10 and firmware 6.70…9.31 has both, and none has SWCREATE.
+        # Never TELESCOP or INSTRUME alone: both name the Seestar under N.I.N.A.
+        # too, which is how N.I.N.A.'s undarked frames were once taken as darked.
+        match=((("CREATOR", r"^\s*ZWO\s+Seestar"),),
+               (("BIAS", r"\S"), ("SWCREATE", None),
+                ("TELESCOP", r"^\s*(?:Seestar\s+)?S\d+")),
+               (("BIAS", r"\S"), ("SWCREATE", None), ("INSTRUME", r"\bSeestar\b")),),
         panel_re=_PANEL_RE,
-        darks_applied=None,
+        # the app dark-subtracts every sub it saves (S50 measured; S30s run the
+        # same pipeline) — so an app frame is True whatever its TELESCOP says
+        darks_applied=True,
     ),
     CaptureProfile(
         id="dwarf-app", label="DwarfLab app",
@@ -115,7 +131,10 @@ BUILTIN: tuple[CaptureProfile, ...] = (
         id="generic", label="FITS headers",
         panel_re=_PANEL_RE,
         device_rules=(("TELESCOP", r".+", "{0}"), ("INSTRUME", r".+", "{0}")),
-        darks_applied=False,
+        # A Seestar-named frame with no CREATOR, no BIAS and no SWCREATE: its
+        # capture path is unknown, so "already dark-subtracted?" is None — said,
+        # and asked, never guessed either way.
+        darks_applied="unknown",
     ),
 )
 BY_ID = {p.id: p for p in BUILTIN}
@@ -162,12 +181,18 @@ def device_key(hdr: Mapping | None, profile: CaptureProfile | None = None) -> st
     return None
 
 
-def darks_applied(hdr: Mapping | None, profile: CaptureProfile | None = None) -> bool:
-    """Was this frame dark-subtracted before it was saved?"""
+def darks_applied(hdr: Mapping | None, profile: CaptureProfile | None = None) -> bool | None:
+    """Was this frame dark-subtracted before it was saved? True/False, or None when
+    that can't be told: a frame of a model whose app dark-subtracts (a Seestar)
+    that carries none of the capture-path cards (CREATOR, BIAS, SWCREATE).
+    Calibration refuses such frames with a note rather than guess."""
     p = profile or profile_for(hdr)
-    if p.darks_applied is not None:
+    if isinstance(p.darks_applied, bool):
         return p.darks_applied
-    return devices.darks_applied_on_device(device_key(hdr, p))
+    on_device = devices.darks_applied_on_device(device_key(hdr, p))
+    if p.darks_applied == "model":
+        return on_device
+    return None if on_device else False
 
 
 def filter_name(hdr: Mapping | None, profile: CaptureProfile | None = None) -> str | None:

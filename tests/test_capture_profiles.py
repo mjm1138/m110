@@ -44,9 +44,16 @@ def test_darks_applied_follows_the_capture_path_not_the_model():
     does not (hot pixels at full strength in the lights, measured 2026-11-07)."""
     assert cp.darks_applied(APP_SUB) is True
     assert cp.darks_applied(NINA_LIGHT) is False
-    # a bare per-unit TELESCOP (older firmware, every pre-#203 fixture) is the app
-    assert cp.darks_applied({"TELESCOP": "S50_aaaa0001"}) is True
+    # the app is told by CREATOR or its BIAS pedestal card — either alone will do
+    assert cp.darks_applied({"TELESCOP": "S50_aaaa0001", "BIAS": 468}) is True
+    assert cp.darks_applied({"INSTRUME": "Seestar S50", "BIAS": 468}) is True
+    # a Seestar-named frame with none of CREATOR/BIAS/SWCREATE: unknown, never a
+    # guess (a TELESCOP match is what once took N.I.N.A.'s frames as darked)
+    assert cp.darks_applied({"TELESCOP": "S50_aaaa0001"}) is None
+    assert cp.profile_for({"TELESCOP": "S50_aaaa0001"}).id == "generic"
+    # other cameras: no on-device dark to be unsure about
     assert cp.darks_applied({"TELESCOP": "DWARF 3"}) is False
+    assert cp.darks_applied({"TELESCOP": "Esprit 100"}) is False
     assert cp.darks_applied({}) is False
 
 

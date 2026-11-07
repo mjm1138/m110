@@ -161,6 +161,14 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       was `none` while the only input was a single handed-off file). Backup skips
       exactly those and keeps the rest — see *Backup* below for why each direction
       of getting this wrong is costly and silent.
+    (.m110_jobs.json — app-written, at the siril/ root: which job folders are ONE filter
+                     split by calibration ({"groups": {"IRCUT": ["IRCUT",
+                     "IRCUT_30s"]}}, the no-calibration folder first). Siril prep
+                     splits a filter whose subs need different calibration (a
+                     Seestar's app subs beside its N.I.N.A. subs) because the
+                     Naztronomy script calibrates a whole folder with its darks/;
+                     m110-stack reads this to stack the group together. Rewritten
+                     by every prep, removed when nothing is split.)
     (darks/ flats/ biases/ — per-target calibration; preserved if present, and
                             **import targets** for frames header-routed by IMAGETYP
                             (ROADMAP item 6b); written by ingest, layout unchanged →
