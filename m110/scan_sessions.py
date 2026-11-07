@@ -63,7 +63,10 @@ def _session_key(path: Path) -> tuple[str, float, str] | None:
     try:
         from astropy.io import fits
         hdr = fits.getheader(str(path))
-        obs = str(hdr.get("DATE-OBS") or "").strip()
+        # The site's LOCAL date when the header has it (N.I.N.A. writes DATE-LOC),
+        # the same convention as the Seestar filename clock above; else DATE-OBS
+        # (UTC), which labels a western-hemisphere evening with tomorrow's date.
+        obs = str(hdr.get("DATE-LOC") or hdr.get("DATE-OBS") or "").strip()
         iso = obs.split("T", 1)[0]              # 'YYYY-MM-DD' from ISO datetime
         exp = float(hdr.get("EXPTIME"))
         if len(iso) != 10 or exp <= 0:
@@ -132,7 +135,8 @@ def _sample(ordered: list[Path]) -> list[Path]:
 
 
 class _HeaderCache:
-    """{"<object_dir>/<file>": {"size", "telescop", "gain", "binning", "temp_c"}}."""
+    """{"<object_dir>/<file>": {"size", "telescop", "gain", "binning", "temp_c",
+    "device", "darks_applied", "capture"}}."""
 
     def __init__(self):
         self.path = config.DERIVED_DIR / _HEADER_CACHE_NAME
@@ -151,7 +155,9 @@ class _HeaderCache:
         except OSError:
             size = None
         hit = self.data.get(key)
-        if hit and hit.get("size") == size:
+        # An entry from before the capture profiles (#203) has no "capture": read
+        # the header again once, so an old cache heals on the next Sync.
+        if hit and hit.get("size") == size and "capture" in hit:
             return hit
         facts = {"size": size, **_read_capture_facts(f)}
         self.data[key] = facts
@@ -172,12 +178,15 @@ class _HeaderCache:
 
 
 def _read_capture_facts(path: Path) -> dict:
-    out = {"telescop": None, "gain": None, "binning": None, "temp_c": None}
+    from . import capture_profiles
+    out = {"telescop": None, "gain": None, "binning": None, "temp_c": None,
+           "device": None, "darks_applied": False, "capture": "generic"}
     try:
         from astropy.io import fits
         h = fits.getheader(str(path))
     except Exception:
         return out
+    out.update(capture_profiles.facts(h))
     tel = h.get("TELESCOP")
     temp = h.get("CCD-TEMP") if h.get("CCD-TEMP") is not None else h.get("DET-TEMP")
     for key, val, cast in (("gain", h.get("GAIN"), int), ("binning", h.get("XBINNING"), int),
@@ -202,6 +211,8 @@ def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
     facts = [cache.facts(f) for f in sample]
     temps = [ff["temp_c"] for ff in facts if ff.get("temp_c") is not None]
     tel = next((ff["telescop"] for ff in facts if ff.get("telescop")), None)
+    device = next((ff["device"] for ff in facts if ff.get("device")), None)
+    applied = any(ff.get("darks_applied") for ff in facts)
     gain = next((ff["gain"] for ff in facts if ff.get("gain") is not None), None)
     binning = next((ff["binning"] for ff in facts if ff.get("binning") is not None), None)
     out = {
@@ -213,9 +224,10 @@ def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
         "dark_ref": None, "dark_temp_c": None, "dark_gap_c": None,
         "dark_link": None, "dark_rule": None, "dark_refs": [],
     }
-    if not ordered or not devices.darks_applied_on_device(tel):
+    # Only frames dark-subtracted when saved (the Seestar app, by capture path —
+    # capture_profiles) had a library dark applied on the device to infer.
+    if not ordered or not applied or not device:
         return out
-    device = devices.folder_name(tel)
     if device not in libraries:
         libraries[device] = calibration.library(device).get("darks", [])
     used = calibration.applied_darks(
@@ -234,19 +246,21 @@ def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
 
 
 def _device_of(subs: list[Path], cache: "_HeaderCache"):
-    """A function giving each sub of one target folder its device key. A folder
-    is almost always one telescope's, so a bounded sample decides: if every
-    sampled sub names the same TELESCOP (or none does), the whole folder is that
-    device and no other header is read. Only when the sample shows two or more
-    does every sub's TELESCOP get read (once — `_HeaderCache` keeps it)."""
+    """A function giving each sub of one target folder its (device key, capture
+    profile id). A folder is almost always one telescope's, shot one way, so a
+    bounded sample decides: if every sampled sub agrees, the whole folder is that
+    and no other header is read. Only when the sample shows two or more does every
+    sub's header get read (once — `_HeaderCache` keeps it)."""
     from . import devices
 
-    def key_of(f: Path) -> str:
-        return devices.folder_name(cache.facts(f).get("telescop"))
+    def key_of(f: Path) -> tuple[str, str]:
+        ff = cache.facts(f)
+        return (ff.get("device") or devices.folder_name(ff.get("telescop")),
+                ff.get("capture") or "generic")
 
     seen = {key_of(f) for f in _sample(subs)}
     if len(seen) <= 1:
-        only = next(iter(seen), devices.UNKNOWN)
+        only = next(iter(seen), (devices.UNKNOWN, "generic"))
         return lambda f: only
     return key_of
 
@@ -354,14 +368,19 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     # on the Library never containing such an entry.
     # Spaced designations are collapsed first ("M 97 M 108" → "M97 M108") so the
     # split works whichever way the designations are typed.
+    # Each part resolves as a designation first: NGC/IC slugs are hyphenated
+    # ("NGC2024" → ngc-2024), which a bare slugify ("ngc2024") never finds — so a
+    # "NGC 2024 IC 434" target (N.I.N.A., named for a field) split into nothing.
+    from .catalog import slug_for_designation
     parts = re.split(r"\s+", re.sub(r"([A-Za-z]+)\s+(\d)", r"\1\2", folder_name))
-    out = [ps for ps in (slugify(p) for p in parts) if ps in catalog_slugs]
+    out = list(dict.fromkeys(
+        ps for ps in ((slug_for_designation(p) or slugify(p)) for p in parts)
+        if ps in catalog_slugs))
     if len(out) >= 2:
         return out
     s = slugify(folder_name)
     # A folder named by a *catalog number* ("C 6") names an object the reference
     # keys by its primary designation (ngc-6543), so ask catalog membership.
-    from .catalog import slug_for_designation
     by_desig = slug_for_designation(folder_name)
     if by_desig in catalog_slugs:
         return [by_desig]
@@ -461,25 +480,25 @@ def scan(checkpoint=None) -> list[dict]:
             key = _session_key(f)
             if key is None:
                 continue
-            key = (*key, device_of(f))
+            key = (*key, *device_of(f))
             bucket[key] += 1
             rep.setdefault(key, f)
             members[key].append(f)
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
-        for (iso, exp, filt, device), n in sorted(bucket.items()):
+        for (iso, exp, filt, device, capture), n in sorted(bucket.items()):
             if checkpoint:
                 checkpoint()
             session_date = datetime.strptime(iso, "%Y-%m-%d").date()
             # One header read per session-segment (mount mode is constant within a
             # capture run) — negligible next to the filename fast-path for the subs.
-            mount_mode = _mount_mode(rep.get((iso, exp, filt, device)), session_date)
+            mount_mode = _mount_mode(rep.get((iso, exp, filt, device, capture)), session_date)
             # The segment's real UTC window. `date` is the *observing night's*
             # label, not a calendar day of these timestamps — subs shot after
             # local midnight carry the previous evening's label and a DATE-OBS
             # on the following day — so anything comparing a session to a
             # timestamped event (a stack's FITS `DATE`) has to use these.
-            first_obs, last_obs = _session_bounds(members[(iso, exp, filt, device)])
+            first_obs, last_obs = _session_bounds(members[(iso, exp, filt, device, capture)])
             row = {
                 "date": iso,
                 "object_dir": obj_dir.name,
@@ -492,8 +511,9 @@ def scan(checkpoint=None) -> list[dict]:
                 "pre_new_start": session_date < NEW_START,
                 "first_obs": first_obs,      # UTC DATE-OBS of the segment's
                 "last_obs": last_obs,        # earliest / latest sub (None if unreadable)
-                **_capture_fields(members[(iso, exp, filt, device)], exp, cache, libraries),
-                "device": device,            # devices.folder_name(TELESCOP) or "unknown"
+                **_capture_fields(members[(iso, exp, filt, device, capture)], exp, cache, libraries),
+                "device": device,            # capture_profiles.device_key, or "unknown"
+                "capture": capture,          # capture profile id (seestar-app, nina, …)
             }
             rows.append(row)
     cache.save()

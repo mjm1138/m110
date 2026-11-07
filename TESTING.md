@@ -340,7 +340,7 @@ re-run when its area changes and you want eyes on the visuals).
       to `Images/<obj>/darks/`, not `lights/`.
 - [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
 - [ ] Import a folder containing another library's `Calibration/<device>/darks/`
-      (copy one from a backup): the row reads **master darks** with the device as
+      (copy one from a backup): the row reads **library darks** with the device as
       its object, Pointing **—**, destination `Calibration/<device>/darks/`; after
       confirming, no `Images/<device>/` target appears, and re-importing offers nothing.
 - [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
@@ -370,6 +370,29 @@ re-run when its area changes and you want eyes on the visuals).
       The import source's `stacked-16_*.png` is a 3-byte placeholder that can't decode: the
       hero must still appear (it falls through to `stacked.jpg`), not go blank.
 
+#### Import — N.I.N.A. / PINS  (#203)  ⚙ *(profiles/routing/raw sets/stacker prelude automated — `test_capture_profiles.py`, `test_ingest_nina.py`, `test_calibration.py`, `test_stacking.py`, `test_ui_import.py`)*
+- [ ] Browse the corpus import source's **`PINS/Seestar-S50/2026-06-19`** (N.I.N.A.'s
+      stock layout: every target in one `LIGHT/`, darks in `DARK/`). The Kind tooltip
+      says **N.I.N.A.**; the rows are **M33_mosaic** (both panels, one row), **M92**,
+      **NGC 6960 NGC 6992** (new), and **S50_c0ffee00 dark frames →
+      `Calibration/S50_c0ffee00/darks`**. No row is named `LIGHT`, `DARK` or
+      `S50 Prime`.
+- [ ] The **NGC 6960 NGC 6992** row has a dropdown whose first choices after the
+      name are **NGC 6960** and **NGC 6992**. Pick one → the destination changes;
+      accept **Remember alias?** → the prompt names "NGC 6960 NGC 6992", not `LIGHT`.
+      Re-scan → the row now lands on your pick with no prompt.
+- [ ] Import + Refresh → **Devices**: the corpus S50 is still **one** telescope; its
+      Dark library adds a row **"4 raw frames · 2026-06-19 · 14 °C"** beside the app
+      masters, and the heading says app subs are dark-subtracted on the telescope and
+      N.I.N.A. frames are not. Sessions for the PINS targets show **no** inferred Dark.
+- [ ] `m110-stack Images/M92/siril` (proposal only): the calibration row reads
+      **dark ✓ (4 raw)**, the solve script starts with `setcompress 0` and
+      `stack cal_darks_ … -out=master_darks.fit`, and the calibrate line is
+      `calibrate lights_ "-dark=master_darks.fit" …` (the whole option quoted).
+- [ ] *(real data, optional)* Point Import at a real PINS night: panels fold to one
+      `<object>_mosaic`, no-OBJECT darks go to the S50's library, and
+      `m110-stack --run` on a NINA-only target builds the master and finishes.
+
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
 - [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown
@@ -387,7 +410,7 @@ re-run when its area changes and you want eyes on the visuals).
 > masters, the device mount all five.
 - [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50/MyWorks` (the folder
       the page's **Seestar device** entry points at — the darks live *beside* it, and
-      must still be offered): one **master darks** row, object `S50_c0ffee00`, **1** frame (the
+      must still be offered): one **library darks** row, object `S50_c0ffee00`, **1** frame (the
       7.7 °C master; its `.jpg` rides along), Pointing **—**, destination
       `Calibration/S50_c0ffee00/darks/`. Import it; re-browsing offers nothing.
 - [ ] M 72 detail → **Sessions**: the **Dark** column reads `24.9 °C · Δ10.5 ⚠` in the

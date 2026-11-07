@@ -45,7 +45,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import calibration, config, devices, launch, roundtrip, siril as siril_mod
+from . import calibration, capture_profiles, config, devices, launch, roundtrip, siril as siril_mod
 
 PRESET_NAME = siril_mod.PRESET_NAME
 
@@ -233,6 +233,9 @@ class Frame:
     ra: float | None = None
     dec: float | None = None
     binning: int | None = None      # XBINNING — calibration masters are per binning
+    # dark-subtracted before it was saved (the capture path decides —
+    # capture_profiles.darks_applied); None when the header was unreadable
+    darks_applied: bool | None = None
 
 
 def read_frames(lights: Path) -> tuple[list[Frame], dict]:
@@ -273,12 +276,14 @@ def read_frames(lights: Path) -> tuple[list[Frame], dict]:
             ra=float(h["RA"]) if h.get("RA") is not None else None,
             dec=float(h["DEC"]) if h.get("DEC") is not None else None,
             binning=int(h["XBINNING"]) if h.get("XBINNING") is not None else None,
+            darks_applied=capture_profiles.darks_applied(h),
         ))
         if not geom:
             geom = {"naxis1": h.get("NAXIS1"), "naxis2": h.get("NAXIS2"),
                     "xpixsz": h.get("XPIXSZ"), "focal": h.get("FOCALLEN"),
                     "object": str(h.get("OBJECT", "")).strip(),
-                    "telescop": str(h.get("TELESCOP", "")).strip()}
+                    "telescop": str(h.get("TELESCOP", "")).strip(),
+                    **capture_profiles.facts(h)}
     return frames, geom
 
 
@@ -939,6 +944,56 @@ def clear_scratch(process_dir: Path) -> float:
     return gb
 
 
+def _siril_opt(name: str, path: str) -> str:
+    """``"-name=path"`` — the WHOLE token quoted, which is what Siril's tokenizer
+    honours. ``-name="path"`` passes the quotes on as part of the file name: Siril
+    1.4.5 answers ``"…".[any_allowed_extension] not found`` and the calibrate line
+    fails, absolute path or not (verified 2026-11-07, with a space in the path too)."""
+    return f'"-{name}={path}"'
+
+
+def _cal_mark(v) -> str:
+    """How the proposal table shows one tier: ✓ a master, ✓ (n raw) a set, — none."""
+    if isinstance(v, list):
+        return f"✓ ({len(v)} raw)"
+    return "✓" if v else "—"
+
+
+def build_master_prelude(cal: dict) -> list[str]:
+    """Siril lines (run in ``process/``) that turn each staged raw set
+    (`stage_calibration_sets`) into a master named ``master_<tier>``, the way
+    Siril's own OSC preprocessing script does: bias and dark by a plain sigma-
+    clipped average (no normalisation); flats calibrated with the bias master when
+    there is one, then stacked with multiplicative normalisation. Biases first, so
+    the flats can use theirs. Empty when every tier is already a master."""
+    L: list[str] = []
+    for tier in ("biases", "darks", "flats"):
+        frames = cal.get(tier)
+        if not isinstance(frames, list):
+            continue
+        if not L:
+            # Siril keeps `setcompress` as a preference across runs, so a previous
+            # run's rice setting would save `master_<tier>.fit.fz` — quantised, and
+            # not the name calibrate is given. Masters are written plain.
+            L += ["# Masters are written uncompressed (setcompress persists in Siril).",
+                  "setcompress 0", ""]
+        stage, master = _CAL_STAGE[tier]
+        L += [f"# Build the master {tier[:-1]} from {len(frames)} raw frames "
+              "(matched by exposure/gain/binning and sensor temperature).",
+              f"cd {stage}", f"link {stage} -out=..", "cd .."]
+        seq = f"{stage}_"
+        if tier == "flats":
+            bias = cal.get("biases")
+            if bias:
+                bref = _CAL_STAGE["biases"][1] if isinstance(bias, list) else bias
+                L.append(f"calibrate {seq} {_siril_opt('bias', bref)}")
+                seq = f"pp_{seq}"
+            L += [f"stack {seq} rej 3 3 -norm=mul -out={master}", ""]
+        else:
+            L += [f"stack {seq} rej 3 3 -nonorm -out={master}", ""]
+    return L
+
+
 def build_ssf_solve(lights_name: str, p: Proposal,
                     unselect: list[int] | None = None) -> str:
     """Phase 1: calibrate, background-extract, plate solve. Stops there.
@@ -978,6 +1033,9 @@ def build_ssf_solve(lights_name: str, p: Proposal,
         "cd ../process",
         "",
     ]
+    # Masters from raw calibration sets first — before `unselect` (which names the
+    # lights sequence) and before `setcompress`, so a master is never quantised.
+    L += build_master_prelude(p.get("calibration") or {})
     if unselect:
         L.append("# Frame selection: calibrate and everything after skip excluded "
                  "frames.")
@@ -996,16 +1054,18 @@ def build_ssf_solve(lights_name: str, p: Proposal,
     # `calibration_for_stack`). Mirrors the Naztronomy script's calibrate line:
     # -cc=dark enables cosmetic correction from the dark, -equalize_cfa evens the
     # CFA channels of the flat, -cfa tells Siril the frames are colour-filter-array.
-    # Paths are absolute and double-quoted (Siril's tokenizer honours quotes; a
-    # target name can contain spaces).
+    # Each option is quoted as a whole token (`_siril_opt`) — a target name can
+    # contain spaces.
     cal = p.get("calibration") or {}
+    ref = {t: (_CAL_STAGE[t][1] if isinstance(v, list) else v)
+           for t, v in cal.items() if v}
     cal_flags: list[str] = []
-    if cal.get("darks"):
-        cal_flags += [f'-dark="{cal["darks"]}"', "-cc=dark"]
-    if cal.get("flats"):
-        cal_flags += [f'-flat="{cal["flats"]}"', "-equalize_cfa"]
-    if cal.get("biases"):
-        cal_flags += [f'-bias="{cal["biases"]}"']
+    if ref.get("darks"):
+        cal_flags += [_siril_opt("dark", ref["darks"]), "-cc=dark"]
+    if ref.get("flats"):
+        cal_flags += [_siril_opt("flat", ref["flats"]), "-equalize_cfa"]
+    if ref.get("biases"):
+        cal_flags += [_siril_opt("bias", ref["biases"])]
     if cal_flags:
         cal_flags.append("-cfa")
         L.append("# Calibrate against the master frames the plan matched "
@@ -1321,7 +1381,7 @@ def format_report(s: Survey, p: Proposal, siril: str, working: Path,
         ("quality filters", filters_label(p.get("filters"))),
         ("compression", f"rice q{p.get('compress_quant')}" if p.get("compress") else "off"),
         ("calibration", " · ".join(
-            f"{t[:-1]} {'✓' if (p.get('calibration') or {}).get(t) else '—'}"
+            f"{t[:-1]} " + _cal_mark((p.get('calibration') or {}).get(t))
             for t in ("darks", "flats", "biases"))
             if p.get("calibration") else "off"),
     ]
@@ -1565,10 +1625,10 @@ def device_dark_gaps(frames: list[Frame], geom: dict) -> dict:
     within the device's sticky window as the sensor drifts; a frame's gap is how far
     its own CCD-TEMP sits from the dark in use for it. Empty when the device
     doesn't, or its library holds no darks."""
-    tel = geom.get("telescop")
-    if not devices.darks_applied_on_device(tel):
+    if not geom.get("darks_applied"):
         return {}
-    masters = calibration.library(devices.folder_name(tel)).get("darks", [])
+    device = geom.get("device") or devices.folder_name(geom.get("telescop"))
+    masters = [m for m in calibration.library(device).get("darks", []) if not m.raw]
     if not masters:
         return {}
     by_name = {f.name: f for f in frames}
@@ -1601,12 +1661,60 @@ def _dark_gap_warning(kept: list[Frame], gaps: dict) -> str | None:
 
 
 def _darks_applied_on_device(working: Path, geom: dict) -> bool:
-    """Did the telescope behind these frames already subtract a dark on-device?"""
-    tel = geom.get("telescop")
-    if not tel:
-        target = target_for(working)
-        tel = calibration.device_for_target(target) if target else None
-    return devices.darks_applied_on_device(tel)
+    """Were these frames already dark-subtracted when saved? Per frame, by capture
+    path (capture_profiles): the Seestar app's subs yes, the same S50 under N.I.N.A.
+    no. Falls back to the target's sampled subs when the geometry has no header."""
+    if geom.get("darks_applied") is not None:
+        return bool(geom["darks_applied"])
+    target = target_for(working)
+    return bool(target and calibration.target_facts(target, sample=3).get("darks_applied"))
+
+
+def _raw_set_problem(tier: str, files: list[Path], frames: list) -> str | None:
+    """Why a job folder's raw calibration frames can't be stacked into ONE master
+    for these lights, or None when they can: they must share exposure, gain and
+    binning (a dark also the lights' exposure — prep links only matching ones)."""
+    facts = [calibration.frame_facts(f) or {} for f in files]
+    keys = {(f.get("exptime"), f.get("gain"), f.get("binning")) for f in facts}
+    if len(keys) > 1:
+        return "mix exposure/gain/binning"
+    if tier == "darks" and frames:
+        exp = Counter(f.exposure for f in frames).most_common(1)[0][0]
+        (dexp, _g, _b), = keys
+        if exp is not None and dexp is not None and abs(exp - dexp) > 0.01:
+            return f"are {dexp:g} s darks for {exp:g} s lights"
+    return None
+
+
+# Where m110-stack stages a raw calibration set inside process/ and what it calls
+# the master it builds from it (tier → (staging dir, master name)).
+# The master carries an explicit `.fit` (with `setcompress 0` in the prelude), so
+# the name calibrate is given is exactly the file the stack wrote.
+_CAL_STAGE = {t: (f"cal_{t}", f"master_{t}.fit") for t in calibration.TIERS}
+
+
+def stage_calibration_sets(working: Path, cal: dict | None) -> list[str]:
+    """Hardlink (copy across devices) every raw set the plan matched into
+    ``process/cal_<tier>/`` for the solve script's master prelude. The run half
+    only — `build_plan` still writes nothing. Returns the tiers staged. A stale
+    ``cal_<tier>/`` (a previous failed run) is replaced: it is this function's own
+    scratch, named so nothing else uses it."""
+    staged = []
+    for tier, val in (cal or {}).items():
+        if not isinstance(val, list):
+            continue
+        d = working / "process" / _CAL_STAGE[tier][0]
+        if d.is_dir():
+            shutil.rmtree(d)
+        d.mkdir(parents=True)
+        for i, src in enumerate(val, 1):
+            dst = d / f"{i:05d}_{Path(src).name}"
+            try:
+                os.link(src, dst)
+            except OSError:
+                shutil.copyfile(src, dst)
+        staged.append(tier)
+    return staged
 
 
 def calibration_for_stack(working: Path, frames: list, geom: dict
@@ -1635,10 +1743,15 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
         if len(fs) == 1:
             found[tier] = str(fs[0].resolve())
         elif len(fs) > 1:
-            notes.append(
-                f"{len(fs)} raw frames in {tier}/ — m110-stack calibrates with "
-                "masters only. Stack them into one master in Siril (the "
-                "Naztronomy script does this) or leave calibration off.")
+            why = _raw_set_problem(tier, fs, frames)
+            if why:
+                notes.append(f"{len(fs)} raw frames in {tier}/ {why}, so no master "
+                             "is built from them; stack one in Siril or leave "
+                             "calibration off.")
+            else:
+                found[tier] = [str(f.resolve()) for f in fs]
+                notes.append(f"calibration: {len(fs)} raw {tier[:-1]} frames in "
+                             f"{tier}/ — a master is built from them first")
     if "darks" in found and _darks_applied_on_device(working, geom):
         notes.append("calibration: a master dark sits beside lights/, but this "
                      "telescope already dark-subtracted the subs — it will be "
@@ -1650,21 +1763,20 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
     facts = calibration.facts_from_frames([
         {"exptime": f.exposure, "gain": f.gain, "binning": f.binning,
          "temp_c": f.temp, "filter": None if f.filter == "UNKNOWN" else f.filter,
-         "telescop": geom.get("telescop") or None}
+         "telescop": geom.get("telescop") or None,
+         "device": geom.get("device"), "darks_applied": f.darks_applied}
         for f in frames])
-    tel = facts.get("telescop")
-    device = None
-    if tel:
-        device = devices.folder_name(tel)
-    else:
+    device = facts.get("device")
+    if not device:
         target = target_for(working)
         if target:
             device = calibration.device_for_target(target)
     match = calibration.match_for_facts(facts, device)
     notes.extend(f"calibration: {n}" for n in match.notes)
     if match:
-        got = match.as_dict()
-        return ({t: str(p.resolve()) for t, p in got.items()},
+        got = match.files()
+        return ({t: (str(ps[0].resolve()) if len(ps) == 1
+                     else [str(p.resolve()) for p in ps]) for t, ps in got.items()},
                 f"matched from Calibration/{match.device}/ on the selected frames' "
                 "exposure, gain and binning (darks: nearest sensor temperature)",
                 notes)
@@ -2196,6 +2308,13 @@ def _execute(a, plan, siril: str, mark) -> int:
                   "sequences would otherwise have been reused, carrying that "
                   "run's frame selection (--restack reuses them on purpose).\n",
                   flush=True)
+
+        # Raw calibration sets the plan matched are staged for the solve script,
+        # which builds their masters before calibrating (build_master_prelude).
+        staged = stage_calibration_sets(working, p.get("calibration"))
+        if staged:
+            print("  Building master " + ", ".join(t[:-1] for t in staged)
+                  + " from raw frames before calibrating.\n", flush=True)
 
         # ---- phase 1: solve ----------------------------------------------
         mark("solve")

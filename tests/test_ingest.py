@@ -734,17 +734,21 @@ def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
     pile = tmp_path / "dump"
     _fits_hdr(pile / "a.fit", object="M51", imagetyp="Light")
     _fits_hdr(pile / "b.fit", object="M51", imagetyp="Dark")
-    _fits_hdr(pile / "c.fit", imagetyp="Bias")          # no OBJECT → folder name
+    _fits_hdr(pile / "c.fit", imagetyp="Bias")          # no OBJECT, no device → holding
     _fits_hdr(pile / "junk.fit")                         # no type/object → holding (6c)
 
     ops = ingest.scan_directory_plan(tmp_path / "dump")
-    by_kind = {op.kind: op for op in ops}
-    assert set(by_kind) == {"light", "dark", "bias", "unassigned"}
-    assert by_kind["light"].dest_rel.startswith("Images/M51/lights/")
-    assert by_kind["dark"].dest_rel.startswith("Images/M51/darks/")
-    assert by_kind["bias"].dest_rel.startswith("Images/dump/biases/")  # folder fallback
-    assert by_kind["unassigned"].dest_rel == "Inbox/dump/junk.fit"     # 6c holding
-    assert by_kind["light"].layout == "raw-fits"
+    by_kind: dict = {}
+    for op in ops:
+        by_kind.setdefault(op.kind, []).append(op)
+    assert set(by_kind) == {"light", "dark", "unassigned"}
+    assert by_kind["light"][0].dest_rel.startswith("Images/M51/lights/")
+    assert by_kind["dark"][0].dest_rel.startswith("Images/M51/darks/")
+    # A calibration frame naming neither an object nor a telescope belongs to no
+    # target: it is held, never filed under an object named after its folder (#203).
+    assert sorted(o.dest_rel for o in by_kind["unassigned"]) == [
+        "Inbox/dump/c.fit", "Inbox/dump/junk.fit"]
+    assert by_kind["light"][0].layout == "raw-fits"
 
 
 def test_header_wins_over_sub_folder(tmp_path, monkeypatch):

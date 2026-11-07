@@ -10,6 +10,49 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Added
+- **N.I.N.A. and PINS imports.** Frames captured with N.I.N.A. (or PINS, its
+  Raspberry Pi edition) now import cleanly, whatever file pattern you set in N.I.N.A.:
+  M110 routes them by their FITS headers, not by folder names. The Import page
+  labels them **N.I.N.A.**
+  - **Mosaic panels stay together.** N.I.N.A.'s framing assistant names panels
+    "M 45 Panel 1", "M 45 Panel 2" and so on, in any of its languages. They now
+    import as one **M45_mosaic** dataset instead of one new object per panel.
+  - **Darks go to your telescope's dark library.** A dark, flat or bias with no
+    target goes to **Calibration/&lt;telescope&gt;/**. It no longer creates an
+    object named "DARK".
+  - **One Seestar, not two.** A Seestar driven by N.I.N.A. over Alpaca reports
+    itself as "S50 Prime". M110 now reads the unit's serial from the camera name,
+    so these frames join the same telescope on the Devices page as the subs from
+    the Seestar app.
+- **Calibration follows how a frame was captured.** The Seestar app subtracts a dark
+  on the telescope before saving each sub. The same telescope driven by N.I.N.A.
+  does not, so those frames are now calibrated with darks. A target that mixes app
+  subs and N.I.N.A. subs is not calibrated, and M110 explains why.
+- **Raw darks become a master automatically.** Calibration frames shot one at a
+  time (as N.I.N.A. takes them) are grouped by exposure, gain, night and
+  temperature. Siril prep links the matching set, and **m110-stack** builds the
+  master dark, flat or bias itself before calibrating. On the Devices page each set
+  is one row ("20 raw frames · 2026-11-06 · 5.7 °C").
+- **Retarget an off-catalog target from the Import preview.** A target named for a
+  field, such as "NGC 2024 IC 434", gets a dropdown that offers the catalog objects
+  in its name, plus the nearest one to where the telescope pointed.
+
+### Fixed
+- **"Remember alias?" remembers the target name.** After you retarget a row, the
+  alias now keys on the name in the frames' headers. It used to key on the folder,
+  and with N.I.N.A.'s stock layout every target shares one `LIGHT` folder.
+- **m110-stack calibration works in Siril 1.4.5.** Every calibrated stack failed at
+  `calibrate` ("… not found"). Siril read the quotes around the master's path as
+  part of the file name. Each option is now quoted the way Siril expects, spaces in
+  paths included.
+- **Session dates for headers with local time.** A session from N.I.N.A. is dated by
+  the site's local date (`DATE-LOC`), the same way as Seestar sessions. An evening
+  in the Americas is no longer dated as the next day.
+- **Combined targets with NGC/IC names count for both objects.** A target such as
+  "NGC 2024 IC 434" now counts toward NGC 2024 and IC 434, the way "M81 M82" already
+  did.
+
 ## [0.3.0-beta.10] - 2026-11-03
 
 ### Added

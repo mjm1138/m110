@@ -718,6 +718,107 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## N.I.N.A. / PINS import on capture profiles *(done 2026-11-07, `feature/nina-import`, #203 part 1)*
+
+**Source.** A PINS (N.I.N.A. 3.3.0.1058) night of the S50 over Alpaca, 2026-11-06,
+with 1,364 frames: M110, M74, a 3-panel M45 mosaic, `NGC 2024 IC 434`, and 60 darks.
+The defects are listed in BUGS.md → Import → NINA.
+
+**The seam: `capture_profiles.py`.** One frozen `CaptureProfile` of plain data per
+capture program, matched on header cards only (OR of AND-ed `(card, regex|None)`;
+`None` = card absent):
+- the object card, and a panel regex that folds onto `<object>_mosaic`;
+- ordered device rules `(card, regex, template)`;
+- `darks_applied` (True / False / None = the model rule);
+- where a nameless calibration frame goes.
+
+Built-ins, in order: `nina` (`SWCREATE ~ N\.I\.N\.A\.`), `seestar-app` (`CREATOR ~
+ZWO Seestar`, or no SWCREATE with a per-unit TELESCOP, which keeps every pre-#203
+fixture and real store on the app path), `dwarf-app`, and `generic`. The four answers
+every reader needs (`device_key`, `darks_applied`, `object_name`, and the profile id
+`capture`) come from `facts(hdr)`. They are now read in **one** place, instead of
+`folder_name(TELESCOP)` scattered across ingest, calibration, scan_sessions and
+stacking. Part 2 (user profiles in the store) loads the same shape.
+
+**One unit, one device.** N.I.N.A.'s TELESCOP is the Alpaca device name (`S50
+Prime`). The serial is only in `INSTRUME='Seestar S50_15e7e390 Telephoto Camera'`,
+and the rule `Seestar\s+(S\d+)_([0-9a-f]+)` → `{1}_{2}` gives the app's own key. We
+checked that it really is one sensor before sharing a library. The app's 20 s master
+(10.5 °C, median 476 ADU) and NINA 20 s raw darks (5.2 °C, median 480) share a
+pedestal. Of the top-200 hot pixels, 85 coincide in the same orientation and 0 under
+any flip. So the app's masters are valid candidates for NINA lights.
+
+**Darks-applied is per frame.** "The S50 dark-subtracts" was a property of the
+model. It is really a property of the ZWO app pipeline: NINA frames carry the hot
+pixels at full strength (~250 ADU excess). The flag now travels with the frame:
+- calibration: `frame_facts`, then `facts_from_frames` (a mixed flag →
+  `mixed_capture`, refused), then `match_masters`;
+- `scan_sessions._capture_fields`: no applied-dark inference for NINA subs;
+- stacking: `Frame.darks_applied` and the geometry, used by `device_dark_gaps` and
+  `_darks_applied_on_device`;
+- `siril.plan_prep`'s double-subtract note.
+
+`devices.darks_applied_on_device(key)` survives as the model-level fact behind the
+Devices heading. The session header cache re-reads any entry without `capture`, so
+an old cache heals.
+
+**Raw calibration frames.** The device library held only masters, and NINA takes
+darks one at a time. `calibration._is_raw` is a *positive* test: IMAGETYP set and
+not "master…", no NCOMBINE/STACKCNT > 1, and a DATE-OBS. Untyped or uncounted files
+stay masters, so every existing library reads the same. `raw_sets` groups raw frames
+by (exp, gain, bin, filter-for-flats, night). The night is DATE-LOC else DATE-OBS,
+minus 12 h. Groups are split where sorted temperatures jump > 2.5 °C. `candidates`
+puts masters and sets in one pool, and a one-frame set is used as a master.
+`MatchResult.sets` / `files()` hand a set on: Siril prep links it (Naztronomy stacks
+it), and m110-stack builds it (below). `device_rollup` lists one row per set.
+
+**m110-stack builds the master.** `calibration_for_stack` turns several consistent
+raw frames in a job-dir tier (or a library set) into a list. `_raw_set_problem`
+refuses mixed settings, or darks at another exposure. The run step (`build_plan`
+still writes nothing) hardlinks each set into `process/cal_<tier>/`. The solve
+script's prelude runs before `unselect` and `setcompress`:
+```
+setcompress 0
+cd cal_darks ; link cal_darks -out=.. ; cd ..
+stack cal_darks_ rej 3 3 -nonorm -out=master_darks.fit
+```
+Bias is built first and calibrates the flats. Flats use `-norm=mul`. Verified with a
+real run of Siril 1.4.5 on 30 NINA M74 subs and the 20 matching raw darks.
+
+**Two Siril findings on the way, both silent until a real run:**
+- `-dark="<path>"` keeps the quotes as part of the name (`"…".[any_allowed_extension]
+  not found`), absolute path or not. So **every** calibrated m110-stack run had
+  failed at phase 1. The tests asserted that exact string. Only whole-token quoting
+  works, spaces included: `"-dark=<path>"` (`_siril_opt`).
+- `setcompress` persists as a Siril preference. A previous run's rice setting saved
+  the master as `master_darks.fit.fz`, quantised, and calibrate then could not find
+  `master_darks.fit`.
+
+**Ingest.** `_detect_layout` labels a raw-FITS dir `nina` from one sniffed header
+(`_sniff_capture`, lru-cached). `_classify_raw_dir` is profile-aware per frame:
+- a dark/flat/bias with no usable OBJECT goes to `cal-*` under the device key, else
+  to holding. It is never filed under its folder name ("DARK"), and that applies to
+  generic FITS too;
+- a nameless light in a frame-type-named folder (`LIGHT/`) is held.
+
+`IngestOp/IngestGroup.source_name` is the name `canonical_target` resolved from, and
+`alias_key` is what both "Remember alias?" prompts store. `annotate_pointing` sets
+`candidates` for off-catalog lights: the designations in the name, then the nearest
+object within 1°. That needed `folder_to_slugs` to resolve each part as a
+designation (`NGC2024` slugifies to `ngc2024`, not `ngc-2024`), which also makes a
+combined NGC/IC target count toward both objects.
+
+**Sessions.** The header fall-back now dates by `DATE-LOC` when present, the same
+local-date convention as the Seestar filename clock. DATE-OBS put a Colorado
+evening on the next day. Rows gain `capture` and are bucketed by it too.
+
+**Test isolation.** `tests._helpers.seed_root` now patches `config.INTERNAL_DIR`.
+`ingest_aliases.toml` is read straight off it, so an alias saved in one test leaked
+into the next.
+
+**Open (BUGS.md):** per-subset calibration for a target that mixes app subs and
+NINA subs. Also #203 part 2.
+
 ## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
 
 **What changed.** "Deep" stopped being one type-keyed number compared against an

@@ -172,11 +172,28 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                                     exposure × gain × binning × sensor temperature
                                     (+ flats per filter, a bias), and the same master
                                     serves every target shot at those settings.
-                                    `<device>` = the FITS `TELESCOP` string verbatim
-                                    (`devices.folder_name`, through `_safe_segment` on
-                                    both write and read: `DWARF 3`; a Seestar's is
-                                    per-unit, `S50_15e7e390` — a registry is ROADMAP
-                                    6d). Matching is header-only (`calibration.py`).
+                                    `<device>` = the **device key** from the capture
+                                    profile (`capture_profiles.device_key`, #203): the
+                                    FITS `TELESCOP` verbatim for the vendor apps
+                                    (`DWARF 3`; a Seestar's is per-unit,
+                                    `S50_15e7e390`), and for N.I.N.A. over Alpaca the
+                                    serial in `INSTRUME` (`Seestar S50_15e7e390
+                                    Telephoto Camera` → the same `S50_15e7e390`), so
+                                    one unit is one device whatever drove it. Through
+                                    `_safe_segment` on both write and read. Matching is
+                                    header-only (`calibration.py`).
+                                    **Raw frames** live here too (#203): a capture
+                                    program's single darks/flats/biases (N.I.N.A.'s;
+                                    IMAGETYP set, no NCOMBINE/STACKCNT > 1, a
+                                    DATE-OBS — `calibration._is_raw`). They are never
+                                    used one by one: `calibration.raw_sets` groups them
+                                    by exposure × gain × binning (× filter for flats)
+                                    × capture night, split at a > 2.5 °C jump, and a
+                                    set is matched like a master (its median
+                                    temperature); the consumer builds the master
+                                    (Siril prep links the set, the Naztronomy script
+                                    stacks it; `m110-stack` stacks it in `process/`).
+                                    An untyped or uncounted file stays a master.
                                     Ingest imports another store's
                                     `Calibration/<device>/<tier>/` as itself (kinds
                                     `cal-dark`/`cal-flat`/`cal-bias`); device-specific
@@ -188,10 +205,15 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                                     imports here byte-identical (layout `seestar-darks`;
                                     the masters carry no TELESCOP, so the device is the
                                     TELESCOP of the MyWorks subs on the same volume — none
-                                    → held). These darks are **never applied**: Seestar
-                                    subs are dark-subtracted on the device
-                                    (`devices.darks_applied_on_device`), so they are
-                                    reference data for the dark ↔ capture link below.
+                                    → held). These darks are **never applied** to the
+                                    Seestar app's subs, which are dark-subtracted on the
+                                    device, so they are reference data for the dark ↔
+                                    capture link below. "Already dark-subtracted" is
+                                    **per frame, by capture path**
+                                    (`capture_profiles.darks_applied`): the same S50
+                                    driven by N.I.N.A. saves undarked frames, and its
+                                    library (these masters included — same sensor,
+                                    measured pedestal and hot pixels) does apply.
   Media/<Category>_photo|_video/    lunar/planetary/scenery media (e.g. Dwarf
                                     startrails → Startrails_video/ + _photo/).
                                     Scanned **recursively**, and each file's kind
@@ -286,7 +308,7 @@ raws immutable) · **Derived** (regenerable, disposable) · **Reference**
 | Siril sandbox | `Images/<target>/siril/` | mixed | `siril.plan/apply_prep` (auto on ingest; missing-only backfill on refresh) | **Working area** — app-managed; `lights/` (and `darks/flats/biases/` when present, #57 — the target's own, else one library master per tier via `calibration.match_for_target`, linked per job dir) are hardlinks (no extra space); the preset's calibration toggles follow; `next-steps.md` records the source + match notes | Persistent (ready for re-runs) | `archive/<ts>/` pruned keep-N-latest (default 3, `processing_archive_keep`; "all" = never delete) — see Retention |
 | Media | `Media/<Category>_photo\|_video/` | images/video | Ingested (`*_photo`/`*_video`) | **Content** | Persistent | Never auto-deleted | Import copies content files **plus** a video's `<stem>_thn.jpg` poster; photo-side `_thn.` duplicates and `.avi.idx`/`.avi.txt` are no longer copied (Tools → Clean up imported sidecars removes ones already on disk — never a live video poster) |
 | Media posters | `.m110_internal_data/renders/media/` | JPG | `media.poster_for` → `build_images.make_thumb`, for photo formats Qt can't decode (FITS) | **Derived** | Regenerable | Safe to delete. A **subdirectory** on purpose: `build_images._cleanup_orphaned_renders` reaps unreferenced `*.jpg` directly in `renders/`, and `images.json` never names Media files — the same protection `hero/` relies on |
-| Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below. Capture facts from a bounded header sample (first, last, ≤46 between): `telescop`, `gain`, `temp_first`/`temp_last`/`temp_min`/`temp_max`; and, for a device that dark-subtracts on board (Seestar), the **inferred** dark it applied — `dark_ref` (master filename in `Calibration/<device>/darks/`), `dark_temp_c`, `dark_gap_c` (widest \|sub − dark\| °C), `dark_link` (`confirmed`\|`inferred`, of the first dark), `dark_rule` (`v2`), `dark_refs` (every dark used, in order — the device switches mid-run). **`device`** — the device key; rows are bucketed by (date, exposure, filter, **device**) so two scopes on one target/night stay separate (a folder whose sampled subs name one TELESCOP is that device without further reads; only a mixed folder reads every sub's TELESCOP, cached); all `null` otherwise or before the device had a library |
+| Sessions index | `.m110_internal_data/sessions.jsonl` | JSONL (1 session/line) | `scan_sessions.scan()` over `lights/` FITS headers | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh. Each row carries `date` (the **observing night's label**) plus `first_obs`/`last_obs` (the segment's real **UTC** `DATE-OBS` window) — see the note below. Capture facts from a bounded header sample (first, last, ≤46 between): `telescop`, `gain`, `temp_first`/`temp_last`/`temp_min`/`temp_max`; and, for a device that dark-subtracts on board (Seestar), the **inferred** dark it applied (only for frames their capture path dark-subtracted — never N.I.N.A.'s) — `dark_ref` (master filename in `Calibration/<device>/darks/`), `dark_temp_c`, `dark_gap_c` (widest \|sub − dark\| °C), `dark_link` (`confirmed`\|`inferred`, of the first dark), `dark_rule` (`v2`), `dark_refs` (every dark used, in order — the device switches mid-run). **`device`** — the device key (`capture_profiles.device_key`); **`capture`** — the capture profile id (`seestar-app`, `nina`, `dwarf-app`, `generic`; additive in #203, absent on older rows); rows are bucketed by (date, exposure, filter, **device**, **capture**) so two scopes on one target/night stay separate (a folder whose sampled subs name one TELESCOP is that device without further reads; only a mixed folder reads every sub's TELESCOP, cached); all `null` otherwise or before the device had a library |
 | Session header cache | `.m110_internal_data/derived/session_headers.json` | JSON | `scan_sessions._HeaderCache` — per sampled sub, keyed `<target>/<file>` + size | **Derived** | Regenerable | Safe to delete; lets an unchanged store re-scan with no header reads |
 | Device rollup | `.m110_internal_data/derived/devices.json` (+ `master_stats.json` pixel-stat cache by content hash) | JSON | `build_derived` → `calibration.device_rollup(sessions, totals)` | **Derived** | Regenerable | Safe to delete. Per device (most recent first, retired last; `unknown` only when a session lacks TELESCOP): identity (registry nickname/retired/preset, label, model, serial), totals (integration from `by_folder` so a two-object folder counts once, sessions, nights, objects, first/last), the objects it shot (`by_slug[…].by_device`), library masters (header facts, device-clock time, `label` "Oct 15 21:52 · 13.9 °C", median/σ/hot-pixel count, captures served) and its captures (dark refs + matching `dark_labels`, `lights_rel`); feeds the Devices page |
 | Rollups | `.m110_internal_data/derived/*.json` | JSON | `build_derived` (totals/summary/processing/priorities; `totals.json` `by_slug`/`by_folder` entries carry **`by_device`** `{device: {frames, integration_min, session_count}}` and **`by_model`** `{model: {integration_min, frames, devices, goal_min, goal_source, fraction, status}}`, plus the rolled-up `status`, `progress` (0..1) and `progress_model`), `build_images` (images) | **Derived** | Regenerable | Safe to delete; rebuilt on Refresh (`processing.json` stamps `generated_at` and is intentionally not byte-stable) |

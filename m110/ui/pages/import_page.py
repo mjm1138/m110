@@ -666,13 +666,15 @@ class ImportPage(QWidget):
         self.imported.emit(moved)
         if moved and QMessageBox.question(
                 self, "Remember alias?",
-                f"Always route “{group.group}” to {obj} on future imports?",
+                f"Always route “{group.alias_key}” to {obj} on future imports?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            ingest.add_alias(group.group, obj)
+            ingest.add_alias(group.alias_key, obj)
         self.refresh_holding()
 
     def _set_object_cell(self, r, g):
-        """Plain label, or a remap dropdown when the frame's pointing disagrees."""
+        """Plain label, or a remap dropdown when the frame's pointing disagrees or
+        the object is off-catalog with catalog candidates (its name's designations,
+        the nearest by pointing — `ingest.annotate_pointing`, #203)."""
         # Clear any stale label/combo first — setRowCount reuses rows across scans,
         # and setCellWidget/setItem don't remove each other, so a row switching
         # between label and dropdown would otherwise render both, overlapping.
@@ -682,9 +684,9 @@ class ImportPage(QWidget):
             # Held for the holding-area panel; not assigned inline here.
             self.table.setItem(r, 1, QTableWidgetItem("—"))
             return
-        if g.pointing and g.kind != "media":
+        if (g.pointing or g.candidates) and g.kind != "media":
             combo = QComboBox()
-            order = [g.object]
+            order = [g.object] + [c for c in g.candidates if c != g.object]
             self._catalog_ids()
             if g.suggested:
                 sid = self._cat.get(g.suggested, {}).get("id") or g.suggested
@@ -714,9 +716,9 @@ class ImportPage(QWidget):
         self._update_summary()
         if QMessageBox.question(
                 self, "Remember alias?",
-                f"Always route “{g.group}” to {new_id} on future imports?",
+                f"Always route “{g.alias_key}” to {new_id} on future imports?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            ingest.add_alias(g.group, new_id)
+            ingest.add_alias(g.alias_key, new_id)
 
     def _selected_groups(self):
         out = []

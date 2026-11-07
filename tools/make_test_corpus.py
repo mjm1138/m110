@@ -51,6 +51,10 @@ small rendered PNGs) that exercises the whole app:
         whose strays sweep into the holding area + **Dwarf 3 on-device sessions**
         (a `DWARF_RAW_*` raw-subs+stack session, a `STARTRAILS_*` folder → Media,
         and an `Unknown`-object session → the holding area for identify-by-pointing)
+        + a **PINS / N.I.N.A. night** of the corpus S50 in N.I.N.A.'s stock layout
+        (`PINS/Seestar-S50/<date>/LIGHT/` + `DARK/`): two mosaic panels → one
+        M33_mosaic, a field-named target ("NGC 6960 NGC 6992") whose retarget
+        dropdown offers both members, and no-OBJECT darks → the S50's library (#203)
 
 The generator is committed (it's small + reproducible); its OUTPUT is meant to
 live OUTSIDE the repo (default ~/m110-testdata) so the repo stays lean.
@@ -641,6 +645,71 @@ def _build_import_source(src: Path):
     _dwarf_startrails(src, "STARTRAILS_DWARF_RAW_WIDE_EXP_10_GAIN_0_2026-06-19-23-00-00")
     _dwarf_unknown(src, "DWARF_RAW_WIDE_Unknown_EXP_10_GAIN_0_2026-06-19-23-30-00")
 
+    # A PINS / N.I.N.A. night of the corpus S50 (#203), in N.I.N.A.'s STOCK layout:
+    # every target in one `<date>/LIGHT/`, the darks in `<date>/DARK/`.
+    _pins_night(src / "PINS" / "Seestar-S50" / "2026-06-19", coords)
+
+
+# ── a PINS / N.I.N.A. night (#203) ────────────────────────────────────────────
+# The cards a real PINS S50 night writes (2026-11-06): TELESCOP is the Alpaca device
+# name, the unit serial is only in INSTRUME, SWCREATE names N.I.N.A., darks taken
+# outside a target carry no OBJECT. Same unit as the corpus's Seestar captures.
+_NINA_SWCREATE = "PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))"
+
+
+def _nina_fits(path: Path, imagetyp: str, obj: str | None, ra: float, dec: float,
+               exp: float, filt: str, when: datetime, temp: float, seed: int):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    hdu = fits.PrimaryHDU(data=_blob(seed=seed))
+    h = hdu.header
+    h["IMAGETYP"] = imagetyp
+    h["EXPOSURE"] = exp
+    h["EXPTIME"] = exp
+    h["DATE-LOC"] = when.strftime("%Y-%m-%dT%H:%M:%S.0")
+    h["DATE-OBS"] = (when + timedelta(hours=7)).strftime("%Y-%m-%dT%H:%M:%S.0")
+    h["XBINNING"] = 1
+    h["YBINNING"] = 1
+    h["GAIN"] = 80
+    h["OFFSET"] = 0
+    h["INSTRUME"] = f"Seestar {S50_TELESCOP} Telephoto Camera"
+    h["CCD-TEMP"] = temp
+    h["TELESCOP"] = "S50 Prime"
+    h["RA"] = round(ra, 5)
+    h["DEC"] = round(dec, 5)
+    h["FILTER"] = filt
+    if obj is not None:
+        h["OBJECT"] = obj
+    h["SWCREATE"] = _NINA_SWCREATE
+    hdu.writeto(path, overwrite=True)
+
+
+def _pins_night(night: Path, coords: dict):
+    """Two mosaic panels (→ one M33_mosaic), a target named for a field
+    ("NGC 6960 NGC 6992" → retarget offers both), a plain M 92, and 20 s darks
+    with no OBJECT (→ Calibration/<the S50>/darks/ as one raw set)."""
+    light = night / "LIGHT"
+    start = datetime(2026, 6, 19, 22, 0, 0)
+    seed = 7000
+    plan = [("M 33 Panel 1", "m33", 3), ("M 33 Panel 2", "m33", 3),
+            ("NGC 6960 NGC 6992", "ngc-6960", 3), ("M 92", "m92", 3)]
+    t = start
+    for obj, slug, n in plan:
+        ra, dec = coord(coords, slug)
+        for i in range(n):
+            name = f"{t:%Y-%m-%d_%H-%M-%S}_IR_14.00_20.00s_{i:04d}.fits"
+            _nina_fits(light / name, "LIGHT", obj, ra, dec, 20.0, "IR", t, 14.0, seed)
+            t += timedelta(seconds=25)
+            seed += 1
+    t = start.replace(hour=4) + timedelta(days=1)
+    for i in range(4):
+        # 14.0 °C, the lights' own temperature: the raw set beats the library's real
+        # 13.9 °C app master, so the tester sees the raw-set path (dark ✓ (4 raw))
+        name = f"{t:%Y-%m-%d_%H-%M-%S}_14.00_20.00s_{i:04d}.fits"
+        _nina_fits(night / "DARK" / name, "DARK", None, 0.0, 0.0, 20.0, "Dark", t,
+                   14.0, seed)
+        t += timedelta(seconds=25)
+        seed += 1
+
 
 def _build_device_mount(dev: Path):
     """A folder shaped like a **mounted telescope**, so the no-re-sync half of #110
@@ -863,6 +932,18 @@ def verify(out: Path):
     assert mosaic_ops and {o.object for o in mosaic_ops} == {"M31_mosaic"}, \
         "a spaced Seestar mosaic should file under M31_mosaic"
     assert all(o.dest_rel.startswith("Images/M31_mosaic/lights/") for o in mosaic_ops)
+
+    # #203: the PINS night (stock N.I.N.A. layout — every target in one LIGHT/)
+    # routes by header: panels → one mosaic, darks → the S50's library, the same
+    # device key as its app subs (serial from INSTRUME), nothing named "LIGHT"/"DARK".
+    nina_ops = [o for o in src_ops if o.layout == "nina"]
+    nina = {(o.kind, o.object) for o in nina_ops}
+    assert nina == {("light", "M33_mosaic"), ("light", "NGC 6960 NGC 6992"),
+                    ("light", "M92"), ("cal-dark", S50_TELESCOP)}, \
+        f"PINS night routed wrong: {sorted(nina)}"
+    assert all(o.dest_rel.startswith(f"Calibration/{S50_TELESCOP}/darks/")
+               for o in nina_ops if o.kind == "cal-dark")
+    print(f"  PINS night: {len(nina_ops)} ops → {sorted(o for _k, o in nina)}")
 
     # Dwarf `dwarf`-layout sessions in the import source classify end-to-end.
     dwarf_ops = [o for o in src_ops if o.layout == "dwarf"]

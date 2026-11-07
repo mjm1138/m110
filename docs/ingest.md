@@ -31,8 +31,10 @@ Recent Seestar firmware keeps its master darks in a `darklibrary/` folder beside
 `Calibration/<telescope>/darks/` (the telescope is named from the subs on the same
 device, e.g. `S50_15e7e390`). Reconnecting copies only darks you don't have yet.
 
-M110 **never applies** these darks: the Seestar already subtracts a dark from every
-sub before saving it, so subtracting one again would do it twice. They're kept as a
+M110 **never applies** these darks to the Seestar app's subs. The app already
+subtracts a dark from every sub before saving it, so subtracting one again would do
+it twice. (Frames from the same Seestar driven by N.I.N.A. are not dark-subtracted;
+see below.) They're kept as a
 record of what the telescope did:
 
 - The **Dark** column in an object's Sessions table (and in the full session log)
@@ -50,6 +52,29 @@ Which dark a capture got is *inferred* — the Seestar doesn't record it — fro
 when each dark was made (its filename time) and the sensor temperature. A link says
 **confirmed** when the dark was made for that capture minutes before it started at
 the same temperature, and **inferred** otherwise.
+
+### N.I.N.A. and PINS
+
+Frames captured with **N.I.N.A.** or **PINS** (N.I.N.A. on a Raspberry Pi), for
+example a Seestar driven over Alpaca, import from any folder layout: N.I.N.A.'s file
+pattern is your choice, so M110 reads the headers rather than the folder names. The
+preview labels these rows **N.I.N.A.**
+
+- **Mosaic panels** named by N.I.N.A.'s framing assistant ("M 45 Panel 1",
+  "M 45 Panel 2" and so on, in any language N.I.N.A. uses) import together as one
+  **M45_mosaic** dataset.
+- **Darks, flats and biases** shot without a target go to your telescope's library,
+  `Calibration/<telescope>/`. A Seestar keeps one name whether you captured with its
+  app or with N.I.N.A.: M110 reads its serial from the camera name.
+- **Darks are applied.** Unlike the Seestar app, N.I.N.A. saves frames without
+  subtracting a dark. M110 groups N.I.N.A.'s single dark frames by exposure, gain,
+  night and temperature. When you stack, `m110-stack` builds a master from the
+  matching group first, and Siril prep links the group for the Naztronomy script.
+  Keep N.I.N.A. captures and Seestar-app captures of one object apart if you want
+  both calibrated. A target that mixes them isn't calibrated, and M110 says why.
+- A target named for a field, such as "NGC 2024 IC 434", gets a dropdown in the
+  preview offering the catalog objects in its name. If you accept **Remember
+  alias?**, M110 remembers that target name, not the folder.
 
 ## Where things land — the library layout
 

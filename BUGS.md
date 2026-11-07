@@ -717,53 +717,72 @@ Legend: `[ ]` open · `[~]` partially done
 
 Source: a Seestar S50 run by PINS (NINA 3.3.0.1058) over Alpaca on 2026-11-06,
 1,364 frames. Found by reading `ingest.py` / `devices.py` / `calibration.py` against
-the real headers; **no import was run**, so check each against the Import page before
-fixing. NINA identifies itself in `SWCREATE` (`'PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))'`).
+the real headers. NINA identifies itself in `SWCREATE` (`'PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))'`).
 
-- [ ] **NINA mosaic panels import as one new object per panel.** NINA's framing
-  assistant names panels `<target> Panel <n>` (`OBJECT='M 45 Panel 1'`).
-  `scan_sessions.undecorated_name` strips a *trailing* decoration only, so
-  `Panel 1` survives and `canonical_target` returns `M 45 Panel 1`, `… 2` and `… 3`,
-  three new objects. Expected: one `M45_mosaic` dataset (the #70 rule). NINA
-  localises the word "Panel" (`LblPanel`), so match a list, not a literal.
-- [ ] **NINA darks become an object named "DARK".** Darks taken outside a target
-  have `IMAGETYP='DARK'` and no `OBJECT`. `_classify_raw_dir` falls back to
-  `canonical_target(<folder name>)`, and NINA's dark folder is `DARK/`. Expected:
-  the device library, `Calibration/<device>/darks/`. They also carry the *last
-  target's* `RA`/`DEC` (taken before park), so a pointing-based fallback would file
-  them under that target.
-- [ ] **S50 frames taken through NINA/Alpaca are treated as already dark-subtracted.**
-  `TELESCOP='S50 Prime'` matches the `seestar_s50` preset rule (`\bs50\b`), so
-  `devices.darks_applied_on_device` returns true and no dark is ever applied.
-  Measured on the mirror copy: the 26 hottest pixels of a 10-frame 30 s master dark
-  (5.7 °C) stand ~250 ADU above their same-colour neighbours in 30 s M110 lights at
-  12.3 °C, against ~216 ADU in the dark itself. The on-device subtraction belongs
-  to the ZWO app pipeline, not to the camera. So "already dark-subtracted" depends on
-  the capture path (app vs Alpaca), not just the model.
-- [ ] **Same scope, two device keys; and the NINA one has no serial.** The S50's own
-  subs say `TELESCOP='S50_15e7e390'`; NINA's say `'S50 Prime'` (the Alpaca
-  telescope device name), with the serial only in
-  `INSTRUME='Seestar S50_15e7e390 Telephoto Camera'`. That gives two Devices
-  entries and two calibration libraries, and two NINA-driven S50s can't be told apart.
-  `calibration.match_for_facts` refuses library masters for a target whose subs
-  carry more than one `TELESCOP`, and again for mixed exposures. Every 11-06 NINA
-  target already has Seestar-app subs in the library: M110 (20 s), M74 (20 s) and
-  IC 434 (20 s), against NINA's 30 s and 20 s. So importing them into the same
-  `lights/` folder leaves a target that stacks without darks: right for the app subs,
-  wrong for the NINA ones. `--only-exposure 30` isolates the NINA subs but still
-  applies no dark (see the previous entry). Mixing needs per-subset calibration
-  (dark the Alpaca subs, leave the app subs alone) before integration.
-- [ ] **"Remember alias?" after a retarget stores the folder name.**
-  `ingest_dialog._on_remap` calls `add_alias(g.group, new_id)`. `group` is the
-  source directory's name, which for NINA output is `LIGHT` for every target, so
-  accepting would route every later NINA light to that object. But `canonical_target`
-  looks aliases up by the *header* `OBJECT` value. Key the alias on the resolved
-  `OBJECT` (`M 45 Panel 1`), not the folder.
-- [ ] **(unverified) No retarget dropdown for a new, off-catalog object.**
-  `_set_object_cell` only shows the remap combo when `g.pointing` is set, and its
-  list holds catalog ids only, with no `<id>_mosaic`. If
-  `annotate_pointing` doesn't flag `M 45 Panel 1` / `NGC 2024 IC 434`, the user
-  can only untick the row. Check on the Import page.
+Fixed in `feature/nina-import` on a **capture-profile seam** (`m110/capture_profiles.py`:
+built-in profiles for N.I.N.A., the Seestar app, the Dwarf app and generic FITS, matched
+on header cards only; the user-editable profiles of #203 part 2 load the same shape).
+Verified against the real night: a read-only scan of all 1,364 frames gives M110, M74,
+`M45_mosaic`, `NGC 2024 IC 434` and 60 darks into `Calibration/S50_15e7e390/darks/`, and
+nothing named after a folder. A real `m110-stack --run` of M74 (30 subs) built the master
+dark from the 20 matching raw 30 s darks and calibrated with it.
+
+- [x] **NINA mosaic panels import as one new object per panel** (done). The N.I.N.A.
+  profile folds `<target> <panel word> <n>` onto `<target>_mosaic` (Panel, Panneau,
+  Pannello, Paneel, Painel, Панель, 面板, パネル, Tile …), so `M 45 Panel 1/2/3` →
+  one `M45_mosaic`. `tests/test_capture_profiles.py`, `tests/test_ingest_nina.py`.
+- [x] **NINA darks become an object named "DARK"** (done). A dark/flat/bias with no
+  usable `OBJECT` goes to the device library under `capture_profiles.device_key`; with
+  no device either, to the holding area. Folder names are never consulted, which also
+  fixes the same fall-back for generic raw FITS (`test_raw_fits_pile_sorts_by_header`
+  updated: a nameless, deviceless bias is now held, not filed under `Images/dump/`).
+  The library learned **raw frames** (`calibration._is_raw`, `raw_sets`): grouped by
+  exposure/gain/binning/night and temperature, matched like a master, and built into a
+  master by the consumer (Siril prep links the set; `m110-stack` stacks it first).
+- [x] **S50 frames taken through NINA/Alpaca are treated as already dark-subtracted**
+  (done). "Already dark-subtracted" is now a per-frame fact,
+  `capture_profiles.darks_applied`: the Seestar-app profile keeps the model rule, the
+  N.I.N.A. profile says no. Every reader carries it: `calibration.frame_facts` /
+  `facts_from_frames` / `match_masters`, `scan_sessions` (no applied-dark inference for
+  N.I.N.A. subs), `stacking` (`Frame.darks_applied`, geometry), `siril.plan_prep`.
+- [x] **Same scope, two device keys; and the NINA one has no serial** (done for the
+  identity). The N.I.N.A. profile reads the serial from `INSTRUME` (`Seestar
+  S50_15e7e390 Telephoto Camera` → `S50_15e7e390`), so NINA frames join the app's
+  device, library and Devices entry. Sessions record the path (`capture`). Evidence it
+  is one sensor: the app's 20 s master and the NINA 20 s darks share a pedestal
+  (476 vs 480 ADU) and their hot pixels coincide (85 of the top 200; 0 under any flip).
+- [ ] **A target mixing Seestar-app subs and NINA subs stacks without darks.** Every
+  11-06 NINA target already has Seestar-app subs in the library: M110 (20 s), M74 (20 s)
+  and IC 434 (20 s), against NINA's 30 s and 20 s. With one device key, a target folder
+  holds both. After `feature/nina-import`:
+  - `--only-exposure 30` now isolates the NINA subs and **does** apply a dark (the
+    per-frame flag says they need one).
+  - A same-exposure mix (IC 434, 20 s + 20 s) is refused with its own note
+    (`facts_from_frames` → `mixed_capture`), rather than silently left undarked.
+  - Mixing still needs **per-subset calibration**: dark the Alpaca subs and leave the
+    app subs alone, then merge before registration.
+- [x] **"Remember alias?" after a retarget stores the folder name** (done). Ops and
+  groups carry `source_name`, the name `canonical_target` resolved from (the `OBJECT`
+  header after the panel fold). `IngestGroup.alias_key` is what both the Import page and
+  the legacy `IngestDialog` store. `test_the_alias_key_is_the_header_name_not_the_folder`,
+  plus a UI test that drives the combo.
+- [x] **No retarget dropdown for a new, off-catalog object** (done; it was real).
+  `annotate_pointing` sets `IngestGroup.candidates` for an off-catalog light group: the
+  catalog designations in its name, then the nearest object by pointing within 1°. The
+  combo shows when there are candidates. That needed `scan_sessions.folder_to_slugs` to
+  resolve each part as a designation (`NGC2024` → `ngc-2024`, never found by a bare
+  slugify). So a combined `NGC 2024 IC 434` target now also counts toward both objects.
+- [x] **m110-stack's calibrate line failed in Siril 1.4.5** (found here; done). Siril
+  keeps the quotes in `-dark="<path>"` as part of the file name (`"…".[any_allowed_extension]
+  not found`), absolute path or not, so every calibrated stack died at phase 1. Only
+  whole-token quoting works, spaces included: `"-dark=<path>"` (`stacking._siril_opt`;
+  `test_calibrate_options_quote_the_whole_token`). Also found: Siril persists
+  `setcompress` across runs, so the master prelude sets `setcompress 0` first, or the
+  master is written `.fit.fz` (quantised, and not the name calibrate is given).
+- [x] **Header-only sessions were dated by UTC** (found here; done). The
+  `_session_key` header fall-back used `DATE-OBS`, which puts a western-hemisphere
+  evening on the next day. It now prefers `DATE-LOC` (N.I.N.A. writes it), the same
+  local-date convention as the Seestar filename clock.
 
 - [x] **Launch crashed on the first run after upgrading to the Devices page**
   (done — `fix/devices-page-old-rollup`). `MainWindow` builds the Devices page —

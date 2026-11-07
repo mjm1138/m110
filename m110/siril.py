@@ -300,7 +300,8 @@ def plan_prep(target: str, usable_frames: int | None = None,
     for the drizzle preset. Reads only."""
     lights = _lights(target)
     # Calibration: the target's own darks/flats/biases win (a user's per-project
-    # frames); otherwise ONE matched master per tier from the device library
+    # frames); otherwise ONE matched master — or one matched raw set, which the
+    # Naztronomy script stacks into a master itself — per tier from the device library
     # (calibration.py — exposure/gain/binning, nearest temperature). Either way
     # the frames are hardlinked into **every job dir** below, because the
     # Naztronomy script looks for `darks/` next to the `lights/` it is run on.
@@ -308,8 +309,9 @@ def plan_prep(target: str, usable_frames: int | None = None,
     calib_source = "target" if calib else ""
     calib_notes: list[str] = []
     # The telescope picks the preset's Naztronomy telescope + filter label.
-    telescop = calibration.device_for_target(target) if lights else None
-    if "darks" in calib and devices.darks_applied_on_device(telescop):
+    facts = calibration.target_facts(target, sample=3) if lights else {}
+    telescop = facts.get("device")
+    if "darks" in calib and facts.get("darks_applied"):
         calib_notes.append("this object's darks/ will be applied, but its telescope "
                            "already dark-subtracted the subs — that subtracts twice; "
                            "remove darks/ unless that is intended")
@@ -317,7 +319,7 @@ def plan_prep(target: str, usable_frames: int | None = None,
         match = calibration.match_for_target(target)
         calib_notes = list(match.notes)
         if match:
-            calib = {tier: [p] for tier, p in match.as_dict().items()}
+            calib = match.files()
             calib_source = "library"
     calib_kinds = list(calib)
     calib_links: list[tuple[str, str]] = []
