@@ -20,7 +20,7 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | — | **UI design system** — tokens, light/dark theming, restyled surfaces, branding | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open [↓](#1--session-planning-follow-ups-non-blocking-refinements))* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
 | 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open [↓](#5--catalog-growth))* | [`DONE.md`](DONE.md) |
-| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
+| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3, N.I.N.A./PINS | ✅ 6a–6c + Dwarf 3 + N.I.N.A. (#203 part 1) shipped *(6d + #203 part 2 open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
 | 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open [↓](#8--publishing-remaining-targets))* | [`DONE.md`](DONE.md) |
 | 10 | **Library backup** — mirrored + pooled snapshots, verify, selective restore, auto-backup, offsite S3 | ✅ shipped, incl. two slots (local + cloud) side by side *(N-destination list → #93)* | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
@@ -1145,6 +1145,31 @@ device-profiles (`planning_config.load_device`). This is the phase that bumps
 
 Dwarf 3 core support **shipped 2026-07-09** (see [`DONE.md`](DONE.md)); the
 remaining device-source gaps collect here:
+- **Capture software M110 doesn't know — #203.** Part 1 **landed** in
+  `feature/nina-import`: capture profiles (`capture_profiles.py`, header-matched
+  built-ins for N.I.N.A., the Seestar app, the Dwarf app and generic FITS) decide the
+  device key, whether a frame was dark-subtracted before saving, and the object/mosaic
+  name; N.I.N.A./PINS imports by header whatever its file pattern; raw calibration sets
+  in the device library, built into masters by `m110-stack`. Open:
+  - **Part 2: user-editable profiles** — `import_profiles.toml` in the store (same
+    `CaptureProfile` shape), the profile that matched shown per group in the Import
+    preview, and "save this retarget as a rule" alongside the alias. For SharpCap,
+    ASIAIR, KStars/Ekos, APT, and any N.I.N.A. setup the built-in doesn't cover.
+  - Per-subset calibration for mixed targets **landed** with it: in m110-stack
+    (`calibration_subsets`), and for the Naztronomy script as split job folders.
+  - **Stackhammer hand-over: a masters manifest** (Mike, 2026-11-07, over "the
+    whole recipe"). **M110's side landed** with it: every Siril prep writes
+    `siril/.m110_calibration.json` (`siril.calibration_manifest`, schema in
+    DATA_MODEL.md) — per job folder, its lights by name and the master or raw set
+    matched for them, with the reasons. Stackhammer's `prepare` recomputes the
+    subsets from headers, refuses a disagreement, checks each master and writes its
+    own Siril commands (stackhammer#22, decision 1; its M3+ work).
+  - **Dark flats (not yet handled).** N.I.N.A.'s flat wizard can save dark flats
+    (`IMAGETYP = 'DARKFLAT'`, exposure matched to the flats), which Siril uses in
+    place of a bias to calibrate flats. M110 has no `DARKFLAT` kind, library tier
+    or manifest tier yet. When flats work starts: route them on import, match them
+    by the flats' exposure, and add a `darkflats` tier (manifest v2). No flats in
+    Mike's data yet, so not blocking (raised by the Stackhammer spike, 2026-11-07).
 - **`DWARF_DARK/` / `CALI_FRAME/` routing** → darks / calibration tiers. The
   device-level library they route into **landed on `main` 2026-10-18**
   (`feature/calibration-library`): `Calibration/<TELESCOP>/{darks,flats,biases}/`,

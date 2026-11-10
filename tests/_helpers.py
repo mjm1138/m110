@@ -4,6 +4,10 @@ One copy of the temp-store setup and the small fixtures that several test module
 need (previously duplicated as `_seed_root` / `_seed_capture` / … in each file)."""
 from __future__ import annotations
 
+from pathlib import Path
+
+import numpy as np
+
 from m110 import config
 
 
@@ -14,6 +18,9 @@ def seed_root(tmp_path, monkeypatch):
     root = tmp_path / "M110"
     internal = root / config.INTERNAL_DIRNAME
     monkeypatch.setattr(config, "DATA_ROOT", root)
+    # the internal dir itself too: ingest_aliases.toml (and anything else read
+    # straight off INTERNAL_DIR) must not leak from one test into the next
+    monkeypatch.setattr(config, "INTERNAL_DIR", internal)
     monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
@@ -195,3 +202,40 @@ def mount_darklibrary(volume_dir, masters, *, exp=20):
         (d / f"{stem}.jpg").write_bytes(b"\xff\xd8preview")
         (d / f"{stem}_thn.jpg").write_bytes(b"\xff\xd8thumb")
     return d
+
+
+# A PINS (N.I.N.A. 3.3) frame of a Seestar S50 over Alpaca, carrying the cards a
+# real one does (copied from the 2026-11-06 night, #203). `obj=None` = no OBJECT
+# card, as N.I.N.A. writes a dark taken outside a target.
+NINA_SWCREATE = "PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))"
+NINA_INSTRUME = "Seestar S50_15e7e390 Telephoto Camera"
+
+
+def nina_frame(path, *, imagetyp="LIGHT", obj="M 110", exp=30.0, temp=12.0,
+               filt="IR", date_loc="2026-11-06T19:49:26.1", date_obs=None,
+               ra=10.09, dec=41.68, gain=80, value=0, telescop="S50 Prime"):
+    from astropy.io import fits as _fits
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = _fits.PrimaryHDU(np.full((2, 2), value, dtype="uint16"))
+    hdr = h.header
+    hdr["IMAGETYP"] = imagetyp
+    hdr["EXPOSURE"] = exp
+    hdr["EXPTIME"] = exp
+    hdr["DATE-LOC"] = date_loc
+    hdr["DATE-OBS"] = date_obs or date_loc        # tests rarely care about the TZ
+    hdr["XBINNING"] = 1
+    hdr["YBINNING"] = 1
+    hdr["GAIN"] = gain
+    hdr["OFFSET"] = 0
+    hdr["INSTRUME"] = NINA_INSTRUME
+    hdr["CCD-TEMP"] = temp
+    hdr["TELESCOP"] = telescop
+    hdr["RA"] = ra
+    hdr["DEC"] = dec
+    hdr["FILTER"] = filt
+    if obj is not None:
+        hdr["OBJECT"] = obj
+    hdr["SWCREATE"] = NINA_SWCREATE
+    h.writeto(path)
+    return path

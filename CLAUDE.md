@@ -127,13 +127,14 @@ DONE.md's archived reference — grep the module name there.
 | `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold`; per-model `by_model` + the three-state `status` (rolled up to the most advanced model) |
 | `integration_goals.py` | integration goals per (object, telescope model): `integration_goals.toml` (`set_goal`/`clear_goal`), `model_key` (preset, else device key), `speed_factor` = (f/f_S50)², `default_goal`, `resolve`, `state` (Initial <25% · in progress · deep), `rollup`, `capture_report` (assistant) |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
-| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
+| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + Dwarf 3 + N.I.N.A. + store-shaped `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/` |
+| `capture_profiles.py` | which capture software wrote a frame (#203), from header cards only: built-in `CaptureProfile`s (`nina`, `seestar-app`, `dwarf-app`, `generic`) → `device_key` (N.I.N.A.'s S50 serial from `INSTRUME`), `darks_applied` (**per frame, by capture path**), `object_name` (panel → `<obj>_mosaic`), `filter_name` (N.I.N.A.'s Seestar `IR` → `IRCUT`), `facts(hdr)`; every header reader takes device/flag/filter from here |
 | `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim = the device key), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar); the registry `devices.toml` (`load_registry`/`save_device`: nickname, retired, preset) + `label`/`model_name`/`serial` |
-| `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry); never matches a dark for a `darks_applied_on_device` telescope. Seestar rule v2: `device_clock` (the ONE filename-clock parser), `applied_dark` (run start) + `applied_darks` (sticky 2.5 °C mid-run switch), `split_runs`; `master_stats` + `device_rollup` → `derived/devices.json` |
+| `calibration.py` | header-only matching of lights to the device master library (masters + `raw_sets` of raw frames, `MatchResult.files()`): `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX`), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry); never matches a dark for a `darks_applied_on_device` telescope. Seestar rule v2: `device_clock` (the ONE filename-clock parser), `applied_dark` (run start) + `applied_darks` (sticky 2.5 °C mid-run switch), `split_runs`; `master_stats` + `device_rollup` → `derived/devices.json` |
 | `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor; the run guard (`RUN_MARKER`, `stack_in_progress`, `require_idle`, `sandbox_busy`) |
-| `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else one library master per tier, linked **per job dir**; Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
+| `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else a library match **per filter**, linked **per job dir**; a filter needing different calibration per subset is split into job folders, recorded in `siril/.m110_jobs.json` → `job_group`; the masters manifest `siril/.m110_calibration.json` for Stackhammer (`calibration_manifest`/`read_manifest`); Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
 | `astrowizard.py` | the finishing round-trip (thin `roundtrip` consumer): `is_master`/`is_autosave`/`is_handoff` (sidecar-keyed, never filename), `prepare_lights` |
-| `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; three-phase solve·register·stack; `calibration_for_stack` (job-dir masters, else the device library on the *selected* frames → `calibrate -dark/-flat/-bias`; `--no-calibration`); `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
+| `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; per-subset calibration (`calibration_subsets` → select/calibrate `-prefix`/`merge`) and masters built from raw sets; three-phase solve·register·stack; `calibration_for_stack` (job-dir masters, else the device library on the *selected* frames → `calibrate -dark/-flat/-bias`; `--no-calibration`); `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
 | `launch.py` | external-app launcher (`_TOOLS` registry: Siril, AstroWizard, StackingWizard); `find_app`, `launch_processing`, `launch_with_file`, sanitized `_child_env()` |
 | `hints.py` | user-editable finished/intermediate filename vocabulary (`finished_hints` setting) |
 | `objects.py` | journal read/write, frontmatter upserts, per-image curation |
@@ -269,8 +270,9 @@ wrong) is under the same heading in DONE.md's archived reference.
 **Data & files**
 - FITS extensions are `.fit` **and** `.fits` — always via `config.is_fits_file`, never a bare suffix check: it also rejects the `._` AppleDouble sidecars a Mac leaves on NFS/SMB (#161). Any new store enumeration skips `config.is_hidden_name` names.
 - Session facts come from the FITS **header**, not filenames (device conventions differ).
-- **Seestar subs are already dark-subtracted on the device** — never apply a library
-  dark to them (`devices.darks_applied_on_device` gates `calibration.match_masters`).
+- **Seestar *app* subs are already dark-subtracted on the device**; the same S50 under
+  N.I.N.A./Alpaca is not. The flag is per frame (`capture_profiles.darks_applied`,
+  carried as `darks_applied` in every facts dict); never key it on the model alone.
   Its `darklibrary/` masters are reference data; which one a capture got is inferred
   from the filename clock (`calibration.device_clock`, the only filename-time read)
   corroborated by CCD-TEMP.
@@ -292,7 +294,13 @@ wrong) is under the same heading in DONE.md's archived reference.
 - Processing-prep is automatic + idempotent (full on ingest, missing-only on refresh;
   hand-edited presets preserved). No manual "Prepare" button.
 - Calibration masters are matched from **headers only** (`calibration.py`); never
-  teach a downstream reader to parse a master's filename.
+  teach a downstream reader to parse a master's filename. The library also holds
+  **raw** frames (`_is_raw`), used only as `raw_sets`, never one by one.
+- The capture-path rule reads the **original lights**, never Siril's `process/`
+  output: Siril drops `SWCREATE`, so a N.I.N.A. `pp_` frame reads as unknown.
+- Siril options take **whole-token** quotes: `"-dark=<path>"` (`stacking._siril_opt`).
+  `-dark="<path>"` keeps the quotes in the name and fails. `setcompress` persists
+  across Siril runs, so set it explicitly before writing anything you name later.
 - Siril calibration links go in **each job dir** (`siril/<FILTER>/darks/`), never only
   the sandbox root: the Naztronomy script resolves `darks/` against Siril's cwd.
 

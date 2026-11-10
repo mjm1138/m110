@@ -70,6 +70,8 @@ def normalize_device(d: dict) -> dict | None:
         d.setdefault(key, None)
     d["retired"] = bool(d.get("retired"))
     d["darks_applied_on_device"] = bool(d.get("darks_applied_on_device"))
+    if not isinstance(d.get("captured_via"), list):      # added with #203
+        d["captured_via"] = []
     return d
 
 

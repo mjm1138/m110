@@ -415,8 +415,14 @@ class DevicesPage(QWidget):
                         f"{'s' if tot['nights'] != 1 else ''}, {tot['objects']} object"
                         f"{'s' if tot['objects'] != 1 else ''}")
         if d.get("darks_applied_on_device"):
-            bits.append("subs are dark-subtracted on the telescope; its darks are kept "
-                        "for reference and never applied again")
+            via = set(d.get("captured_via") or [])
+            if via - {"seestar-app"}:
+                bits.append("subs saved by its own app are dark-subtracted on the "
+                            "telescope; frames from other capture software (N.I.N.A.) "
+                            "are not, and are calibrated from this library")
+            else:
+                bits.append("subs are dark-subtracted on the telescope; its darks are "
+                            "kept for reference and never applied again")
         sub = theme.active_tokens().text_secondary
         self._heading.setText(f"<b>{d.get('label') or d['device']}</b>"
                               f"<br><span style='color:{sub}'>{' · '.join(bits)}</span>")

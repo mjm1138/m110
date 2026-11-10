@@ -713,6 +713,112 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Import
 
+### NINA output (found 2026-11-07; umbrella issue #203)
+
+Source: a Seestar S50 run by PINS (NINA 3.3.0.1058) over Alpaca on 2026-11-06,
+1,364 frames. Found by reading `ingest.py` / `devices.py` / `calibration.py` against
+the real headers. NINA identifies itself in `SWCREATE` (`'PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))'`).
+
+Fixed in `feature/nina-import` on a **capture-profile seam** (`m110/capture_profiles.py`:
+built-in profiles for N.I.N.A., the Seestar app, the Dwarf app and generic FITS, matched
+on header cards only; the user-editable profiles of #203 part 2 load the same shape).
+Verified against the real night: a read-only scan of all 1,364 frames gives M110, M74,
+`M45_mosaic`, `NGC 2024 IC 434` and 60 darks into `Calibration/S50_15e7e390/darks/`, and
+nothing named after a folder. A real `m110-stack --run` of M74 (30 subs) built the master
+dark from the 20 matching raw 30 s darks and calibrated with it.
+
+- [x] **NINA mosaic panels import as one new object per panel** (done). The N.I.N.A.
+  profile folds `<target> <panel word> <n>` onto `<target>_mosaic` (Panel, Panneau,
+  Pannello, Paneel, Painel, Панель, 面板, パネル, Tile …), so `M 45 Panel 1/2/3` →
+  one `M45_mosaic`. `tests/test_capture_profiles.py`, `tests/test_ingest_nina.py`.
+- [x] **NINA darks become an object named "DARK"** (done). A dark/flat/bias with no
+  usable `OBJECT` goes to the device library under `capture_profiles.device_key`; with
+  no device either, to the holding area. Folder names are never consulted, which also
+  fixes the same fall-back for generic raw FITS (`test_raw_fits_pile_sorts_by_header`
+  updated: a nameless, deviceless bias is now held, not filed under `Images/dump/`).
+  The library learned **raw frames** (`calibration._is_raw`, `raw_sets`): grouped by
+  exposure/gain/binning/night and temperature, matched like a master, and built into a
+  master by the consumer (Siril prep links the set; `m110-stack` stacks it first).
+- [x] **S50 frames taken through NINA/Alpaca are treated as already dark-subtracted**
+  (done). "Already dark-subtracted" is now a per-frame fact,
+  `capture_profiles.darks_applied`: the Seestar-app profile keeps the model rule, the
+  N.I.N.A. profile says no. Every reader carries it: `calibration.frame_facts` /
+  `facts_from_frames` / `match_masters`, `scan_sessions` (no applied-dark inference for
+  N.I.N.A. subs), `stacking` (`Frame.darks_applied`, geometry), `siril.plan_prep`.
+- [x] **Same scope, two device keys; and the NINA one has no serial** (done for the
+  identity). The N.I.N.A. profile reads the serial from `INSTRUME` (`Seestar
+  S50_15e7e390 Telephoto Camera` → `S50_15e7e390`), so NINA frames join the app's
+  device, library and Devices entry. Sessions record the path (`capture`). Evidence it
+  is one sensor: the app's 20 s master and the NINA 20 s darks share a pedestal
+  (476 vs 480 ADU) and their hot pixels coincide (85 of the top 200; 0 under any flip).
+- [x] **A target mixing Seestar-app subs and NINA subs stacked without darks** (done;
+  m110-stack). Every 11-06 NINA target already has Seestar-app subs: M110 (20 s), M74
+  (20 s) and IC 434 (20 s), against NINA's 30 s and 20 s. With one device key, a target
+  folder holds both. `stacking.calibration_subsets` now groups the selected frames by
+  (dark-subtracted on the telescope, exposure, gain, binning) and matches each group
+  on its own (`calibration_for_stack`). Groups with the same result are rejoined.
+  When more than one calibration remains, the solve script picks each subset out of
+  `lights_` (`unselect` all, then `select` its positions), runs
+  `calibrate … -prefix=ppN_` with that subset's masters (built by a suffixed prelude,
+  `master_darks_N.fit`), and `merge`s them into `pp_lights_`. So everything after is
+  unchanged. Merge renumbers in subset order, and `seq_order` maps solve failures back
+  to frames. Verified with a real Siril 1.4.5 run on a mixed M74: 30 live-store app
+  subs (20 s, no dark) plus 30 NINA subs (30 s, master built from 20 raw darks) →
+  merged, solved, stacked (34 frames). This also calibrates a **mixed-exposure** target
+  per exposure; it used to be refused.
+  **The GUI path (Naztronomy) too:** `siril.plan_prep` matches each filter on its own
+  frames. When a filter's frames need different calibration
+  (`_calibration_subsets`), it makes one job folder per subset. The subset needing no
+  calibration keeps the plain filter name and never gets a `darks/`; the others are
+  suffixed (`IRCUT_30s`). The split is recorded in `siril/.m110_jobs.json`, and
+  m110-stack pointed at any member stacks the whole group together
+  (`siril.job_group`, staged into `process/stack_lights/`, calibrated per subset from
+  the library). Verified on the mixed M74: prep made `IRCUT/` (30 app subs, no darks)
+  and `IRCUT_30s/` (30 NINA subs + 20 raw darks), and `m110-stack M74/IRCUT_30s --run`
+  stacked both in one pass. Agreed with Stackhammer's calibration spike (PR
+  mjm1138/stackhammer#22): subsets come from the headers, Naztronomy gets split
+  folders, and the app folder never has a `darks/`.
+  The app rule was aligned with that spike at the same time: an app frame is
+  `CREATOR ~ ^ZWO Seestar`, or a `BIAS` card with no `SWCREATE`. There is no `TELESCOP`
+  fallback. A Seestar-named frame with none of the three cards has an unknown capture
+  path and is refused with a note. Rule: read the lights, never Siril's `process/`
+  output, because Siril drops `SWCREATE`.
+  Needed with it: N.I.N.A.'s Seestar filter `IR` is the app's `IRCUT` (the ZWO Alpaca
+  name for the same UV/IR-cut slot). `capture_profiles.filter_name` renames it, so
+  the two populations share a job folder instead of splitting by filter.
+- [ ] **A mixed-exposure stack is named for one exposure** (found 2026-11-07, not
+  fixed). The mixed M74 stack (25 × 20 s app subs + 9 × 30 s NINA subs, 13 min) was
+  named `M_74_034x30sec_…`. The integration in the report is right, but the name's
+  `<n>x<exp>sec` reads as 34 × 30 s. Stackhammer names a mix with `+`
+  (`docs/design/result-name.md` there).
+- [ ] **The failures-by-night report undercounts** (found 2026-11-07, not fixed).
+  `parse_solve_log` collects only `Image … did not solve` lines, but Siril reports
+  most failures as `Image N: no stars found`. On the mixed M74 run the tally said
+  "34 of 60 solved", while the per-night table listed 5 + 6 = 11 failures, not 26.
+  The `--exclude-night` advice built on it is too optimistic.
+- [x] **"Remember alias?" after a retarget stores the folder name** (done). Ops and
+  groups carry `source_name`, the name `canonical_target` resolved from (the `OBJECT`
+  header after the panel fold). `IngestGroup.alias_key` is what both the Import page and
+  the legacy `IngestDialog` store. `test_the_alias_key_is_the_header_name_not_the_folder`,
+  plus a UI test that drives the combo.
+- [x] **No retarget dropdown for a new, off-catalog object** (done; it was real).
+  `annotate_pointing` sets `IngestGroup.candidates` for an off-catalog light group: the
+  catalog designations in its name, then the nearest object by pointing within 1°. The
+  combo shows when there are candidates. That needed `scan_sessions.folder_to_slugs` to
+  resolve each part as a designation (`NGC2024` → `ngc-2024`, never found by a bare
+  slugify). So a combined `NGC 2024 IC 434` target now also counts toward both objects.
+- [x] **m110-stack's calibrate line failed in Siril 1.4.5** (found here; done). Siril
+  keeps the quotes in `-dark="<path>"` as part of the file name (`"…".[any_allowed_extension]
+  not found`), absolute path or not, so every calibrated stack died at phase 1. Only
+  whole-token quoting works, spaces included: `"-dark=<path>"` (`stacking._siril_opt`;
+  `test_calibrate_options_quote_the_whole_token`). Also found: Siril persists
+  `setcompress` across runs, so the master prelude sets `setcompress 0` first, or the
+  master is written `.fit.fz` (quantised, and not the name calibrate is given).
+- [x] **Header-only sessions were dated by UTC** (found here; done). The
+  `_session_key` header fall-back used `DATE-OBS`, which puts a western-hemisphere
+  evening on the next day. It now prefers `DATE-LOC` (N.I.N.A. writes it), the same
+  local-date convention as the Seestar filename clock.
+
 - [x] **Launch crashed on the first run after upgrading to the Devices page**
   (done — `fix/devices-page-old-rollup`). `MainWindow` builds the Devices page —
   which reads `derived/devices.json` — before the launch Sync regenerates it, so the

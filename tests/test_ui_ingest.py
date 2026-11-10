@@ -223,6 +223,6 @@ def test_every_ingest_kind_has_a_label_and_a_pointing_rule():
     for k in emitted:
         assert k in KIND_LABEL, k
     for k in ingest._CAL_KINDS:
-        assert KIND_LABEL[k].startswith("master ")
+        assert KIND_LABEL[k].startswith("library ")   # masters or raw sets (#203)
         assert k in NO_POINTING_KINDS
     assert "light" not in NO_POINTING_KINDS and "stack" not in NO_POINTING_KINDS

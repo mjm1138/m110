@@ -12,8 +12,12 @@ from tests._helpers import (mount_darklibrary, mount_seestar, seed_root,
                             seestar_master_dark)
 
 S50 = "S50_c0ffee00"
+# the cards the Seestar app writes on every sub (CREATOR + its BIAS pedestal tell
+# its frames from N.I.N.A.'s — capture_profiles)
 LIGHT = {"TELESCOP": S50, "INSTRUME": "Seestar S50", "GAIN": 80, "XBINNING": 1,
-         "CCD-TEMP": 14.0}
+         "CCD-TEMP": 14.0, "CREATOR": "ZWO Seestar S50", "BIAS": 468}
+# the same sub from another telescope: its own TELESCOP, none of the app's cards
+DWARF_LIGHT = {k: v for k, v in LIGHT.items() if k not in ("CREATOR", "BIAS")}
 
 
 # ── the guard ─────────────────────────────────────────────────────────────────
@@ -79,7 +83,7 @@ def _seestar_job(tmp_path, n=3):
     for i in range(n):
         _sub(d / "lights" / f"Light_M 72_20.0s_IRCUT_20261015-19300{i}.fit",
              EXPTIME=20.0, GAIN=80, XBINNING=1, CCD_TEMP=14.0, FILTER="IRCUT",
-             TELESCOP=S50, OBJECT="M 72")
+             TELESCOP=S50, CREATOR="ZWO Seestar S50", OBJECT="M 72")
     return d
 
 
@@ -146,7 +150,7 @@ def test_a_volume_without_identifiable_lights_holds_its_darks(tmp_path, monkeypa
 def test_only_a_seestar_telescop_names_the_dark_library(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     myworks, _ = mount_seestar(tmp_path, monkeypatch, "M 72",
-                               extra=dict(LIGHT, TELESCOP="DWARF 3"))
+                               extra=dict(DWARF_LIGHT, TELESCOP="DWARF 3"))
     mount_darklibrary(myworks.parent, MASTERS[:1])
     ops = ingest.scan_seestar_plan()
     assert not any(o.kind == "cal-dark" for o in ops)
@@ -174,7 +178,8 @@ def _lights(target, run, *, tel=S50):
     lights.mkdir(parents=True, exist_ok=True)
     for stamp, temp in run:
         h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
-        for k, v in dict(LIGHT, TELESCOP=tel, **{"CCD-TEMP": temp}).items():
+        base = LIGHT if tel.startswith("S50") else DWARF_LIGHT
+        for k, v in dict(base, TELESCOP=tel, **{"CCD-TEMP": temp}).items():
             h.header[k] = v
         h.header["EXPTIME"] = 20.0
         h.header["FILTER"] = "IRCUT"
@@ -272,7 +277,7 @@ def test_m110_stack_warns_on_and_can_drop_drifted_frames(tmp_path, monkeypatch):
     d = tmp_path / "job"
     for stamp, temp in M72:
         _sub(d / "lights" / f"Light_M 72_20.0s_IRCUT_{stamp}.fit", EXPTIME=20.0,
-             GAIN=80, XBINNING=1, CCD_TEMP=temp, FILTER="IRCUT", TELESCOP=S50,
+             GAIN=80, XBINNING=1, CCD_TEMP=temp, FILTER="IRCUT", TELESCOP=S50, CREATOR="ZWO Seestar S50",
              OBJECT="M 72")
     plan = build_plan(d, Overrides(), deep_measure=False)
     (w,) = [w for w in plan.proposal.warnings if "--max-dark-gap" in w]
@@ -395,7 +400,7 @@ def test_m110_stack_gaps_follow_the_switches(tmp_path, monkeypatch):
     d = tmp_path / "job"
     for stamp, temp in C6_OCT17:
         _sub(d / "lights" / f"Light_C 6_20.0s_LP_{stamp}.fit", EXPTIME=20.0, GAIN=80,
-             XBINNING=1, CCD_TEMP=temp, FILTER="LP", TELESCOP=S50, OBJECT="C 6")
+             XBINNING=1, CCD_TEMP=temp, FILTER="LP", TELESCOP=S50, CREATOR="ZWO Seestar S50", OBJECT="C 6")
     plan = build_plan(d, Overrides(max_dark_gap=3.0), deep_measure=False)
     # only 20.2 (3.0 off 23.2 — not over), 18.6 and 16.6 drifted past 3 °C
     assert len(plan.dropped) == 2

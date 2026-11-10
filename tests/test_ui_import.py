@@ -291,7 +291,41 @@ def test_picking_the_seestar_brings_its_dark_library(tmp_path, monkeypatch, qtbo
     _scan(page, qtbot, 2)                     # M 72's lights + the dark library
     rows = {page.table.item(r, 2).text(): page.table.item(r, 6).text()
             for r in range(page.table.rowCount())}
-    assert rows["master darks"] == "Calibration/S50_c0ffee00/darks"
+    assert rows["library darks"] == "Calibration/S50_c0ffee00/darks"
     assert page.table.item(
-        next(r for r in range(2) if page.table.item(r, 2).text() == "master darks"),
+        next(r for r in range(2) if page.table.item(r, 2).text() == "library darks"),
         3).text() == "1"                      # one master; its .jpg rides along
+
+
+def test_a_nina_field_row_offers_its_members_and_remembers_the_header_name(
+        tmp_path, monkeypatch, qtbot):
+    """#203: an off-catalog N.I.N.A. target ('NGC 2024 IC 434') gets the retarget
+    dropdown with its catalog members first, and "Remember alias?" stores the
+    header name — never the stock N.I.N.A. folder `LIGHT` every target shares."""
+    from PySide6.QtWidgets import QComboBox, QMessageBox
+    from m110 import ingest
+    from tests._helpers import nina_frame
+    seed_root(tmp_path, monkeypatch)
+    _no_device(monkeypatch)
+    src = tmp_path / "PINS" / "2026-11-06" / "LIGHT"
+    nina_frame(src / "a.fits", obj="NGC 2024 IC 434", ra=85.33, dec=-2.16)
+    nina_frame(src / "b.fits", obj="M 110")
+    monkeypatch.setattr("m110.ui.pages.import_page.QMessageBox.question",
+                        staticmethod(lambda *a, **k: QMessageBox.Yes))
+    from m110.ui.pages.import_page import ImportPage
+    page = ImportPage()
+    qtbot.addWidget(page)
+    page._root = str(tmp_path / "PINS")
+    page.scan()
+    _scan(page, qtbot, 2)
+    row = next(r for r in range(2) if page._groups[r].object == "NGC 2024 IC 434")
+    combo = page.table.cellWidget(row, 1)
+    assert isinstance(combo, QComboBox)
+    items = [combo.itemText(i) for i in range(combo.count())]
+    assert items[:3] == ["NGC 2024 IC 434", "NGC 2024", "IC 434"]
+    other = 1 - row
+    assert page.table.cellWidget(other, 1) is None             # M110: a plain label
+    combo.setCurrentText("IC 434")                             # the user's pick
+    assert page._groups[row].object == "IC 434"
+    assert "Images/IC 434/lights" in page.table.item(row, 6).text()
+    assert ingest.load_aliases() == {"NGC 2024 IC 434": "IC 434"}

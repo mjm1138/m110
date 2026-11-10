@@ -232,3 +232,110 @@ def test_frames_from_two_telescopes_are_refused():
     assert facts["telescopes"] == ["S50_aaaa0001", "S50_bbbb0002"]
     res = calibration.match_for_facts(facts, "S50_aaaa0001")
     assert not res and "more than one telescope" in res.notes[0]
+
+
+# ── raw calibration frames (N.I.N.A.'s single darks, #203) ────────────────────
+
+def _raw_dark(dev, name, temp, *, exptime=30.0, night="2026-11-07T05:00:00"):
+    return _master(config.calibration_dir(dev, "darks") / name, "DARK",
+                   EXPTIME=exptime, GAIN=80, XBINNING=1, CCD_TEMP=temp,
+                   DATE_OBS=night)
+
+
+NINA = {"exptime": 30.0, "gain": 80, "binning": 1, "temp_c": 11.0, "filter": "IR",
+        "darks_applied": False}
+
+
+def test_raw_frames_are_told_from_masters_by_header(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    _raw_dark("S50_x", "r1.fits", 5.7)
+    _master(config.calibration_dir("S50_x", "darks") / "m.fits", "Master Dark",
+            EXPTIME=30.0, GAIN=80, XBINNING=1, CCD_TEMP=10.0, NCOMBINE=20)
+    _master(config.calibration_dir("S50_x", "darks") / "untyped.fits", None,
+            EXPTIME=30.0, GAIN=80, XBINNING=1)                 # folder trusted
+    lib = {m.path.name: m for m in calibration.library("S50_x")["darks"]}
+    assert lib["r1.fits"].raw and lib["r1.fits"].night == "2026-11-06"
+    assert not lib["m.fits"].raw and not lib["untyped.fits"].raw
+
+
+def test_raw_darks_group_into_sets_by_settings_night_and_temperature(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    for i, t in enumerate((5.6, 5.7, 5.75)):
+        _raw_dark("S50_x", f"a{i}.fits", t)
+    _raw_dark("S50_x", "warm.fits", 12.0)                       # same night, far warmer
+    _raw_dark("S50_x", "b.fits", 5.7, exptime=20.0)              # other exposure
+    _raw_dark("S50_x", "c.fits", 5.7, night="2026-11-09T05:00:00")
+    sets = calibration.raw_sets(calibration.library("S50_x")["darks"])
+    shapes = sorted((s.exptime, s.night, len(s.frames), s.temp_c) for s in sets)
+    assert shapes == [(20.0, "2026-11-06", 1, 5.7), (30.0, "2026-11-06", 1, 12.0),
+                      (30.0, "2026-11-06", 3, 5.7), (30.0, "2026-11-08", 1, 5.7)]
+
+
+def test_a_raw_set_matches_and_lists_its_frames(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    paths = [_raw_dark("S50_x", f"a{i}.fits", 5.7) for i in range(3)]
+    res = calibration.match_masters(NINA, "S50_x")
+    assert res.sets["darks"] == sorted(paths)
+    assert res.files() == {"darks": sorted(paths)}
+    assert any("3 raw frames" in n and "master is built" in n for n in res.notes)
+    assert any("nearest raw dark set is 5 °C cooler" in n for n in res.notes)
+
+
+def test_the_nearer_of_a_master_and_a_raw_set_wins(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    for i in range(3):
+        _raw_dark("S50_x", f"a{i}.fits", 5.7)
+    m = _master(config.calibration_dir("S50_x", "darks") / "m.fits", "Master Dark",
+                EXPTIME=30.0, GAIN=80, XBINNING=1, CCD_TEMP=10.5, NCOMBINE=5)
+    res = calibration.match_masters(NINA, "S50_x")
+    assert res.darks == m and "darks" not in res.sets
+    assert calibration.match_masters(dict(NINA, temp_c=6.0), "S50_x").sets["darks"]
+
+
+def test_a_single_raw_frame_is_used_like_a_master(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    p = _raw_dark("S50_x", "only.fits", 5.7)
+    res = calibration.match_masters(NINA, "S50_x")
+    assert res.darks == p and res.sets == {} and res.files() == {"darks": [p]}
+
+
+def test_darks_applied_is_per_frame_not_per_model(tmp_path, monkeypatch):
+    """The same S50: its app subs are dark-subtracted already, N.I.N.A.'s are not."""
+    seed_root(tmp_path, monkeypatch)
+    _master(config.calibration_dir("S50_x", "darks") / "m.fits", "Master Dark",
+            EXPTIME=30.0, GAIN=80, XBINNING=1, CCD_TEMP=10.5, NCOMBINE=5)
+    assert calibration.match_masters(NINA, "S50_x").darks is not None
+    app = calibration.match_masters(dict(NINA, darks_applied=True), "S50_x")
+    assert app.darks is None and calibration.DARKS_ON_DEVICE_NOTE in app.notes
+    # no flag at all (an older caller): the model rule, as before
+    assert calibration.match_masters(
+        {k: v for k, v in NINA.items() if k != "darks_applied"}, "S50_x").darks is None
+
+
+def test_app_and_nina_subs_in_one_target_are_refused(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    frame = {"exptime": 30.0, "gain": 80, "binning": 1, "temp_c": 10.0,
+             "device": "S50_x"}
+    facts = calibration.facts_from_frames([dict(frame, darks_applied=True),
+                                           dict(frame, darks_applied=False)])
+    assert facts["mixed_capture"] and not facts["mixed"]
+    assert facts["devices"] == ["S50_x"]
+    res = calibration.match_for_facts(facts, "S50_x")
+    assert not res and "dark-subtracted when saved" in res.notes[0]
+
+
+def test_frames_of_unknown_capture_path_are_refused_not_guessed(tmp_path, monkeypatch):
+    """A Seestar-named frame with none of CREATOR / BIAS / SWCREATE: whether it was
+    dark-subtracted on the telescope can't be told, so no calibration is chosen and
+    the note asks (the rule shared with Stackhammer)."""
+    seed_root(tmp_path, monkeypatch)
+    frame = {"exptime": 30.0, "gain": 80, "binning": 1, "temp_c": 10.0,
+             "device": "S50_x", "darks_applied": None}
+    facts = calibration.facts_from_frames([frame, dict(frame, darks_applied=False)])
+    assert facts["capture_unknown"] == 1 and facts["darks_applied"] is None
+    res = calibration.match_for_facts(facts, "S50_x")
+    assert not res and "can't tell whether 1 frame came off the telescope" in res.notes[0]
+    # an older caller that never passes the key is not "unknown"
+    legacy = calibration.facts_from_frames([{k: v for k, v in frame.items()
+                                             if k != "darks_applied"}])
+    assert legacy["capture_unknown"] == 0
