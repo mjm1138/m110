@@ -181,7 +181,7 @@ def _seed_object_with_images(tmp_path, monkeypatch):
     slug, tid = seed_capture(root)                      # light → session → totals
     fin = config.finished_dir(tid); fin.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (80, 60), (200, 30, 30)).save(fin / "M_final.png")
-    ss = config.seestar_stacks_dir(tid); ss.mkdir(parents=True, exist_ok=True)
+    ss = config.device_stacks_dir(tid); ss.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (80, 60), (30, 30, 200)).save(ss / "Stacked_1_x.jpg")
     refresh.run_refresh()                               # render=True → images.json
     e = catalog.load_library()[slug]

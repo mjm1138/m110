@@ -1126,7 +1126,7 @@ def test_candidates_span_the_three_tiers_a_stack_can_live_in(tmp_path, monkeypat
     monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
     t = "M27"
     _stack(config.stacks_dir(t) / "imported.fit", DATE="2026-08-01T00:00:00")
-    _stack(config.seestar_stacks_dir(t) / "Stacked_226.fit", DATE="2026-07-01T00:00:00")
+    _stack(config.device_stacks_dir(t) / "Stacked_226.fit", DATE="2026-07-01T00:00:00")
     _stack(config.siril_dir(t) / "lights" / "a.fit")          # an input, never offered
     _stack(config.siril_dir(t) / "fresh.fit", DATE="2026-08-19T00:00:00")
 
@@ -1135,7 +1135,7 @@ def test_candidates_span_the_three_tiers_a_stack_can_live_in(tmp_path, monkeypat
     # Newest stacked first, by the header's own DATE — not by tier and not by
     # mtime, which is copy time for anything ingest or import put there.
     assert [c.name for c in got] == ["fresh.fit", "imported.fit", "Stacked_226.fit"]
-    assert {c.tier for c in got} == {"stacks", "seestar-stacks", "siril"}
+    assert {c.tier for c in got} == {"stacks", "device-stacks", "siril"}
     assert "a.fit" not in {c.name for c in got}, "lights/ is an input, not a deliverable"
     assert got[0].frames == 100 and got[0].integration_min == 100.0
 

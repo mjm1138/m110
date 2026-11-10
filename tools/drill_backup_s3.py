@@ -295,7 +295,7 @@ def main() -> int:
         check("no archived runs in the essentials manifest", not any("/archive/" in f for f in nf))
         check("journals, finished, stacks, presets still there",
               any(f.endswith("journal.md") for f in nf) and any("/finished/" in f for f in nf)
-              and any("/stacks/" in f or "/seestar-stacks/" in f for f in nf)
+              and any("/stacks/" in f or "/device-stacks/" in f for f in nf)
               and any("/presets/" in f for f in nf))
         check("essentials snapshot labelled with its scope", newest.scope == backup.SCOPE_ESSENTIALS)
         older = next(s for s in backup.list_snapshots(DEST) if s.scope == backup.SCOPE_EVERYTHING)

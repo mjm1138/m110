@@ -38,7 +38,7 @@ def _seed_dwarf_m42():
     for i in range(4):
         _dwarf_fits(lights / f"M42_15s60_Duo-Band_20260130-19285{i}_0C.fits",
                     "M 42", 15, "Duo-Band", f"2026-01-30T19:28:5{i}.0")
-    stacks = config.seestar_stacks_dir("M42")
+    stacks = config.device_stacks_dir("M42")
     _dwarf_fits(stacks / "stacked-16_M42_15s60_Duo-Band_20260130-193136.fits",
                 "M 42", 60, "Duo-Band", "2026-01-30T19:31:36.0", rgb=True)
 

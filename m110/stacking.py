@@ -2164,7 +2164,7 @@ def _provenance(stack: Path) -> dict:
 class HandoffCandidate:
     """One stack that could be handed to a post-processing workflow."""
     path: Path
-    tier: str                      # "stacks" | "seestar-stacks" | "siril"
+    tier: str                      # "stacks" | "device-stacks" | "siril"
     size_bytes: int
     frames: int | None = None
     integration_min: float | None = None
@@ -2208,7 +2208,7 @@ def _candidate_paths(target: str) -> list[tuple[str, Path]]:
 
     found: list[tuple[str, Path]] = []
     for tier, d in (("stacks", config.stacks_dir(target)),
-                    ("seestar-stacks", config.seestar_stacks_dir(target))):
+                    ("device-stacks", config.device_stacks_dir(target))):
         if d.is_dir():
             found += [(tier, q) for q in d.iterdir()
                       if q.is_file() and config.is_fits_file(q.name)]

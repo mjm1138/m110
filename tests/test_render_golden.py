@@ -86,7 +86,7 @@ def test_thumb_raster_golden(tmp_path, monkeypatch):
 
 def test_thumb_fits_stretch_golden(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
-    src = config.seestar_stacks_dir("M99") / "Stacked_ramp.fit"
+    src = config.device_stacks_dir("M99") / "Stacked_ramp.fit"
     _ramp_fits(src)
     renders = tmp_path / "renders"; renders.mkdir()
     out = build_images.make_thumb(src, renders)      # exercises the percentile stretch

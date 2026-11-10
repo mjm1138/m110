@@ -8,7 +8,7 @@ the content tree without explicit confirmation."
 
 Staging layout recognised:
   <object>_sub/      raw Light_*.fit    → Images/<object>/lights/
-  <object>/          in-app stacks      → Images/<object>/seestar-stacks/
+  <object>/          in-app stacks      → Images/<object>/device-stacks/
   <Category>_photo|_video/  media       → Media/<Category>_photo|_video/
 """
 from __future__ import annotations
@@ -567,7 +567,7 @@ _KIND_DIR = {
     "cal-dark": lambda dev: config.calibration_dir(dev, "darks"),
     "cal-flat": lambda dev: config.calibration_dir(dev, "flats"),
     "cal-bias": lambda dev: config.calibration_dir(dev, "biases"),
-    "stack": config.seestar_stacks_dir,
+    "stack": config.device_stacks_dir,
     "siril-stack": config.stacks_dir,
     "finished": config.finished_dir,
     "working": config.working_files_dir,
@@ -594,7 +594,10 @@ def _import_sub_previews() -> bool:
 # under one of these parents (Finished Images/<obj>, Seestar_stacks/<obj>).
 _STORE_SUBDIR_KIND = {
     "lights": "light", "darks": "dark", "flats": "flat", "biases": "bias",
-    "stacks": "siril-stack", "seestar-stacks": "stack", "finished": "finished",
+    "stacks": "siril-stack", "finished": "finished",
+    # The device-stack tier, under its current name and its pre-v6 one (an older
+    # store or backup imported as a source).
+    "device-stacks": "stack", "seestar-stacks": "stack",
     # Importing from another M110 store (a backup, the precursor library) must
     # preserve the exclusion — without this the subs read as loose FITS, route by
     # OBJECT header, and land back in `lights/` (#110).
@@ -920,7 +923,7 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
       • raw subs → ``lights/`` (object from the OBJECT header; a header
         IMAGETYP=DARK/FLAT/BIAS splits to its calibration dir);
       • ``stacked-16_*`` + ``stacked.jpg``/``stacked-16_*.png`` → the object's
-        ``seestar-stacks/`` (generic device-stack) tier;
+        ``device-stacks/`` tier;
       • **Startrails** (``STARTRAILS_`` prefix — subs have an empty OBJECT) →
         ``.mp4`` to ``Media/Startrails_video/`` + composite ``stacked.jpg`` to
         ``Media/Startrails_photo/``; raw subs ignored (not a stackable target);

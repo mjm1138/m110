@@ -259,7 +259,7 @@ def build_totals(catalog: dict, sessions: list[dict], registry: dict | None = No
             f["has_pre_new_start"] = True
         _add_device(f["by_device"], s)
 
-    # Targets captured *only* as Seestar in-app stacks have no raw light frames, so
+    # Targets captured *only* as in-app device stacks have no raw light frames, so
     # they produce no sessions and are absent from the loop above — yet they're real
     # captures (and `add_captured_objects` promotes them on exactly this signal). Add
     # a zero-integration folder/slug entry so they show up in the gallery / status /
@@ -272,7 +272,7 @@ def build_totals(catalog: dict, sessions: list[dict], registry: dict | None = No
     images = config.IMAGES_DIR
     if images.is_dir():
         for d in sorted(p for p in images.iterdir() if p.is_dir()):
-            if d.name in folder_totals or not (d / "seestar-stacks").is_dir():
+            if d.name in folder_totals or not (d / config.DEVICE_STACKS_DIRNAME).is_dir():
                 continue
             slugs = (scan_sessions.folder_to_slugs(d.name, slugset)
                      or [scan_sessions.slugify(d.name)])
@@ -690,7 +690,7 @@ def build_processing(totals: dict, overrides: dict | None,
         # Processed output = .fit / .tif / .tiff in the folder root OR in the
         # stacks/ subdir (newer location — see migrate_to_stacks.py), PLUS any
         # hand-finished render in finished/ (raster or FITS). Excludes anything
-        # inside lights/, darks/, biases/, flats/, process/, seestar-stacks/.
+        # inside lights/, darks/, biases/, flats/, process/, device-stacks/.
         processed = []
         search_dirs = [(folder, PROCESSED_EXTS)]
         stacks_subdir = folder / "stacks"

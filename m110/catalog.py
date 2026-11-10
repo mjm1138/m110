@@ -215,7 +215,7 @@ def prune_superseded_stubs() -> list[str]:
     referenced: set[str] = set()
     if config.IMAGES_DIR.is_dir():
         for d in config.IMAGES_DIR.iterdir():
-            if d.is_dir() and ((d / "lights").is_dir() or (d / "seestar-stacks").is_dir()):
+            if d.is_dir() and ((d / "lights").is_dir() or (d / config.DEVICE_STACKS_DIRNAME).is_dir()):
                 referenced.update(scan_sessions.folder_to_slugs(d.name, known))
 
     removed = []
@@ -923,7 +923,7 @@ def add_captured_objects(resolve_coords: bool = True) -> list[str]:
 
     new: dict[str, dict] = {}
     for d in sorted(p for p in config.IMAGES_DIR.iterdir() if p.is_dir()):
-        if not ((d / "lights").is_dir() or (d / "seestar-stacks").is_dir()):
+        if not ((d / "lights").is_dir() or (d / config.DEVICE_STACKS_DIRNAME).is_dir()):
             continue                                  # not a capture target
         folder = d.name
         members = scan_sessions.folder_to_slugs(folder, known)

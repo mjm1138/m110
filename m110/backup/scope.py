@@ -65,7 +65,7 @@ _EXCLUDE_INTERNAL = {
 
 # The per-target tiers `essentials` leaves behind: the frames themselves. Each is
 # bulk raw capture the user can keep locally — as opposed to `finished/`,
-# `stacks/` and `seestar-stacks/`, which are deliverables, and the
+# `stacks/` and `device-stacks/`, which are deliverables, and the
 # journals/plans/settings, which are hand-written and irreplaceable.
 _BULK_FRAME_TIERS = frozenset({"lights", "rejected", "previews"})
 

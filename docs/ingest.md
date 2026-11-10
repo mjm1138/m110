@@ -92,7 +92,7 @@ Your data folder is organized around **two views of the same collection**:
   Images/<target>/            one folder per capture target
     lights/                     raw light subs — the immutable originals
     stacks/                     Siril stacks you've imported back
-    seestar-stacks/             the device's own in-app stacks
+    device-stacks/              the telescope's own in-app stacks
     finished/                   your finished, hand-processed renders
     working_files/              processing by-products (starless, crop, stretch…)
     previews/                   per-sub JPG previews (only if you opt in)
@@ -117,8 +117,9 @@ finished renders in separate folders on purpose:
 - `lights/` holds **only** raw light subs. M110 treats these as immutable — it reads
   them but never writes into this folder. This is what everything else is derived
   from, so keep it clean.
-- `stacks/` and `seestar-stacks/` hold integrated stacks (yours from Siril, and the
-  device's in-app stacks respectively).
+- `stacks/` and `device-stacks/` hold integrated stacks (yours from Siril, and the
+  telescope's own in-app stacks — Seestar, Dwarf or Draco — respectively).
+  (Older versions called it `seestar-stacks/`; M110 renames it for you.)
 - `finished/` holds your deliverables — the images you've hand-processed and are
   proud of.
 

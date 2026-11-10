@@ -55,6 +55,17 @@ changes a **user** would notice, per release.
   field, such as "NGC 2024 IC 434", gets a dropdown that offers the catalog objects
   in its name, plus the nearest one to where the telescope pointed.
 
+### Changed
+- **`seestar-stacks` is now `device-stacks`.** Each target's folder of on-telescope
+  stacks (`Images/<target>/seestar-stacks/`) holds Dwarf 3 and Draco stacks too, so
+  it now has a name that fits every telescope. M110 renames it for you the first
+  time this version opens your library — nothing to do, and nothing is lost: if
+  both folders somehow exist, their contents are merged, a file whose name is taken
+  is kept alongside as `<name>-2`, and an exact duplicate is left where it was. In
+  the gallery these images are now labelled **Device stack**, and the import
+  preview calls them **device stack**. If you point another program (or an older
+  M110) at that folder, update it to the new name.
+
 ### Fixed
 - **"Remember alias?" remembers the target name.** After you retarget a row, the
   alias now keys on the name in the frames' headers. It used to key on the folder,

@@ -28,7 +28,7 @@ _INTERMEDIATE_FIT_RE = re.compile(r"_(og|crop|stretch|stretched|spcc)(_|\.)", re
 # The finished vocabulary is user-editable and shared — see `hints.py`.
 # Hero source preference, best → fallback. Each entry maps to a per-target
 # subfolder via the matching config helper in `_tier_dir`.
-HERO_TIERS = ["finished", "stacks", "seestar-stacks"]
+HERO_TIERS = ["finished", "stacks", "device-stacks"]
 
 
 def _is_intermediate_fit(path: Path) -> bool:
@@ -135,7 +135,7 @@ def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict
             (config.finished_dir(fname), "Finished render"),
             (config.stacks_dir(fname), "Siril stack"),
             (config.working_files_dir(fname), "Working file"),
-            (config.seestar_stacks_dir(fname), "Seestar in-app stack"),
+            (config.device_stacks_dir(fname), config.DEVICE_STACK_LABEL),
         ]:
             if not src_dir.is_dir():
                 continue
@@ -171,7 +171,7 @@ def _hero_sort_key(p: Path):
 _TIER_DIR = {
     "finished": config.finished_dir,
     "stacks": config.stacks_dir,
-    "seestar-stacks": config.seestar_stacks_dir,
+    "device-stacks": config.device_stacks_dir,
 }
 
 
@@ -206,7 +206,7 @@ def hero_source_path(slug: str) -> Path | None:
         return None
     if not first:
         return None
-    p = config.DATA_ROOT / first
+    p = config.DATA_ROOT / config.upgrade_legacy_rel(first)
     return p if p.is_file() else None
 
 
@@ -222,7 +222,8 @@ def _hero_candidates(slug: str, folders: list[str], imgs: list[dict]) -> list[Pa
         out += [im["path"] for im in imgs if im.get("name") == name][:1]
     hp = fm.get("hero_image")
     if hp:
-        p = config.DATA_ROOT / hp
+        # A pre-v6 `hero_image:` may still name the old `seestar-stacks/` tier.
+        p = config.DATA_ROOT / config.upgrade_legacy_rel(str(hp))
         if p.is_file():
             out.append(p)
     out += _tier_candidates(folders)
