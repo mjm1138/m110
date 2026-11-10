@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from m110 import config, fieldguide, objects as journals, pins, prioritize
+from m110 import (build_derived, config, fieldguide, integration_goals,
+                  objects as journals, pins, prioritize)
 from m110.assistant import outbox, proposals
 
 
@@ -64,6 +65,9 @@ def check_drift(envelope: dict) -> DriftReport:
         reasons.append("your capture data has changed (a refresh or new imports)")
     if was.get("journal_sha256") and was["journal_sha256"] != now.get("journal_sha256"):
         reasons.append("this object's notes were edited")
+    if ("integration_goals_sha256" in was
+            and was["integration_goals_sha256"] != now.get("integration_goals_sha256")):
+        reasons.append("integration goals were changed")
     return DriftReport(drifted=bool(reasons), reasons=tuple(reasons))
 
 
@@ -81,15 +85,15 @@ def repreview(envelope: dict) -> dict:
 
     strategy = prioritize.load_strategy()
     weights = prioritize.load_weights()
-    before = prioritize.rank(contexts, weights, strategy, pins.load())
+    before = prioritize.rank_for_active(contexts, weights, strategy, pins.load())
 
     if action == "set_weights":
         w = payload.get("weights") or {}
         proposed = prioritize.Weights(
             **{k: v for k, v in w.items() if k != "type_weights"},
             type_weights=w.get("type_weights") or {})
-        after = prioritize.rank(contexts, proposed,
-                                payload.get("strategy") or strategy, pins.load())
+        after = prioritize.rank_for_active(contexts, proposed,
+                                           payload.get("strategy") or strategy, pins.load())
     elif action == "set_pins":
         state = dict(pins.load())
         for slug in payload.get("clear") or []:
@@ -98,7 +102,11 @@ def repreview(envelope: dict) -> dict:
             state[slug] = pins.PIN
         for slug in payload.get("deprioritize") or []:
             state[slug] = pins.DEPRIORITIZE
-        after = prioritize.rank(contexts, weights, strategy, state)
+        after = prioritize.rank_for_active(contexts, weights, strategy, state)
+    elif action == "set_integration_goal":
+        proposed = _goals_after(payload)
+        after = prioritize.rank(contexts, weights, strategy, pins.load(),
+                                model=integration_goals.active_model(), goals=proposed)
     else:
         return {}
     return proposals.rank_delta(before, after)
@@ -171,10 +179,40 @@ def _apply_append_journal(payload: dict) -> str:
     return f"Added to {slug}'s notes."
 
 
+def _goals_after(payload: dict) -> dict:
+    """The integration goals as they'd be with `payload` applied."""
+    goals = {s: dict(per) for s, per in integration_goals.load().items()}
+    slug, model = payload.get("slug"), payload.get("model")
+    if payload.get("minutes"):
+        item = {"min": float(payload["minutes"])}
+        if payload.get("reason"):
+            item["reason"] = payload["reason"]
+        goals.setdefault(slug, {})[model] = item
+    else:
+        goals.get(slug, {}).pop(model, None)
+    return goals
+
+
+def _apply_set_integration_goal(payload: dict) -> str:
+    slug, model = payload.get("slug"), payload.get("model")
+    if not slug or not model:
+        raise ApplyError("The proposal names no object or telescope.")
+    if payload.get("minutes"):
+        integration_goals.set_goal(slug, model, float(payload["minutes"]),
+                                   payload.get("reason"))
+        done = f"{slug.upper()}'s goal set to {float(payload['minutes']):.0f} min."
+    else:
+        integration_goals.clear_goal(slug, model)
+        done = f"{slug.upper()}'s goal is back to the default."
+    build_derived.main()            # statuses follow the new goal right away
+    return done
+
+
 _HANDLERS = {
     "set_weights": _apply_set_weights,
     "set_pins": _apply_set_pins,
     "append_journal": _apply_append_journal,
+    "set_integration_goal": _apply_set_integration_goal,
 }
 
 

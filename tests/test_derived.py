@@ -1,6 +1,8 @@
 """Tests for the derived-rollup reader (config-path overridable / testable)."""
 import json
 
+import pytest
+
 from m110 import config, derived
 
 
@@ -118,4 +120,6 @@ def test_a_mosaic_cannot_promote_an_object_to_deep():
         _session("M42_mosaic", ["m42"], "2026-03-20", 200.0),
     ]
     totals = build_totals({"m42": {"id": "M42", "type": "emission"}}, sessions)
-    assert totals["by_slug"]["m42"]["status"] == "initial"   # 360 min threshold
+    m42 = totals["by_slug"]["m42"]
+    assert m42["status"] != "deep_stack"                     # 360 min goal
+    assert m42["progress"] == pytest.approx(200 / 360, abs=1e-3)

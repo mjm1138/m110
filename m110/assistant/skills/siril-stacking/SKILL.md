@@ -36,6 +36,14 @@ matter here. That is what the second half of this document is about.
   scripts. It writes nothing and it does **not** stack.
 - **You cannot run the stack.** M110's assistant tools never modify the store.
   Present the proposal, get agreement, then give them `how_to_run`.
+- **Give `how_to_run` verbatim — never shorten it to a bare `m110-stack`.** The
+  command names `m110-stack` by its full path, because the bare name is on nobody's
+  PATH: it lives inside the M110 app, or in a development venv. Below, `<m110-stack>`
+  stands for that path.
+- **Say which install it runs.** `stacker` tells you: the M110 app the user has open
+  (`matches_running_app: true`), or — when none is running for this library — the
+  assistant server's own install, which may be a different build. Pass its `note` on
+  in your own words, and quote `install` and `version`.
 - If they ask you to run it and you have a shell, that is their call to make
   explicitly — still show the proposal and get agreement first.
 
@@ -81,7 +89,8 @@ Worth saying in prose rather than burying in the table:
   FWHM pass the tool cannot know whether the longer subs are also the softer ones,
   so it proposes wFWHM as the safe default and says so. Present it that way.
 
-`m110-stack <folder>` with no flags runs both and may change the recommendation.
+`how_to_measure` (the same command without `--run`) runs both and may change the
+recommendation.
 
 ## 3 — Explore alternatives with real numbers
 
@@ -92,6 +101,7 @@ that is 86 GB → 34.5 GB, and a canvas halved on each axis.
 
 Overrides: `drizzle` (0 = off) · `pixfrac` · `rejection` · `weight` ·
 `overlap_norm` · `feather` · `no_bg_extract` · `no_filters` · `filter_pct` ·
+`filter_round` · `filter_wfwhm` · `filter_bkg` · `filter_nbstars` ·
 `only_exposure` · `exclude_night` · `filter`.
 
 `overrides_applied` echoes what you forced, and `how_to_run` grows the matching
@@ -157,7 +167,8 @@ The workflow is: **stack each filter separately, then combine the stacks.**
    different scales do not register to each other, and re-running one is far
    cheaper than discovering that after both. Take the deeper filter's proposal as
    the reference and pass `drizzle` explicitly for the other.
-3. Give one command per filter (`m110-stack 'M81 M82/LP' --run`), and say plainly
+3. Give one command per filter (`<m110-stack> 'M81 M82/LP' --run`, each from its
+   own `plan_stack` call), and say plainly
    that combining is a separate manual step.
 4. Combining is **not** something M110 or this skill does. It happens afterwards in
    Siril (`rgbcomp`, or pixel math for an HOO/SHO palette) or in AstroWizard. Say
@@ -214,8 +225,7 @@ stacks would be combined afterwards.
 The decisive question is whether the longer subs are also the *softer* ones. If
 they are, noise weighting rewards them for having better per-frame SNR and drags
 resolution down. Measured on M15: 10s subs median FWHM 3.09, 20s subs 4.85 — which
-flips the answer. The read-only path cannot see this; `m110-stack <folder>` with no
-flags measures it.
+flips the answer. The read-only path cannot see this; `how_to_measure` measures it.
 
 ## Dropping a night
 
@@ -237,11 +247,48 @@ data along with its worst.
 
 ## The one thing the per-setting justifications do not say
 
-**The quality filters compound.** Four independent thresholds at 95% do not retain
-95% — measured on NGC 7000, 904 frames registered down to 753, about 83%. The
-default is 98% because 95% was measurably too tight (it cut 21 of 231 frames on M15
-with no FWHM gain). Budget for the loss when a target is close to an integration
-goal, and reach for `no_filters` only when a set is already thin.
+**The quality filters compound.** Each percentage is the share of frames Siril
+*keeps*, ranked on that one metric over the whole set, so 95% drops the worst ~5%
+on a perfect night and on a bad one alike. All four cutoffs are computed over the
+full set and then ANDed, and they overlap less than you would hope: across six
+real stacks the combined drop was 55–90% of the four individual drops added
+together. Budget for roughly the sum.
+
+The table, by depth (the same one prep writes into the Naztronomy preset):
+
+| Depth | Roundness | wFWHM | Background | Star count |
+|---|---|---|---|---|
+| < 100 | off | off | off | off |
+| 100–500 | 95 | 98 | 98 | 95 |
+| > 500 | 95 | 95 | 95 | 95 |
+
+It was measured, not reasoned out. On M1 (767 LP subs, 732 plate-solved), three
+stacks of the same frames differed only in their filters:
+
+| Filters | Frames kept | Core SNR | Star FWHM / roundness |
+|---|---|---|---|
+| roundness 92, wFWHM 95, rest off | 675 | 27.89 | 5.076″ / 0.813 |
+| the same + background 98 | 665 | 28.12 | 5.073″ / 0.814 |
+| 95 on all four | 660 | **28.66** | 5.086″ / 0.813 |
+
+- **Roundness no tighter than 95%.** When elongation is in nearly every sub —
+  M1's stars point the same way across the field, worse at the edges, so it is
+  optics rather than wind — a tighter cut drops signal and leaves the stars as
+  they were. A target with occasional wind or tracking glitches might reward a
+  tighter cut; try `filter_round` on it rather than changing the default.
+- **Background stays on, even with a dual-band filter** (Seestar `LP`, DwarfLab
+  `Duo-Band`). wFWHM weighting scores sharpness and star count, not sky
+  brightness, so a sharp but bright-sky frame keeps full weight unless this
+  filter drops it. On M1 it was worth about 1% of SNR on its own.
+- **wFWHM is 98% on small sets**: on M15, 95% cut 21 of 231 frames with no FWHM
+  gain.
+
+A 2.7% SNR difference is worth about 5.5% more integration (SNR grows with the
+square root of time) — real, but not visible on a single pair of images.
+
+Budget for the loss when a target is close to an integration goal, loosen one
+filter with its own override rather than all four, and reach for `no_filters`
+only when a set is already thin.
 
 ## After
 

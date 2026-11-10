@@ -218,7 +218,9 @@ def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
     """Set up finishing sandboxes for the given targets — idempotent, Qt-free.
 
     Mirrors `siril.autoprep`'s guards for the same reasons: a target with
-    un-imported output is left alone (never disturb work in progress), and
+    un-imported output, or a stack running in its sandbox (`m110-stack` accepts
+    any folder with `lights/`, this one included), is left alone (never disturb
+    work in progress), and
     `only_missing=True` skips any target that already has a sandbox, so the
     refresh-time backfill creates only the absent ones.
 
@@ -231,7 +233,7 @@ def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
             break
         if only_missing and config.astrowizard_dir(target).exists():
             continue
-        if has_unimported_output(target):
+        if has_unimported_output(target) or roundtrip.sandbox_busy(target, SANDBOX):
             skipped.append(target)
             continue
         if prepare_lights(target, should_cancel=should_cancel):

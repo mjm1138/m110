@@ -216,8 +216,10 @@ and the right size rather than re-reading all of it — a full re-check would me
 downloading the entire backup, which you'd be billed for.
 
 > **What's not in a backup:** regenerable app state — thumbnails, derived rollups,
-> the session index, and the Siril sandboxes — is skipped, because M110 rebuilds it
-> automatically. Your catalog, notes, subs, stacks, and finished renders are all
-> included.
+> the session index — is skipped, because M110 rebuilds it automatically. So are the
+> hardlinked copies of your subs in the Siril working folders (the subs themselves
+> are backed up once, where they really live) and Siril's `process/` scratch, which
+> Siril rebuilds every time you stack. Your catalog, notes, subs, stacks, finished
+> renders and past processing runs are all included.
 
 Next: **[Session planning →](planning.md)**

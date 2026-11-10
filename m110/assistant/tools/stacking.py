@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from m110 import config, launch
+from m110 import config, launch, running_app
 from m110.assistant.registry import ToolError, register
 from m110.assistant.serialize import ToolResult
 from m110.assistant.store import require_store
@@ -104,22 +104,28 @@ def _resolve_dir(target: str, filt: str | None) -> Path:
     )
 
 
-# Tool argument -> the CLI flag that reproduces it, so `how_to_run` stays a true
-# statement of what was proposed. An override with no entry here would be
+# Tool argument -> the CLI arguments that reproduce it, so `how_to_run` stays a
+# true statement of what was proposed. An override with no entry here would be
 # silently dropped from the command, which is how a user ends up running
-# something other than what they agreed to.
+# something other than what they agreed to. Lists, not strings: every word is
+# shell-quoted once, in `running_app.shell_command`.
 _CLI_FLAGS = {
-    "only_exposure": lambda v: f" --only-exposure {v:g}",
-    "exclude_night": lambda v: f" --exclude-night {v}",
-    "drizzle": lambda v: " --no-drizzle" if not v else f" --drizzle {v:g}",
-    "pixfrac": lambda v: f" --pixfrac {v:g}",
-    "rejection": lambda v: f' --rejection "{v}"',
-    "weight": lambda v: f" --weight {v}",
-    "overlap_norm": lambda v: " --overlap-norm" if v else " --no-overlap-norm",
-    "feather": lambda v: f" --feather {int(v)}",
-    "no_bg_extract": lambda v: " --no-bg-extract",
-    "no_filters": lambda v: " --no-filters",
-    "filter_pct": lambda v: f" --filter-pct {v:g}",
+    "only_exposure": lambda v: ["--only-exposure", f"{v:g}"],
+    "exclude_night": lambda v: ["--exclude-night", v],
+    "max_dark_gap": lambda v: ["--max-dark-gap", f"{v:g}"],
+    "drizzle": lambda v: ["--no-drizzle"] if not v else ["--drizzle", f"{v:g}"],
+    "pixfrac": lambda v: ["--pixfrac", f"{v:g}"],
+    "rejection": lambda v: ["--rejection", v],
+    "weight": lambda v: ["--weight", v],
+    "overlap_norm": lambda v: ["--overlap-norm"] if v else ["--no-overlap-norm"],
+    "feather": lambda v: ["--feather", str(int(v))],
+    "no_bg_extract": lambda v: ["--no-bg-extract"],
+    "no_filters": lambda v: ["--no-filters"],
+    "filter_pct": lambda v: ["--filter-pct", f"{v:g}"],
+    "filter_round": lambda v: ["--filter-round", f"{v:g}"],
+    "filter_wfwhm": lambda v: ["--filter-wfwhm", f"{v:g}"],
+    "filter_bkg": lambda v: ["--filter-bkg", f"{v:g}"],
+    "filter_nbstars": lambda v: ["--filter-nbstars", f"{v:g}"],
 }
 
 
@@ -139,7 +145,10 @@ _CLI_FLAGS = {
         "STRICTLY READ-ONLY: this measures and proposes, it does NOT stack. Present "
         "the proposal, get the user's agreement, then give them the `how_to_run` "
         "command to run themselves — a large mosaic costs hours and over 100 GB, so "
-        "starting one unasked is the failure to avoid."
+        "starting one unasked is the failure to avoid. Give `how_to_run` VERBATIM: "
+        "it names `m110-stack` by its full path because the bare name is not on the "
+        "user's PATH, and `stacker` says which M110 install that path belongs to — "
+        "tell the user."
     ),
     params={
         "type": "object",
@@ -164,6 +173,13 @@ _CLI_FLAGS = {
                               "description": ("Drop one night, YYYY-MM-DD. Use sparingly: "
                                               "the quality filters already drop poor "
                                               "frames individually, across every night.")},
+            "max_dark_gap": {"type": "number",
+                             "description": ("Drop frames whose sensor temperature "
+                                             "drifted more than this many °C from the "
+                                             "dark the telescope subtracted on-device "
+                                             "(Seestar). The proposal warns when any "
+                                             "selected frame is over 3 °C; pass 3 to "
+                                             "leave those out.")},
             "drizzle": {"type": "number",
                         "description": ("Force the drizzle scale, e.g. 2 for 2x, or 0 to "
                                         "turn drizzle off. Omit to let coverage depth "
@@ -200,7 +216,21 @@ _CLI_FLAGS = {
                                            "already too thin to lose frames.")},
             "filter_pct": {"type": "number",
                            "description": ("Set all four quality-filter thresholds at "
-                                           "once, e.g. 95. The default is 98.")},
+                                           "once, e.g. 95 — the share of frames each "
+                                           "keeps. The default is tiered by depth and "
+                                           "filter; see the proposal's reason.")},
+            "filter_round": {"type": "number",
+                             "description": ("Set only the roundness threshold — the "
+                                             "one that catches wind and tracking "
+                                             "error. 100 turns it off.")},
+            "filter_wfwhm": {"type": "number",
+                             "description": "Set only the wFWHM threshold. 100 = off."},
+            "filter_bkg": {"type": "number",
+                           "description": ("Set only the background threshold. 100 = "
+                                           "off.")},
+            "filter_nbstars": {"type": "number",
+                               "description": ("Set only the star-count threshold. "
+                                               "100 = off.")},
             "verbosity": {"type": "integer", "minimum": 0, "maximum": 3,
                           "description": ("How much the run says in the terminal. "
                                           "Changes only the `how_to_run` command, "
@@ -219,11 +249,13 @@ _CLI_FLAGS = {
 )
 def plan_stack(target: str, filter: str | None = None,
                only_exposure: float | None = None, exclude_night: str | None = None,
-               drizzle: float | None = None, pixfrac: float | None = None,
+               max_dark_gap: float | None = None, drizzle: float | None = None, pixfrac: float | None = None,
                rejection: str | None = None, weight: str | None = None,
                overlap_norm: bool | None = None, feather: int | None = None,
                no_bg_extract: bool = False, no_filters: bool = False,
-               filter_pct: float | None = None, verbosity: int = 0) -> ToolResult:
+               filter_pct: float | None = None, filter_round: float | None = None,
+               filter_wfwhm: float | None = None, filter_bkg: float | None = None,
+               filter_nbstars: float | None = None, verbosity: int = 0) -> ToolResult:
     require_store()
     from m110 import stacking            # lazy: pulls astropy on first header read
 
@@ -231,6 +263,7 @@ def plan_stack(target: str, filter: str | None = None,
     ov = stacking.Overrides(
         only_exposure=[only_exposure] if only_exposure is not None else None,
         exclude_night=[exclude_night] if exclude_night else None,
+        max_dark_gap=max_dark_gap,
         # A JSON schema has no tri-state number, so 0 is how the caller says
         # "off" — and the CLI spells that as its own `--no-drizzle` flag.
         drizzle=drizzle if drizzle else None,
@@ -243,6 +276,10 @@ def plan_stack(target: str, filter: str | None = None,
         no_bg_extract=no_bg_extract,
         no_filters=no_filters,
         filter_pct=filter_pct,
+        filter_round=filter_round,
+        filter_wfwhm=filter_wfwhm,
+        filter_bkg=filter_bkg,
+        filter_nbstars=filter_nbstars,
     )
     try:
         plan = stacking.build_plan(directory, ov, deep_measure=False)
@@ -265,10 +302,12 @@ def plan_stack(target: str, filter: str | None = None,
 
     applied = {k: v for k, v in (
         ("only_exposure", only_exposure), ("exclude_night", exclude_night),
-        ("drizzle", drizzle), ("pixfrac", pixfrac), ("rejection", rejection),
+        ("max_dark_gap", max_dark_gap), ("drizzle", drizzle), ("pixfrac", pixfrac), ("rejection", rejection),
         ("weight", weight), ("overlap_norm", overlap_norm), ("feather", feather),
         ("no_bg_extract", no_bg_extract or None),
         ("no_filters", no_filters or None), ("filter_pct", filter_pct),
+        ("filter_round", filter_round), ("filter_wfwhm", filter_wfwhm),
+        ("filter_bkg", filter_bkg), ("filter_nbstars", filter_nbstars),
     ) if v is not None}
     # Echoed so a reader can tell an engine proposal from a hand-forced setting.
     # Without it an overridden run reads identically to one the engine chose.
@@ -290,14 +329,32 @@ def plan_stack(target: str, filter: str | None = None,
     # user's home directory into the model's context, and `serialize` can only
     # relativize a Path — a path baked into a command string sails straight
     # through. `m110-stack` resolves the name against the store itself.
-    flags = "".join(_CLI_FLAGS[k](v) for k, v in applied.items())
+    args = [a for k, v in applied.items() for a in _CLI_FLAGS[k](v)]
     # Not an override — it changes what the run prints, not what it stacks — so it
     # rides in the command without appearing in `overrides_applied`.
     level = max(0, min(3, int(verbosity or 0)))
-    flags += f" -{'v' * level}" if level else ""
+    if level:
+        args.append(f"-{'v' * level}")
     name = f"{target}/{filter}" if filter else target
+    # The `m110-stack` of the app the user is running, by absolute path: a bare
+    # name is on nobody's PATH, and this server may be a different install from
+    # that app (#192). `shell_command` writes the home directory as `~`.
+    stk = running_app.stacker()
     payload["how_to_run"] = (
-        f"m110-stack {name!r} --run{flags}"
-        "   # add --handoff to send the finished stack to AstroWizard"
+        running_app.shell_command(stk["argv"], name, "--run", *args)
+        + "   # add --handoff to send the finished stack to AstroWizard"
     )
+    payload["how_to_measure"] = running_app.shell_command(stk["argv"], name)
+    payload["stacker"] = {
+        "install": stk["install"],
+        "version": stk["version"],
+        "matches_running_app": stk["matches_running_app"],
+        "note": (f"The command runs the M110 app you have open ({stk['install']}, "
+                 f"{stk['version']})."
+                 if stk["matches_running_app"] else
+                 f"No running M110 app was found for this library, so the command "
+                 f"uses the assistant server's own install ({stk['install']}, "
+                 f"{stk['version']}). If you run M110 from somewhere else, that "
+                 "app's m110-stack may be a different build."),
+    }
     return ToolResult(payload, drop_keys=_BULK_KEYS)

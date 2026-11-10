@@ -1,7 +1,7 @@
 """M110 — PySide6 desktop shell.
 
-A left nav rail switches between the pages (Library · Overview · Import ·
-Processing · …) in a stacked content area. The **Library** (thumbnail grid) is
+A left nav rail switches between the pages (Library · Overview · Planning ·
+Import · Processing · Devices) in a stacked content area. The **Library** (thumbnail grid) is
 the landing "home"; a fresh empty store lands on **Overview** (welcome/CTA).
 Overview merges the former Summary dashboard and Goals management into one pane
 of collapsible sections. The Library page hosts the shared per-object detail;
@@ -30,20 +30,29 @@ from m110.ui.pages.catalog import CatalogPage
 from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui.pages.planning import PlanningPage
+from m110.ui.pages.devices import DevicesPage
 from m110.ui.widgets import modal_loop_active, defer
 from m110.ui import theme
 
 
 class RefreshWorker(QThread):
-    """Runs the (potentially slow) scan+derive+prepare-missing off the UI thread."""
+    """Runs the (potentially slow) scan+derive+prepare-missing off the UI thread.
+    `cancel` stops it at the next safe point, emitting nothing (quit uses it)."""
     done = Signal(dict)
     failed = Signal(str)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.cancel = threading.Event()
+
     def run(self):
+        from m110.refresh import RefreshCancelled
         try:
             from m110.refresh import run_refresh
             from m110 import processing
-            summary = run_refresh()
+            summary = run_refresh(should_cancel=self.cancel.is_set)
+            if self.cancel.is_set():
+                return                          # quitting: skip the sandbox upkeep
             prep = processing.prepare_missing()   # heal missing working folders
             summary["prepared"] = sum(len(r.get("prepared", []))
                                       for r in prep.values())
@@ -52,6 +61,8 @@ class RefreshWorker(QThread):
             pruned = processing.reconcile_rejected()
             summary["pruned"] = sum(r.get("pruned", 0) for r in pruned.values())
             self.done.emit(summary)
+        except RefreshCancelled:
+            return                              # nothing half-written; nothing to report
         except Exception as exc:  # surface to the UI rather than crash
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -124,7 +135,7 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Planning", "Import", "Processing"]
+    NAV = ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
 
     def __init__(self):
         super().__init__()
@@ -165,12 +176,14 @@ class MainWindow(QMainWindow):
         self.planning = PlanningPage()
         self.import_page = ImportPage()
         self.processing = ProcessingPage()
+        self.devices = DevicesPage()
         self.pages = [self.catalog, self.overview, self.planning,
-                      self.import_page, self.processing]
+                      self.import_page, self.processing, self.devices]
         self._catalog_index = self.pages.index(self.catalog)
         self._overview_index = self.pages.index(self.overview)
         self._planning_index = self.pages.index(self.planning)
         self._import_index = self.pages.index(self.import_page)
+        self._devices_index = self.pages.index(self.devices)
 
         self.stack = QStackedWidget()
         # Uniform breathing room around every page (token-driven), so content isn't
@@ -231,13 +244,18 @@ class MainWindow(QMainWindow):
         self.catalog.dirty.connect(self._do_refresh)
         self.catalog.notes_saved.connect(self._on_notes_saved)
         self.catalog.pins_changed.connect(self._on_pins_changed)
+        self.catalog.goals_changed.connect(self._on_goals_changed)
         self.overview.open_object.connect(self.open_object)
         self.overview.go_to_import.connect(self._open_ingest)   # empty-state CTA
         self.overview.pins_changed.connect(self._on_pins_changed)
         self.overview.dirty.connect(self._do_refresh)           # goal set changed
+        self.overview.goals_changed.connect(self._on_goals_changed)
         self.planning.open_object.connect(self.open_object)
         self.planning.pins_changed.connect(self._on_pins_changed)
         self.processing.open_object.connect(self.open_object)
+        self.devices.open_object.connect(self.open_object)
+        self.devices.goals_changed.connect(self._on_goals_changed)
+        self.devices.devices_changed.connect(self._on_devices_changed)
         self.import_page.imported.connect(
             lambda moved: self._do_refresh() if moved else None)
 
@@ -589,7 +607,7 @@ class MainWindow(QMainWindow):
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
         self.prep_action.setEnabled(not editing)
-        for act in self.view_actions:      # else Ctrl+1..5 walks around the lock
+        for act in self.view_actions:      # else Ctrl+1..6 walks around the lock
             act.setEnabled(not editing)
 
     def _on_notes_saved(self, _slug: str):
@@ -604,6 +622,20 @@ class MainWindow(QMainWindow):
         for p in self.pages:
             if p is not self.catalog:
                 p.reload()
+
+    def _on_devices_changed(self):
+        # The Devices page renamed or retired a telescope, made one the planning
+        # telescope, or changed its limits — every other page re-reads telescopes
+        # (Planning's picker and ranking, the session tables' Device column).
+        for p in self.pages:
+            if p is not self.devices:
+                p.reload()
+
+    def _on_goals_changed(self):
+        # An integration goal or a goal's telescope changed. Derived data was already
+        # rebuilt (no scan), so every page — the Library's pills included — reloads.
+        for p in self.pages:
+            p.reload()
 
     def _on_pins_changed(self):
         # A Pin/Deprioritize override toggled (Library, Goals, or the Summary priority
@@ -848,11 +880,17 @@ class MainWindow(QMainWindow):
     # ---- clean shutdown ----
     def _stop_worker(self) -> None:
         """Block until the refresh thread finishes, so teardown never destroys a
-        running QThread (which Qt turns into a fatal abort). run_refresh isn't
-        cancellable, so we wait it out — quit pauses briefly rather than crashing."""
+        running QThread (which Qt turns into a fatal abort). The sync is cancelled
+        first and stops at its next safe point, so quit no longer waits out a whole
+        scan — which every focus-in starts, so Cmd+Q right after clicking into the
+        window used to stall for the length of a sync (18 s on a large library)."""
         w = self._worker
         if w is not None and w.isRunning():
+            w.cancel.set()
             w.wait()
+            if self._refreshing:                # cancelled: it emitted nothing
+                self._refreshing = False
+                self.refresh_action.setEnabled(True)
         # Cancel + drain a background backup so teardown never destroys a live
         # QThread (create_snapshot aborts promptly and cleans up its temp dir).
         self._backup_queue = []                 # no next slot after quit
@@ -910,6 +948,8 @@ def main() -> None:
     app.setWindowIcon(theme.app_icon())  # dock / taskbar icon (parchment tile)
     from m110.ui.first_run_dialog import run_first_run_if_needed
     run_first_run_if_needed()            # first launch: prompt for a data folder
+    from m110 import running_app
+    running_app.record()                 # so the assistant names THIS install's m110-stack
     win = MainWindow()
     win.show()
     sys.exit(app.exec())

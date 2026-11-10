@@ -718,6 +718,586 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## Device-stack tier renamed to `device-stacks/` *(done 2026-11-10, `feature/device-stacks`, store v6)*
+
+`Images/<target>/seestar-stacks/` held every telescope's own in-app stacks once
+Dwarf 3 (`stacked-16_*`) and Draco stacks were routed there by header-truth stack
+detection, so the vendor name was wrong. Renamed to `device-stacks/`.
+
+- **One name, one place.** `config.DEVICE_STACKS_DIRNAME` / `device_stacks_dir`
+  (was `seestar_stacks_dir`, no alias kept — a stale caller should fail loudly);
+  the hero tier, handoff tier string (`HandoffCandidate.tier` = `"device-stacks"`,
+  shown verbatim in the handoff dialog), capture-target detection in
+  `catalog`/`build_derived`, and `roundtrip.ROOT_SKIP_DIRS` (which keeps the old
+  name too, so a leftover old folder is never walked as processing output).
+- **Labels.** Gallery `Source` = `config.DEVICE_STACK_LABEL` ("Device stack", was
+  "Seestar in-app stack"); the import preview's kind label "device stack".
+  `publish.images._image_tier` accepts both labels.
+- **Migration v5→v6** (`migrate._rename_device_stacks`). A plain rename per target.
+  If both folders exist (an older build — `feature/draco`, a downgrade — wrote the
+  old one after an upgrade), `_merge_keep_both` moves file by file, never
+  overwriting: a taken name with different bytes lands as `<stem>-N`
+  (`roundtrip.resolve_import_dest`, the import keep-both rule), a byte-identical
+  copy is *left in the old folder* and logged (no deletion, no duplicate in the
+  gallery), and the old folder is removed only once it holds nothing but OS junk
+  (`_drop_legacy`). The v0 reshape's step 5 now lands `Seestar_stacks/<t>` straight
+  in `device-stacks/`.
+- **Recorded paths.** Three places held `Images/<t>/seestar-stacks/…`: hero `.src`
+  sidecars (machine state → repointed by the migration, so heroes don't re-render;
+  `img_hash` is mtime+size and a rename keeps both), `derived/images.json`
+  (`src`/`full`/`label`, read at launch before Sync rewrites it → normalized on
+  read in `derived.load_images`), and a hand-written journal `hero_image:` (user
+  content → never rewritten; `config.upgrade_legacy_rel` maps it on read, and
+  `hero_source_path` uses it too). Handoff provenance sidecars record only the
+  file name, so they needed nothing.
+- **Ingest** still recognizes a `seestar-stacks/` subdir in a *source* store (an
+  older store or a backup), beside the new name.
+- **Tests:** `test_migrate.py` (rename + sidecar repoint, already-migrated no-op,
+  both-present merge with collision + duplicate, both-present clean merge, v0
+  reshape lands in the new name), `test_build_images.py` (legacy rel mapping, hero
+  `.src`/`hero_image:` fallback, pre-v6 manifest normalization),
+  `test_publish_images.py` (legacy label tiers as device).
+- **Follow-up for `feature/draco`:** its next merge of `main` must carry the rename
+  through its own ~20 new references (`config.seestar_stacks_dir` and
+  `Images/<t>/seestar-stacks/` assertions in its tests).
+
+## N.I.N.A. / PINS import on capture profiles *(done 2026-11-07, `feature/nina-import`, #203 part 1)*
+
+**Source.** A PINS (N.I.N.A. 3.3.0.1058) night of the S50 over Alpaca, 2026-11-06,
+with 1,364 frames: M110, M74, a 3-panel M45 mosaic, `NGC 2024 IC 434`, and 60 darks.
+The defects are listed in BUGS.md → Import → NINA.
+
+**The seam: `capture_profiles.py`.** One frozen `CaptureProfile` of plain data per
+capture program, matched on header cards only (OR of AND-ed `(card, regex|None)`;
+`None` = card absent):
+- the object card, and a panel regex that folds onto `<object>_mosaic`;
+- ordered device rules `(card, regex, template)`;
+- `darks_applied` (True / False / None = the model rule);
+- where a nameless calibration frame goes.
+
+Built-ins, in order: `nina` (`SWCREATE ~ N\.I\.N\.A\.`), `seestar-app` (`CREATOR ~
+ZWO Seestar`, or no SWCREATE with a per-unit TELESCOP, which keeps every pre-#203
+fixture and real store on the app path), `dwarf-app`, and `generic`. The four answers
+every reader needs (`device_key`, `darks_applied`, `object_name`, and the profile id
+`capture`) come from `facts(hdr)`. They are now read in **one** place, instead of
+`folder_name(TELESCOP)` scattered across ingest, calibration, scan_sessions and
+stacking. Part 2 (user profiles in the store) loads the same shape.
+
+**One unit, one device.** N.I.N.A.'s TELESCOP is the Alpaca device name (`S50
+Prime`). The serial is only in `INSTRUME='Seestar S50_15e7e390 Telephoto Camera'`,
+and the rule `Seestar\s+(S\d+)_([0-9a-f]+)` → `{1}_{2}` gives the app's own key. We
+checked that it really is one sensor before sharing a library. The app's 20 s master
+(10.5 °C, median 476 ADU) and NINA 20 s raw darks (5.2 °C, median 480) share a
+pedestal. Of the top-200 hot pixels, 85 coincide in the same orientation and 0 under
+any flip. So the app's masters are valid candidates for NINA lights.
+
+**Darks-applied is per frame.** "The S50 dark-subtracts" was a property of the
+model. It is really a property of the ZWO app pipeline: NINA frames carry the hot
+pixels at full strength (~250 ADU excess). The flag now travels with the frame:
+- calibration: `frame_facts`, then `facts_from_frames` (a mixed flag →
+  `mixed_capture`, refused), then `match_masters`;
+- `scan_sessions._capture_fields`: no applied-dark inference for NINA subs;
+- stacking: `Frame.darks_applied` and the geometry, used by `device_dark_gaps` and
+  `_darks_applied_on_device`;
+- `siril.plan_prep`'s double-subtract note.
+
+`devices.darks_applied_on_device(key)` survives as the model-level fact behind the
+Devices heading. The session header cache re-reads any entry without `capture`, so
+an old cache heals.
+
+**Raw calibration frames.** The device library held only masters, and NINA takes
+darks one at a time. `calibration._is_raw` is a *positive* test: IMAGETYP set and
+not "master…", no NCOMBINE/STACKCNT > 1, and a DATE-OBS. Untyped or uncounted files
+stay masters, so every existing library reads the same. `raw_sets` groups raw frames
+by (exp, gain, bin, filter-for-flats, night). The night is DATE-LOC else DATE-OBS,
+minus 12 h. Groups are split where sorted temperatures jump > 2.5 °C. `candidates`
+puts masters and sets in one pool, and a one-frame set is used as a master.
+`MatchResult.sets` / `files()` hand a set on: Siril prep links it (Naztronomy stacks
+it), and m110-stack builds it (below). `device_rollup` lists one row per set.
+
+**m110-stack builds the master.** `calibration_for_stack` turns several consistent
+raw frames in a job-dir tier (or a library set) into a list. `_raw_set_problem`
+refuses mixed settings, or darks at another exposure. The run step (`build_plan`
+still writes nothing) hardlinks each set into `process/cal_<tier>/`. The solve
+script's prelude runs before `unselect` and `setcompress`:
+```
+setcompress 0
+cd cal_darks ; link cal_darks -out=.. ; cd ..
+stack cal_darks_ rej 3 3 -nonorm -out=master_darks.fit
+```
+Bias is built first and calibrates the flats. Flats use `-norm=mul`. Verified with a
+real run of Siril 1.4.5 on 30 NINA M74 subs and the 20 matching raw darks.
+
+**Two Siril findings on the way, both silent until a real run:**
+- `-dark="<path>"` keeps the quotes as part of the name (`"…".[any_allowed_extension]
+  not found`), absolute path or not. So **every** calibrated m110-stack run had
+  failed at phase 1. The tests asserted that exact string. Only whole-token quoting
+  works, spaces included: `"-dark=<path>"` (`_siril_opt`).
+- `setcompress` persists as a Siril preference. A previous run's rice setting saved
+  the master as `master_darks.fit.fz`, quantised, and calibrate then could not find
+  `master_darks.fit`.
+
+**Ingest.** `_detect_layout` labels a raw-FITS dir `nina` from one sniffed header
+(`_sniff_capture`, lru-cached). `_classify_raw_dir` is profile-aware per frame:
+- a dark/flat/bias with no usable OBJECT goes to `cal-*` under the device key, else
+  to holding. It is never filed under its folder name ("DARK"), and that applies to
+  generic FITS too;
+- a nameless light in a frame-type-named folder (`LIGHT/`) is held.
+
+`IngestOp/IngestGroup.source_name` is the name `canonical_target` resolved from, and
+`alias_key` is what both "Remember alias?" prompts store. `annotate_pointing` sets
+`candidates` for off-catalog lights: the designations in the name, then the nearest
+object within 1°. That needed `folder_to_slugs` to resolve each part as a
+designation (`NGC2024` slugifies to `ngc2024`, not `ngc-2024`), which also makes a
+combined NGC/IC target count toward both objects.
+
+**Sessions.** The header fall-back now dates by `DATE-LOC` when present, the same
+local-date convention as the Seestar filename clock. DATE-OBS put a Colorado
+evening on the next day. Rows gain `capture` and are bucketed by it too.
+
+**Test isolation.** `tests._helpers.seed_root` now patches `config.INTERNAL_DIR`.
+`ingest_aliases.toml` is read straight off it, so an alias saved in one test leaked
+into the next.
+
+**Per-subset calibration (same PR).** A target can hold frames no single master
+suits, for example the Seestar's app subs beside its N.I.N.A. subs, or two exposures.
+`calibration_subsets` groups the selected frames by (darks_applied, exposure, gain,
+binning), matches each group with `calibration_for_stack`, and rejoins groups with
+identical results. Two or more calibrations means the solve script does this per
+subset:
+```
+unselect lights_ 1 N ; select lights_ <positions…>
+calibrate lights_ "-dark=master_darks_k.fit" … -prefix=ppk_
+```
+then `merge pp1_lights_ pp2_lights_ pp_lights_`, so `seq_names` and phases 2–3 are
+unchanged. Design notes:
+- **No staging of lights.** Siril's own selection does it, and dropped frames are
+  simply never selected.
+- **Index mapping.** Siril keeps the source numbering in a `-prefix` sequence
+  (`pp2_lights_ 31->60`), but `merge` renumbers 1..M in subset order. So
+  `seq_order` / `_to_lights_positions` map solve failures back to lights positions.
+- **Job folders stay whole.** A job folder that already holds darks/flats/biases
+  (prep's link, or the user's) is never split around.
+
+Real run: a mixed M74 (30 live-store app subs at 20 s plus 30 NINA subs at 30 s, with
+20 raw darks) merged, solved and stacked. N.I.N.A.'s Seestar `IR` filter is renamed
+to the app's `IRCUT` (`CaptureProfile.filter_maps`, `capture_profiles.filter_name`,
+read by every filter reader). Otherwise prep's per-filter job folders keep the two
+populations apart and they never stack together.
+
+**The GUI path: split job folders (same PR).** The Naztronomy script calibrates a
+whole job folder with its `darks/`, so a filter mixing app and NINA subs gets one
+folder per calibration subset.
+- **Matching per filter.** `siril.plan_prep` now matches each filter on its own
+  frames (it used to match once per target, which a mixed target refused, and which
+  also gave a flat to every filter). `_calibration_subsets` reads every light's
+  header: a sample could miss a small NINA block among thousands of app subs, and
+  2,000 headers take about 1.3 s.
+- **Grouping and naming.** It groups by (darks_applied, exp, gain, bin), matches,
+  and rejoins equal results. The subset needing no calibration keeps the plain
+  filter name, so an existing app job folder stays valid and **never gains a
+  `darks/`**: Naztronomy's maintainer tells users to put one there, and it would
+  subtract twice. The others are suffixed by exposure, then capture id.
+- **The record.** The split goes to `siril/.m110_jobs.json`. `siril.job_group`
+  reads it, so nothing is parsed from names.
+- **m110-stack on a member.** Pointed at any member, it switches its working
+  folder to the group's first member and reads every member's lights
+  (`group_files`). The run step hardlinks them into `process/stack_lights/`, and the
+  solve script `cd`s there to link. Calibration skips the members' own `darks/`
+  (`job_dir_calibration=False`), since those belong to one subset, and matches
+  each subset from the library.
+
+Verified on the mixed M74: prep made `IRCUT/` (30 app subs, no darks) and
+`IRCUT_30s/` (30 NINA subs, 20 raw darks), and `m110-stack M74/IRCUT_30s --run`
+stacked all 60 in one pass (34 solved).
+
+**Coordination with Stackhammer's calibration spike** (stackhammer#22/#25,
+2026-11-07):
+- **The rule, aligned:** an app frame is `CREATOR ~ ^ZWO Seestar`, or `BIAS` with no
+  `SWCREATE`. 1,291 sampled app subs, firmware 6.70–9.31, all carry both. There is
+  no `TELESCOP` fallback; a Seestar-named frame with none of the three cards is
+  `darks_applied = None` and is refused with a note.
+- **Read the lights, never `process/` frames.** Siril drops `SWCREATE` from its output.
+- **Siril honours `XBAYROFF`.** A debayered NINA `pp_` is GRBG, matching the raw
+  sites exactly, so NINA stack colour is right.
+- **WCS is right.** Siril's WCS on TOP-DOWN NINA frames describes the stored
+  pixels: 0.1–0.2 px, against 42–59 px with the rows flipped.
+
+**The Stackhammer hand-over: a masters manifest (same PR).** Mike chose it over
+handing Stackhammer the whole recipe. The split of truth is the spike's proposal:
+headers for the subsets (both apps compute them with the one capture rule), M110
+for the masters (it owns and matches `Calibration/<device>/`).
+- `siril.calibration_manifest` builds it inside `plan_prep` (pure, kept on
+  `PrepPlan.manifest`); `apply_prep` writes `siril/.m110_calibration.json`
+  atomically (`.part` → `os.replace`), and removes it when there are no jobs.
+- One entry per **job folder**, not per subset key: after the rejoin, a folder is
+  exactly one calibration subset, and a folder is what Stackhammer's `prepare` is
+  pointed at. `group` names the siblings to stack with (the same record as
+  `.m110_jobs.json`, so neither reader parses names).
+- `lights` lists file names, the contract a reader checks its own grouping against.
+  Calibration `files` are relative to `siril/` (the hardlinks Naztronomy also
+  reads); `library` is the source relative to the data root, for provenance.
+- Each master's header facts come from `MatchResult.chosen` (new: `_take` records
+  the `MasterInfo` it chose), so the manifest never re-reads a header. A raw set
+  says `kind: "raw-set"`, its frame count and night: the reader builds the master.
+- `notes` carry the match's reasons verbatim, refusals included, so an empty
+  `calibration` is always explained (app subs: dark-subtracted on the telescope).
+- Archive cleanup (`_ARCHIVE_KEEP`) keeps both prep records. In a single-job
+  sandbox the root *is* the archived job folder, and the manifest would have been
+  filed away as run output; `.m110_jobs.json` only exists when split, where the root
+  is never archived, so it was safe by accident.
+
+**Open (BUGS.md):** the solve report's per-night failure count misses Siril's
+"no stars found" lines, and a mixed-exposure stack is named for one exposure.
+Also #203 part 2, and Stackhammer's reader of the manifest (its side).
+
+## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
+
+**What changed.** "Deep" stopped being one type-keyed number compared against an
+object's total minutes. `integration_goals.py` resolves a goal per **(object,
+telescope model)**: the user's goal from `integration_goals.toml` if set, else
+`deep_threshold(type) × (f_model / f_S50)²` rounded to 5 min. `build_totals` pools
+`by_device` into `by_model` (units of one model pool; a device with no preset is its
+own model) and grades each model `initial` (<25%) / `in_progress` / `deep_stack`;
+the object's and folder's `status` is the most advanced model (`rollup`), with
+`progress` + `progress_model` for the "62% of goal" pill.
+
+**Why per model and not summed.** Minutes from two telescopes don't stack into one
+picture (the calibration matcher already refuses a two-telescope target), so the old
+sum could mark an object deep that no single stack was. `by_device` is kept exactly
+as it was — `devices.json` and its tests read it.
+
+**Optics.** `Device` gained `aperture_mm` / `focal_length_mm` / `pixel_um` and an
+`f_ratio` property; presets carry sourced values (comment in `planning_config.py`).
+A telescope with no preset can carry user-entered optics in `devices.toml`
+`[devices."<key>".optics]`; without them its speed factor is 1.0 and "uncalibrated".
+
+**Every reader of the status shipped with it:** theme token `status_progress`,
+`widgets.status_label(…, progress)` + `STATUS_RANK` (the Library sorts the status
+column by state, then progress — not label text), the per-model tooltip
+(`integration_goals.progress_lines`), sky map `STATUS_PROGRESS` + legend (which now
+says "Initial", the pill's word, not "Captured"), the publish badge, and the
+assistant's `capture_report` (`deep_threshold_min`/`fraction_of_deep` are now the
+**active** telescope's goal; `goals` lists every model).
+
+**Found in the render check:** a blue chip on a selected row vanished into the blue
+selection highlight. `widgets.chip_color` paints a selected item's chip in the
+palette's highlighted-text colour, for both the table pill and the grid tile.
+
+**Not yet (PRs 2–3):** the prioritizer still scores total minutes against the type
+default; goal-list telescope scope; the goal editor and Devices-page optics;
+retiring `priorities.toml`.
+
+## Integration goals — the editors + retiring `priorities.toml` *(done 2026-10-27, `feature/integration-goals-editors`, #184 PR 3 of 3)*
+
+**Editors.** The detail pane's **Integration goals** section (one row per model that
+shot the object, plus the active one) sits with Processing/Sessions rather than under
+the status line as first planned — the pane deliberately opens on the hero and notes
+with controls below. **Set goal…** opens `ui/goal_dialog.GoalDialog`; a save writes the
+goal, `refresh.rederive()` (derive only — `build_derived.main`, no scan), and re-renders
+**deferred**, because the re-render tears down the button whose click is still running.
+Manage goals gets a per-goal telescope combo (`goals.set_goal_scope`) and **Track for
+another telescope…** (`goals.copy_for_telescope`: a member snapshot, uniquified name,
+scoped + activated). The Devices page's **Optics** block is read-only for a preset and
+editable for an unrecognised telescope (`devices.toml` `.optics`); saving optics or
+changing a telescope's model re-derives too, since both move goals. Every one of these
+emits `goals_changed`, which the shell answers by reloading every page.
+
+**`priorities.toml` retired** — store **v5**. No longer seeded; `migrate._mark_priorities_
+retired` prepends a header saying it isn't read, once, keeping the user's text.
+
+**Corpus.** M51 carries user goals sized to its few minutes (S50 18 min → blue, S30
+2 min → green → the object is green), and an S30-scoped *Travel scope* goal; `verify`
+asserts both.
+
+**Correction caught by a test:** the Dwarf 3's factor is ×0.73, not the ×0.74 quoted
+while designing — (150/35/5)² = 0.735.
+
+## Integration goals — goal scope + per-model ranking *(done 2026-10-27, `feature/integration-goals-ranking`, #184 PR 2 of 3)*
+
+**Goal scope.** `goals.toml` gained a `[scope]` table (goal id → model; absent =
+any telescope). `goals.scoped_totals(by_slug, scope)` is the one view a scoped goal
+sees — only that model's captures, with its status/progress — and `build_goals`,
+the Overview checklists and `skymap.render(scope=…)` all read through it. `_write`
+now preserves `[scope]` across every other goals write (it used to rewrite only
+`active` + `[[custom]]`), and deleting a custom goal drops its scope.
+
+**Ranking.** Contexts hold facts, ranking applies preferences — the split pins
+already used. `TargetContext` appended `integration_by_model` + `goal_scopes`;
+`score_target(…, model, goals, registry)` picks the progress basis
+(`_progress_basis`): a goal scoped to the model → that model; else an
+any-telescope goal → the best model; else the model's own. The goal boost counts
+only goals that apply to the model. `rank_for_active` is what every app surface
+calls, so a goal edit or a telescope switch re-ranks with no astropy rebuild.
+`prioritized.json` carries `"v": 2` and an older cache is stale; meanwhile a
+legacy context reads `in_active_goal` as any-telescope and its total minutes as the
+active model's, so the first render after an upgrade isn't nonsense.
+
+**`propose_integration_goal`** — the 17th tool. Action `set_integration_goal` is on
+the safe-write list; the fingerprint hashes `integration_goals.toml` so a goal
+changed after drafting is drift; the apply handler re-derives (`build_derived.main`,
+no scan) so the pill follows at once. The ranking preview is only computed when the
+goal is for the planning telescope — for another model it would be an unchanged
+table pretending to be evidence.
+
+**Not yet (PR 3):** the UI to set a goal or a goal's scope; Devices-page optics;
+retiring `priorities.toml`; corpus goals.
+
+## Frame-selection tiers revised on M1 *(done 2026-10-20, `feature/filter-tiers-m1`)*
+
+#174's table (roundness 95/92/90, background off on dual-band, star count off) was
+reasoned from Siril's ANDing logic and stack logs, not from stacked results. Three
+`m110-stack` runs of the **same** M1 frames (767 LP subs, 732 plate-solved, drizzle
+2.0/0.5, w 3 3, wFWHM weighting — only the filters varied):
+
+| Run | Filters (round/wFWHM/bkg/stars) | Kept | Core SNR | Outskirts SNR | FWHM | Roundness |
+|---|---|---|---|---|---|---|
+| A | 92 / 95 / off / off | 675 | 27.89 | 2.07 | 5.076″ | 0.8134 |
+| C | 92 / 95 / 98 / off | 665 | 28.12 | 2.09 | 5.073″ | 0.8144 |
+| B | 95 / 95 / 95 / 95 | 660 | 28.66 | 2.14 | 5.086″ | 0.8127 |
+
+Method: Siril `findstar` on each stack, 1,421 unsaturated stars matched by RA/Dec
+in all three (bootstrap CIs on the per-star medians); SNR = mean of the central
+1.5′ minus the 8–14′ annulus median, over the MAD of the 8–20′ sky, on the green
+channel binned 4× (4.75″). Findings:
+
+- **Background on, even for LP:** A → C dropped 10 more frames yet SNR rose
+  0.9–1.1% where −0.7% was expected. wFWHM weighting does not see sky brightness.
+- **Roundness tighter than 95% buys nothing here:** C's stars are 0.27% smaller
+  and +0.003 rounder than B's — detectable, invisible — for ~23 more frames lost.
+  M1's elongation is aligned across the field (axis coherence 0.87–0.90) and worse
+  at the edges (0.85 → 0.77), i.e. in nearly every sub, which a percentile cut
+  cannot remove.
+- **B beats C by 1.9% (core) / 2.5% (outskirts)**; whether that is B's stricter
+  background, its star-count cut, or the frames C drops for roundness was not
+  separated (a `--filter-pct 95 --filter-nbstars 100` run would).
+
+New table (`siril._FILTER_TIERS`): 100–500 → 95/98/98/95 (wFWHM and background
+stay 98 on small sets per the M15 measurement); > 500 → 95 on all four (= run B).
+`is_dual_band` now only picks the Naztronomy label. One target, one rig: revisit
+when a wind-affected target is available, where a tighter roundness cut may pay.
+## Never disturb a running stack *(done 2026-10-20, `feature/stack-in-progress-guard`)*
+
+**The incident.** An import on M1 landed between m110-stack's solve and register
+phases; `archive_run` moved the job dir's live `process/` and the open log into
+`archive/<ts>/` (the log kept filling there — the fd follows the inode). Phase 2's
+`seqapplyreg` found no sequence. BUGS → Processing & curation UX.
+
+**The marker.** `m110-stack --run` writes `.m110-stack.running` (JSON: pid, host,
+started, phase) atomically in the working dir, rewritten at each phase, removed in
+a `finally` — and only by the pid that wrote it, so a refused second run can't
+delete the live run's marker. Leading dot: `config.is_hidden_name` keeps it out of
+every content walk. `roundtrip.stack_in_progress(job_dir)` ignores and deletes a
+stale one (pid dead, or unparseable), so a `kill -9` never locks a sandbox. A marker
+from **another host** can't be probed and counts as live; the refusal names the
+file. **Windows:** `os.kill(pid, 0)` is TerminateProcess there, so `_pid_alive`
+uses `OpenProcess`/`GetExitCodeProcess` — a liveness probe that killed the stack
+would be the worst possible bug here.
+
+**Where it is checked.** `_run_dirs` = sandbox root + every immediate subdir except
+`archive/` (wider than `job_dirs`, which drops the root once a target splits).
+`require_idle` (marker only) gates `apply_import` before its first write and
+`archive_run`. `sandbox_busy` (marker **or** `scratch_recently_active`: `process/`
+or a direct child with mtime in the last 5 min) gates `siril.autoprep`,
+`astrowizard.autoprep` and `siril.prune_rejected` — those are retried next sync, so
+a false positive costs nothing. `scan_finished` reports both on the plan
+(`running`, `scratch_active`) so the dialog decides off the worker thread.
+
+**Why the Siril-GUI heuristic warns instead of blocking.** mtime can't say who
+wrote (the store's never-trust-mtime rule); the commonest moment to import is
+right after a GUI run finishes, exactly when `process/` is freshest; and a long GUI
+stack pass writes nothing there for an hour, so it couldn't be a reliable block
+anyway. The dialog warns and steers cleanup to *Leave as-is*; the user can still
+archive.
+
+**Saying what vanished.** `stacking.scratch_lost(working, seq)` → None while
+`process/<seq>.seq` exists, else a sentence naming the cause and — if an archive
+sweep took it — `archive/<ts>/process/`. Checked on a phase-2 failure against the
+pre-registration sequence and on a phase-3 failure against `r_<seq>` (only if it
+existed when phase 3 started, so a `--restack` with nothing to reuse keeps Siril's
+own error). The `--run` body moved from `main` into `_execute` so the marker could
+wrap it in one `try/finally`.
+## Siril scratch out of archives and backups *(done 2026-10-20, `feature/scratch-out-of-archives`)*
+
+**The finding.** `roundtrip.archive_run` moves everything in a job dir except
+`siril._ARCHIVE_KEEP`, and that set lacked `process/` — so every import filed Siril's
+whole scratch into `archive/<ts>/`, and `backup.scope` (which excludes only linked
+inputs from a sandbox) backed it up at the default tier, live copy included.
+Measured read-only on the live store: **14 GB in 73 archived `process/` dirs, 27 GB
+in 5 live ones**. One archived `m110-stack` scratch (`M1/siril/archive/20261020-085357`)
+was 3.5 GB; BUGS' "converted-sequence cube" (`lights.fit`, 5.9 GB) was the same
+thing — it sits in `archive/<ts>/process/`, so the "cheap structural signal" that
+entry was waiting for was the directory all along.
+
+**Both halves, because each alone is incomplete.**
+* *(a) leave it in place* — `"process"` joins `_ARCHIVE_KEEP` (via the new
+  `config.SANDBOX_SCRATCH`). The tools already own its lifecycle: Naztronomy
+  v2.0.7's start-of-run check finds an old `process/` (or `sessions/`,
+  `final_stack/`) and **asks** "delete them and start fresh?" (No stops the script);
+  `m110-stack` clears it via `clear_scratch` unless `--restack`, which previously
+  could not survive an import at all since the scratch had moved. Cost: a Naztronomy
+  user now sees that prompt on the run after an import. Gain: one copy per job dir
+  instead of keep-N copies, and the stale-`.seq` hazard is already handled by both
+  tools. A scratch-only job dir no longer produces an empty `archive/<ts>/` (and so
+  no retention pass).
+* *(b) exclude it from backups* — alone it would still leave keep-N copies on disk,
+  and (a) alone just moves 3.5 GB from the archive to the live path, which was
+  *already* in scope. `scope._is_sandbox_scratch` excludes, at every tier,
+  `<sandbox>/[<FILTER>/]process/` and `…/[<FILTER>/]archive/<ts>/process/`, where
+  `<ts>` must match `roundtrip.ARCHIVE_TS_RE` (made public for this) — the same
+  containment `prune_archives` uses, so a user's own folder in `archive/` stays in.
+
+**Why a path rule is safe here when BUGS rejected a filename rule.** Every
+finished-output walk already skips `process/` (`siril._SKIP_DIRS`,
+`roundtrip.ROOT_SKIP_DIRS`), so nothing M110 imports, shows or hands off can live
+there; the backup now agrees with what the importer already believed. Not covered:
+an object-dir `Images/<t>/process/` from a mis-pointed Siril cwd (not a sandbox,
+left in scope — fail toward keeping), and Naztronomy's `sessions/` batch scratch
+(still archived; add it to `SANDBOX_SCRATCH` if it shows up at size).
+
+**Existing archives are not touched.** No migration, no store-version bump: the
+on-disk layout is unchanged, old `archive/<ts>/process/` dirs simply stop being
+backed up and leave with their run under keep-N retention. Older snapshots keep
+their copies until backup retention prunes them (`sweep_objects` marks from every
+surviving manifest). A preview-then-confirm "reclaim archived scratch" action was
+considered and left out: retention already bounds it for new stores.
+
+## Quality filters tuned apart + ask before replacing a preset *(done 2026-10-19, `feature/quality-filters`, #174)*
+
+**Why the four filters differ.** Siril (`sequence_filtering.c`) ranks every frame
+on each metric over the full set, cuts at the N% rank, and ANDs the four cutoffs —
+so a percentage drops that share whatever the night, and the drops roughly add
+(combined ÷ Σ individual = 55–90% across six real `m110-stack` logs; table in the
+issue). Roundness carries the weight (M27 StackingWizard tiers: FWHM moved 4.7%,
+eccentricity 37%); wFWHM weighting already covers soft frames; star count is
+redundant with wFWHM (98% cutoffs were 4–17 stars); background tracks altitude, and
+on a dual-band filter its spread is small enough that the cut is near-random.
+
+**One table, two consumers.** `siril.filter_quality_for(n, filt)` →
+`(on, {roundness, fwhm, star_count, bg})`; the preset maps `star_count`/`bg` to
+Naztronomy's `star_count_filter`/`bg_filter`. `m110-stack` keys it on
+`depth_median` (like drizzle and rejection), so a mosaic and its preset disagree by
+design — on a non-mosaic depth = frames. A filter at 100% is left off the
+`seqapplyreg` line. `apply_filter_overrides` layers `--no-filters` → `--filter-pct`
+→ the per-filter flags; a per-filter flag below the 100-frame floor turns filters
+on with the tier's other values.
+
+**Telescope + label.** Read from Naztronomy v2.0.7's `FILTER_OPTIONS_MAP`: Seestar
+S30/S30 Pro/S50 → `No Filter (Broadband)` / `LP (Narrowband)`; Dwarf 3 / Mini →
+`Astro filter (UV/IR)` / `Dual-Band` (its SPCC is `-narrowband` with Hα/OIII
+bandwidths). `_apply_settings` sets the telescope first, which refills the filter
+list, then **silently ignores a label that list lacks** — so a Dwarf preset that
+says S50 loaded as S50 broadband. Device from `calibration.device_for_target` →
+`devices.preset_key`; unknown devices keep the old S50 default. Prep's filter now
+comes from `frame_filter`: the Seestar filename token as a fast path, else the
+header `FILTER` (sanitised — it names a job dir), so Dwarf targets split by filter.
+
+**Asking instead of detecting.** `is_default_preset` matched a preset against the
+generated default at five representative counts; it missed n=500 exactly (drizzle
+flips at ≥500, filters at >500) and would have needed a legacy generator for every
+past default. Replaced by: write only when missing (`apply_prep`); report a
+differing one as a `PresetConflict` (state `differs`); the import UI's done slot
+(`resolve_preset_conflicts`, after the progress dialog closes) shows one dialog per
+import; `apply_preset_choices` archives + writes the ticked ones and records the
+declined proposal's hash in `presets/.m110_declined_preset.json` (state `declined`
+— not asked again until the proposal changes). Naztronomy's Load Presets opens only
+the exact preset name, so `presets/archive/` copies are never loaded by accident.
+No store-version bump: nothing to migrate, both new files are optional.
+
+**Store on day one.** Read-only comparison of the live store's 77 presets against
+the new proposals: 61 identical (the 2026-10-19 rewrite), 14 differ (the six with
+filters off, M76, and hand edits on M13/M16/M27/M57/M64), 2 stale root presets in
+split sandboxes that prep no longer plans.
+
+## Seestar dark rule v2 — sticky mid-run switching *(done 2026-10-19, `feature/seestar-dark-rule-v2`)*
+
+Rule v1 (slice 1, below) assumed the device keeps one dark for a whole target run.
+Re-reading the live store's C 6 subs (read-only) — two long cooling runs that cross
+between library darks — showed it switches mid-run, but not to the nearest dark:
+
+| Run | Switch | At sensor | Off the old dark | To the new dark |
+|---|---|---|---|---|
+| Oct 17, from 19:16 (26.0 °C) | 24.9 → 23.2 | ≈22.1 °C, 20:03 | 2.8 | 1.1 |
+| Oct 17 | 23.2 → 13.9 | ≈16.1 °C, 21:44 | 7.1 | 2.2 |
+| Oct 16, from 20:51 (23.0 °C) | 23.2 → 13.9 | ≈16.3 °C, 21:38 | 6.9 | 2.4 |
+
+At 23.4 °C it still used 24.9 although 23.2 was 0.2 °C away; it held 23.2 down to
+16.6 °C while 13.9 was 2.7 away. Model: keep the current dark while within W of it;
+past W, switch to the nearest dark within W; none → keep. Fit on predicted vs
+observed hot-pixel residue (every 3rd sub):
+
+| Run | v1 RMS | v2 RMS (W = 2.5) |
+|---|---|---|
+| M 72 Oct 15 (one dark existed) | 12.9 | 12.9 |
+| C 6 Oct 15 | 3.1 | 3.1 |
+| C 6 Oct 16 | 56.6 | 5.1 |
+| C 6 Oct 17 | 56.2 | 17.8 |
+
+The Oct 17 remainder is all within minutes of the two switches (single-frame CCD-TEMP
+jitter of ±0.2 °C crosses the threshold early). W ∈ 2.4–2.6, with or without a
+5-frame median, trade the two runs' errors (best pair 10.2 / 9.2) — overfitting
+on three switches, so v2 keeps the plain W = 2.5 per-frame rule. Max gap on the
+switching runs drops from ≈9.6–9.9 °C (v1) to 6.7 °C. Below ≈17 °C neighbouring
+cold darks (13.9 / 10.5) are indistinguishable by residue. Because the rule is
+path-dependent, the session header sample went from ≤8 to ≤48 subs (a sparse sample
+can step over the window and never switch); per-file caching keeps refresh cheap.
+
+## Seestar dark library — slice 1 *(done 2026-10-18, `feature/seestar-darks`)*
+
+Prompted by the S50 firmware starting to keep master darks in
+`<volume>/darklibrary/20s/MasterDark_<N>_<exp>s_<T>C_<local YYYYMMDD-HHMMSS>.fit`
+(first dark 2026-10-15 19:28). Built on the device-level calibration library split
+from `feature/draco` to `main` the same day (`feature/calibration-library`, #168).
+
+**What the masters are.** uint16 1080×1920, `STACKCNT=5`, EXPTIME/GAIN/XBINNING/
+CCD-TEMP, `FILTER='dark'`, `CREATOR='ZWO Seestar S50'`; **no** IMAGETYP, DATE-OBS,
+TELESCOP or BAYERPAT, and a stale WCS from whatever target was being solved. Dark
+level rises 476 → 512 ADU from 7.7 to 24.9 °C; hot-pixel signal doubles every
+≈6.5 °C. The five real masters are committed gzipped in
+`tests/data/seestar_darklibrary/` for the corpus.
+
+**Seestar subs are already dark-subtracted on the device.** Master hot pixels
+(≈330 ADU over their neighbours) are absent from every raw `_sub` frame — including
+2026-10-03 subs from before the library existed. Hence the guard: a library dark is
+never matched for a `darks_applied_on_device` telescope; a user-placed per-target
+`darks/` still wins but warns.
+
+**Which dark a capture got (rule v1).** Measured across 15 target starts of three
+nights of plans (all 20 s, gain 80):
+
+| Start | Target | First-sub °C | Gap to nearest stored dark | New dark? |
+|---|---|---|---|---|
+| 10-15 19:30 | M 72 | 24.8 | none stored | 24.9 |
+| 21:53 | C 6 | 13.6 | 11.3 | 13.9 |
+| 23:53 | C 22 | 10.2 | 3.7 | 10.5 |
+| 10-16 01:31 | M 45 mosaic | 8.4 | 2.1 | — |
+| 04:50 | M 78 | 9.5 | 1.0 | — |
+| 20:51 | C 6 | 23.0 | 1.9 | 23.2 |
+| 22:11 / 00:31 | M 76 / C 22 | 12.4 / 8.8 | 1.5 / 1.7 | — |
+| 10-17 01:55 | M 78 | 7.8 | 2.7 | 7.7 |
+| 03:03 → 10-18 04:01 | six more | 26.0 → 9.9 | 0.6–1.4 | — |
+
+So darks ARE taken mid-plan with no exposure change, at a target start, when the
+nearest stored dark is ≳2 °C away (the 1.9/2.1 cases are within the ≈2 min between
+decision and first sub); never re-evaluated mid-target (M 72 cooled 24.8 → 14.4 °C
+on one dark, hot pixels over-subtracted down to −240 ADU, growing steadily). The
+applied dark fits nearest-temperature, not most-recent (10-17 C 22: 18/18 sampled
+subs fit 10.5 °C over the newer 23.2 °C); below ≈12 °C neighbouring darks differ by
+only ≈8 ADU, so elsewhere it can't be told apart. ZWO documents none of this.
+Re-darking a 13.9 °C M 72 sub (`L + D24.9 − D13.9`) took its residue from −142 to
+−8 ADU — the basis of the ROADMAP re-darking follow-up.
+
+**Design choices.** The link is *derived* (session rows carry `dark_rule: "v1"`) so a
+revised rule re-derives cleanly. Dark times come from the filename because nothing
+else carries them; the one parser (`calibration.device_clock`) is only ever compared
+with the lights' filename clock (same device, both local — no timezone math), and
+temperature corroborates (`confirmed` ≤10 min + ≤1 °C). Runs split only on a 2 h
+device-clock gap, so a cloud pause doesn't look like a new target start. Session
+capture facts come from a ≤8-header sample cached per file in
+`derived/session_headers.json`; master pixel stats are cached by content hash
+(`derived/master_stats.json`). The Devices view is a Tools dialog, not a sixth rail
+page (minimal-chrome vision), read-only over `derived/devices.json`.
+
 ## Fixed bugs & shipped improvements *(archive)*
 
 - [x] **NFS data root: AppleDouble `._` sidecars enumerated as content (#161)**
@@ -2108,20 +2688,20 @@ Per-target paths come from `config.{target,lights,stacks,seestar_stacks,finished
 | `processing.py` | workflow registry (Siril + **AstroWizard** active; PixInsight/others disabled "soon"). `Workflow.importer` names the module owning the workflow's **return** leg, kept separate from `autoprep` because the halves are independent — AstroWizard has no prepare step at all, which is why **`preparing_workflows()`** (not `WORKFLOWS`) backs the Preferences checkboxes; **`workflows_with_output(target)`** answers *which* tool is holding finished work, a question one `ready_for_import` boolean cannot + `run_autoprep` (preference-driven, runs after ingest) + `prepare_missing` (refresh-time/on-demand backfill — creates only *absent* sandboxes, never rewrites existing) + **`reconcile_rejected`** (#110 refresh-time prune of working-folder links for subs excluded since prep, over `_rejected_targets()` — only targets that *have* a `rejected/` tier, so the common store costs one listdir. Kept **separate** from `prepare_missing` on purpose: that one's invariant is "never touches an existing sandbox" and this one exists to touch one, so two functions keep the invariant a true statement rather than one with an exception) |
 | `scan_sessions.py` | scan `Images/<target>/lights/` → `sessions.jsonl` (ported). **Header-driven** (`_session_key`): each sub's `(date, exp, filter)` comes from the Seestar/mosaic **filename** when it matches (fast path, no header read), else from the FITS **header** (`DATE-OBS`/`EXPTIME`/`FILTER`) — so any device's subs (Dwarf 3, …) produce sessions regardless of filename convention. Accepts `.fit`/`.fits`. **Mount mode = the reported `EQMODE` header card** (`_mount_mode`/`_read_eqmode`): Seestar **and** Dwarf 3 both write `EQMODE` (int 1=EQ / 0=Alt-Az, "Equatorial mode"), read once per session-segment; falls back to the legacy `EQ_FROM` date heuristic only when the card is absent (pre-`EQMODE` firmware). The date rule is Mike-Seestar-specific — header truth wins so other users/devices aren't mislabeled |
 | `build_derived.py` | compute totals/priorities/summary/processing/goals → `.m110_internal_data/derived/*.json` (ported). `build_totals` also surfaces **Seestar-stack-only** targets (a `seestar-stacks/` folder with no `lights/` → no sessions) as zero-integration captures, so they're first-class (gallery/status/`targets_for_slug`) — matching what `add_captured_objects` promotes |
-| `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached. **Hero cache keys on source *identity*** (a `hero/<slug>.src` sidecar = source rel-path + `img_hash`), not mtime — so a set-hero to an *older* image re-renders instead of leaving a stale hero (#17). `rebuild_hero(slug)` re-renders one object's hero synchronously (interactive set-hero, no full refresh) |
+| `build_images.py` | thumbnails + heroes + `images.json` into `.m110_internal_data/renders` (ported from build_site/generate_hero); content-hash cached. **Hero cache keys on source *identity*** (a `hero/<slug>.src` sidecar = source rel-path + `img_hash`), not mtime — so a set-hero to an *older* image re-renders instead of leaving a stale hero (#17). `rebuild_hero(slug)` re-renders one object's hero synchronously (interactive set-hero, no full refresh). **Hero = first candidate that decodes**: `_hero_candidates` (frontmatter `hero` → `hero_image` → tiers → every discovered image, FITS included) walked by `_render_first_hero`, so a truncated/placeholder raster falls through instead of leaving no hero; the `.src` sidecar names the file used |
 | `ingest.py` | staging/Seestar scan **plan** (read-only) + gated `apply_ops` (the only writer into the content tree); cancellable. **One deterministic scanner (#32):** all entry points go through the recursive `scan_directory_plan` (`os.walk`, depth-agnostic) — `scan_seestar_plan`/`scan_staging_plan` delegate to it (the old shallow one-level `_scan_base` was retired, it silently missed nested subfolders); the walk logs every dir visited + its layout + pruned subtrees + a final `scan_summary` (`m110` logger → `~/.m110/logs/m110.log`), and `scan_summary(ops)` gives the UI headline counts (objects / to-import / to-holding). Holding area (6c): `scan_holding`/`assign`/`discard_holding` + **`annotate_holding`/`identify_holding`** (#26 aids — per held group, `frame_info` header facts + suggested object [OBJECT header → slug via `_slug_for_object`, else nearest catalog by RA/Dec within `IDENTIFY_TOL_DEG`] + suggested kind [IMAGETYP]). **Per-sub preview import** (#25, default off — `import_sub_previews` setting): the `_sub` branch optionally routes the Seestar's per-sub `.jpg` previews to `Images/<target>/previews/` (new `"preview"` kind) instead of ignoring them. **DwarfLab Dwarf 3** (`dwarf` layout, `_classify_dwarf_dir`, keyed on the `DWARF_RAW_*`/`STARTRAILS_*` session-folder prefix): `.fits` subs → `lights/` (object from `OBJECT` header), in-app `stacked-16_*` + `stacked.jpg` → the `seestar-stacks/` device-stack tier, `Thumbnail/` (added to `_SKIP_DIRS`) + aux rasters (`img_*`, `*_thumbnail`) ignored, **startrails** → `Media/Startrails_{video,photo}/`. `_usable_object` treats `OBJECT` of `''`/`Unknown` as absent → holding area (identify-by-pointing). Loose re-grouped Dwarf FITS fall to `raw-fits` (routed by `OBJECT`) |
-| `roundtrip.py` | **workflow round-trip machinery** (14b) — **`prune_archives`** is the keep-N-latest bound on `archive/<ts>/` (default 3, `processing.archive_keep`), and it is the one place M110 deletes processing history, so it is narrow by construction: `keep<=0` keeps everything, only dirs whose **name** parses as the `%Y%m%d-%H%M%S` stamp are candidates (containment on a recursive delete — the `clear_scratch` lesson, since a user may drop their own folder in `archive/`), ordering is by that name and **never mtime** (copy time lies), and it runs **only** from an `apply_import` that actually archived — never on refresh, never on cleanup="none". It reverses DATA_MODEL's earlier "never automatic" pledge on purpose: archives only accumulate, a real library hit **42 GB across 36 dirs**, and AstroWizard turned one finish into ~2 GB of autosaves. Also here: the half of a processing sandbox that is not about any particular tool: `classify` (directory-first, then the `hints` vocabulary), `same_bytes`/`resolve_import_dest` (keep-both on a content collision), `sandbox_outputs`/`root_outputs`/`finished_outputs`, `scan_finished`, `apply_import`, `archive_run`, `FinishedItem`/`ImportPlan`. What is tool-specific is a **`Sandbox` descriptor**, not a fork — and each field is a real difference the second workflow forced into the open: **`scan_root`** (Siril also claims output left loose in the object dir, the mis-pointed-working-directory recovery; AstroWizard must **not**, because two workflows both claiming loose files is how one tool's importer offers the other's exports), **`loose_fits_kind`** (a loose finished FITS is a *stack* for Siril, which turns frames into one, and a *deliverable* for AstroWizard, which is handed a stack — filing an AW `…_final.fits` under `stacks/` would put a stretched, star-reduced image in the tier `build_derived` reads for STACKCNT/LIVETIME/DATE), **`skip_file`** (the workflow's input is never its output; Siril says that structurally via `lights/` in `skip_dirs`, AstroWizard needs it at file level), **`split_jobs`** and **`archive_keep`**. `root_outputs` skips **every** registered sandbox (`config.SANDBOX_DIRNAMES`) — not tidiness: before it existed, Siril's import offered files Siril never made and `has_unimported_output` went true off another tool's output, which made `autoprep` skip the target |
-| `astrowizard.py` | **the finishing round-trip** (14b) — the thin second consumer of `roundtrip`. **Two tools share this sandbox**, because StackingWizard's whole purpose is to hand off to AstroWizard. It has **no CLI at all** (verified: `argv` in no code object of the shipped 2026.08.22 build, re-verified unchanged in 2026.08.27 — see BUGS.md for the `settings.json` `last_folder` seam) and finds frames by walking the folder it is given — hence **`lights/`**, a hardlink tree like Siril's, built by **`autoprep`/`prepare_lights`** and declared in `SANDBOX_LINKED_INPUTS` (see the +139 GB note there). It writes `<object>_wizardstack.fits` into the sandbox root itself. **`is_master`** recognises that — and returns **False for an autosave**, since AstroWizard names every step after the file it opened so the whole `_AW<n>_` chain carries the master's stem; without that the sweep spared the entire working area. The master is the sandbox's **input**: `archive_keep` spares it and `lights/`, which is what lets one dir hold both halves without re-running the lifetime argument that split `siril/` from `astrowizard/` — a cheap iterated finish can't archive an expensive stable stack, because the stack is never output. Prep is gated on the Preferences checkbox, so that tick now means the same thing for both workflows. Earlier note ("no prepare step:") `stacking.apply_handoff` hardlinks a stack in with a `.src.json` sidecar, and that is the whole of handing work in. **`is_handoff`** keys on the sidecar, never the filename — the user names their own exports, so a stack handed over as `M27_final_stack.fit` would otherwise be offered back to them as a deliverable. **`is_autosave`** (`_AW<n>_`) is the counterpart: the ROADMAP's "AstroWizard's output cannot be recognised by filename" is true of its **exports** (native save dialog, user types the name) and false of its **autosaves**, which are machine-named — and that matters because the chain also emits *rasters*, which are deliverables by default with no hint required (a real M27 finish put a 41 MB `…_AW10_str_dee_sn_in.tif` in the preview beside the two genuine exports). The archive sweep is load-bearing here in a way it isn't for Siril: AW autosaves one file per user action (26 files / 2.02 GB measured), nothing under `astrowizard/` is excluded from backup, and mirrored dedups by *path* — so an un-swept chain lands in full in every future snapshot |
-| `siril.py` | processing-prep **round-trip** (prepare-and-guide). **The import half now lives in `roundtrip.py`** (14b) — `scan_finished`/`apply_import`/`has_unimported_output`/`working_dirs` and the private names the suite reaches for are thin delegations over `siril.SANDBOX`, so the extraction was an internal move rather than an API break. Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset tuned by frame count — drizzle + star-quality filters — and **preserved once hand-edited** via `is_default_preset`, per-filter jobs); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs; never deletes, never escapes `siril/`). **Name-collision = keep-both, content-aware** (`_resolve_import_dest`/`_same_bytes`): a byte-identical incoming file is skipped (true duplicate, dedup against every `<stem>-N` sibling), a *different* same-name file lands as the first free `<stem>-N<ext>` (both kept — never clobbers, never the old silent-skip-then-archive footgun); `has_unimported_output` + the "Ready to import" flag treat a differing same-name file as unimported, and hero pinning follows the name the render actually landed under. **Finished-output discovery = sandbox + object-dir fallback** (`_finished_outputs` = `_sandbox_outputs` ∪ `_root_outputs`): the fallback scans `Images/<target>/` too — skipping the managed tiers/raw inputs/`siril/`/`process/` — so output from a run whose Siril **working directory was mis-set to the object dir** (one level above the sandbox) is still picked up. `working_dirs(target)` = the working dirs to offer "Process in Siril" (per-filter job dirs if split, else the sandbox root; `[]` when no sandbox). **`prune_rejected(target)`** (#110) = the reconcile that makes the `rejected/` tier bite on an *already-prepped* target: `apply_prep` is add-only, so a sub rejected after prep keeps its hardlink and goes on being stacked. Unlinks **only** when that name is present in `rejected/` (a sub that merely vanished from `lights/` may be the last copy — left alone, counted as an orphan), only inside a job's `lights/` (never the archive/presets/calibration), skips a target with un-imported output (`autoprep`'s in-progress guard), and walks `_sandbox_lights_dirs` — wider than `_job_dirs` so it reaches the stale `siril/lights/` a target leaves behind when it becomes multi-filter (BUGS #28) |
+| `roundtrip.py` | **workflow round-trip machinery** (14b) — **the run guard** (2026-10-20): `RUN_MARKER` written by `m110-stack --run`, `stack_in_progress` (stale → deleted), `require_idle` gating `apply_import`/`archive_run`, `sandbox_busy` (marker or recent `process/` writes) gating autoprep/prune — see "Never disturb a running stack". **`prune_archives`** is the keep-N-latest bound on `archive/<ts>/` (default 3, `processing.archive_keep`), and it is the one place M110 deletes processing history, so it is narrow by construction: `keep<=0` keeps everything, only dirs whose **name** parses as the `%Y%m%d-%H%M%S` stamp are candidates (containment on a recursive delete — the `clear_scratch` lesson, since a user may drop their own folder in `archive/`), ordering is by that name and **never mtime** (copy time lies), and it runs **only** from an `apply_import` that actually archived — never on refresh, never on cleanup="none". It reverses DATA_MODEL's earlier "never automatic" pledge on purpose: archives only accumulate, a real library hit **42 GB across 36 dirs**, and AstroWizard turned one finish into ~2 GB of autosaves. Also here: the half of a processing sandbox that is not about any particular tool: `classify` (directory-first, then the `hints` vocabulary), `same_bytes`/`resolve_import_dest` (keep-both on a content collision), `sandbox_outputs`/`root_outputs`/`finished_outputs`, `scan_finished`, `apply_import`, `archive_run`, `FinishedItem`/`ImportPlan`. What is tool-specific is a **`Sandbox` descriptor**, not a fork — and each field is a real difference the second workflow forced into the open: **`scan_root`** (Siril also claims output left loose in the object dir, the mis-pointed-working-directory recovery; AstroWizard must **not**, because two workflows both claiming loose files is how one tool's importer offers the other's exports), **`loose_fits_kind`** (a loose finished FITS is a *stack* for Siril, which turns frames into one, and a *deliverable* for AstroWizard, which is handed a stack — filing an AW `…_final.fits` under `stacks/` would put a stretched, star-reduced image in the tier `build_derived` reads for STACKCNT/LIVETIME/DATE), **`skip_file`** (the workflow's input is never its output; Siril says that structurally via `lights/` in `skip_dirs`, AstroWizard needs it at file level), **`split_jobs`** and **`archive_keep`**. `root_outputs` skips **every** registered sandbox (`config.SANDBOX_DIRNAMES`) — not tidiness: before it existed, Siril's import offered files Siril never made and `has_unimported_output` went true off another tool's output, which made `autoprep` skip the target |
+| `astrowizard.py` | **the finishing round-trip** (14b) — the thin second consumer of `roundtrip`. **Two tools share this sandbox**, because StackingWizard's whole purpose is to hand off to AstroWizard. It has **no CLI at all** (verified: `argv` in no code object of the shipped 2026.08.22 build, re-verified unchanged through 2026.10.31 — see BUGS.md for the running log and the `settings.json` `last_folder` seam) and finds frames by walking the folder it is given — hence **`lights/`**, a hardlink tree like Siril's, built by **`autoprep`/`prepare_lights`** and declared in `SANDBOX_LINKED_INPUTS` (see the +139 GB note there). It writes `<object>_wizardstack.fits` into the sandbox root itself — and since its 2026-08-31 mono support, **one per filter**, plus `_mosaic_wizardstack_<n>f.fits` for an assembled mosaic and `_combined_wizardstack.fits` for a multi-night combine. **`is_master`** matches all of them because `MASTER_TOKEN` is a **substring** test on the stem, not an anchored one — which is why the per-filter fan-out needed no code change; keep it that way. (Its `<master>_receipts.txt` sidecar is `.txt`, in neither `_RASTER_EXTS` nor `_FIT_EXTS`, so it never reaches the import preview.) `is_master` returns **False for an autosave**, since AstroWizard names every step after the file it opened so the whole `_AW<n>_` chain carries the master's stem; without that the sweep spared the entire working area. The master is the sandbox's **input**: `archive_keep` spares it and `lights/`, which is what lets one dir hold both halves without re-running the lifetime argument that split `siril/` from `astrowizard/` — a cheap iterated finish can't archive an expensive stable stack, because the stack is never output. Prep is gated on the Preferences checkbox, so that tick now means the same thing for both workflows. Earlier note ("no prepare step:") `stacking.apply_handoff` hardlinks a stack in with a `.src.json` sidecar, and that is the whole of handing work in. **`is_handoff`** keys on the sidecar, never the filename — the user names their own exports, so a stack handed over as `M27_final_stack.fit` would otherwise be offered back to them as a deliverable. **`is_autosave`** (`_AW<n>_`) is the counterpart: the ROADMAP's "AstroWizard's output cannot be recognised by filename" is true of its **exports** (native save dialog, user types the name) and false of its **autosaves**, which are machine-named — and that matters because the chain also emits *rasters*, which are deliverables by default with no hint required (a real M27 finish put a 41 MB `…_AW10_str_dee_sn_in.tif` in the preview beside the two genuine exports). The archive sweep is load-bearing here in a way it isn't for Siril: AW autosaves one file per user action (26 files / 2.02 GB measured), nothing under `astrowizard/` is excluded from backup, and mirrored dedups by *path* — so an un-swept chain lands in full in every future snapshot |
+| `siril.py` | processing-prep **round-trip** (prepare-and-guide). **The import half now lives in `roundtrip.py`** (14b) — `scan_finished`/`apply_import`/`has_unimported_output`/`working_dirs` and the private names the suite reaches for are thin delegations over `siril.SANDBOX`, so the extraction was an internal move rather than an API break. Prepare: `plan_prep`/`apply_prep` arrange a contained `Images/<target>/siril/` sandbox (literal `lights/` hardlinks, Naztronomy preset tuned by frame count — drizzle + the four frame-selection filters tuned apart (`filter_quality_for`, #174) — with telescope + filter label by device (`naztronomy_scope`); written only where missing, a differing one reported as a `PresetConflict` and replaced only via `apply_preset_choices`; per-filter jobs, filter read from the header via `frame_filter`); `autoprep` runs it automatically after ingest (skips targets with pending finished output). Import: `has_unimported_output`/`scan_finished`/`apply_import` copy renders→`finished/` + stack→`stacks/`, optionally set hero (or keep current), then **archive** the run into `siril/[<FILTER>/]archive/<ts>/` (keeps `lights/`+preset ready for re-runs, and leaves Siril's `process/` scratch in place — `config.SANDBOX_SCRATCH`; never deletes, never escapes `siril/`). **Name-collision = keep-both, content-aware** (`_resolve_import_dest`/`_same_bytes`): a byte-identical incoming file is skipped (true duplicate, dedup against every `<stem>-N` sibling), a *different* same-name file lands as the first free `<stem>-N<ext>` (both kept — never clobbers, never the old silent-skip-then-archive footgun); `has_unimported_output` + the "Ready to import" flag treat a differing same-name file as unimported, and hero pinning follows the name the render actually landed under. **Finished-output discovery = sandbox + object-dir fallback** (`_finished_outputs` = `_sandbox_outputs` ∪ `_root_outputs`): the fallback scans `Images/<target>/` too — skipping the managed tiers/raw inputs/`siril/`/`process/` — so output from a run whose Siril **working directory was mis-set to the object dir** (one level above the sandbox) is still picked up. `working_dirs(target)` = the working dirs to offer "Process in Siril" (per-filter job dirs if split, else the sandbox root; `[]` when no sandbox). **`prune_rejected(target)`** (#110) = the reconcile that makes the `rejected/` tier bite on an *already-prepped* target: `apply_prep` is add-only, so a sub rejected after prep keeps its hardlink and goes on being stacked. Unlinks **only** when that name is present in `rejected/` (a sub that merely vanished from `lights/` may be the last copy — left alone, counted as an orphan), only inside a job's `lights/` (never the archive/presets/calibration), skips a target with un-imported output (`autoprep`'s in-progress guard), and walks `_sandbox_lights_dirs` — wider than `_job_dirs` so it reaches the stale `siril/lights/` a target leaves behind when it becomes multi-filter (BUGS #28) |
 | `stacking.py` | **headless Siril stacking** (`m110-stack`; port of the Astronomy `siril_stack.py`, Qt-free). Reproduces the Naztronomy command sequence through `siril-cli` plus settings its GUI doesn't expose — rejection by depth, overlap norm, noise weighting, Rice compression on intermediates. Every emitted command is stock Siril 1.4; only the *choice* of settings is ours. **Two-phase, and the split is load-bearing:** `build_plan(dir, Overrides(), deep_measure=)` measures and proposes and **writes nothing** — `deep_measure=False` further skips the only two enrichments that shell out to Siril (the local-Gaia probe, `measure_fwhm_by_exposure`), which is what lets the assistant's `plan_stack` be genuinely read-only; `run_siril` executes, reached only from `main`. **Execution is three Siril invocations — solve · apply registration · stack — and the seams are the fix, not a tidy-up:** Siril can fail the whole *script* on a partial `seqplatesolve` ("Finalizing sequence processing failed") while having already computed the astrometric registration and written it into the `.seq` — so a single script threw away work that was on disk and usable. **Not every partial solve does this, and the count is not what decides**: M27 lost 76 of 2312 and finished fine; M81/LP died losing 98 of 221 *and again losing 1 of 114* — that one being frame #1, the sequence reference. *"Reference image was not platesolved, changing reference"* is in both failing logs and neither passing one. The split does not depend on that being exactly right — phase 1 ends before registration either way. **`clear_scratch`** is the other half of the same lesson: `process/` survives a failed run by design and Siril **will not rebuild an existing `.seq`**, so a re-run inherited the previous run's derived sequences and `unselect` applied to `lights_` alone — `--exclude-night` silently stacked the night it was told to drop, while the proposal printed the reduced count. Cleared at the start of every run but `--restack`. `build_ssf_solve` therefore stops at the solve, `build_ssf_apply` is a fresh process that reads the sequence back and registers the solved subset (**`-filter-included` is load-bearing** — without it Siril builds its filter from the quality percentiles alone and plans to register frames that have no solution, thresholds computed over the unsolved population), and `build_ssf_stack` is unchanged. `parse_solve_log`/`failures_by_night` then attribute the failures to the **night** each frame came from — sequence index N is `read_frames()[N-1]`, since `link` ingests `lights/` in the same sorted order — because solve failures cluster by session, so the named night is one `--exclude-night` away from a clean re-run. `--min-solved` (default 25%) is the line between "a bad night" and "a broken setup"; a spread of failures across every night is itself the signal for the latter. **This is the one place M110 drives Siril rather than guiding to it** — see the amended processing-model decision in ROADMAP. **Coverage depth, not frame count**, drives drizzle + rejection (a mosaic's depth is far below its frame count). `resolve_input` takes a directory *or* a bare capture-folder name, which is what lets `plan_stack` hand back a runnable command with no absolute path in it (`serialize` relativizes a `Path`, but a path formatted into a string sails straight through). **`apply_handoff(stack, tool)`** hardlinks a finished stack into `Images/<target>/<tool>/` with a `.src.json` provenance sidecar built from the stack's own `DATE`/`STACKCNT`/`LIVETIME` header cards — never mtime (ingest and import both copy bytes, so mtime is copy time and lies) and never a content hash (expensive, no extra certainty). All three Siril spawns pass `launch._child_env()`; a source-scanning test enforces it, because the leak only bites a **frozen** build and a dev run can't reproduce it. **`handoff_candidates(target)`** (14a) = the stacks that could be handed over, across `stacks/` + `seestar-stacks/` + a fresh result still in the Siril sandbox, newest-stacked first; `_candidate_paths` is the header-free half so the detail pane's per-render "is there anything?" costs one listdir (2ms vs 86ms on a 47-stack target). **`_is_stretched`** reads the stack's **HISTORY cards** to say whether it is still linear — filename is a convention, HISTORY is a fact the pipeline recorded, and on a real library `stacks/` holds `_og`, `_denoise` and `_finished` side by side where only the header separates them (`_denoise` sounds like a linear step and carries "VeraLux Stretch" three entries back). Only *stretches* disqualify: background extraction, plate solve, SPCC, deconvolution and denoise all leave the data linear |
-| `launch.py` | **external-app launcher** (#19 "Process in…" / "Open In…", Qt-free). Starts a processing/viewer tool and gets out of the way — never controls it. `_TOOLS` also registers **StackingWizard** (`workdir_args=[]`, no `file_args` — it takes no arguments at all, so M110 can start it and nothing more; `widgets.stack_in_stackingwizard` reveals the sandbox so the folder chooser opens on the right place). **`launch_with_file`/`opens_file`/`file_exts`** hand a tool one file (`file_args` in the spec, derived predicates so callers ask rather than hardcode): AstroWizard's 2026-08-18 release reads `sys.argv[1]` and accepts `.fits/.fit/.tiff/.tif/.xisf` — verified in the shipped 2026.08.21 bytecode — which retires the old note that nothing could route a file to it. It is **not** `CFBundleDocumentTypes` (its Info.plist declares none) nor `::tk::mac::OpenDocument`, so Finder "Open With" and Dock drops (both `odoc` Apple events) are not the route; appending the path to a **cold** `open -a … --args` is, with the same already-running caveat as Siril's `-d`. `find_app(tool_id)` = user override (`external_app_paths` setting) → OS-standard locations (macOS `/Applications/Siril.app/Contents/MacOS/siril`, Linux `siril`/`siril-cli` via `which`, Windows Program Files) → `None`; `launch_processing(tool_id, working_dir)` builds the tool's working-dir argv (Siril `-d <dir>`): **macOS** goes through `_launch_macos` (`/usr/bin/open -a <Siril.app bundle> --args -d <dir>` — LaunchServices makes Siril its own *responsible process* so its hardened bundled Python can spawn; see the gotcha), **elsewhere** `_spawn`s the binary detached; both with a sanitized `_child_env()` (strips our `VIRTUAL_ENV`/`PYTHON*`/PyInstaller `_MEI*` + bundled-Qt plugin paths `QT_PLUGIN_PATH`/`QML*_IMPORT_PATH` + restores bundle libpaths) so a launched tool's own Python **and Qt** aren't poisoned by ours. `LaunchError` when not found / spawn fails. `_TOOLS` registry (**Siril + AstroWizard**); `tool_ids`/`sets_working_dir` let callers enumerate and ask rather than hardcode — AstroWizard registers no `CFBundleDocumentTypes` **and** no URL types, so nothing can hand it a file (`open -a AstroWizard <file>` opens the app and ignores the file), which is why its `workdir_args` is `[]` and the handoff flow reveals the folder as the primary affordance rather than a fallback. The UI (`ui/widgets.process_in_siril`) falls back to revealing the folder on `LaunchError` |
+| `launch.py` | **external-app launcher** (#19 "Process in…" / "Open In…", Qt-free). Starts a processing/viewer tool and gets out of the way — never controls it. `_TOOLS` also registers **StackingWizard** (`workdir_args=[]`, no `file_args` — it takes no arguments at all, so M110 can start it and nothing more; `widgets.stack_in_stackingwizard` reveals the sandbox so the folder chooser opens on the right place). **`launch_with_file`/`opens_file`/`file_exts`** hand a tool one file (`file_args` in the spec, derived predicates so callers ask rather than hardcode): AstroWizard's 2026-08-18 release reads `sys.argv[1]` and accepts `.fits/.fit/.tiff/.tif/.xisf` — verified in the shipped 2026.08.21 bytecode — which retires the old note that nothing could route a file to it. It is **not** `CFBundleDocumentTypes` (its Info.plist declares none) nor `::tk::mac::OpenDocument`, so Finder "Open With" and Dock drops (both `odoc` Apple events) are not the route — **true as of the 2026.10.07 build, and scoped to it on purpose:** AstroWizard's 2026-10-31 release notes claim you can now drop a FITS/TIFF/XISF on its Dock icon or open one from the Finder, which would make `odoc` a real route and is worth re-checking against the bundle before relying on either path; appending the path to a **cold** `open -a … --args` is, with the same already-running caveat as Siril's `-d`. `find_app(tool_id)` = user override (`external_app_paths` setting) → OS-standard locations (macOS `/Applications/Siril.app/Contents/MacOS/siril`, Linux `siril`/`siril-cli` via `which`, Windows Program Files) → `None`; `launch_processing(tool_id, working_dir)` builds the tool's working-dir argv (Siril `-d <dir>`): **macOS** goes through `_launch_macos` (`/usr/bin/open -a <Siril.app bundle> --args -d <dir>` — LaunchServices makes Siril its own *responsible process* so its hardened bundled Python can spawn; see the gotcha), **elsewhere** `_spawn`s the binary detached; both with a sanitized `_child_env()` (strips our `VIRTUAL_ENV`/`PYTHON*`/PyInstaller `_MEI*` + bundled-Qt plugin paths `QT_PLUGIN_PATH`/`QML*_IMPORT_PATH` + restores bundle libpaths) so a launched tool's own Python **and Qt** aren't poisoned by ours. `LaunchError` when not found / spawn fails. `_TOOLS` registry (**Siril + AstroWizard**); `tool_ids`/`sets_working_dir` let callers enumerate and ask rather than hardcode — AstroWizard registers no `CFBundleDocumentTypes` **and** no URL types, so nothing can hand it a file (`open -a AstroWizard <file>` opens the app and ignores the file), which is why its `workdir_args` is `[]` and the handoff flow reveals the folder as the primary affordance rather than a fallback. The UI (`ui/widgets.process_in_siril`) falls back to revealing the folder on `LaunchError` |
 | `hints.py` | **finished / intermediate filename hints** (#17) — the single, user-editable vocabulary deciding whether a filename marks a *finished* deliverable vs an *intermediate* by-product. Case-insensitive substring keywords (defaults `processed/final/finished` + `starless/starmask`), persisted in `settings.json` under `finished_hints`, read live. `is_finished_name`/`is_intermediate_name` + `get_hints`/`set_hints`. **Three consumers** draw from it (replacing their old hardcoded regexes, the source of stranger-file misclassification): `siril._classify` (import finished work), `ingest._is_finished_raster` (loose finished-render recognizer), `build_images._is_intermediate_fit` (hero-tier selection). Edited in Preferences |
 | `objects.py` | per-object journal read **and write** (`Objects/<id>/journal.md`: `read_journal` frontmatter+body, `read_journal_text`/`write_journal` raw, `set_frontmatter_key` upsert for hero, `get/set_frontmatter_list` for JSON-array keys); **per-image curation** (#17) `get_curation`/`set_curation` (filename→`"finished"`\|`"working"` overrides in `finished_extra`/`working_extra` frontmatter, one list each); slug→id folder name; hero path |
-| `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync) |
+| `refresh.py` | `run_refresh()` = scan_sessions → build_derived → build_images (the UI refresh worker also runs `processing.prepare_missing` so missing working folders self-heal on any sync); `should_cancel` stops it at safe points (`RefreshCancelled`) — derived is computed in memory (`build_derived.compute`) and written with `sessions.jsonl` only after the last one |
 | `logsetup.py` | **application logging** (Qt-free; the beta crash-reporting arc). `setup_logging()` (idempotent) configures the `m110` logger with a `RotatingFileHandler` at `~/.m110/logs/m110.log` (+ stderr); `log_path`/`read_log_tail` surface it in the crash report. Called first thing in `main()` |
 | `media.py` | **read** non-catalog media (Qt-free; backs the Media page). `list_media()` = one flat `MediaItem` list, **recursive** (`os.walk`) with **kind decided per file by extension** — so `Video_Stacked_*.jpg`/`.fit` sitting in a `_video/` folder, and whole processing-output subtrees (`ASIVideoStack_Output/`), are surfaced instead of hidden by the old shallow, folder-suffix-gated `scan()` (the depth-agnostic lesson `ingest.scan_directory_plan` already learned). `is_sidecar` = the one `_thn.` definition (shared with `ingest`); **a video's `<stem>_thn.jpg` is content, a photo's is a duplicate** — that asymmetry drives everything else here. `poster_for` = the tiered still resolver (video→sibling sidecar · Qt-decodable photo→itself · FITS→`build_images.make_thumb` into `config.MEDIA_RENDERS_DIR`), ordered so a decoded frame-grab tier can slot in without reshaping callers. `cleanup_candidates`/`discard` = the sidecar/junk cleanup; `discard` **recomputes** the candidate set and re-checks containment, so a stale UI selection can never delete a live poster. `captured` = the filename timestamp, display ordering only |
 | `webexport.py` | **size-budgeted image export for web sharing** (`feature/image-export`, Qt-free). `export_for_sharing(src, dest, *, strategy=, max_bytes=None)` writes the best-quality file that fits an **optional** byte budget: **lossless** = optimized PNG → (only if a max is set and over it) binary-search the long edge (Lanczos) for the largest lossless PNG that fits (optional `pyoxipng` on the winner; floor `MIN_LONG_EDGE`, else `ExportError`); **quality** = full-res JPEG (`subsampling=0` 4:4:4, baseline — progressive tripped libjpeg on incompressible frames). **`max_bytes=None` = no maximum** (full-res PNG/JPEG, no ladder). Reuses `build_images._open_image` (FITS/float-TIF percentile-stretched to 8-bit RGB) so exports match the app render — which folds the 16→8-bit reduction in for free (a 30 MB 16-bit finished PNG lands ~11 MB at full res). Output format deterministic from the strategy (lossless→PNG, quality→JPEG); `suggested_name`=`[Object]-[maxsize]-[YYYYMMDD].[ext]`; `SAFETY_MARGIN` headroom; byte-identical originals copy verbatim (fast path). External-folder output → no `.store_version` impact. *(No site presets — a bare max-size + No-maximum control, per user feedback)* |
-| `backup/` | **Library backup engine** (item 10; Qt-free package). Dated snapshots to a user-chosen destination *outside* the store → no `.store_version` impact. A destination is a folder **or an `s3://bucket/prefix`** (#93); `destination.parse_destination` is the one place that's decided, and above the seam nothing joins paths itself — **only `LocalBackend` knows what a filesystem is**. **Two formats, both always readable at one destination** (`formats.py`): **mirrored** (default) and **pooled**; resolution is destination-first (what's already there → the local slot's `format` pref → *unless* the FS can't hardlink, then pooled, and the app persists that — detect, don't ask). Object storage forces pooled and **doesn't persist it** — the format pref belongs to the local slot, and a bucket says nothing about the user's external drive. Namespaces are provably disjoint (mirrored dirs parse as a timestamp, `objects/`/`snapshots/`/`latest/` never will) so they coexist with no flag day, no conversion, and no stranded backup. Modules: `errors` (+ **`BackupDepsMissing`** / `deps_missing_message`, build-aware like `catalog._astroquery_missing_message`) · `options` (value types + `SETTING_*`, leaf; **`SnapshotRef`** = destination+key, the handle for a snapshot with no filesystem path, and `SnapshotInfo.path` is now `| None`, deliberately not faked with a pseudo-path) · `scope` (`is_excluded`/`iter_source_files` — a **denylist**: skips `derived/`/`renders/`/`sessions.jsonl`/`assistant/` + a workflow sandbox's **linked inputs** only (the `config.SANDBOX_LINKED_INPUTS` hardlink trees — `siril/lights/`, `siril/<FILTER>/lights/`, calibration), so new authored data is captured without an allowlist to maintain. **Not** the whole sandbox: `archive/<ts>/` runs, presets and exports are hours of hand-work nothing regenerates, and the deliverable imported to `finished/` doesn't carry its intermediates. The two errors are silent in opposite directions — keeping the link trees in costs **+139 GB on a 186 GB library** (mirrored dedups by *path*, so a link is a second full copy) and buys nothing; leaving the work out costs 39 GB of authored history the user misses only when they want it back. **Tiers** (#93) layer on top: `everything` (default, unchanged) vs **`essentials`**, which also drops the raw-frame tiers (`lights/`/`rejected/`/`previews/`) *and* sandbox `archive/<ts>/` runs — the latter despite being authored work, because they're bounded and disposable by the app's own keep-N policy and one real library hit 42 GB of them. Recorded per snapshot (`SnapshotInfo.scope`; **`None` = written before tiers = everything**) so a restore can say what a backup didn't contain) · `destination` (**`Destination`/`parse_destination`** — only a known scheme makes a destination remote, so a Windows drive letter can't parse as one, and **`__fspath__` raises for a bucket** rather than inventing `s3:/bucket/prefix`, which is what makes a not-yet-migrated call site fail loudly; + `store_backup_root`, `backup_root_key`, `supports_hardlinks`, `free_bytes` — no format imports, so both formats build on it) · `backends/` (the storage seam pooled writes through: put/get/exists/list/delete + `link` for `latest/`; `LocalBackend` + `MemoryBackend` (ships — reference impl *and* the conformance-suite double) + **`S3Backend`**, registry-shaped like `publish.PUBLISHERS`. **`object_sizes()` enumerates the whole store once per run** — 100k per-file `exists()` calls are minutes of latency over SMB and one paginated LIST on S3) · **`backends/s3`** (boto3 with **`endpoint_url`** — the point, not a nicety: B2/R2/Wasabi are where the money argument works. Secret in the **OS keyring**, access key id in settings (an identifier, not a secret — the UI must show which key is configured); with neither set, boto3's own chain applies. `capabilities()` drives three behaviours elsewhere: no `latest/`, min-free retention skipped, and **`cheap_list=False` → shallow verify**. `_client_config` pins **`request_checksum_calculation="when_required"`** (botocore ≥1.36 attaches `x-amz-checksum-crc32` to every PUT and several S3-compatible services reject it) and **path-style addressing whenever a custom endpoint is set**, both guarded so an older botocore degrades instead of raising. `_transfer_config` returns None without boto3 — which is what lets the conformance suite run the real adapter against an **injected fake client**, with no AWS SDK and no network) · `hashcache` (sqlite in `~/.m110`, keyed `(path,size,mtime_ns,inode,dev)`; a **miss is always safe**, a stale hit is caught by cross-checking the stored object's size; degrades to plain hashing if sqlite won't open) · **`mirrored`** (`<dest>/M110-Backups/<store>/<ts>/` full browsable trees, unchanged files `os.link`ed to the prior snapshot; byte-only copy (`.part`+`os.replace`, mtime-preserved); per-snapshot `.m110-backup-manifest.json` `{rel:{size,mtime,sha256}}`; atomic `.incomplete`→rename. **Local-only by definition** — it *is* directories and hardlinks. **Kept as the default because a snapshot needs no software to restore**) · **`pooled`** (`objects/ab/cd/<sha256>` mode 0444 + `snapshots/<ts>.json.gz`; per-file manifest entries byte-identical to mirrored, so verify/expand/preview/tree-build don't branch. **Invariant: a manifest exists ⇒ every object it names exists** — written last, which is also why a cancelled first sync resumes free. **`_resolve(ref)`** is the whole of how this format became destination-agnostic: a `SnapshotInfo`/`SnapshotRef` resolves via `backend_for`, a bare `Path` resolves exactly as it always did — which is why the de-Path refactor was not an API break. `_upload_pool`/`_drain` fan uploads out at `Capabilities.parallel_puts` (hashing stays serial — the hash cache isn't thread-safe) and **drain before the manifest write**, which is what keeps the invariant true once uploads run concurrently. **`verify(deep=)`** defaults to the destination's `cheap_list`: full re-hash locally, presence-and-size from one LIST on a bucket, because a deep verify over the internet is a full download with the egress bill to match — the result reports which ran and callers must not claim otherwise) · `recovery` (`latest/` diff-relinked hardlink tree + `INDEX.tsv` + `latest-manifest.json.gz` + a stdlib-only `restore.py` and `README.txt` written *into* the backup root — `objects/` alone is hash-named blobs, so the way back travels with the data; on a bucket `latest/` is simply absent, the rest still written) · `retention` (cross-format `apply_retention` + **`sweep_objects`** mark-and-sweep with a **24h grace window** on object mtime — that, not a lock, is what makes GC safe against a concurrent run; count + min-free, oldest-first, never the last one; no age policy by design — it would wipe history after a vacation. Marking from *every surviving manifest* is also what makes a scope narrowing safe: dropped frames stay referenced until the wider snapshots are pruned. **min-free is skipped where `free_bytes is None`** — a 0 reading on a bucket would prune a cloud history to one snapshot per run) · `probe` (**`probe_destination`** → `DestinationInfo`, the pre-flight capability + resolved-format answer for the UI; read-only — creates nothing, persists nothing, leaves no probe files. For a bucket, `ensure_root()` *is* the reachability check, since there are no directories to create) · **`slots`** (the Local + Cloud slots: `backup_destinations` dict in settings, `SlotSettings` per slot, legacy flat-key read, `update_slot` read-modify-write so no writer clobbers fields it doesn't own, `record_backup` stamps `last_backup_at`) · `schedule` (`options_from_settings(slot)`/`due_for_auto_backup(slot)` launch check / `due_for_scheduled_backup` hourly-tick daily 02:00, interval as min-age guard; a cloud destination is taken on trust rather than probed — due-ness is a question about *time*, and a reachability round-trip at every launch and hourly tick is a timeout, not an answer, on a laptop that's offline). `__init__` is the façade (+ a process-wide run lock: the dialog's "Back up now" worker and the window's scheduled worker don't know about each other) — import `m110.backup` and use the re-exports |
+| `backup/` | **Library backup engine** (item 10; Qt-free package). Dated snapshots to a user-chosen destination *outside* the store → no `.store_version` impact. A destination is a folder **or an `s3://bucket/prefix`** (#93); `destination.parse_destination` is the one place that's decided, and above the seam nothing joins paths itself — **only `LocalBackend` knows what a filesystem is**. **Two formats, both always readable at one destination** (`formats.py`): **mirrored** (default) and **pooled**; resolution is destination-first (what's already there → the local slot's `format` pref → *unless* the FS can't hardlink, then pooled, and the app persists that — detect, don't ask). Object storage forces pooled and **doesn't persist it** — the format pref belongs to the local slot, and a bucket says nothing about the user's external drive. Namespaces are provably disjoint (mirrored dirs parse as a timestamp, `objects/`/`snapshots/`/`latest/` never will) so they coexist with no flag day, no conversion, and no stranded backup. Modules: `errors` (+ **`BackupDepsMissing`** / `deps_missing_message`, build-aware like `catalog._astroquery_missing_message`) · `options` (value types + `SETTING_*`, leaf; **`SnapshotRef`** = destination+key, the handle for a snapshot with no filesystem path, and `SnapshotInfo.path` is now `| None`, deliberately not faked with a pseudo-path) · `scope` (`is_excluded`/`iter_source_files` — a **denylist**: skips `derived/`/`renders/`/`sessions.jsonl`/`assistant/` + a workflow sandbox's **linked inputs** (the `config.SANDBOX_LINKED_INPUTS` hardlink trees — `siril/lights/`, `siril/<FILTER>/lights/`, calibration) + its tool **scratch** (`config.SANDBOX_SCRATCH` — Siril's `process/`, live or in `archive/<ts>/`, every tier), so new authored data is captured without an allowlist to maintain. **Not** the whole sandbox: `archive/<ts>/` runs, presets and exports are hours of hand-work nothing regenerates, and the deliverable imported to `finished/` doesn't carry its intermediates. The two errors are silent in opposite directions — keeping the link trees in costs **+139 GB on a 186 GB library** (mirrored dedups by *path*, so a link is a second full copy) and buys nothing; leaving the work out costs 39 GB of authored history the user misses only when they want it back. **Tiers** (#93) layer on top: `everything` (default, unchanged) vs **`essentials`**, which also drops the raw-frame tiers (`lights/`/`rejected/`/`previews/`) *and* sandbox `archive/<ts>/` runs — the latter despite being authored work, because they're bounded and disposable by the app's own keep-N policy and one real library hit 42 GB of them. Recorded per snapshot (`SnapshotInfo.scope`; **`None` = written before tiers = everything**) so a restore can say what a backup didn't contain) · `destination` (**`Destination`/`parse_destination`** — only a known scheme makes a destination remote, so a Windows drive letter can't parse as one, and **`__fspath__` raises for a bucket** rather than inventing `s3:/bucket/prefix`, which is what makes a not-yet-migrated call site fail loudly; + `store_backup_root`, `backup_root_key`, `supports_hardlinks`, `free_bytes` — no format imports, so both formats build on it) · `backends/` (the storage seam pooled writes through: put/get/exists/list/delete + `link` for `latest/`; `LocalBackend` + `MemoryBackend` (ships — reference impl *and* the conformance-suite double) + **`S3Backend`**, registry-shaped like `publish.PUBLISHERS`. **`object_sizes()` enumerates the whole store once per run** — 100k per-file `exists()` calls are minutes of latency over SMB and one paginated LIST on S3) · **`backends/s3`** (boto3 with **`endpoint_url`** — the point, not a nicety: B2/R2/Wasabi are where the money argument works. Secret in the **OS keyring**, access key id in settings (an identifier, not a secret — the UI must show which key is configured); with neither set, boto3's own chain applies. `capabilities()` drives three behaviours elsewhere: no `latest/`, min-free retention skipped, and **`cheap_list=False` → shallow verify**. `_client_config` pins **`request_checksum_calculation="when_required"`** (botocore ≥1.36 attaches `x-amz-checksum-crc32` to every PUT and several S3-compatible services reject it) and **path-style addressing whenever a custom endpoint is set**, both guarded so an older botocore degrades instead of raising. `_transfer_config` returns None without boto3 — which is what lets the conformance suite run the real adapter against an **injected fake client**, with no AWS SDK and no network) · `hashcache` (sqlite in `~/.m110`, keyed `(path,size,mtime_ns,inode,dev)`; a **miss is always safe**, a stale hit is caught by cross-checking the stored object's size; degrades to plain hashing if sqlite won't open) · **`mirrored`** (`<dest>/M110-Backups/<store>/<ts>/` full browsable trees, unchanged files `os.link`ed to the prior snapshot; byte-only copy (`.part`+`os.replace`, mtime-preserved); per-snapshot `.m110-backup-manifest.json` `{rel:{size,mtime,sha256}}`; atomic `.incomplete`→rename. **Local-only by definition** — it *is* directories and hardlinks. **Kept as the default because a snapshot needs no software to restore**) · **`pooled`** (`objects/ab/cd/<sha256>` mode 0444 + `snapshots/<ts>.json.gz`; per-file manifest entries byte-identical to mirrored, so verify/expand/preview/tree-build don't branch. **Invariant: a manifest exists ⇒ every object it names exists** — written last, which is also why a cancelled first sync resumes free. **`_resolve(ref)`** is the whole of how this format became destination-agnostic: a `SnapshotInfo`/`SnapshotRef` resolves via `backend_for`, a bare `Path` resolves exactly as it always did — which is why the de-Path refactor was not an API break. `_upload_pool`/`_drain` fan uploads out at `Capabilities.parallel_puts` (hashing stays serial — the hash cache isn't thread-safe) and **drain before the manifest write**, which is what keeps the invariant true once uploads run concurrently. **`verify(deep=)`** defaults to the destination's `cheap_list`: full re-hash locally, presence-and-size from one LIST on a bucket, because a deep verify over the internet is a full download with the egress bill to match — the result reports which ran and callers must not claim otherwise) · `recovery` (`latest/` diff-relinked hardlink tree + `INDEX.tsv` + `latest-manifest.json.gz` + a stdlib-only `restore.py` and `README.txt` written *into* the backup root — `objects/` alone is hash-named blobs, so the way back travels with the data; on a bucket `latest/` is simply absent, the rest still written) · `retention` (cross-format `apply_retention` + **`sweep_objects`** mark-and-sweep with a **24h grace window** on object mtime — that, not a lock, is what makes GC safe against a concurrent run; count + min-free, oldest-first, never the last one; no age policy by design — it would wipe history after a vacation. Marking from *every surviving manifest* is also what makes a scope narrowing safe: dropped frames stay referenced until the wider snapshots are pruned. **min-free is skipped where `free_bytes is None`** — a 0 reading on a bucket would prune a cloud history to one snapshot per run) · `probe` (**`probe_destination`** → `DestinationInfo`, the pre-flight capability + resolved-format answer for the UI; read-only — creates nothing, persists nothing, leaves no probe files. For a bucket, `ensure_root()` *is* the reachability check, since there are no directories to create) · **`slots`** (the Local + Cloud slots: `backup_destinations` dict in settings, `SlotSettings` per slot, legacy flat-key read, `update_slot` read-modify-write so no writer clobbers fields it doesn't own, `record_backup` stamps `last_backup_at`) · `schedule` (`options_from_settings(slot)`/`due_for_auto_backup(slot)` launch check / `due_for_scheduled_backup` hourly-tick daily 02:00, interval as min-age guard; a cloud destination is taken on trust rather than probed — due-ness is a question about *time*, and a reachability round-trip at every launch and hourly tick is a timeout, not an answer, on a laptop that's offline). `__init__` is the façade (+ a process-wide run lock: the dialog's "Back up now" worker and the window's scheduled worker don't know about each other) — import `m110.backup` and use the re-exports |
 | `planning.py` | **session-planning engine** (ROADMAP item 1; astropy, lazy-imported). `twilight` (**memoized per (site, date)** via `_twilight_cached` — it's a pure function of site geometry + timezone + night, and it sits under `observability`, which the prioritizer calls *per target* across a ~22-date grid; uncached that was 535 calls for 22 distinct nights, 91% of a 23 s ranking pass. The key is the four `Site` fields the math actually reads and the cached function takes **only** those, so it can't quietly grow a dependency the key doesn't cover. Cost is now O(nights), not O(targets × nights)) /`moon_summary`/`transit_altitude` + the seasonal/tonight **`observability()`** gate → `{observable, hours_clear, transit_alt, nights_to_close, season}` (continuous `hours_clear` so the scorer can *grade* short windows). Coords from `catalog.load_coords`, season from `catalog.season_from_ra`; glow-aware via `horizon.effective_floor`. **Checkpoint B (tonight's plan):** `night_track` (per-target alt/az samples across the dark window → transit time+alt, longest contiguous up-window above min-alt+glow floor, moon separation, the `(time,alt,clear)` series for the timeline) + `plan_night` (dark window + moon + per-target tracks, **auto-ordered by `up_end`** = sets-soonest first, tiebreak by score; `order="manual"` preserves input; computes twilight ONCE and reuses via `window=`). Consumers = the auto-prioritizer (#21) + the planner UI. **Tuning arc (docs-archive/PLANNING_ROADMAP.md):** `pick_start` (start-altitude ceiling — highest *clear* sample at/below the device ceiling −`START_CEILING_MARGIN_DEG`; hard = refuse, soft = flag `over_ceiling`), per-slot **moon** (`plan_night` moon = `{illum, alt, set_time, rise_time, track}`; per-entry `moon_alt_at_best`+`moon_impact`), `moon_impact` (illum × proximity, narrowband ×0.25, `None` when moon down — separations computed **topocentrically in a common AltAz frame**, never `icrs.separation(gcrs_moon)`: that re-expresses the moon from the barycenter, the 101°-vs-45° bug), and **`sequence_plan`** (pure night sequencer, #40–42: non-overlapping 10-min slots, priority order w/ ties-to-the-setter, deep-remaining duration caps, `fill` past count to dawn, `marginal` ⚠ ≤`MARGINAL_SLOT_MIN` window-cut descending slots, `forced_order` for the UI reflow) |
 | `fieldguide.py` | **session-plan field guide** (`feature/session-planner`, Qt-free). `render_markdown(site, day, plan)` → a printable observing plan (dark window + moon, ordered target table with best time/alt/up-window/moon°/filter + per-target season+notes), rendered in-app by `QTextBrowser.setMarkdown` (no dep). `save`/`list_guides`/`read` manage saved guides under the **`Plans/`** visible axis (`config.PLANS_DIR`, created by `ensure_data_root`; `Plans/<date>_<slug>.md`). Renders the **`## Schedule`** table when `plan["schedule"]` is present (`sequence_plan` slots: start/duration ⚠/alt ^/filter/moon); `moon_headline` (whole-night moon line) + `moon_cell` (gated on moon-up) + `start_cells` (startable slot, falls back to transit for old dicts) are shared with the Planning table; footer stamps generation date *and* plan night |
 | `planning_config.py` | observing-**site** + **device** profiles loaded from `config.PROFILES_DIR/<name>.toml` (one profile = one location), in-code defaults when absent. `Site` carries lat/lon/elev/tz + the `[glow]` light-pollution layer (`bortle`/`sqm_zenith`/`glow_mask`/`glow_mask_narrowband`), `zoneinfo` DST, filter-aware `glow_path`; `list_profiles`/`load_site`/`load_device`. **Writers (Planning UI, `feature/planning-profiles`):** `save_site`/`delete_profile` (default protected) + `format_site_toml` (hand-written TOML, no writer dep), `import_horizon_mask` (validates via `horizon.load_mask`, copies beside the profile), the **active-profile** selection (`active_profile`/`set_active_profile`/`load_active_site`, persisted in settings under `active_site_profile`), and an optional online **`geocode`** (Nominatim, degrades offline). `Device` carries `start_alt_ceiling_deg` + **`ceiling_is_hard`**; **`DEVICE_PRESETS`** = the researched per-device ceilings (Seestar S50/S30/S30 Pro hard 78° — S30s assumed from the shared app, unverified; Dwarf 3/Mini soft 80°) |
@@ -2669,10 +3249,9 @@ control.
   those per-store coords over the bundled `seed/objects.toml` reference. (This is
   the main way the otherwise-empty Library fills up.)
 - **Processing-prep is automatic + idempotent.** It runs on ingest (full prep:
-  links new lights + re-tunes the preset for the current frame count — but **only
-  if the preset is still an unedited default**, detected by `siril.is_default_preset`
-  comparing it to the generated default at any count bucket; a hand-edited preset is
-  preserved) and on every refresh as a **missing-only** backfill
+  links new lights; a preset is written only where none exists, and one that
+  differs from the current proposal is returned as a conflict the import UI asks
+  about — #174 replaced the old `is_default_preset` value-matching) and on every refresh as a **missing-only** backfill
   (`processing.prepare_missing` — creates only absent `siril/` sandboxes, **never**
   rewriting an existing one, so hand-edited presets + in-progress runs are safe).
   There is **no manual "Prepare"
@@ -2680,6 +3259,19 @@ control.
   for now). Don't reintroduce per-object manual prep.
 
 ---
+- **Quit must cancel the sync, not wait it out (beta.10).** Every focus-in starts a
+  sync (`changeEvent` → `_do_refresh`), so the usual Cmd+Q — click into the window,
+  quit — landed mid-scan, and `_stop_worker` blocked until `run_refresh` finished:
+  18 s on a 340 GB library in the frozen app (scan ~4 s warm, derive ~6 s, almost all
+  of it `build_processing` byte-comparing sandbox outputs via `roundtrip.same_bytes`).
+  `RefreshWorker.cancel` is polled per folder/session in the scan, per folder in the
+  processing pass and per object in the render. The writes are what make that safe:
+  the scan only reads; `refresh.run_refresh` derives from the scanned rows **in memory**
+  and writes `sessions.jsonl` + `derived/*.json` together after the last checkpoint;
+  `render_images` writes `images.json` and prunes only at the end. Measured on a clone
+  of the live store: quit at any point of a sync now returns in ≤0.5 s, and a full
+  sync's output is byte-identical to the old path. A cancelled worker emits nothing,
+  so `_stop_worker` resets `_refreshing` itself.
 
 ### Repo layout
 

@@ -2,7 +2,7 @@
 
 Renders land in the hidden internal store: thumbnails in RENDERS_DIR, heroes in
 HERO_DIR, the manifest in DERIVED_DIR. Sources come from per-target subfolders
-(Images/<target>/{finished,stacks,seestar-stacks}).
+(Images/<target>/{finished,stacks,device-stacks}).
 """
 import json
 
@@ -66,8 +66,8 @@ def test_a_multi_layer_stack_names_its_layers_and_renders_its_primary(
 
     from tests._helpers import make_sho
     root, internal = _setup(tmp_path, monkeypatch)
-    make_sho(config.seestar_stacks_dir("NGC 7000") / "sho.fits", shape=(3, 40, 60))
-    plain = config.seestar_stacks_dir("NGC 7000") / "plain.fits"
+    make_sho(config.device_stacks_dir("NGC 7000") / "sho.fits", shape=(3, 40, 60))
+    plain = config.device_stacks_dir("NGC 7000") / "plain.fits"
     fits.PrimaryHDU(np.random.default_rng(1).random((40, 60), dtype=np.float32)
                     ).writeto(plain)
     catalog = {"ngc-7000": {"id": "NGC 7000", "name": "North America Nebula"}}
@@ -160,7 +160,7 @@ def test_fit_stack_gets_thumbnail_and_hero(tmp_path, monkeypatch):
     import numpy as np
     from astropy.io import fits
     root, internal = _setup(tmp_path, monkeypatch)
-    p = config.seestar_stacks_dir("M99") / "Stacked_10_M99.fit"
+    p = config.device_stacks_dir("M99") / "Stacked_10_M99.fit"
     p.parent.mkdir(parents=True)
     fits.PrimaryHDU((np.random.rand(40, 40) * 1000).astype("float32")).writeto(p)
 
@@ -176,7 +176,7 @@ def test_fit_stack_gets_thumbnail_and_hero(tmp_path, monkeypatch):
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()    # hero from the .fit
     # …but `src` still points at the real .fit, so Reveal/Open/Export act on the
     # file rather than the render (which sent Reveal to the renders folder).
-    assert entry["src"] == "Images/M99/seestar-stacks/Stacked_10_M99.fit"
+    assert entry["src"] == "Images/M99/device-stacks/Stacked_10_M99.fit"
     assert (root / entry["src"]).is_file() and (root / entry["src"]).suffix == ".fit"
 
 
@@ -243,3 +243,129 @@ def test_hero_rerenders_when_a_different_source_is_picked(tmp_path, monkeypatch)
     assert dominant(hero)[2] > dominant(hero)[0]        # now blue-dominant (B)
     # sidecar records the source identity
     assert "B_final.png" in (hero.with_suffix(".src")).read_text()
+
+
+def _truncated_png(path):
+    """A real PNG cut short — the header parses (Image.open succeeds lazily), the
+    pixel data doesn't (a partially copied file)."""
+    _png(path, size=(300, 200), color=(10, 200, 10))
+    data = path.read_bytes()
+    path.write_bytes(data[: len(data) // 2])
+
+
+@pytest.mark.parametrize("corrupt", ["placeholder", "truncated"])
+def test_hero_falls_back_past_an_undecodable_raster(tmp_path, monkeypatch, corrupt):
+    """The preferred raster (PNG beats JPG) doesn't decode → the hero comes from
+    the next candidate instead of leaving the object with none, and the `.src`
+    sidecar names the file actually used (the Dwarf `stacked-16_*.png` case)."""
+    import numpy as np
+    from astropy.io import fits
+    root, internal = _setup(tmp_path, monkeypatch)
+    d = config.device_stacks_dir("M99")
+    d.mkdir(parents=True)
+    bad = d / "stacked-16_M99.png"
+    if corrupt == "placeholder":
+        bad.write_bytes(b"png")
+    else:
+        _truncated_png(bad)
+    _png(d / "stacked.jpg", color=(200, 30, 30))
+    fits.PrimaryHDU((np.random.rand(3, 40, 40) * 1000).astype("float32")).writeto(
+        d / "stacked-16_M99.fits")
+
+    catalog = {"m99": {"id": "M99", "name": "Test"}}
+    totals = {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}
+    build_images.render_images(catalog, totals)
+    hero = internal / "renders" / "hero" / "m99.jpg"
+    assert hero.is_file()
+    px = Image.open(hero).convert("RGB").resize((1, 1)).getpixel((0, 0))
+    assert px[0] > px[1]                                # the red stacked.jpg
+    assert hero.with_suffix(".src").read_text().splitlines()[0] == \
+        "Images/M99/device-stacks/stacked.jpg"
+    assert build_images.hero_source_path("m99") == d / "stacked.jpg"
+
+    # A second pass is a cache hit on the fallback, not a flip-flop.
+    before = hero.stat().st_mtime_ns
+    build_images.render_images(catalog, totals)
+    assert hero.stat().st_mtime_ns == before
+
+
+def test_hero_falls_back_to_fits_when_no_raster_decodes(tmp_path, monkeypatch):
+    import numpy as np
+    from astropy.io import fits
+    root, internal = _setup(tmp_path, monkeypatch)
+    d = config.device_stacks_dir("M99")
+    d.mkdir(parents=True)
+    (d / "stacked-16_M99.png").write_bytes(b"png")
+    (d / "stacked.jpg").write_bytes(b"jpg")
+    fits.PrimaryHDU((np.random.rand(40, 40) * 1000).astype("float32")).writeto(
+        d / "stacked-16_M99.fits")
+
+    build_images.render_images({"m99": {"id": "M99"}},
+                               {"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}})
+    hero = internal / "renders" / "hero" / "m99.jpg"
+    assert hero.is_file()
+    assert build_images.hero_source_path("m99") == d / "stacked-16_M99.fits"
+
+
+def test_rebuild_hero_skips_an_undecodable_override(tmp_path, monkeypatch):
+    """A frontmatter `hero` pick that no longer decodes falls back to the tier
+    order rather than leaving the hero unrendered."""
+    root, internal = _setup(tmp_path, monkeypatch)
+    fin = config.finished_dir("M99")
+    _png(fin / "good_final.png", color=(30, 30, 200))
+    fin.joinpath("broken_final.jpg").write_bytes(b"\xff\xd8\xff")
+    (internal / "derived").mkdir(parents=True, exist_ok=True)
+    (internal / "derived" / "totals.json").write_text(
+        '{"by_folder": {"M99": {"slugs": ["m99"]}}, "by_slug": {}}')
+    from m110 import objects
+    objects.set_frontmatter_key("m99", "hero", "broken_final.jpg")
+
+    assert build_images.rebuild_hero("m99") is True
+    assert build_images.hero_source_path("m99") == fin / "good_final.png"
+
+
+# ── pre-v6 paths (the tier was `seestar-stacks/`) ────────────────────────────
+
+def test_upgrade_legacy_rel_maps_only_the_tier_segment():
+    up = config.upgrade_legacy_rel
+    assert up("Images/M42/seestar-stacks/a.jpg") == "Images/M42/device-stacks/a.jpg"
+    assert up("Images\\M42\\seestar-stacks\\a.jpg") == "Images/M42/device-stacks/a.jpg"
+    assert up("Images/M42/seestar-stacks/sub/a.fit") == "Images/M42/device-stacks/sub/a.fit"
+    for keep in ("Images/M42/finished/a.png", "Images/seestar-stacks/x/a.jpg",
+                 "Media/seestar-stacks/a/b.jpg", "Images/M42/stacks/seestar-stacks.fit", ""):
+        assert up(keep) == keep
+
+
+def test_hero_source_and_hero_image_resolve_pre_v6_paths(tmp_path, monkeypatch):
+    """A hero `.src` sidecar or a journal `hero_image:` written before the rename
+    still finds the file at its new home."""
+    from m110 import objects
+    root, internal = _setup(tmp_path, monkeypatch)
+    d = config.device_stacks_dir("M99")
+    _png(d / "stacked.jpg")
+    config.HERO_DIR.mkdir(parents=True)
+    (config.HERO_DIR / "m99.src").write_text("Images/M99/seestar-stacks/stacked.jpg\nx")
+    assert build_images.hero_source_path("m99") == d / "stacked.jpg"
+
+    monkeypatch.setattr(objects, "read_journal",
+                        lambda slug: ({"hero_image": "Images/M99/seestar-stacks/stacked.jpg"}, ""))
+    assert build_images._hero_candidates("m99", [], [])[0] == d / "stacked.jpg"
+
+
+def test_load_images_normalizes_a_pre_v6_manifest(tmp_path, monkeypatch):
+    """`derived/images.json` from the previous version (read at launch before Sync
+    rewrites it) points at the old tier with the old label: readers see the new."""
+    from m110 import derived
+    root, internal = _setup(tmp_path, monkeypatch)
+    (internal / "derived").mkdir(parents=True)
+    (internal / "derived" / "images.json").write_text(json.dumps({"m99": [
+        {"name": "stacked.jpg", "label": "Seestar in-app stack",
+         "src": "Images/M99/seestar-stacks/stacked.jpg",
+         "full": "Images/M99/seestar-stacks/stacked.jpg", "thumb": "abc.jpg"},
+        {"name": "f.png", "label": "Finished render", "src": "Images/M99/finished/f.png",
+         "full": None, "thumb": "def.jpg"},
+    ]}))
+    rows = derived.images_for("m99")
+    assert rows[0]["label"] == config.DEVICE_STACK_LABEL
+    assert rows[0]["src"] == rows[0]["full"] == "Images/M99/device-stacks/stacked.jpg"
+    assert rows[1]["label"] == "Finished render" and rows[1]["full"] is None

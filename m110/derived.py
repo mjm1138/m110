@@ -47,13 +47,62 @@ def load_goals() -> list:
     return _load("goals.json") or []
 
 
+_DEVICE_TOTALS = {"integration_min": 0.0, "sessions": 0, "nights": 0, "objects": 0,
+                  "first_capture": None, "last_capture": None}
+
+
+def normalize_device(d: dict) -> dict | None:
+    """One `devices.json` entry with every key its readers use present. The file
+    is derived and rewritten on Sync, but an older app version's copy is read at
+    launch before that Sync runs (a pre-Devices-page rollup has no ``totals`` /
+    ``objects`` / identity keys), so readers never index it raw. None for an entry
+    with no device key."""
+    if not isinstance(d, dict) or not d.get("device"):
+        return None
+    d = dict(d)
+    totals = d.get("totals") if isinstance(d.get("totals"), dict) else {}
+    d["totals"] = {**_DEVICE_TOTALS, **totals}
+    for key in ("objects", "masters", "captures"):
+        if not isinstance(d.get(key), list):
+            d[key] = []
+    d["label"] = d.get("label") or d["device"]
+    for key in ("nickname", "preset", "model", "serial"):
+        d.setdefault(key, None)
+    d["retired"] = bool(d.get("retired"))
+    d["darks_applied_on_device"] = bool(d.get("darks_applied_on_device"))
+    if not isinstance(d.get("captured_via"), list):      # added with #203
+        d["captured_via"] = []
+    return d
+
+
+def load_devices() -> list:
+    """Per-device identity, totals, objects, calibration library, captures and
+    sensor health (`calibration.device_rollup`), each entry `normalize_device`d —
+    tolerant of a rollup written by an older version; [] if absent."""
+    raw = (_load("devices.json") or {}).get("devices", [])
+    if not isinstance(raw, list):
+        return []
+    return [n for n in (normalize_device(d) for d in raw) if n is not None]
+
+
 def load_images() -> dict:
     """{slug: [ {name, label, viewable, thumb, full, ...} ]}.
 
     `name` is the actual filename. `thumb` is relative to `config.RENDERS_DIR`;
     `full` (viewable rasters only) is relative to `config.DATA_ROOT`.
     """
-    return _load("images.json") or {}
+    data = _load("images.json") or {}
+    # Written by a pre-v6 build until the next Sync: the device-stack tier was
+    # `seestar-stacks/` with its own label. Map both so the gallery opens the file
+    # where the store migration moved it.
+    for rows in data.values():
+        for row in rows if isinstance(rows, list) else ():
+            for k in ("src", "full"):
+                if isinstance(row.get(k), str):
+                    row[k] = config.upgrade_legacy_rel(row[k])
+            if row.get("label") == config.LEGACY_DEVICE_STACK_LABEL:
+                row["label"] = config.DEVICE_STACK_LABEL
+    return data
 
 
 def images_for(slug: str) -> list:

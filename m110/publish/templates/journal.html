@@ -11,7 +11,7 @@
     <header>
       <h2><a href="objects/{{ o.slug }}.html">{{ o.entry.id }} — {{ o.entry.name or '' }}</a></h2>
       <div class="meta">
-        <span class="badge {{ o.totals.status }}">{{ o.totals.status|status_label }}</span>
+        <span class="badge {{ o.totals.status }}">{{ o.totals.status|status_label(o.totals.progress) }}</span>
         <span>{{ o.totals.integration_hms }} · {{ o.totals.frames }} frames · {{ o.totals.session_count }} sessions</span>
         <span class="muted">last captured {{ o.totals.last_capture }}</span>
       </div>

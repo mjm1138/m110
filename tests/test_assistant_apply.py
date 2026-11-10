@@ -167,3 +167,52 @@ def test_a_non_proposal_file_is_refused(store):
     outbox.write("notes.json", json.dumps({"hello": "world"}), kind="proposal")
     with pytest.raises(apply_mod.ApplyError, match="not a proposal"):
         apply_mod.apply_proposal("notes.json")
+
+
+# ── integration goals (#184) ─────────────────────────────────────────────────
+
+def test_an_integration_goal_proposal_previews_applies_and_detects_drift(store, monkeypatch):
+    from m110 import integration_goals
+    monkeypatch.setattr("m110.planning_config.active_device_key", lambda: None)  # → S50
+    out = registry.call("propose_integration_goal",
+                        {"slug": "m101", "minutes": 420, "reason": "outer arms",
+                         "rationale": "SNR at 3′ is still ~3"})
+    env = json.loads(outbox.read(outbox.items()[0].name))
+    assert env["action"] == "set_integration_goal" and env["apply"]["safe_write"]
+    preview = env["preview"]
+    assert preview["model"] == "seestar_s50"
+    assert (preview["before"]["goal_min"], preview["after"]["goal_min"]) == (240, 420)
+    assert "ranking" in preview                       # it's the planning telescope
+    assert integration_goals.load() == {}             # proposing changes nothing
+    assert "420 min" in out["summary"]
+    # the re-preview recomputes the ranking against the store as it is now
+    assert "before" in apply_mod.repreview(env)
+
+    # someone sets a different goal meanwhile → drift
+    name = outbox.items()[0].name
+    integration_goals.set_goal("m101", "seestar_s50", 300)
+    with pytest.raises(apply_mod.ApplyError, match="integration goals were changed"):
+        apply_mod.apply_proposal(name)
+    apply_mod.apply_proposal(name, force=True)
+    assert integration_goals.load()["m101"]["seestar_s50"] == {"min": 420.0,
+                                                               "reason": "outer arms"}
+
+
+def test_a_clear_proposal_restores_the_default(store):
+    from m110 import integration_goals
+    integration_goals.set_goal("m101", "dwarf_3", 200)
+    registry.call("propose_integration_goal",
+                  {"slug": "m101", "clear": True, "model": "dwarf_3", "rationale": "r"})
+    env = json.loads(outbox.read(outbox.items()[0].name))
+    assert env["preview"]["after"]["goal_source"] == "default"
+    assert "ranking" not in env["preview"]            # not the planning telescope
+    apply_mod.apply_proposal(outbox.items()[0].name)
+    assert integration_goals.load() == {}
+
+
+def test_a_goal_proposal_refuses_nonsense(store):
+    with pytest.raises(registry.ToolError, match="exactly one"):
+        registry.call("propose_integration_goal", {"slug": "m101", "rationale": "r"})
+    with pytest.raises(registry.ToolError, match="Unknown telescope"):
+        registry.call("propose_integration_goal",
+                      {"slug": "m101", "minutes": 60, "model": "hubble", "rationale": "r"})

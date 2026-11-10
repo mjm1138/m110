@@ -14,6 +14,7 @@ all follow the workflow rather than being hardcoded to one tool.
 """
 from __future__ import annotations
 
+import html
 import threading
 from pathlib import Path
 
@@ -73,6 +74,8 @@ class _ImportWorker(QThread):
                 progress=lambda i, t: self.progressed.emit(i, t),
                 should_cancel=self._cancel.is_set)
             self.done.emit(res)
+        except roundtrip.StackInProgress as exc:
+            self.failed.emit(str(exc))       # already a sentence for the user
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -197,11 +200,25 @@ class ImportDialog(QDialog):
             self._hero.addItem(Path(src).name, src)
 
         n_new = sum(1 for it in plan.items if not it.already)
-        if plan.items:
+        if plan.running:
+            # Checked before anything is offered: the import would copy a
+            # half-written stack and its archive sweep would carry off the live
+            # scratch (the engine refuses too — this just says so up front).
             self._info.setText(
-                f"Found {len(plan.items)} finished output(s) in the sandbox "
-                f"({n_new} not yet imported). Renders go to <b>finished/</b>, "
-                f"stacks to <b>stacks/</b>.")
+                "<b>A stack is running in this sandbox — wait for it to finish, "
+                "then import.</b> " + html.escape(roundtrip.describe_runs(plan.running)))
+            self._import_btn.setEnabled(False)
+        elif plan.items:
+            text = (f"Found {len(plan.items)} finished output(s) in the sandbox "
+                    f"({n_new} not yet imported). Renders go to <b>finished/</b>, "
+                    f"stacks to <b>stacks/</b>.")
+            if plan.scratch_active:
+                text += ("<br><br><b>Siril may still be working here:</b> its "
+                         "process/ folder changed in the last few minutes. If a "
+                         "run is still going, wait for it to finish — archiving "
+                         "would move its scratch out from under it, so cleanup "
+                         "defaults to leaving the sandbox as-is.")
+            self._info.setText(text)
             self._import_btn.setEnabled(True)
         else:
             self._info.setText(
@@ -242,13 +259,16 @@ class ImportDialog(QDialog):
         # Once the user explicitly picks a cleanup option, stop steering it.
         if self._cleanup_user_set:
             return
-        key = "none" if self._has_deselected_new() else "archive"
+        busy = bool(self._plan and self._plan.scratch_active)
+        key = "none" if busy or self._has_deselected_new() else "archive"
         i = self._cleanup.findData(key)
         if i >= 0:
             self._cleanup.setCurrentIndex(i)
 
     # ---- apply (threaded, gated) ----
     def _do_import(self):
+        if self._plan is not None and self._plan.running:
+            return                           # a stack is running: never start
         srcs = self._checked_srcs()
         cleanup = self._cleanup.currentData()
         if not srcs and cleanup == "none":

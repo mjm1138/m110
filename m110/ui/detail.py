@@ -14,27 +14,30 @@ from PySide6.QtGui import QPixmap, QIcon, QImageReader, QDesktopServices
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
-    QToolButton, QMenu, QMessageBox,
+    QToolButton, QMenu, QMessageBox, QDialog,
 )
 
-from m110 import build_images, config, derived, layers, objects, processing, siril
+from m110 import (build_images, config, derived, devices, integration_goals, layers,
+                  objects, processing, refresh, siril)
+from m110.build_derived import session_device
 from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
     process_in_siril, stack_in_stackingwizard, open_in_default,
-    reveal_in_manager, defer, connect_context_menu, FlowLayout,
+    reveal_in_manager, reveal_label, defer, connect_context_menu, FlowLayout,
+    dark_gap_item,
 )
 
 
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
 
 
-def _status_pill(status) -> QLabel:
+def _status_pill(status, progress=None) -> QLabel:
     """A small tinted rounded status chip (matches the Library table pill), colored
     from the active theme. Built per render, so it re-themes on reload."""
-    lbl = QLabel(status_label(status, True))
+    lbl = QLabel(status_label(status, True, progress))
     c = theme.status_color(status)
     lbl.setStyleSheet(
         f"color:{c.name()}; "
@@ -130,6 +133,9 @@ class DetailPane(QScrollArea):
     # The user dismissed the pane (✕) — the host page decides what that means
     # (e.g. clear the table selection, go back to a full-width table).
     closed = Signal()
+    # An integration goal was set or cleared; derived data is already rebuilt, so
+    # every view showing a status should reload.
+    goals_changed = Signal()
 
     def __init__(self):
         super().__init__()
@@ -255,7 +261,7 @@ class DetailPane(QScrollArea):
         if captured:
             stat_row = QHBoxLayout()
             stat_row.setSpacing(theme.tokens.SPACE["sm"])
-            stat_row.addWidget(_status_pill(t.get("status")))
+            stat_row.addWidget(_status_pill(t.get("status"), t.get("progress")))
             stats = QLabel(f"{t.get('integration_hms', '')} · "
                            f"{t.get('session_count', '')} sessions · "
                            f"{t.get('frames', '')} frames")
@@ -309,7 +315,7 @@ class DetailPane(QScrollArea):
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
             # Per-image state = the tier (finished/ folder → "finished", stacks /
-            # seestar-stacks → "working"), overridden by the user's curation (#17).
+            # device-stacks → "working"), overridden by the user's curation (#17).
             curation = objects.get_curation(slug)
             self._gallery_items = []
             self._galleries = []
@@ -329,12 +335,83 @@ class DetailPane(QScrollArea):
             self._gallery = self._galleries[0] if self._galleries else None
 
         if captured:
+            self._add_goals_section(slug, e, t)
             self._add_processing_section(slug)
             self._add_sessions_section(slug)
         self._add_metadata_section(slug, e, t)
 
         self._lay.addStretch(1)
 
+
+    def _add_goals_section(self, slug: str, e: dict, t: dict):
+        """One row per telescope model that captured the object, plus the one
+        Planning is set to: its progress against its integration goal, and one Set
+        goal… button (its dialog also offers Use default for a goal you set)."""
+        reg = devices.load_registry()
+        goals = integration_goals.load()
+        by_model = t.get("by_model") or {}
+        models = sorted(by_model, key=lambda m: (-by_model[m].get("fraction", 0.0), m))
+        active = integration_goals.active_model(reg)
+        if active not in models:
+            models.append(active)
+        self._lay.addWidget(_section_label("Integration goals"))
+        for model in models:
+            have = (by_model.get(model) or {}).get("integration_min", 0.0)
+            goal, source = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
+            _factor, calibrated = integration_goals.speed_factor(model, reg)
+            whose = ("your goal" if source == integration_goals.SOURCE_USER
+                     else "default" if calibrated else "default — f-ratio unknown")
+            frac = integration_goals.fraction(have, goal)
+            row = QHBoxLayout()
+            text = QLabel(
+                f"<b>{integration_goals.model_label(model, reg)}</b> · "
+                f"{have:.0f} of {goal:.0f} min ({int(frac * 100)}%) · {whose}")
+            text.setTextFormat(Qt.RichText)
+            # Wraps, so a long model name + progress never sets the pane's minimum
+            # width (unwrapped, it clipped the buttons at the default window size).
+            text.setWordWrap(True)
+            reason = goals.get(slug, {}).get(model, {}).get("reason")
+            if reason:
+                text.setToolTip(reason)
+            row.addWidget(text, 1)
+            set_btn = QPushButton("Set goal…")
+            set_btn.clicked.connect(
+                lambda _=False, m=model: self._set_goal(slug, e, m))
+            row.addWidget(set_btn, 0, Qt.AlignTop)
+            self._lay.addLayout(row)
+
+    def _set_goal(self, slug: str, e: dict, model: str):
+        from m110 import catalog
+        from m110.ui.goal_dialog import GoalDialog
+        reg = devices.load_registry()
+        goals = integration_goals.load()
+        goal, src = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
+        _f, calibrated = integration_goals.speed_factor(model, reg)
+        dlg = GoalDialog(
+            catalog.object_label(catalog.object_identifiers(slug, e)) or slug,
+            integration_goals.model_label(model, reg), goal,
+            integration_goals.default_goal(e.get("type"), model, reg),
+            goals.get(slug, {}).get(model, {}).get("reason", ""),
+            calibrated=calibrated, custom=src == integration_goals.SOURCE_USER,
+            parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        if dlg.use_default():
+            integration_goals.clear_goal(slug, model)
+        else:
+            integration_goals.set_goal(slug, model, dlg.minutes(), dlg.reason())
+        self._goals_saved(slug, e)
+
+    def _goals_saved(self, slug: str, e: dict):
+        """Statuses follow the goal at once: rebuild derived data (no scan), show
+        this object afresh, and tell the host every other view is stale. Deferred:
+        the re-render tears down the very button whose click is still running."""
+        refresh.rederive()
+
+        def rerender():
+            self.show_object(slug, e, derived.totals_by_slug().get(slug, {}))
+            self.goals_changed.emit()
+        defer(self, rerender)
 
     def _add_action_row(self, slug: str):
         """The object's processing actions, as one wrapping row.
@@ -394,7 +471,7 @@ class DetailPane(QScrollArea):
             btn_row.deleteLater()
 
     # ---- enrichment sections (Phase 3) ----
-    def _section_table(self, title: str, headers: list[str], rows: list[list[str]]):
+    def _section_table(self, title: str, headers: list[str], rows: list[list]):
         self._lay.addWidget(_section_label(title))
         tbl = make_table(headers)
         tbl.setSortingEnabled(False)
@@ -402,7 +479,8 @@ class DetailPane(QScrollArea):
             i = tbl.rowCount()
             tbl.insertRow(i)
             for c, val in enumerate(r):
-                tbl.setItem(i, c, QTableWidgetItem(val))
+                tbl.setItem(i, c, val if isinstance(val, QTableWidgetItem)
+                            else QTableWidgetItem(val))
         tbl.resizeColumnsToContents()
         fit_table_height(tbl, max_rows=6)      # whole row fits; scroll past 6 rows
         self._lay.addWidget(tbl)
@@ -435,6 +513,7 @@ class DetailPane(QScrollArea):
         if not rows:
             return
         rows.sort(key=lambda s: s.get("date", ""), reverse=True)
+        registry = devices.load_registry()
         out = [[
             s.get("date", ""),
             str(s.get("frames", 0)),
@@ -442,9 +521,13 @@ class DetailPane(QScrollArea):
             s.get("filter", ""),
             _fmt_hm(s.get("integration_min", 0.0)),
             s.get("mount_mode", ""),
+            devices.label(session_device(s), registry),
+            dark_gap_item(s),
         ] for s in rows]
         self._section_table(
-            "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount"], out)
+            "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount",
+                         "Device",
+                         "Dark"], out)
 
     def _add_metadata_section(self, slug: str, e: dict, totals: dict | None = None):
         from m110 import catalog
@@ -664,7 +747,7 @@ class DetailPane(QScrollArea):
         export_act = menu.addAction("Export for sharing…")
         menu.addSeparator()
         open_act = menu.addAction("Open in default app")
-        reveal_act = menu.addAction("Reveal in file manager")
+        reveal_act = menu.addAction(reveal_label())
         chosen = menu.exec(global_pos)
         # These three act on the real file (`src`), never the render: revealing a
         # .fit must land on the .fit, and exporting must re-render it at full

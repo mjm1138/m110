@@ -43,6 +43,7 @@ class Tokens:
     focus_ring: str
     # status (capture)
     status_deep: str
+    status_progress: str      # captured, part-way to its integration goal
     status_initial: str
     # spare semantic set (processing states map onto these later)
     ok: str
@@ -67,7 +68,7 @@ LIGHT = Tokens(
     text_primary="#1c1e21", text_secondary="#6b7077", text_disabled="#a0a4a9",
     accent="#2f6fd0", accent_text="#ffffff", accent_hover="#285fb4",
     selection_bg="#d7e6fb", selection_text="#1c1e21", focus_ring="#2f6fd0",
-    status_deep="#2f9e44", status_initial="#b9770a",
+    status_deep="#2f9e44", status_progress="#1971c2", status_initial="#b9770a",
     ok="#2f9e44", warn="#b9770a", danger="#c33b3b", neutral="#6b7077",
 )
 
@@ -78,7 +79,7 @@ DARK = Tokens(
     text_primary="#e6e7e9", text_secondary="#9aa0a6", text_disabled="#6b7077",
     accent="#5a93e6", accent_text="#ffffff", accent_hover="#6ea2ee",
     selection_bg="#34465e", selection_text="#e6e7e9", focus_ring="#5a93e6",
-    status_deep="#3fb950", status_initial="#d29922",
+    status_deep="#3fb950", status_progress="#58a6ff", status_initial="#d29922",
     ok="#3fb950", warn="#d29922", danger="#e5534b", neutral="#9aa0a6",
 )
 

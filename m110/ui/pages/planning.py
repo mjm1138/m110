@@ -23,11 +23,11 @@ from PySide6.QtWidgets import (
     QApplication, QDateEdit, QInputDialog, QMessageBox, QSpinBox, QCheckBox,
 )
 
-from m110 import catalog, pins, prioritize
+from m110 import catalog, devices, integration_goals, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
     make_table, fit_table_height, CollapsibleSection, connect_context_menu,
-    reveal_in_manager,
+    reveal_in_manager, reveal_label,
 )
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
@@ -108,6 +108,14 @@ class PlanningPage(QScrollArea):
         self.selector = QComboBox()
         self.selector.currentIndexChanged.connect(self._on_location_changed)
         loc.addWidget(self.selector, 1)
+        # The telescope the night plan is for — its start-altitude ceiling and
+        # exposure limits (planning_config.device_for). Hidden until M110 knows
+        # more than one telescope: with one, there is nothing to choose.
+        self.device_label = QLabel("Telescope:")
+        loc.addWidget(self.device_label)
+        self.device_picker = QComboBox()
+        self.device_picker.currentIndexChanged.connect(self._on_device_changed)
+        loc.addWidget(self.device_picker, 1)
         lay.addLayout(loc)
 
         self._priority_sec = CollapsibleSection("Priority targets", expanded=True)
@@ -302,7 +310,8 @@ class PlanningPage(QScrollArea):
             self._plan_status.setText("No ranking yet — open Priority targets to "
                                       "compute it, then try again.")
             return
-        ranked = prioritize.rank(contexts, self._weights, self._strategy, pins.load())
+        ranked = prioritize.rank_for_active(contexts, self._weights, self._strategy,
+                                            pins.load())
         cand = prioritize.plan_candidates(ranked)      # visible tonight, capped for astropy
         scores = {r["slug"]: r["score"] for r in ranked}
         filters = {r["slug"]: prioritize.filter_for_type(r.get("type", ""))
@@ -397,9 +406,10 @@ class PlanningPage(QScrollArea):
             lib = catalog.load_library()
         except Exception:
             lib = {}
+        ref = catalog.load_reference()
 
         def obj_name(slug):
-            entry = lib.get(slug) or catalog.load_reference().get(slug) or {}
+            entry = lib.get(slug) or ref.get(slug) or {}
             return catalog.object_label(catalog.object_identifiers(slug, entry)) or slug
 
         def moon_item(row):
@@ -594,7 +604,7 @@ class PlanningPage(QScrollArea):
         only part a test can reach."""
         menu = QMenu(self)
         acts = {"view": menu.addAction("View"),
-                "reveal": menu.addAction("Reveal in file manager")}
+                "reveal": menu.addAction(reveal_label())}
         menu.addSeparator()          # keep the destructive one off the main cluster
         acts["delete"] = menu.addAction("Delete…")
         return menu, acts
@@ -657,12 +667,36 @@ class PlanningPage(QScrollArea):
         self._reload_guides()
 
     # ---- refresh ----
+    def _reload_devices(self):
+        self._loading = True
+        self.device_picker.clear()
+        active = pc.active_device_key()
+        for d in pc.planning_devices():
+            self.device_picker.addItem(d["label"], d["device"])
+        i = self.device_picker.findData(active)
+        self.device_picker.setCurrentIndex(max(i, 0))
+        many = self.device_picker.count() > 1
+        self.device_label.setVisible(many)
+        self.device_picker.setVisible(many)
+        self._loading = False
+
+    def _on_device_changed(self, _idx: int):
+        if self._loading:
+            return
+        key = self.device_picker.currentData()
+        if not key:
+            return
+        pc.set_active_device(key)
+        self._invalidate_plan()               # a plan is device-specific (its ceiling)
+        self._render_ranking()                # …and so is the ranking: its goals
+
     def reload(self):
         # Cheap: refresh the selector + re-rank the cached contexts. The heavy astropy
         # recompute is NOT triggered here — the shell calls `ensure_ranking()` when the
         # user navigates to Planning (an explicit, app-only action), so a background
         # refresh (or an offscreen test that builds the page) never spawns the worker.
         self._reload_selector()
+        self._reload_devices()
         self._render_ranking()
         self._reload_guides()
 
@@ -703,7 +737,8 @@ class PlanningPage(QScrollArea):
             hint.setWordWrap(True)
             self._ptable_holder.addWidget(hint)
             return
-        rows = prioritize.rank(contexts, self._weights, self._strategy, pins.load())
+        rows = prioritize.rank_for_active(contexts, self._weights, self._strategy,
+                                          pins.load())
         total = len(rows)
         if self._visible_only:
             rows = prioritize.filter_visible_tonight(rows)
@@ -718,28 +753,43 @@ class PlanningPage(QScrollArea):
             lib = catalog.load_library()
         except Exception:
             lib = {}
-        tbl = make_table(["#", "Object", "Type", "Integ", "Score", "Season", "Closes"],
-                         stretch_last=True)
+        # Uncaptured goal members aren't in the Library — label them from the
+        # reference, as the Overview checklists do (not the raw slug).
+        ref = catalog.load_reference()
+        tbl = make_table(["#", "Object", "Type", "Integ", "Of goal", "Score", "Season",
+                          "Closes"], stretch_last=True)
         tbl.setSortingEnabled(False)
         pin_state = pins.load()
+        registry = devices.load_registry()
         for row in rows[:40]:
             r = tbl.rowCount()
             tbl.insertRow(r)
             slug = row["slug"]
-            e = lib.get(slug) or {}
+            entry = lib.get(slug) or ref.get(slug)
             st = pin_state.get(slug)
             marker = "▲ " if st == pins.PIN else ""
-            label = marker + (e.get("id") or slug)
+            label = marker + (catalog.object_label(
+                catalog.object_identifiers(slug, entry)) or slug)
             n2c = row.get("nights_to_close")
             closes = f"{n2c}d" if isinstance(n2c, int) and n2c < 60 else ""
+            # Integration + progress are the active telescope's (or, for a member of
+            # an any-telescope goal, its best telescope's — the tooltip says which).
             integ = row["integration_min"]
+            goal = row.get("goal_min") or 0
+            pct = f"{int(min(integ / goal, 1.0) * 100)}%" if goal else ""
             cells = [str(row["rank"]), label, (row.get("type") or "").replace("_", " "),
                      (f"{integ/60:.1f}h" if integ >= 60 else f"{integ:.0f}m") if integ else "—",
-                     f"{row['score']:.2f}", row.get("season") or "", closes]
+                     pct, f"{row['score']:.2f}", row.get("season") or "", closes]
+            tip = ""
+            if row.get("progress_model"):
+                tip = (f"{integration_goals.model_label(row['progress_model'], registry)}"
+                       f": {integ:.0f} of {goal:.0f} min")
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
                 if c == 1:
                     item.setData(Qt.UserRole, slug)
+                if c in (3, 4) and tip:
+                    item.setToolTip(tip)
                 tbl.setItem(r, c, item)
         tbl.resizeColumnsToContents()
         fit_table_height(tbl, max_rows=15)

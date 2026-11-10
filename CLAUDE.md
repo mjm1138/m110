@@ -88,15 +88,15 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
 <data_root>/                        (default ~/Documents/M110)
   Objects/<catalog id>/journal.md   catalog-object axis (a stub for every Library object)
   Images/<target>/                  capture-target axis
-    lights/ rejected/ stacks/ seestar-stacks/ finished/ previews/
+    lights/ rejected/ stacks/ device-stacks/ finished/ previews/
     siril/  astrowizard/            per-workflow sandboxes (config.SANDBOX_LINKED_INPUTS)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
   Calibration/<device>/             device-level master darks/flats/biases (device = TELESCOP)
     darks/ flats/ biases/           per-target Images/<t>/darks/… overrides it
   Inbox/                            ingest holding area
   Plans/                            saved field guides
-  .m110_internal_data/              library.toml goals.toml priorities.toml pins.toml
-                                    sessions.jsonl profiles/ derived/ renders/ .store_version (=4)
+  .m110_internal_data/              library.toml goals.toml pins.toml devices.toml integration_goals.toml
+                                    sessions.jsonl profiles/ derived/ renders/ .store_version (=6)
 ```
 
 - **Data-root resolution** (`config.py`): `M110_DATA_ROOT` env → saved preference
@@ -118,58 +118,62 @@ DONE.md's archived reference — grep the module name there.
 
 | Module | Role |
 |---|---|
-| `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes) |
-| `migrate.py` | in-place idempotent store migration to the two-axis layout |
+| `config.py` | data-root resolution + bootstrap/seed, per-target path helpers, settings, Seestar mount detection (`VOLUMES_DIR`), `FIT_EXTS`/`is_fits_file`, `rejected_dir`, `SANDBOX_LINKED_INPUTS`/`SANDBOX_DIRNAMES` (the one registry of workflow sandboxes), `SANDBOX_SCRATCH` (tool scratch: not archived, not backed up) |
+| `migrate.py` | in-place idempotent store migration (two-axis layout; v5 marks the retired `priorities.toml` as unread) |
 | `catalog.py` | Library (`library.toml`) vs bundled reference/catalog lists; add/remove/enrich entries; `season_from_ra`; `object_identifiers`; Simbad via optional astroquery (`OnlineLookupError`) |
 | `derived.py` | read generated rollups (`derived/*.json`) |
 | `processing.py` | workflow registry (Siril + AstroWizard), `run_autoprep`, `prepare_missing` (creates only absent sandboxes), `reconcile_rejected` |
-| `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path |
-| `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold` |
+| `scan_sessions.py` | `Images/<target>/lights/` → `sessions.jsonl`; header-driven (`DATE-OBS`/`EXPTIME`/`FILTER`, `EQMODE`), Seestar filename only as a fast path; capture facts (TELESCOP/GAIN/CCD-TEMP) from a bounded, per-file-cached header sample (`_HeaderCache`) + the inferred on-device dark (`dark_*`) |
+| `build_derived.py` | totals/priorities/summary/processing/goals JSON; `deep_threshold`; per-model `by_model` + the three-state `status` (rolled up to the most advanced model) |
+| `integration_goals.py` | integration goals per (object, telescope model): `integration_goals.toml` (`set_goal`/`clear_goal`), `model_key` (preset, else device key), `speed_factor` = (f/f_S50)², `default_goal`, `resolve`, `state` (Initial <25% · in progress · deep), `rollup`, `capture_report` (assistant) |
 | `build_images.py` | thumbnails + heroes + `images.json`, content-hash cached; hero keyed on source identity (`.src` sidecar) |
-| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + DwarfLab Dwarf 3/Draco + `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; a placeholder `OBJECT` is named by pointing (`_object_by_pointing`, `IngestOp.note`); a DwarfLab `CALI_FRAME/` tree → `Calibration/<device>/` (`_classify_calibration_dir`, kinds `cal-*`), headerless masters get their facts **stamped into the copy** (`IngestOp.stamp` — TEMPORARY SHIM, delete when production Draco masters carry headers) |
-| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim, for `Calibration/<device>/`) and `preset_key` (→ `DEVICE_PRESETS`) |
-| `calibration.py` | header-only matching of lights to the device master library: `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX` per device — Draco UNVERIFIED), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry) |
+| `ingest.py` | read-only scan **plan** (`scan_directory_plan`, recursive, layout registry incl. Seestar + DwarfLab Dwarf 3/Draco + N.I.N.A. + `calibration`) + gated `apply_ops` (the only writer); holding area (collision-safe `_hold_names`) + identification aids; kinds `cal-*` → `Calibration/<device>/`; a stack is known by its header (`is_stack_header`); a placeholder `OBJECT` is named by pointing (`_object_by_pointing`, `IngestOp.note`); a DwarfLab `CALI_FRAME/` tree → `Calibration/<device>/` (`_classify_calibration_dir`, device from a sibling session via `_infer_device`), headerless masters get their facts **stamped into the copy** (`IngestOp.stamp` — TEMPORARY SHIM, delete when production Draco masters carry headers) |
+| `capture_profiles.py` | which capture software wrote a frame (#203), from header cards only: built-in `CaptureProfile`s (`nina`, `seestar-app`, `dwarf-app`, `generic`) → `device_key` (N.I.N.A.'s S50 serial from `INSTRUME`), `darks_applied` (**per frame, by capture path**), `object_name` (panel → `<obj>_mosaic`), `filter_name` (N.I.N.A.'s Seestar `IR` → `IRCUT`), `facts(hdr)`; every header reader takes device/flag/filter from here |
+| `devices.py` | telescope identity from `TELESCOP`: `folder_name` (verbatim = the device key), `preset_key` (→ `DEVICE_PRESETS`), `display_name`, `darks_applied_on_device` (Seestar); the registry `devices.toml` (`load_registry`/`save_device`: nickname, retired, preset) + `label`/`model_name`/`serial` |
+| `calibration.py` | header-only matching of lights to the device master library (masters + `raw_sets` of raw frames, `MatchResult.files()`): `library`, `match_masters` (dark = EXPTIME/GAIN/XBINNING + nearest CCD-TEMP; bias = binning, prefer gain; flat = binning + unambiguous filter, `FILTER_INDEX` per device — Draco UNVERIFIED), `match_for_target` (mixed settings or two telescopes refused), `facts_from_frames` (the stacker's entry); never matches a dark for a `darks_applied_on_device` telescope. Seestar rule v2: `device_clock` (the ONE filename-clock parser), `applied_dark` (run start) + `applied_darks` (sticky 2.5 °C mid-run switch), `split_runs`; `master_stats` + `device_rollup` → `derived/devices.json` |
 | `layers.py` | multi-image FITS (a Draco "SHO" stack: HO primary + `SOO` extension): `image_layers` (header-only), `layer_header` (primary's cards overlaid by the layer's), `write_layer` (pixel-exact, `.part` → replace), `describe` (gallery tooltip); the AstroWizard handoff splits a layer out, the device file is never touched |
-| `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor |
-| `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else one library master per tier, linked **per job dir**; Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
+| `roundtrip.py` | tool-neutral half of a processing sandbox: classify, keep-both collision handling, `scan_finished`/`apply_import`/`archive_run`, `prune_archives` (keep-N, name-parsed only), the `Sandbox` descriptor; the run guard (`RUN_MARKER`, `stack_in_progress`, `require_idle`, `sandbox_busy`) |
+| `siril.py` | prepare-and-guide round-trip: `plan_prep`/`apply_prep` (hardlinked `lights/`; calibration = the target's own frames else a library match **per filter**, linked **per job dir**; a filter needing different calibration per subset is split into job folders, recorded in `siril/.m110_jobs.json` → `job_group`; the masters manifest `siril/.m110_calibration.json` for Stackhammer (`calibration_manifest`/`read_manifest`); Naztronomy preset preserved once hand-edited), `autoprep`, import delegations over `SANDBOX`, `prune_rejected`, `working_dirs` |
 | `astrowizard.py` | the finishing round-trip (thin `roundtrip` consumer): `is_master`/`is_autosave`/`is_handoff` (sidecar-keyed, never filename), `prepare_lights` |
-| `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; three-phase solve·register·stack; `calibration_for_stack` (job-dir masters, else the device library on the *selected* frames → `calibrate -dark/-flat/-bias`; `--no-calibration`); `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
+| `stacking.py` | headless Siril stacking (`m110-stack`): `build_plan` (read-only) vs `run_siril`; per-subset calibration (`calibration_subsets` → select/calibrate `-prefix`/`merge`) and masters built from raw sets; three-phase solve·register·stack; `calibration_for_stack` (job-dir masters, else the device library on the *selected* frames → `calibrate -dark/-flat/-bias`; `--no-calibration`); `clear_scratch`; `apply_handoff`, `handoff_candidates`, `_is_stretched` (HISTORY cards) |
 | `launch.py` | external-app launcher (`_TOOLS` registry: Siril, AstroWizard, StackingWizard); `find_app`, `launch_processing`, `launch_with_file`, sanitized `_child_env()` |
 | `hints.py` | user-editable finished/intermediate filename vocabulary (`finished_hints` setting) |
 | `objects.py` | journal read/write, frontmatter upserts, per-image curation |
-| `refresh.py` | `run_refresh()` = add_captured_objects → scan → derive → render |
+| `refresh.py` | `run_refresh()` = add_captured_objects → scan → derive → render; `rederive()` = derive only (a goal/scope/optics change) |
 | `logsetup.py` | rotating log at `~/.m110/logs/m110.log` |
+| `running_app.py` | the GUI's record of itself (`~/.m110/running.json`: pid, data root, its own `m110-stack` argv) so the assistant names the running app's install (`stacker`, `shell_command`: `~`-for-home + `shlex.quote`) |
 | `media.py` | recursive non-catalog media listing, poster resolution, sidecar cleanup |
 | `webexport.py` | size-budgeted PNG/JPEG export for sharing |
 | `backup/` | snapshot engine: `destination` (folder or `s3://`), `backends/` (local, memory, S3), `mirrored` + `pooled` formats, `scope` (denylist + `essentials` tier), `slots` (Local + Cloud, each its own settings; `update_slot` is the writer), `retention` (24h-grace GC), `probe`, `schedule` (per slot), `recovery`; façade in `__init__` |
 | `planning.py` | twilight (memoized), `observability`, `night_track`, `plan_night`, `sequence_plan`, moon impact (topocentric AltAz) |
 | `fieldguide.py` | printable observing plan markdown; saved under `Plans/` |
-| `planning_config.py` | site/device profiles (`profiles/*.toml`), glow layer, `DEVICE_PRESETS`, active-profile selection, `geocode` |
+| `planning_config.py` | site profiles (`profiles/*.toml`), glow layer, `DEVICE_PRESETS`, active-profile selection, the **active telescope** (`active_device_key`/`set_active_device`, `device_for` = preset + `devices.toml` planning overrides; `load_device()` resolves to it), `geocode` |
 | `prioritize.py` | deterministic ranker; slow `build_contexts` split from instant `rank`; cached `derived/prioritized.json` |
 | `horizon.py` / `glow.py` | horizon mask + light-dome floor (Walker's Law over GeoNames `cities1000`) |
-| `goals.py` / `pins.py` | per-store active goals + custom lists; manual pin/deprioritize overrides |
+| `goals.py` / `pins.py` | per-store active goals + custom lists, each optionally scoped to one telescope model (`goal_scope`, `scoped_totals`); manual pin/deprioritize overrides |
 | `updates.py` | GitHub release check (`packaging`), throttle prefs, `version_tag`/`user_guide_url` (pinned to the release tag) |
-| `assistant/` | MCP assistant: `registry` (tools populated by importing `tools/`), 16 provider-neutral tools, `serialize`, `proposals`, `outbox` (the only writer, create-only), `apply` (app-side only), `mcp_server` (SDK v2, stdout→stderr) |
-| `seed/` | bundled `objects.toml` reference, `catalogs/*.toml`, empty `priorities.toml`, GeoNames subset; generated by `tools/gen_*.py` at build time |
+| `assistant/` | MCP assistant: `registry` (tools populated by importing `tools/`), 17 provider-neutral tools, `serialize`, `proposals`, `outbox` (the only writer, create-only), `apply` (app-side only), `mcp_server` (SDK v2, stdout→stderr) |
+| `seed/` | bundled `objects.toml` reference, `catalogs/*.toml`, GeoNames subset; generated by `tools/gen_*.py` at build time |
 | `publish/` | publisher registry: `site` (Jinja2 static site + stale sweep), `ghpages` (system git, replace/incremental modes, streamed progress, cancel kills push), `select`, `images` (gallery levels), `options` |
 
 **UI (`m110/ui/`, PySide6):**
 
 | Module | Role |
 |---|---|
-| `main.py` | shell: nav rail → 5 pages **Library · Overview · Planning · Import · Processing**; `_build_menus()` (File/View/Library/Tools/Help, `MenuRole` hoisting); `RefreshWorker`; auto-sync on launch/focus/ingest; `open_object(slug)`; `_ready` gates launch workers |
+| `main.py` | shell: nav rail → 6 pages **Library · Overview · Planning · Import · Processing · Devices**; `_build_menus()` (File/View/Library/Tools/Help, `MenuRole` hoisting); `RefreshWorker`; auto-sync on launch/focus/ingest; `open_object(slug)`; `_ready` gates launch workers |
 | `widgets.py` | shared table/thumbnail helpers (`ThumbnailLoader`, `fit_table_height`, `fit_cell_widgets`), launch helpers, **`drain_worker`**, **`modal_loop_active`/`defer`/`connect_context_menu`** |
 | `image_grid.py` | reusable tile grid (model + delegate), app-data-agnostic |
-| `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, processing/sessions tables, handoff/import buttons |
+| `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, integration goals (per model, Set goal… → `goal_dialog`), processing/sessions tables, handoff/import buttons |
 | `pages/catalog.py` | the Library: List/Grid/Feed views + Deep-sky/Media scope, filters, right-click actions |
 | `pages/overview.py` | landing dashboard of collapsible sections (goals, pins, integration, checklists, manage goals) |
 | `pages/processing.py` · `pages/sessions.py` · `pages/journal.py` · `pages/media.py` | Siril queue · session log (dialog) · feed view · media browser |
 | `pages/planning.py` + `night_timeline.py` + `field_guide_dialog.py` + `site_profile_editor.py` | planning pane: ranking, night plan/sequencer, saved guides, site profiles; astropy workers fire only on explicit actions |
-| `pages/import_page.py` · `ingest_dialog.py` · `holding_inspect_dialog.py` | import flow: preview-then-confirm, holding area, bulk assign |
+| `pages/import_page.py` · `ingest_dialog.py` · `holding_inspect_dialog.py` · `preset_conflict_dialog.py` | import flow: preview-then-confirm, holding area, bulk assign; ask before replacing a differing Siril preset |
 | `import_dialog.py` · `handoff_dialog.py` · `export_dialog.py` · `add_object_dialog.py` · `image_viewer.py` | import finished work · send stack to a workflow · export for sharing · add object · gallery viewer |
 | `media_detail.py` · `media_cleanup_dialog.py` | media detail pane · sidecar cleanup |
 | `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (summary + Local drive / Cloud tabs, one `_SlotPanel` each) · restore (From: picker across slots) · MCP connection details |
 | `about_dialog.py` · `update_notice.py` · `error_report.py` · `first_run_dialog.py` | about + update status · update banner/worker · crash dialog + excepthook · first-launch prompt |
+| `pages/devices.py` | the **Devices** rail page: device list + detail (identity → `devices.toml`, objects, dark library, captures, `SensorChart`), dark ↔ capture cross-selection, Reveal menus — from `derived/devices.json`; `widgets.dark_gap_item`/`dark_labels` are the shared **Dark** cell, `reveal_in_manager` selects the file |
 | `theme/` | design system: `tokens` (light/dark), `qss.build_qss`, `manager.ThemeManager` (follows OS), bundled JetBrains Mono, `brand` (recolored logo, fixed app icon). **Pull colors/spacing from tokens, never hardcode hex** |
 
 ---
@@ -270,11 +274,21 @@ wrong) is under the same heading in DONE.md's archived reference.
 - A **stack is known by its header** (`ingest.is_stack_header`: `STACKCNT`/`NCOMBINE` > 1
   or `NAXIS3` = 3), never by a "stacked" token in the name — DwarfLab's
   `stack_linear_uint16.fits` imported as a 300 s light before this rule.
+- **Seestar *app* subs are already dark-subtracted on the device**; the same S50 under
+  N.I.N.A./Alpaca is not. The flag is per frame (`capture_profiles.darks_applied`,
+  carried as `darks_applied` in every facts dict); never key it on the model alone.
+  Its `darklibrary/` masters are reference data; which one a capture got is inferred
+  from the filename clock (`calibration.device_clock`, the only filename-time read)
+  corroborated by CCD-TEMP.
 - A walk that skips `lights/`/sandboxes must **prune at the directory** (`roundtrip._walk_files`), never `rglob` then filter — the skipped trees are the whole capture, three times over, per target per sync.
 - Copy from the Seestar (SMB) with `shutil.copyfile` → `.part` → `os.replace`; `copy2` EPERMs.
 - Never trust mtime for provenance/freshness; use header dates (`DATE-OBS`, stack `DATE`).
 - The real Siril stack often sits in `working_files/`, not `stacks/`; readers look there.
+- Anything that moves or unlinks inside a sandbox asks first: `roundtrip.require_idle` (user-driven, raises) or `sandbox_busy` (automatic, skips). A live `m110-stack` run owns its `process/`.
 - `processing.json` stamps `generated_at`, so it churns; everything else in `derived/` is deterministic.
+- A `derived/` file is read at launch **before** Sync rewrites it, so after an upgrade
+  it has the previous version's schema: readers use `.get`/normalizers (e.g.
+  `derived.normalize_device`), never raw new keys.
 - A backup destination that can't hardlink is probed up front (`backup.probe_destination`,
   on a worker) and switches to the pooled format, telling the user. Pooled objects are
   mode 0444, so Windows deletes need `chmod` first.
@@ -283,10 +297,17 @@ wrong) is under the same heading in DONE.md's archived reference.
   Library on refresh (`catalog.add_captured_objects`).
 - Processing-prep is automatic + idempotent (full on ingest, missing-only on refresh;
   hand-edited presets preserved). No manual "Prepare" button.
-- Calibration masters are matched from **headers only** (`calibration.py`). The
-  DwarfLab pre-release masters are headerless, so ingest stamps their facts into
-  M110's copy (`IngestOp.stamp`, `M110STMP` card) — a TEMPORARY SHIM confined to
-  `ingest.py`; never teach a downstream reader to parse a master's filename.
+- Calibration masters are matched from **headers only** (`calibration.py`); never
+  teach a downstream reader to parse a master's filename. The DwarfLab pre-release
+  masters are headerless, so ingest stamps their facts into M110's copy
+  (`IngestOp.stamp`, `M110STMP` card) — a TEMPORARY SHIM confined to `ingest.py`.
+  The library also holds **raw** frames (`_is_raw`), used only as `raw_sets`,
+  never one by one.
+- The capture-path rule reads the **original lights**, never Siril's `process/`
+  output: Siril drops `SWCREATE`, so a N.I.N.A. `pp_` frame reads as unknown.
+- Siril options take **whole-token** quotes: `"-dark=<path>"` (`stacking._siril_opt`).
+  `-dark="<path>"` keeps the quotes in the name and fails. `setcompress` persists
+  across Siril runs, so set it explicitly before writing anything you name later.
 - Siril calibration links go in **each job dir** (`siril/<FILTER>/darks/`), never only
   the sandbox root: the Naztronomy script resolves `darks/` against Siril's cwd.
 

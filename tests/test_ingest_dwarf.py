@@ -95,7 +95,7 @@ def test_dwarf_session_routes_lights_stack_and_skips_previews(tmp_path, monkeypa
     assert any(n.startswith("stacked-16_") and n.endswith(".fits") for n in stack_names)
     assert "stacked.jpg" in stack_names
     assert any(n.startswith("stacked-16_") and n.endswith(".png") for n in stack_names)
-    assert all("Images/M42/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+    assert all("Images/M42/device-stacks/" in o.dest_rel for o in by_kind["stack"])
 
     # per-sub Thumbnail/ + aux rasters (stacked_thumbnail, img_*) are NOT held
     assert "unassigned" not in by_kind
@@ -209,10 +209,35 @@ def test_draco_session_recognized_like_a_dwarf(tmp_path, monkeypatch):
     assert all(op.layout == "dwarf" for op in ops)
     assert len(by_kind["light"]) == 3
     assert all("Images/NGC 6992/lights/" in o.dest_rel for o in by_kind["light"])
-    assert all("Images/NGC 6992/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+    assert all("Images/NGC 6992/device-stacks/" in o.dest_rel for o in by_kind["stack"])
     assert "unassigned" not in by_kind
     assert all(o.note == "" for o in ops)          # a named session carries no note
     assert ingest.frame_info(by_kind["light"][0].src)["telescop"] == "Draco"
+
+
+def test_draco_sho_stack_imports_to_device_stacks_and_hands_off_per_layer(
+        tmp_path, monkeypatch):
+    """A Draco session's two-image "SHO" ``stacked-16_*`` lands in the target's
+    ``device-stacks/`` tier (store v6 name), and from there the AstroWizard handoff
+    still lists it once per layer (HO + SO)."""
+    from m110 import stacking
+    from tests._helpers import make_sho
+    seed_root(tmp_path, monkeypatch)
+    src = tmp_path / "external"
+    d = _draco_session(src, "Draco_RAW_TELE_C 20_EXP_300_GAIN_120_2026-11-03-05-38-01-148",
+                       obj="C 20", n=2)
+    for f in d.glob("stacked-16_*.fits"):
+        f.unlink()
+    make_sho(d / "stacked-16_C 20_300s120_SHO_20261103-053801148.fits")
+    ops = ingest.scan_directory_plan(str(src))
+    stacks = [o for o in ops if o.kind == "stack" and o.dest_rel.endswith(".fits")]
+    assert len(stacks) == 1
+    target = stacks[0].object
+    assert stacks[0].dest_rel == (f"Images/{target}/device-stacks/"
+                                  "stacked-16_C 20_300s120_SHO_20261103-053801148.fits")
+    ingest.apply_ops(ops)
+    got = [c for c in stacking.handoff_candidates(target) if c.tier == "device-stacks"]
+    assert [(c.layer_name, c.frames) for c in got] == [("HO", 20), ("SO", 39)]
 
 
 def test_placeholder_object_named_by_pointing(tmp_path, monkeypatch):
@@ -227,7 +252,7 @@ def test_placeholder_object_named_by_pointing(tmp_path, monkeypatch):
     by_kind = _by_kind(ops)
     assert set(by_kind) == {"light", "stack"}
     assert all("Images/NGC 6992/lights/" in o.dest_rel for o in by_kind["light"])
-    assert all("Images/NGC 6992/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+    assert all("Images/NGC 6992/device-stacks/" in o.dest_rel for o in by_kind["stack"])
     assert all(o.note.startswith("identified by pointing") for o in ops)
     assert all("NGC 6992" in o.note for o in ops)
     assert not (config.IMAGES_DIR / "Unknown").exists()

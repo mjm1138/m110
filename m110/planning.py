@@ -505,7 +505,8 @@ def plan_night(site: Site, day: date, targets, *, order: str = "auto",
     return {"window": (dusk, dawn), "moon": moon, "entries": entries,
             # Effective (margin-applied) start ceiling — the sequencer needs the
             # per-tick startability test, not just night_track's single pick.
-            "start_ceiling_deg": ceiling, "ceiling_is_hard": device.ceiling_is_hard}
+            "start_ceiling_deg": ceiling, "ceiling_is_hard": device.ceiling_is_hard,
+            "device": device.name}
 
 
 # ── night sequencer (Phase 4 / BUGS #40–42) ──────────────────────────────────

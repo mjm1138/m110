@@ -192,8 +192,8 @@ def plan_night(date: str | None = None, count: int = 4, targets: list | None = N
             "read-only and cannot build them (the astropy pass takes minutes)."
         )
 
-    ranked = prioritize.rank(contexts, prioritize.load_weights(),
-                             prioritize.load_strategy(), pins.load())
+    ranked = prioritize.rank_for_active(contexts, prioritize.load_weights(),
+                                        prioritize.load_strategy(), pins.load())
     scores = {r["slug"]: r["score"] for r in ranked}
     filters = {r["slug"]: prioritize.filter_for_type(r.get("type", "")) for r in ranked}
 

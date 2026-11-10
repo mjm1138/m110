@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 import shutil
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -37,6 +37,7 @@ DEFAULT_PROFILE = "default"
 # Which site profile the planner/prioritizer reads. Persisted in settings.json
 # (not in a profile file) so it's a per-user choice, not per-store data.
 ACTIVE_PROFILE_SETTING = "active_site_profile"
+ACTIVE_DEVICE_SETTING = "active_device"        # the telescope Planning plans for (per user)
 
 
 @dataclass
@@ -105,6 +106,18 @@ class Device:
     one_exposure_per_plan: bool = True
     gain: int = 80
     retry_wait_s: int = 300
+    # Main-camera optics (None = not known). The f-ratio scales the per-type
+    # integration-goal defaults (`integration_goals.speed_factor`); aperture and
+    # pixel size ride along so a later basis can use them.
+    aperture_mm: float | None = 50.0
+    focal_length_mm: float | None = 250.0
+    pixel_um: float | None = 2.9
+
+    @property
+    def f_ratio(self) -> float | None:
+        if self.aperture_mm and self.focal_length_mm:
+            return self.focal_length_mm / self.aperture_mm
+        return None
 
 
 # Per-device ceiling presets (2026-07-14 research — PLANNING_ROADMAP Phase 3):
@@ -124,17 +137,37 @@ class Device:
 #   340 mm / 2.394 µm / 4096×3072 (≈1.45″/px, 1.65°×1.24° field — a deep-tier
 #   field, not a Dwarf 3 widefield). Same soft alt-az ceiling as the Dwarf 3 until
 #   a real unit says otherwise. Revisit when production data arrives.
+#
+# Optics (main/telephoto camera), 2026-10-27 research:
+# * S50: 50 mm / 250 mm (f/5), IMX462 2.9 µm — verified from its own FITS headers
+#   (XPIXSZ/FOCALLEN; BUGS.md "plate scale").
+# * S30: 30 mm / 150 mm (f/5), IMX662 2.9 µm — retailer comparison tables
+#   (skiesandscopes.com). S30 Pro: 30 mm / 160 mm (f/5.3), IMX585 2.9 µm —
+#   highpointscientific.com and astrobackyard.com reviews (early coverage said
+#   150 mm; launched listings agree on 160).
+# * Dwarf 3: 35 mm / 150 mm (f/4.3), IMX678 2.0 µm — explorescientific.com spec
+#   sheet. Dwarf Mini: 30 mm / 150 mm (f/5), IMX662 2.9 µm — astronomics.com,
+#   B&H listings.
+# * Draco: 90 mm / 340 mm (f/3.8), 2.394 µm — focal length and pixel from the
+#   2026-09 sample's own FOCALLEN/XPIXSZ; the 90 mm aperture from retailer listings
+#   (telescopescanada.ca, agenaastro.com; 2026-11-10) — DwarfLab itself publishes
+#   only a "1200 mm equivalent", so the aperture is UNVERIFIED.
 DEVICE_PRESETS: dict[str, Device] = {
     "seestar_s50": Device(),
-    "seestar_s30": Device(name="ZWO Seestar S30"),
-    "seestar_s30_pro": Device(name="ZWO Seestar S30 Pro"),
+    "seestar_s30": Device(name="ZWO Seestar S30", aperture_mm=30.0,
+                          focal_length_mm=150.0, pixel_um=2.9),
+    "seestar_s30_pro": Device(name="ZWO Seestar S30 Pro", aperture_mm=30.0,
+                              focal_length_mm=160.0, pixel_um=2.9),
     "dwarf_3": Device(name="DwarfLab Dwarf 3", start_alt_ceiling_deg=80.0,
-                      ceiling_is_hard=False),
+                      ceiling_is_hard=False, aperture_mm=35.0,
+                      focal_length_mm=150.0, pixel_um=2.0),
     "dwarf_mini": Device(name="DwarfLab Dwarf Mini", start_alt_ceiling_deg=80.0,
-                         ceiling_is_hard=False),
+                         ceiling_is_hard=False, aperture_mm=30.0,
+                         focal_length_mm=150.0, pixel_um=2.9),
     "draco": Device(name="DwarfLab Draco", start_alt_ceiling_deg=80.0,
                     ceiling_is_hard=False, max_exposure_s=300,
-                    default_exposure_s=300, gain=60),
+                    default_exposure_s=300, gain=60, aperture_mm=90.0,
+                    focal_length_mm=340.0, pixel_um=2.394),
 }
 
 
@@ -157,8 +190,10 @@ def list_profiles() -> list[str]:
     d = Path(config.PROFILES_DIR)
     if not d.is_dir():
         return []
+    # profiles/device.toml is the legacy device profile, not a site
     names = sorted(p.stem for p in d.glob("*.toml")
-                   if not config.is_hidden_name(p.name))
+                   if not config.is_hidden_name(p.name)
+                   and p.stem != LEGACY_DEVICE_PROFILE)
     if DEFAULT_PROFILE in names:
         names.remove(DEFAULT_PROFILE)
         names.insert(0, DEFAULT_PROFILE)
@@ -185,9 +220,71 @@ def load_site(name: str = DEFAULT_PROFILE, path=None) -> Site:
     return site
 
 
-def load_device(name: str = "device", path=None) -> Device:
-    """Load a device profile (optional ``device.toml`` under the profiles dir),
-    falling back to in-code Seestar S50 defaults."""
+LEGACY_DEVICE_PROFILE = "device"     # profiles/device.toml — pre-registry, hand-written
+
+# The planning limits a user may override per telescope (Devices page →
+# devices.toml ``[devices."<key>".planning]``); everything else comes from the
+# telescope's preset.
+PLANNING_OVERRIDES = ("start_alt_ceiling_deg", "ceiling_is_hard", "low_alt_floor_deg",
+                      "max_exposure_s", "default_exposure_s", "gain")
+
+
+def device_for(key: str, registry: dict | None = None) -> Device:
+    """The planning `Device` for one telescope (a device key — its TELESCOP): its
+    preset (`devices.effective_preset`, else the S50 defaults), named by
+    `devices.label`, with the user's per-device planning overrides applied."""
+    from . import devices
+    reg = devices.load_registry() if registry is None else registry
+    preset = devices.effective_preset(key, reg)
+    dev = replace(DEVICE_PRESETS.get(preset or "", Device()))
+    for k, v in reg.get(key, {}).get("planning", {}).items():
+        if k in PLANNING_OVERRIDES:
+            setattr(dev, k, v)
+    dev.name = devices.label(key, reg)
+    return dev
+
+
+def planning_devices() -> list[dict]:
+    """The telescopes Planning can plan for: every non-retired device M110 knows,
+    most recently used first (the `derived/devices.json` order) — ``[{device, label}]``.
+    Nickname and retirement are read from the registry, not the rollup, so an edit
+    on the Devices page shows here before the next Sync rewrites devices.json."""
+    from . import derived, devices
+    reg = devices.load_registry()
+    out = []
+    for d in derived.load_devices():
+        key, edits = d["device"], reg.get(d["device"], {})
+        if key == "unknown" or edits.get("retired", d.get("retired")):
+            continue
+        out.append({"device": key,
+                    "label": edits.get("nickname") or d.get("label") or key})
+    return out
+
+
+def active_device_key() -> str | None:
+    """The telescope Planning plans for: the user's pick (per user, like the
+    active site) while it is still a known, non-retired device; else the most
+    recently used one; None when M110 knows no telescope yet."""
+    keys = [d["device"] for d in planning_devices()]
+    chosen = config.get_setting(ACTIVE_DEVICE_SETTING, "") or ""
+    if chosen in keys:
+        return chosen
+    return keys[0] if keys else None
+
+
+def set_active_device(key: str) -> None:
+    config.save_setting(ACTIVE_DEVICE_SETTING, key)
+
+
+def load_device(name: str = LEGACY_DEVICE_PROFILE, path=None) -> Device:
+    """The planning `Device`. With an explicit `path` or a non-default `name`, that
+    profile TOML (``[device]`` table). Otherwise the **active telescope**
+    (`active_device_key` → `device_for`), else the legacy hand-written
+    ``profiles/device.toml``, else in-code Seestar S50 defaults."""
+    if path is None and name == LEGACY_DEVICE_PROFILE:
+        key = active_device_key()
+        if key:
+            return device_for(key)
     p = Path(path) if path else profile_path(name)
     raw = _load_toml(p)
     dev = Device()

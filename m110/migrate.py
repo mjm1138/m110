@@ -2,10 +2,10 @@
 
 The store originally mixed machine state and content across `data/`, `Images/`
 (with jargon subfolders `FITS` / `Seestar_stacks` / `Finished Images` /
-`From the scope`), and `site/`. The current layout (store version 4) is:
+`From the scope`), and `site/`. The current layout (store version 6) is:
 
     Objects/<catalog id>/journal.md          (catalog-object axis)
-    Images/<target>/{lights,stacks,seestar-stacks,finished}/
+    Images/<target>/{lights,stacks,device-stacks,finished}/
     Media/<Category>_photo|_video/
     Inbox/                                   (ingest staging)
     .m110_internal_data/{library,priorities,sessions,...}  + derived/ + renders/
@@ -14,7 +14,10 @@ The store originally mixed machine state and content across `data/`, `Images/`
 store hasn't reached the current version — an old-layout marker triggers the v0→v2
 two-axis reshape, and later version bumps run regardless (v2→v3 renames the
 per-store `catalog.toml` → `library.toml`; v3→v4 purges capture targets that were
-wrongly promoted into the object axis — see `_prune_combined_target_objects`).
+wrongly promoted into the object axis — see `_prune_combined_target_objects`;
+v4→v5 marks the retired `priorities.toml` as no longer read —
+`_mark_priorities_retired`; v5→v6 renames each target's `seestar-stacks/` tier to
+the vendor-neutral `device-stacks/` — `_rename_device_stacks`).
 Moves use same-filesystem renames
 (cheap); a re-run resumes a partial move rather than duplicating or destroying
 anything. Qt-free, and only ever exercised on temp/throwaway roots in tests —
@@ -22,10 +25,13 @@ never pointed at a live root in validation.
 """
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
-STORE_VERSION = 4
+log = logging.getLogger(__name__)
+
+STORE_VERSION = 6
 INTERNAL_DIRNAME = ".m110_internal_data"
 VERSION_FILE = ".store_version"
 
@@ -149,9 +155,121 @@ def migrate_store(root) -> bool:
     # v3 → v4: purge capture targets that were wrongly promoted into the object axis.
     if _prune_combined_target_objects(root):
         changed = True
+    # v4 → v5: say so in priorities.toml, which nothing has read since the prioritizer.
+    if _mark_priorities_retired(root):
+        changed = True
+    # v5 → v6: the device-stack tier holds Dwarf/Draco stacks too — not "seestar".
+    if _rename_device_stacks(root):
+        changed = True
     if internal.is_dir():
         (internal / VERSION_FILE).write_text(str(STORE_VERSION), encoding="utf-8")
     return changed
+
+
+# v6: the per-target device-stack tier (mirrors `config.DEVICE_STACKS_DIRNAME` /
+# `LEGACY_DEVICE_STACKS_DIRNAME`; duplicated because config imports this module).
+DEVICE_STACKS = "device-stacks"
+LEGACY_DEVICE_STACKS = "seestar-stacks"
+
+
+def _merge_keep_both(src: Path, dst: Path) -> None:
+    """Move every file under `src` into `dst`, **never overwriting**: a name free in
+    `dst` is a plain rename; a name taken by different bytes lands beside it as
+    `<stem>-N<ext>` (the import keep-both rule, `roundtrip.resolve_import_dest`); a
+    byte-identical copy is already there, so it is left where it is and logged —
+    nothing is deleted. Emptied directories are removed; non-empty ones never."""
+    from .roundtrip import resolve_import_dest   # local: config imports migrate
+    if not dst.exists():
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dst))
+        return
+    for child in sorted(src.iterdir()):
+        target = dst / child.name
+        if child.is_dir():
+            if target.exists() and not target.is_dir():
+                log.warning("store v6: kept %s (a file of that name is in %s)", child, dst)
+                continue
+            _merge_keep_both(child, target)
+            continue
+        if not target.exists():
+            shutil.move(str(child), str(target))
+            continue
+        if target.is_dir():
+            log.warning("store v6: kept %s (a folder of that name is in %s)", child, dst)
+            continue
+        free, disposition = resolve_import_dest(target, child)
+        if disposition == "duplicate":
+            log.warning("store v6: left %s in place — an identical copy is already %s",
+                        child, free)
+            continue
+        shutil.move(str(child), str(free))
+        log.warning("store v6: %s collided with a different file; kept both as %s",
+                    child, free.name)
+    _rmdir_if_empty(src)
+
+
+def _rename_device_stacks(root: Path) -> bool:
+    """v5 → v6: `Images/<t>/seestar-stacks/` → `Images/<t>/device-stacks/`.
+
+    The tier holds every telescope's own in-app stacks (Seestar, Dwarf 3, Draco),
+    so the vendor name was wrong. Same-filesystem renames, so it is cheap; if both
+    folders exist (an older build wrote the old one after an upgrade) the contents
+    merge with keep-both collisions (`_merge_keep_both`) and the old folder is
+    removed only once it holds nothing but OS junk. Hero `.src` sidecars that
+    recorded a source under the old name are repointed, so the hero is not
+    re-rendered for a rename. Idempotent: a second run finds nothing to do."""
+    images = root / "Images"
+    if not images.is_dir():
+        return False
+    changed = False
+    for t_dir in sorted(p for p in images.iterdir() if p.is_dir()):
+        old = t_dir / LEGACY_DEVICE_STACKS
+        if not old.is_dir():
+            continue
+        _merge_keep_both(old, t_dir / DEVICE_STACKS)
+        _drop_legacy(old)
+        if old.exists():
+            log.warning("store v6: %s still holds files (see above); left in place", old)
+        changed = True
+    hero = root / INTERNAL_DIRNAME / "renders" / "hero"
+    if hero.is_dir():
+        for sc in hero.glob("*.src"):
+            try:
+                lines = sc.read_text(encoding="utf-8").split("\n")
+            except (OSError, UnicodeDecodeError):
+                continue
+            sep = "\\" if "\\" in lines[0] else "/"     # str(relative_to) on Windows
+            parts = lines[0].split(sep)
+            if len(parts) >= 4 and parts[0] == "Images" and parts[2] == LEGACY_DEVICE_STACKS:
+                parts[2] = DEVICE_STACKS
+                lines[0] = sep.join(parts)
+                sc.write_text("\n".join(lines), encoding="utf-8")
+                changed = True
+    return changed
+
+
+PRIORITIES_RETIRED_HEADER = (
+    "# M110 no longer reads this file (retired in 0.3; nothing parses it any more).\n"
+    "# Priorities are ranked automatically on the Planning page; pin or deprioritize\n"
+    "# objects there or in the Library, and set an object's integration goal in its\n"
+    "# detail pane. Kept only so nothing you wrote here is lost — safe to delete.\n\n"
+)
+
+
+def _mark_priorities_retired(root: Path) -> bool:
+    """v4 → v5: prepend a "no longer read" header to a hand-edited `priorities.toml`.
+
+    The curated priority list was replaced by the prioritizer long ago, but every
+    store was still seeded with it — so editing it silently did nothing. Prepends
+    only (the user's text is kept verbatim), and only once."""
+    path = root / INTERNAL_DIRNAME / "priorities.toml"
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    if text.startswith(PRIORITIES_RETIRED_HEADER.splitlines()[0]):
+        return False
+    path.write_text(PRIORITIES_RETIRED_HEADER + text, encoding="utf-8")
+    return True
 
 
 def _prune_combined_target_objects(root: Path) -> bool:
@@ -262,11 +380,11 @@ def _reshape_v0_to_v2(root: Path) -> None:
             _drop_legacy(t_dir)
         _drop_legacy(fits)
 
-    # 5. Seestar in-app stacks → Images/<t>/seestar-stacks/
+    # 5. Seestar in-app stacks → Images/<t>/device-stacks/
     seestar = images / "Seestar_stacks"
     if seestar.is_dir():
         for t_dir in sorted(p for p in seestar.iterdir() if p.is_dir()):
-            _relocate(t_dir, images / t_dir.name / "seestar-stacks")
+            _relocate(t_dir, images / t_dir.name / DEVICE_STACKS)
         _drop_legacy(seestar)
 
     # 6. Hand-finished renders → Images/<t>/finished/

@@ -33,7 +33,8 @@ def _image_tier(name: str, label: str, curation: dict) -> str:
         return "finished" if curation[name] == "finished" else "working"
     if label == "Finished render":
         return "finished"
-    return "device" if label == "Seestar in-app stack" else "working"
+    return ("device" if label in (config.DEVICE_STACK_LABEL,
+                                  config.LEGACY_DEVICE_STACK_LABEL) else "working")
 
 
 def make_full(src: Path, dest_dir: Path) -> Path | None:

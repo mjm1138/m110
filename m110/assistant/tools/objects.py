@@ -7,7 +7,7 @@ stop early and guess at the rest.
 """
 from __future__ import annotations
 
-from m110 import build_derived, catalog, derived, objects as journals, pins, prioritize
+from m110 import catalog, derived, integration_goals, objects as journals, pins, prioritize
 from m110.assistant.registry import ToolError, register
 from m110.assistant.store import require_store
 
@@ -41,7 +41,7 @@ from m110.assistant.store import require_store
             "m110.derived.totals_by_slug", "m110.derived.images_for",
             "m110.derived.load_sessions", "m110.objects.read_journal",
             "m110.objects.get_curation", "m110.pins.get_state",
-            "m110.build_derived.deep_threshold", "m110.prioritize.filter_for_type"),
+            "m110.integration_goals.capture_report", "m110.prioritize.filter_for_type"),
 )
 def get_object(slug: str, include_journal: bool = True,
                include_images: bool = True) -> dict:
@@ -58,7 +58,6 @@ def get_object(slug: str, include_journal: bool = True,
     obj_type = entry.get("type") or "unknown"
     totals = (derived.totals_by_slug() if derived.derived_available() else {}).get(slug, {})
     integration = totals.get("integration_min", 0.0) or 0.0
-    deep_min = build_derived.deep_threshold(obj_type)
 
     coords = catalog.load_coords().get(slug)
     out = {
@@ -83,11 +82,10 @@ def get_object(slug: str, include_journal: bool = True,
             "first_capture": totals.get("first_capture"),
             "last_capture": totals.get("last_capture"),
             "status": totals.get("status", "uncaptured"),
-            # Type-aware, per build_derived.DEEP_MIN_BY_TYPE — never quote one
-            # global number for "deep".
-            "deep_threshold_min": deep_min,
-            "fraction_of_deep": (round(min(integration / deep_min, 1.0), 3)
-                                 if deep_min else None),
+            # Per telescope model (integration_goals): the active telescope's goal
+            # as deep_threshold_min, every model that shot it under `goals` —
+            # never quote one global number for "deep".
+            **integration_goals.capture_report(slug, obj_type, totals),
         },
         "recommended_filter": prioritize.filter_for_type(obj_type),
         "pin_state": pins.get_state(slug),

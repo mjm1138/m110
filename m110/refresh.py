@@ -8,13 +8,37 @@ images won't appear until the Astronomy `build_site` runs.
 """
 from __future__ import annotations
 
+import json
+
 from . import scan_sessions, build_derived, catalog
 
 
-def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
+def rederive() -> None:
+    """Rebuild only the derived rollups from the sessions already scanned — for a
+    preference change that moves statuses (an integration goal, a goal's telescope,
+    a telescope's optics). No FITS scan, no rendering: instant."""
+    build_derived.main()
+
+
+class RefreshCancelled(Exception):
+    """`should_cancel` turned true at a safe point. Nothing is half-written: the scan
+    only reads, and sessions + derived are written together or not at all."""
+
+
+def run_refresh(render: bool = True, catalog_captures: bool = True,
+                should_cancel=None) -> dict:
     """Rescan sessions, rebuild derived rollups, and (re)generate gallery/hero
     images for the data store. Returns a small summary dict for the UI.
+
+    `should_cancel()` is polled at safe points (per object folder and session
+    during the scan, per folder while deriving, per object while rendering); when
+    it turns true this raises
+    `RefreshCancelled`. Quit uses it so it never waits out a whole sync.
     """
+    def checkpoint():
+        if should_cancel is not None and should_cancel():
+            raise RefreshCancelled
+
     # Promote captured-but-uncatalogued targets to first-class catalog objects
     # *before* scanning, so the session/derived pass picks up their new slug
     # (otherwise they'd show only in folder-derived views, never the catalog).
@@ -25,9 +49,15 @@ def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
     # now holds its captures.
     superseded = catalog.prune_superseded_stubs() if catalog_captures else []
 
-    rows = scan_sessions.scan()
+    rows = scan_sessions.scan(checkpoint=checkpoint)
+    # Derive from the rows in memory — exactly what load_sessions would read back
+    # from the file — so nothing is written until the last cancel point has passed:
+    # sessions + derived land together or not at all.
+    outputs = build_derived.compute(sessions=[json.loads(json.dumps(r)) for r in rows],
+                                    checkpoint=checkpoint)
+    checkpoint()
     scan_sessions.write_jsonl(rows)
-    build_derived.main()  # loads catalog/priorities/sessions/overrides → derived/*.json
+    build_derived.write(outputs)
     # NOTE: the prioritizer (astropy observability over all goal members) is NOT run
     # here — that would add seconds to every focus-refresh. The Planning page computes
     # it lazily on a background thread (once/day, cached) and re-ranks live.
@@ -37,7 +67,10 @@ def run_refresh(render: bool = True, catalog_captures: bool = True) -> dict:
         try:
             from . import build_images, derived
             rendered = build_images.render_images(catalog.load_library(),
-                                                  derived.load_totals())
+                                                  derived.load_totals(),
+                                                  checkpoint=checkpoint)
+        except RefreshCancelled:
+            raise
         except Exception as exc:  # never let rendering break a refresh
             print(f"  image render skipped: {exc}")
     return {"sessions": len(rows), "rendered": rendered, "cataloged": added,

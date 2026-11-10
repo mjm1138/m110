@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import tomllib
 from pathlib import Path
 
@@ -34,9 +33,6 @@ _SUBDIRS = [
     f"{INTERNAL_DIRNAME}/renders/hero",
     f"{INTERNAL_DIRNAME}/profiles",
 ]
-# Static files copied verbatim from the bundled seed if missing. (library.toml is
-# generated from the object reference — see _seed_library.)
-_SEED_FILES = ["priorities.toml"]
 
 _README_TEXT = """\
 M110 — internal application data
@@ -176,6 +172,7 @@ def _apply(root: Path) -> None:
     global OVERRIDES_TOML, DERIVED_DIR, RENDERS_DIR, HERO_DIR, GOALS_TOML
     global MEDIA_RENDERS_DIR
     global PROFILES_DIR, PINS_TOML, PLANS_DIR, ASSISTANT_DIR, ASSISTANT_OUTBOX
+    global DEVICES_TOML, INTEGRATION_GOALS_TOML
     global CALIBRATION_DIR
     DATA_ROOT = root
     # Visible content axes
@@ -191,6 +188,9 @@ def _apply(root: Path) -> None:
     GOALS_TOML = INTERNAL_DIR / "goals.toml"       # per-store active goals
     PRIORITIES_TOML = INTERNAL_DIR / "priorities.toml"
     PINS_TOML = INTERNAL_DIR / "pins.toml"         # manual Pin/Deprioritize overrides (#3)
+    DEVICES_TOML = INTERNAL_DIR / "devices.toml"   # the user's edits per telescope (devices.py)
+    # per-object, per-telescope-model integration goals (integration_goals.py)
+    INTEGRATION_GOALS_TOML = INTERNAL_DIR / "integration_goals.toml"
     SESSIONS_JSONL = INTERNAL_DIR / "sessions.jsonl"
     OVERRIDES_TOML = INTERNAL_DIR / "processing_overrides.toml"
     DERIVED_DIR = INTERNAL_DIR / "derived"
@@ -237,9 +237,33 @@ def stacks_dir(name: str) -> Path:
     return IMAGES_DIR / name / "stacks"
 
 
-def seestar_stacks_dir(name: str) -> Path:
-    """Seestar in-app stacks for a capture target."""
-    return IMAGES_DIR / name / "seestar-stacks"
+# The per-target tier holding the telescope's own in-app stacks — Seestar, Dwarf 3,
+# Draco alike. Named `seestar-stacks/` before store v6 (`migrate._rename_device_stacks`
+# moves it); `upgrade_legacy_rel` maps a path recorded under the old name.
+DEVICE_STACKS_DIRNAME = "device-stacks"
+LEGACY_DEVICE_STACKS_DIRNAME = "seestar-stacks"
+# The gallery "Source" label for that tier (`derived/images.json`), and the label a
+# pre-v6 build wrote — readers accept both (`derived.load_images` normalizes).
+DEVICE_STACK_LABEL = "Device stack"
+LEGACY_DEVICE_STACK_LABEL = "Seestar in-app stack"
+
+
+def device_stacks_dir(name: str) -> Path:
+    """The telescope's own in-app stacks for a capture target (any vendor)."""
+    return IMAGES_DIR / name / DEVICE_STACKS_DIRNAME
+
+
+def upgrade_legacy_rel(rel: str) -> str:
+    """A root-relative path recorded before store v6 (`derived/images.json`, a hero
+    `.src` sidecar, a journal's `hero_image:`) → where that file lives now. Only the
+    tier segment directly under `Images/<target>/` is rewritten; anything else is
+    returned unchanged."""
+    parts = rel.replace("\\", "/").split("/")
+    if (len(parts) >= 4 and parts[0] == "Images"
+            and parts[2] == LEGACY_DEVICE_STACKS_DIRNAME):
+        parts[2] = DEVICE_STACKS_DIRNAME
+        return "/".join(parts)
+    return rel
 
 
 def finished_dir(name: str) -> Path:
@@ -416,6 +440,28 @@ SANDBOX_LINKED_INPUTS: dict[str, frozenset[str]] = {
 # Derived, so the dirnames and their linked-input policy can never drift apart.
 SANDBOX_DIRNAMES = frozenset(SANDBOX_LINKED_INPUTS)
 
+# The second question a workflow answers: which of its job-dir subdirectories are
+# the **tool's own scratch** — bytes the tool derives from the linked inputs and
+# rebuilds on every run, so they are neither authored work nor a deliverable.
+# Siril's `process/` is the one there is: the converted, calibrated and registered
+# sequences. Two things read this:
+#
+# * `siril.SANDBOX.archive_keep` leaves it in place on import rather than moving it
+#   into `archive/<ts>/`. The tools already own its lifecycle — Naztronomy asks
+#   before deleting an old `process/` at the start of a run, `m110-stack` clears it
+#   (`stacking.clear_scratch`) unless `--restack` reuses it on purpose — and an
+#   archived copy is one nobody will ever re-open in Siril. Measured on a real
+#   store: one archived `m110-stack` scratch was 3.5 GB, and keep-N
+#   retention multiplies that by N.
+# * `backup.scope` excludes it from **every** tier, live (`<sandbox>/[<FILTER>/]
+#   process/`) and already archived (`…/archive/<ts>/process/`) alike. It is also
+#   skipped by every finished-output walk (`siril._SKIP_DIRS`, `roundtrip.
+#   ROOT_SKIP_DIRS`), so nothing M110 imports or shows ever lives there.
+SANDBOX_SCRATCH: dict[str, frozenset[str]] = {
+    "siril": frozenset({"process"}),
+    "astrowizard": frozenset(),
+}
+
 
 def siril_dir(name: str) -> Path:
     """Contained Siril sandbox for a capture target (processing-prep)."""
@@ -511,11 +557,8 @@ def ensure_data_root(root=None) -> Path:
     for sub in _SUBDIRS:
         (r / sub).mkdir(parents=True, exist_ok=True)
     internal = r / INTERNAL_DIRNAME
-    for name in _SEED_FILES:
-        dst = internal / name
-        src = SEED_DIR / name
-        if not dst.exists() and src.is_file():
-            shutil.copy(src, dst)
+    # library.toml is generated from the object reference (the retired
+    # priorities.toml is no longer seeded — migrate._mark_priorities_retired).
     _seed_library(internal / "library.toml")
     readme = internal / "README.txt"
     if not readme.exists():

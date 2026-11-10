@@ -39,10 +39,10 @@ DEEP_STACK_MIN = 90
 # Type-aware deep-stack threshold (minutes) for the types that need *more* than the
 # floor. Required integration scales with surface brightness — galaxies want time
 # for faint outer arms, diffuse nebulae (incl. Sharpless) want hours. Calibrated to
-# S50 experience with the user. This single table drives BOTH the status badge
-# (below) and the prioritizer's completion factor, so they always agree. Types not
-# listed fall back to DEEP_STACK_MIN. A per-object user-set integration target is a
-# planned override (ROADMAP).
+# S50 experience with the user. Types not listed fall back to DEEP_STACK_MIN. It is
+# the *default* integration goal: `integration_goals` scales it by each telescope's
+# f-ratio and lets the user override it per object and model, and that one resolver
+# drives both the status badge and the prioritizer, so they always agree.
 DEEP_MIN_BY_TYPE = {
     "planetary": 180,       # bright core comes fast; faint halo/colour wants more
     "galaxy": 240,
@@ -99,12 +99,84 @@ def slug_to_priority_id(slug: str, catalog: dict) -> str:
     return catalog.get(slug, {}).get("id", slug.upper())
 
 
-def build_totals(catalog: dict, sessions: list[dict]) -> dict:
+def _device_bucket() -> dict:
+    return {"frames": 0, "integration_min": 0.0, "session_dates": set()}
+
+
+def session_device(s: dict) -> str:
+    """A session row's device key (`devices.folder_name`). Rows written before the
+    split carry only ``telescop``; a row with neither is ``"unknown"``."""
+    from . import devices
+    return s.get("device") or devices.folder_name(s.get("telescop"))
+
+
+def _add_device(by_device: dict, s: dict) -> None:
+    d = by_device[session_device(s)]
+    d["frames"] += s["frames"]
+    d["integration_min"] += s["integration_min"]
+    d["session_dates"].add(s["date"])
+
+
+def _device_totals(by_device: dict) -> dict:
+    return {dev: {"frames": d["frames"],
+                  "integration_min": round(d["integration_min"], 2),
+                  "session_count": len(d["session_dates"])}
+            for dev, d in sorted(by_device.items())}
+
+
+def _by_model(by_device: dict, goal_for, registry: dict) -> dict:
+    """Pool a ``by_device`` bucket map by telescope model and grade each model
+    against its integration goal. `goal_for(model)` → ``(minutes, source)``."""
+    from . import integration_goals as ig
+    pooled: dict[str, dict] = {}
+    for dev, d in sorted(by_device.items()):
+        m = pooled.setdefault(ig.model_key(dev, registry),
+                              {"integration_min": 0.0, "frames": 0, "devices": []})
+        m["integration_min"] += d["integration_min"]
+        m["frames"] += d["frames"]
+        m["devices"].append(dev)
+    out = {}
+    for model, m in sorted(pooled.items()):
+        goal, source = goal_for(model)
+        out[model] = {
+            "integration_min": round(m["integration_min"], 2),
+            "frames": m["frames"],
+            "devices": m["devices"],
+            "goal_min": goal,
+            "goal_source": source,
+            "fraction": round(ig.fraction(m["integration_min"], goal), 3),
+            "status": ig.state(m["integration_min"], goal),
+        }
+    return out
+
+
+def _status_fields(by_model: dict) -> dict:
+    """The object/folder-level ``status`` — its most advanced model — plus that
+    model's ``progress`` (0..1), for the "62% of goal" pill."""
+    from . import integration_goals as ig
+    best = ig.rollup(by_model)
+    if best is None:
+        return {"status": ig.INITIAL, "progress": 0.0, "progress_model": None}
+    model, entry = best
+    return {"status": entry["status"], "progress": entry["fraction"],
+            "progress_model": model}
+
+
+def build_totals(catalog: dict, sessions: list[dict], registry: dict | None = None,
+                 goals: dict | None = None) -> dict:
     """For each captured slug, aggregate sessions and compute status.
 
     A "captured slug" is any catalog slug that appears in at least one
-    session's `slugs` list.
+    session's `slugs` list. Status is graded per telescope model against its
+    integration goal (`integration_goals`); the object's ``status`` is its most
+    advanced model. `registry` / `goals` default to the store's files.
     """
+    from . import devices, integration_goals as ig
+    registry = devices.load_registry() if registry is None else registry
+    goals = ig.load() if goals is None else goals
+
+    def _type(slug):
+        return (catalog.get(slug) or {}).get("type")
     by_slug: dict[str, dict] = defaultdict(lambda: {
         "frames": 0,
         "integration_min": 0.0,
@@ -117,6 +189,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         "has_pre_new_start": False,
         "session_refs": [],   # indices into sessions list
         "framings": {},       # {target: {counted, frames, integration_min, …}}
+        "by_device": defaultdict(_device_bucket),
     })
 
     # Also track per-object-folder totals (composite frames like M81/M82
@@ -129,6 +202,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         "exposures": set(),
         "slugs": set(),
         "has_pre_new_start": False,
+        "by_device": defaultdict(_device_bucket),
     })
 
     # An object's sessions, split by the framing they were shot in. A mosaic of
@@ -161,6 +235,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
                 if s.get("pre_new_start"):
                     t["has_pre_new_start"] = True
                 t["session_refs"].append(i)
+                _add_device(t["by_device"], s)
         by_slug[slug]["framings"] = {
             folder: {
                 "counted": folder in counted,
@@ -182,8 +257,9 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
         f["slugs"].update(s.get("slugs", []))
         if s.get("pre_new_start"):
             f["has_pre_new_start"] = True
+        _add_device(f["by_device"], s)
 
-    # Targets captured *only* as Seestar in-app stacks have no raw light frames, so
+    # Targets captured *only* as in-app device stacks have no raw light frames, so
     # they produce no sessions and are absent from the loop above — yet they're real
     # captures (and `add_captured_objects` promotes them on exactly this signal). Add
     # a zero-integration folder/slug entry so they show up in the gallery / status /
@@ -196,7 +272,7 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
     images = config.IMAGES_DIR
     if images.is_dir():
         for d in sorted(p for p in images.iterdir() if p.is_dir()):
-            if d.name in folder_totals or not (d / "seestar-stacks").is_dir():
+            if d.name in folder_totals or not (d / config.DEVICE_STACKS_DIRNAME).is_dir():
                 continue
             slugs = (scan_sessions.folder_to_slugs(d.name, slugset)
                      or [scan_sessions.slugify(d.name)])
@@ -208,6 +284,10 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
     out = {}
     for slug, t in by_slug.items():
         dates = sorted(t["session_dates"])
+        by_model = _by_model(
+            t["by_device"],
+            lambda model, slug=slug: ig.resolve(slug, _type(slug), model, goals, registry),
+            registry)
         out[slug] = {
             "id": slug_to_priority_id(slug, catalog),
             "frames": t["frames"],
@@ -223,14 +303,27 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             # Every framing this object was shot in, and whether it counts toward
             # the integration above (a mosaic beside a plain capture does not).
             "framings": t["framings"],
-            "status": ("deep_stack" if t["integration_min"]
-                       >= deep_threshold((catalog.get(slug) or {}).get("type"))
-                       else "initial"),
+            # The same counted integration, split by the telescope that shot it.
+            "by_device": _device_totals(t["by_device"]),
+            # ...and pooled by telescope model, each graded against its own goal.
+            "by_model": by_model,
+            **_status_fields(by_model),
         }
+
+    def _folder_goal(slugs, model):
+        # A folder can feed several objects (e.g. "M81 M82"); per model, use the
+        # most demanding of their goals so a faint member isn't marked done early.
+        resolved = [ig.resolve(s, _type(s), model, goals, registry) for s in slugs]
+        return max(resolved, default=(ig.default_goal(None, model, registry),
+                                      ig.SOURCE_DEFAULT))
 
     folders = {}
     for fname, f in folder_totals.items():
         dates = sorted(f["session_dates"])
+        by_model = _by_model(
+            f["by_device"],
+            lambda model, slugs=sorted(f["slugs"]): _folder_goal(slugs, model),
+            registry)
         folders[fname] = {
             "frames": f["frames"],
             "integration_min": round(f["integration_min"], 2),
@@ -242,11 +335,9 @@ def build_totals(catalog: dict, sessions: list[dict]) -> dict:
             "exposures": sorted(f["exposures"]),
             "slugs": sorted(f["slugs"]),
             "has_pre_new_start": f["has_pre_new_start"],
-            # A folder can feed several objects (e.g. "M81 M82"); use the most
-            # demanding of their thresholds so a faint member isn't marked done early.
-            "status": ("deep_stack" if f["integration_min"] >= max(
-                (deep_threshold((catalog.get(s) or {}).get("type")) for s in f["slugs"]),
-                default=DEEP_STACK_MIN) else "initial"),
+            "by_device": _device_totals(f["by_device"]),
+            "by_model": by_model,
+            **_status_fields(by_model),
         }
 
     return {"by_slug": out, "by_folder": folders}
@@ -539,8 +630,10 @@ def _split_session(s: dict, stacked_at: str) -> tuple[int, int]:
 
 def build_processing(totals: dict, overrides: dict | None,
                      catalog: dict | None = None,
-                     sessions: list[dict] | None = None) -> dict:
-    """For each captured FITS folder, derive processing status.
+                     sessions: list[dict] | None = None,
+                     checkpoint=None) -> dict:
+    """For each captured FITS folder, derive processing status. `checkpoint()`,
+    when given, is polled per folder (this pass byte-compares sandbox outputs).
 
     Statuses:
       not_processed — no processed output (stack or finished render) yet
@@ -580,6 +673,8 @@ def build_processing(totals: dict, overrides: dict | None,
         return {"folders": {}, "queue": [], "generated_at": now_iso}
 
     for fname, t in by_folder.items():
+        if checkpoint:
+            checkpoint()
         folder = config.target_dir(fname)
         if not folder.is_dir():
             continue
@@ -595,7 +690,7 @@ def build_processing(totals: dict, overrides: dict | None,
         # Processed output = .fit / .tif / .tiff in the folder root OR in the
         # stacks/ subdir (newer location — see migrate_to_stacks.py), PLUS any
         # hand-finished render in finished/ (raster or FITS). Excludes anything
-        # inside lights/, darks/, biases/, flats/, process/, seestar-stacks/.
+        # inside lights/, darks/, biases/, flats/, process/, device-stacks/.
         processed = []
         search_dirs = [(folder, PROCESSED_EXTS)]
         stacks_subdir = folder / "stacks"
@@ -770,18 +865,21 @@ def build_summary(catalog: dict, totals: dict) -> dict:
 
 def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
     """Per active goal (bundled catalog *or* custom list), progress over its
-    members: {id, name, total, captured, deep, percent, in_progress}.
-    Captured/deep come from the object-level rollup (by_slug). `in_progress` is
-    the short list of members captured but still below the deep-stack target —
-    {slug, name} — for the "in-progress captures" view."""
+    members: {id, name, scope, total, captured, deep, percent, in_progress}.
+    Captured/deep come from the object-level rollup (by_slug) — or, for a goal
+    scoped to one telescope model, from that model's captures only
+    (`goals.scoped_totals`). `in_progress` is the short list of members captured
+    but still below their integration goal — {slug, name} — for the "in-progress
+    captures" view."""
     from . import catalog, goals as goals_mod
-    by_slug = totals["by_slug"]
     ref = catalog.load_reference()
     out = []
     for gid in active_ids:
         members = goals_mod.goal_members(gid)
         if not members:
             continue
+        scope = goals_mod.goal_scope(gid)
+        by_slug = goals_mod.scoped_totals(totals["by_slug"], scope)
         name = goals_mod.goal_name(gid)
         captured = [s for s in members if s in by_slug]
         deep = [s for s in captured if by_slug[s].get("status") == "deep_stack"]
@@ -791,7 +889,7 @@ def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
         ]
         total = len(members)
         out.append({
-            "id": gid, "name": name, "total": total,
+            "id": gid, "name": name, "scope": scope, "total": total,
             "captured": len(captured), "deep": len(deep),
             "percent": round(100 * len(captured) / total, 1) if total else 0.0,
             "in_progress": in_progress,
@@ -799,21 +897,39 @@ def build_goals(totals: dict, active_ids: list[str]) -> list[dict]:
     return out
 
 
-def main():
+def compute(sessions: list[dict] | None = None, checkpoint=None) -> dict:
+    """Every derived rollup, in memory — nothing is written. `sessions` defaults to
+    `sessions.jsonl`; a refresh passes the rows it just scanned so it can write
+    sessions and derived together after its last cancel point. `checkpoint()` is
+    polled between rollups and per folder in the processing pass (the slow one)."""
+    tick = checkpoint or (lambda: None)
     overrides_path = config.OVERRIDES_TOML
     # A fresh store seeds an empty library.toml with no [catalog] table (5d), so a
     # brand-new user's first launch has an empty catalog — default to {} rather than
     # KeyError (which surfaced as "Sync failed" on first launch).
     catalog = load_toml(config.LIBRARY_TOML).get("catalog", {})
-    sessions = load_sessions()
+    if sessions is None:
+        sessions = load_sessions()
     overrides = load_toml(overrides_path) if overrides_path.exists() else None
 
     from . import goals as goals_mod
     totals = build_totals(catalog, sessions)
     summary = build_summary(catalog, totals)
-    processing = build_processing(totals, overrides, catalog, sessions)
+    tick()
+    processing = build_processing(totals, overrides, catalog, sessions, checkpoint=tick)
+    tick()
     goals = build_goals(totals, goals_mod.active_goal_ids())
+    from . import calibration
+    device_info = calibration.device_rollup(sessions, totals)
+    return {"totals": totals, "summary": summary, "processing": processing,
+            "goals": goals, "devices": device_info}
 
+
+def write(outputs: dict) -> None:
+    """Write what `compute` built to `derived/*.json`."""
+    totals, summary, processing = (outputs["totals"], outputs["summary"],
+                                   outputs["processing"])
+    goals, device_info = outputs["goals"], outputs["devices"]
     out_dir = config.DERIVED_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "totals.json").write_text(
@@ -824,6 +940,8 @@ def main():
         json.dumps(processing, indent=2, ensure_ascii=False), encoding="utf-8")
     (out_dir / "goals.json").write_text(
         json.dumps(goals, indent=2, ensure_ascii=False), encoding="utf-8")
+    (out_dir / "devices.json").write_text(
+        json.dumps(device_info, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"  totals:     {len(totals['by_slug'])} slugs, "
           f"{len(totals['by_folder'])} folders")
@@ -835,6 +953,10 @@ def main():
           f"{pc['not_processed']} not processed, "
           f"{pc['up_to_date']} up-to-date"
           + (f", {pc['dismissed']} dismissed" if pc['dismissed'] else ""))
+
+
+def main():
+    write(compute())
 
 
 if __name__ == "__main__":

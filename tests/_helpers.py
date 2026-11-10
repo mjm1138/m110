@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from m110 import config
 
 
@@ -16,6 +18,9 @@ def seed_root(tmp_path, monkeypatch):
     root = tmp_path / "M110"
     internal = root / config.INTERNAL_DIRNAME
     monkeypatch.setattr(config, "DATA_ROOT", root)
+    # the internal dir itself too: ingest_aliases.toml (and anything else read
+    # straight off INTERNAL_DIR) must not leak from one test into the next
+    monkeypatch.setattr(config, "INTERNAL_DIR", internal)
     monkeypatch.setattr(config, "LIBRARY_TOML", internal / "library.toml")
     monkeypatch.setattr(config, "IMAGES_DIR", root / "Images")
     monkeypatch.setattr(config, "OBJECTS_DIR", root / "Objects")
@@ -30,6 +35,9 @@ def seed_root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CALIBRATION_DIR", root / "Calibration")
     monkeypatch.setattr(config, "GOALS_TOML", internal / "goals.toml")
     monkeypatch.setattr(config, "PINS_TOML", internal / "pins.toml")
+    monkeypatch.setattr(config, "DEVICES_TOML", internal / "devices.toml")
+    monkeypatch.setattr(config, "INTEGRATION_GOALS_TOML",
+                        internal / "integration_goals.toml")
     monkeypatch.setattr(config, "PROFILES_DIR", internal / "profiles")
     monkeypatch.setattr(config, "SETTINGS_FILE", tmp_path / "settings.json")
     config.ensure_data_root(root)
@@ -109,7 +117,7 @@ def _device_fits(path, obj, when, *, exp=30.0, filt="LP", ra=202.5, dec=47.2,
 
 
 def mount_seestar(tmp_path, monkeypatch, obj="M51", *, count=3, exp=30,
-                  filt="LP", volume="Seestar S50"):
+                  filt="LP", volume="Seestar S50", extra=None):
     """Create a scratch volume shaped like a **mounted Seestar** and point the real
     mount probe at it: ``<tmp>/Volumes/<volume>/MyWorks/<obj>_sub/Light_*.fit``.
 
@@ -125,7 +133,7 @@ def mount_seestar(tmp_path, monkeypatch, obj="M51", *, count=3, exp=30,
         when = start + timedelta(seconds=(exp + 3) * i)
         name = f"Light_{obj}_{exp}.0s_{filt}_{when.strftime('%Y%m%d-%H%M%S')}.fit"
         _device_fits(subs_dir / name, obj, when, exp=float(exp), filt=filt,
-                     eqmode=1)
+                     eqmode=1, extra=extra)
         names.append(name)
     return volumes / volume / "MyWorks", names
 
@@ -188,3 +196,71 @@ def make_sho(path, *, shape=(3, 6, 8)):
     e.header["STACKCNT"] = 39
     fits.HDUList([p, e]).writeto(path)
     return path, ho, so
+
+
+def seestar_master_dark(path, temp_c, *, exp=20.0, gain=80, stackcnt=5):
+    """A master dark exactly as the Seestar's ``darklibrary/`` writes one: uint16,
+    EXPTIME/GAIN/CCD-TEMP/XBINNING/STACKCNT, FILTER='dark' — and no IMAGETYP,
+    DATE-OBS or TELESCOP."""
+    import numpy as np
+    from astropy.io import fits
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.full((2, 2), 476, dtype="uint16"))
+    h.header["CREATOR"] = "ZWO Seestar S50"
+    h.header["XBINNING"] = 1
+    h.header["STACKCNT"] = stackcnt
+    h.header["EXPTIME"] = exp
+    h.header["CCD-TEMP"] = temp_c
+    h.header["FILTER"] = "dark"
+    h.header["GAIN"] = gain
+    h.writeto(path)
+    return path
+
+
+def mount_darklibrary(volume_dir, masters, *, exp=20):
+    """``<volume>/darklibrary/<exp>s/`` beside MyWorks: one master + its .jpg and
+    _thn.jpg per (temp_c, "YYYYMMDD-HHMMSS") in `masters`. Returns the dir."""
+    d = volume_dir / "darklibrary" / f"{exp}s"
+    for temp, stamp in masters:
+        stem = f"MasterDark_5_{float(exp):.1f}s_{temp}C_{stamp}"
+        seestar_master_dark(d / f"{stem}.fit", temp, exp=float(exp))
+        (d / f"{stem}.jpg").write_bytes(b"\xff\xd8preview")
+        (d / f"{stem}_thn.jpg").write_bytes(b"\xff\xd8thumb")
+    return d
+
+
+# A PINS (N.I.N.A. 3.3) frame of a Seestar S50 over Alpaca, carrying the cards a
+# real one does (copied from the 2026-11-06 night, #203). `obj=None` = no OBJECT
+# card, as N.I.N.A. writes a dark taken outside a target.
+NINA_SWCREATE = "PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))"
+NINA_INSTRUME = "Seestar S50_15e7e390 Telephoto Camera"
+
+
+def nina_frame(path, *, imagetyp="LIGHT", obj="M 110", exp=30.0, temp=12.0,
+               filt="IR", date_loc="2026-11-06T19:49:26.1", date_obs=None,
+               ra=10.09, dec=41.68, gain=80, value=0, telescop="S50 Prime"):
+    from astropy.io import fits as _fits
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = _fits.PrimaryHDU(np.full((2, 2), value, dtype="uint16"))
+    hdr = h.header
+    hdr["IMAGETYP"] = imagetyp
+    hdr["EXPOSURE"] = exp
+    hdr["EXPTIME"] = exp
+    hdr["DATE-LOC"] = date_loc
+    hdr["DATE-OBS"] = date_obs or date_loc        # tests rarely care about the TZ
+    hdr["XBINNING"] = 1
+    hdr["YBINNING"] = 1
+    hdr["GAIN"] = gain
+    hdr["OFFSET"] = 0
+    hdr["INSTRUME"] = NINA_INSTRUME
+    hdr["CCD-TEMP"] = temp
+    hdr["TELESCOP"] = telescop
+    hdr["RA"] = ra
+    hdr["DEC"] = dec
+    hdr["FILTER"] = filt
+    if obj is not None:
+        hdr["OBJECT"] = obj
+    hdr["SWCREATE"] = NINA_SWCREATE
+    h.writeto(path)
+    return path

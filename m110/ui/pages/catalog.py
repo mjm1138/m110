@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
     QMenu, QListView, QSlider, QToolButton, QSizePolicy,
 )
 
-from m110 import config, derived, goals, objects, pins, processing, siril, skymap, catalog as catalog_mod
+from m110 import (config, derived, devices, goals, integration_goals, objects, pins,
+                  processing, siril, skymap, catalog as catalog_mod)
 from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
@@ -24,7 +25,7 @@ from m110.ui.image_grid import (
 from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
 from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
-    NumItem, status_label, status_color, muted_color, targets_for_slug,
+    NumItem, STATUS_RANK, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
     can_process_slug, process_in_siril, make_segment, mono_font,
@@ -61,6 +62,7 @@ class CatalogPage(QWidget):
     dirty = Signal()                 # disk changed (import) → shell should refresh
     notes_saved = Signal(str)        # Object Notes saved → shell reloads other views
     pins_changed = Signal()          # Pin/Deprioritize override toggled → lightweight reload (#3)
+    goals_changed = Signal()         # integration goal / goal scope changed; derived rebuilt
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -128,6 +130,7 @@ class CatalogPage(QWidget):
         self.detail.editing_changed.connect(self._on_detail_editing)
         self.detail.import_requested.connect(self._on_import)
         self.detail.saved.connect(self.notes_saved)      # re-emit to the shell
+        self.detail.goals_changed.connect(self.goals_changed)
         self.detail.closed.connect(self._on_detail_closed)
         self.detail.hide()                                # nothing selected yet
 
@@ -484,6 +487,8 @@ class CatalogPage(QWidget):
                 title=self._pin_marker(slug) + object_label(ids[slug]),
                 subtitle=subtitle,
                 status=t.get("status") if captured else None,
+                status_text=(status_label(t.get("status"), True, t.get("progress"))
+                             if captured else None),
                 muted=not captured,
             ))
         return out
@@ -504,6 +509,7 @@ class CatalogPage(QWidget):
         table.setItemDelegateForColumn(self._status_col, StatusPillDelegate(table))
         table.setIconSize(QSize(ROW_THUMB_SIZE, ROW_THUMB_SIZE))
         self._thumbs.reset()
+        registry = devices.load_registry()     # model names for the status tooltip
 
         for row, (slug, e) in enumerate(items):
             t = totals.get(slug, {})
@@ -527,9 +533,16 @@ class CatalogPage(QWidget):
             table.setItem(row, 5, QTableWidgetItem(str(e.get("size") or "")))
             table.setItem(row, 6, QTableWidgetItem(str(e.get("filter") or "")))
 
-            status_item = QTableWidgetItem(status_label(t.get("status"), captured))
-            status_item.setForeground(status_color(t.get("status")) if captured else muted_color())
-            status_item.setData(STATUS_ROLE, t.get("status") if captured else None)
+            status = t.get("status") if captured else None
+            # Sorted by state, then by how far along it is — not by the label text.
+            status_item = NumItem(
+                status_label(status, captured, t.get("progress")),
+                (STATUS_RANK.get(status, -1), float(t.get("progress") or 0.0)))
+            status_item.setForeground(status_color(status) if captured else muted_color())
+            status_item.setData(STATUS_ROLE, status)
+            if t.get("by_model"):
+                status_item.setToolTip("\n".join(
+                    integration_goals.progress_lines(t["by_model"], registry)))
             table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)
@@ -600,7 +613,9 @@ class CatalogPage(QWidget):
         try:
             charts, warnings = skymap.render(
                 self._map_slugs(), colors=status_colors(),
-                palette=chart_palette(), font_family=mono_font().family())
+                palette=chart_palette(), font_family=mono_font().family(),
+                # a goal scoped to one telescope colours by that telescope alone
+                scope=goals.goal_scope(self._catalog_filter or ""))
         except skymap.SkymapDepsMissing as exc:
             self.map_view.show_unavailable(str(exc))
             self._map_dirty = False

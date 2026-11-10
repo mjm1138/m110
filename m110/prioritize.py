@@ -287,16 +287,72 @@ class TargetContext:
     # surface-brightness gate is neutral (missing data never penalizes).
     magnitude: float | None = None
     size: str | None = None
+    # Per telescope model (#184): captured minutes by model, and the scopes of the
+    # active goals this object belongs to ("any" and/or model keys). Appended last —
+    # contexts are built positionally.
+    integration_by_model: dict | None = None
+    goal_scopes: tuple = ()
 
 
-def score_target(ctx: TargetContext, weights: Weights, strategy: str) -> dict:
-    """Compute one target's factor scores + weighted total. Pure."""
+ANY_SCOPE = "any"
+
+
+def _scopes(ctx: TargetContext) -> tuple:
+    """The goal scopes `ctx` belongs to. A context cached before scopes existed only
+    knows it is in *an* active goal — read that as any telescope."""
+    return ctx.goal_scopes or ((ANY_SCOPE,) if ctx.in_active_goal else ())
+
+
+def _progress_basis(ctx: TargetContext, model: str, goals: dict | None,
+                    registry: dict | None) -> tuple[str, float, float]:
+    """``(model, integration_min, goal_min)`` the scorer judges `ctx` by when
+    ranking for telescope `model`:
+
+    1. a member of an active goal scoped to `model` → that model's progress;
+    2. else a member of an any-telescope goal → its best model's progress (a deep
+       stack on any scope satisfies the list);
+    3. else → `model`'s own progress (each telescope is its own campaign).
+    """
+    from . import integration_goals as ig
+    # A context with no per-model split (cached before #184, or hand-built) only
+    # knows its total — read it as the active telescope's.
+    by_model = (ctx.integration_by_model if ctx.integration_by_model is not None
+                else {model: ctx.integration_min})
+
+    def basis(m):
+        goal, _src = ig.resolve(ctx.slug, ctx.obj_type, m, goals, registry)
+        return m, by_model.get(m, 0.0), goal
+
+    scopes = _scopes(ctx)
+    if model not in scopes and ANY_SCOPE in scopes and by_model:
+        best = max((basis(m) for m in by_model),
+                   key=lambda b: (ig.fraction(b[1], b[2]), b[0]))
+        if best[1] > 0:
+            return best
+    return basis(model)
+
+
+def score_target(ctx: TargetContext, weights: Weights, strategy: str,
+                 model: str | None = None, goals: dict | None = None,
+                 registry: dict | None = None) -> dict:
+    """Compute one target's factor scores + weighted total. Pure.
+
+    With a telescope `model`, progress is that model's against its integration goal
+    (see :func:`_progress_basis` for how goal scope picks the model) and the goal
+    factor counts only goals that apply to it. Without one, the legacy basis: total
+    minutes against the type threshold."""
     obs = ctx.obs or {}
-    deep_min = deep_threshold(ctx.obj_type)     # type-aware: faint types need hours
-    c = completion_factor(ctx.integration_min, deep_min)
+    if model:
+        basis_model, integration, deep_min = _progress_basis(ctx, model, goals, registry)
+        in_goal = ANY_SCOPE in _scopes(ctx) or model in _scopes(ctx)
+    else:
+        basis_model, integration = None, ctx.integration_min
+        deep_min = deep_threshold(ctx.obj_type)   # type-aware: faint types need hours
+        in_goal = ctx.in_active_goal
+    c = completion_factor(integration, deep_min)
     urgency = urgency_score(obs.get("nights_to_close"), obs.get("observable")) * c
-    completion = completion_score(ctx.integration_min, strategy, deep_min)
-    goal = 1.0 if ctx.in_active_goal else GOAL_BASE
+    completion = completion_score(integration, strategy, deep_min)
+    goal = 1.0 if in_goal else GOAL_BASE
     tonight = tonight_score(obs.get("transit_alt"), obs.get("hours_clear"))
     tw = weights.type_weights.get((ctx.obj_type or "").lower(), 1.0)
     feas = feasibility_score(ctx.obj_type, ctx.magnitude, ctx.size)
@@ -306,7 +362,9 @@ def score_target(ctx: TargetContext, weights: Weights, strategy: str) -> dict:
         "slug": ctx.slug,
         "score": round(raw * tw * feas, 4),
         "type": ctx.obj_type,
-        "integration_min": round(ctx.integration_min, 2),
+        "integration_min": round(integration, 2),
+        "goal_min": deep_min,
+        "progress_model": basis_model,
         "season": obs.get("season", ""),
         "observable": obs.get("observable"),
         "nights_to_close": obs.get("nights_to_close"),
@@ -318,11 +376,21 @@ def score_target(ctx: TargetContext, weights: Weights, strategy: str) -> dict:
     }
 
 
-def rank(contexts, weights: Weights, strategy: str, pin_state: dict) -> list[dict]:
+def rank(contexts, weights: Weights, strategy: str, pin_state: dict,
+         model: str | None = None, goals: dict | None = None) -> list[dict]:
     """Score every context, drop deprioritized slugs, float pinned ones to the top,
-    then order by score. Assigns a 1-based ``rank`` and a ``pinned`` flag."""
+    then order by score. Assigns a 1-based ``rank`` and a ``pinned`` flag.
+
+    `model` ranks for one telescope model (its progress against its integration
+    goals; `goals` defaults to the store's); None keeps the legacy whole-library
+    basis. The app ranks through :func:`rank_for_active`."""
     from .pins import PIN, DEPRIORITIZE
-    rows = [score_target(c, weights, strategy) for c in contexts]
+    registry = None
+    if model:
+        from . import devices, integration_goals
+        goals = integration_goals.load() if goals is None else goals
+        registry = devices.load_registry()
+    rows = [score_target(c, weights, strategy, model, goals, registry) for c in contexts]
     rows = [r for r in rows if pin_state.get(r["slug"]) != DEPRIORITIZE]
     for r in rows:
         r["pinned"] = pin_state.get(r["slug"]) == PIN
@@ -330,6 +398,15 @@ def rank(contexts, weights: Weights, strategy: str, pin_state: dict) -> list[dic
     for i, r in enumerate(rows, 1):
         r["rank"] = i
     return rows
+
+
+def rank_for_active(contexts, weights: Weights, strategy: str,
+                    pin_state: dict) -> list[dict]:
+    """:func:`rank` for the telescope Planning is set to — what every app surface
+    (Planning, the assistant) ranks by."""
+    from . import integration_goals
+    return rank(contexts, weights, strategy, pin_state,
+                model=integration_goals.active_model())
 
 
 def filter_visible_tonight(rows: list[dict]) -> list[dict]:
@@ -390,6 +467,7 @@ def build_contexts(*, day: date | None = None, site=None,
     from .scan_sessions import folder_to_slugs
     ref_slugs = set(ref)
     member_integration: dict[str, float] = {}
+    member_by_model: dict[str, dict[str, float]] = {}
     synthetic: set[str] = set()
     for folder, ft in by_folder.items():
         members = folder_to_slugs(folder, ref_slugs)
@@ -398,6 +476,9 @@ def build_contexts(*, day: date | None = None, site=None,
         imin = ft.get("integration_min", 0.0)
         for m in members:
             member_integration[m] = member_integration.get(m, 0.0) + imin
+            per = member_by_model.setdefault(m, {})
+            for model, e in (ft.get("by_model") or {}).items():
+                per[model] = per.get(model, 0.0) + e.get("integration_min", 0.0)
         for s in ft.get("slugs", []):         # the folder's own recorded slug(s)…
             if s not in ref_slugs and s not in members:
                 synthetic.add(s)              # …e.g. m81-m82 → superseded by members
@@ -407,9 +488,19 @@ def build_contexts(*, day: date | None = None, site=None,
             return member_integration[slug]
         return (by_slug.get(slug) or {}).get("integration_min", 0.0)
 
+    def _by_model(slug: str) -> dict:
+        if slug in member_by_model:
+            return dict(member_by_model[slug])
+        return {m: e.get("integration_min", 0.0)
+                for m, e in ((by_slug.get(slug) or {}).get("by_model") or {}).items()}
+
     active_members: set[str] = set()
+    member_scopes: dict[str, set[str]] = {}
     for gid in goals.active_goal_ids():
-        active_members |= set(goals.goal_members(gid))
+        scope = goals.goal_scope(gid) or ANY_SCOPE
+        for s in goals.goal_members(gid):
+            active_members.add(s)
+            member_scopes.setdefault(s, set()).add(scope)
     slugs = ((active_members | set(by_slug) | pins.pinned_slugs())
              - pins.deprioritized_slugs() - synthetic)
 
@@ -460,7 +551,9 @@ def build_contexts(*, day: date | None = None, site=None,
             slug=slug, obj_type=obj_type,
             integration_min=_integration(slug),
             in_active_goal=slug in active_members, obs=obs,
-            magnitude=magnitude, size=size))
+            magnitude=magnitude, size=size,
+            integration_by_model=_by_model(slug),
+            goal_scopes=tuple(sorted(member_scopes.get(slug, ())))))
     if obs_errors:
         # Every observability call throwing almost always means astropy failed to
         # import (e.g. an incompletely-bundled build). Surface it once, with the
@@ -479,7 +572,7 @@ def build_prioritized(*, day: date | None = None, strategy: str = STRATEGY_CAPTU
     """Convenience: build contexts + rank in one call (used by tests / one-shots)."""
     from . import pins
     contexts = build_contexts(day=day, site=site, observability_fn=observability_fn)
-    ranked = rank(contexts, weights or Weights(), strategy, pins.load())
+    ranked = rank_for_active(contexts, weights or Weights(), strategy, pins.load())
     return ranked[:limit] if limit else ranked
 
 
@@ -493,7 +586,9 @@ def context_to_dict(c: TargetContext) -> dict:
     size) which :func:`score_target` doesn't return."""
     return {"slug": c.slug, "type": c.obj_type, "integration_min": c.integration_min,
             "in_active_goal": c.in_active_goal, "obs": c.obs,
-            "magnitude": c.magnitude, "size": c.size}
+            "magnitude": c.magnitude, "size": c.size,
+            "integration_by_model": c.integration_by_model,
+            "goal_scopes": list(c.goal_scopes)}
 
 
 _context_to_dict = context_to_dict   # pre-existing private name, kept working
@@ -503,7 +598,13 @@ def context_from_dict(d: dict) -> TargetContext:
     return TargetContext(d["slug"], d.get("type", "unknown"),
                          d.get("integration_min", 0.0),
                          d.get("in_active_goal", False), d.get("obs"),
-                         d.get("magnitude"), d.get("size"))
+                         d.get("magnitude"), d.get("size"),
+                         d.get("integration_by_model"), tuple(d.get("goal_scopes") or ()))
+
+
+# 2: contexts carry per-model integration + goal scopes (#184). An older cache is
+# stale, so the first Planning visit after an upgrade rebuilds it.
+CONTEXTS_VERSION = 2
 
 
 def write_contexts(contexts: list[TargetContext]) -> None:
@@ -514,7 +615,7 @@ def write_contexts(contexts: list[TargetContext]) -> None:
     from . import config
     d = config.DERIVED_DIR
     d.mkdir(parents=True, exist_ok=True)
-    payload = {"generated": date.today().isoformat(),
+    payload = {"v": CONTEXTS_VERSION, "generated": date.today().isoformat(),
                "contexts": [context_to_dict(c) for c in contexts]}
     (d / "prioritized.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -534,9 +635,10 @@ def load_contexts() -> list[TargetContext]:
 
 
 def is_stale(day: date | None = None) -> bool:
-    """True if the cached contexts are missing or not from ``day`` (default today).
-    Observability is date-based, so a once-a-day recompute is enough — the Planning
-    page uses this to decide whether to kick off a background rebuild."""
+    """True if the cached contexts are missing, not from ``day`` (default today), or
+    written by an older context shape (:data:`CONTEXTS_VERSION`). Observability is
+    date-based, so a once-a-day recompute is enough — the Planning page uses this
+    to decide whether to kick off a background rebuild."""
     import json
     from . import config
     p = config.DERIVED_DIR / "prioritized.json"
@@ -544,7 +646,8 @@ def is_stale(day: date | None = None) -> bool:
         return True
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-        return data.get("generated") != (day or date.today()).isoformat()
+        return (data.get("v", 1) < CONTEXTS_VERSION
+                or data.get("generated") != (day or date.today()).isoformat())
     except Exception:
         return True
 

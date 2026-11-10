@@ -13,9 +13,10 @@ changes a **user** would notice, per release.
 ### Added
 - **DwarfLab Draco sessions are recognized.** Import treats a `Draco_RAW_TELE_…`
   folder like a Dwarf 3 session: the `.fits` subs go to the object's lights, the
-  in-app stack and its previews to the device-stack tier, and the thumbnails and
-  reference renders are left alone. (Based on one pre-release sample; the Draco
-  ships later in 2026.) Planning has a Draco device preset with 300 s exposures.
+  in-app stack and its previews to the object's `device-stacks/` folder, and the
+  thumbnails and reference renders are left alone. (Based on pre-release samples;
+  the Draco ships later in 2026.) Planning has a Draco device preset with 300 s
+  exposures.
 - **A session the telescope never named is named from where it pointed.** When a
   Dwarf or Draco session's object is the device placeholder "Unknown" but its
   frames point within 1° of a catalog object, the import preview proposes that
@@ -30,6 +31,248 @@ changes a **user** would notice, per release.
   is not in the catalog — points 0.37° from NGC 6960"), with that object offered
   in the row's picker. Keep the device's name or take the suggestion; nothing
   moves until you confirm.
+- **The Draco's calibration masters import into your calibration library.** The
+  Draco ships master darks, flats and a bias for the whole device in a
+  `CALI_FRAME` folder. Import recognizes it and files the masters under
+  `Calibration/<telescope>/`, named after the telescope the session folder next
+  to it was shot with. If no session folder is beside them, they go to the
+  holding area with a note saying why. The pre-release masters carry no
+  information in their headers, so M110 writes the exposure, gain, binning,
+  temperature and frame count from the filename into *its own copy* (marked with
+  an `M110STMP` header card); the files on your device are never modified. (For
+  the Draco, the flats' filter indexes are not yet mapped to filter names, so no
+  flat is chosen yet.)
+- **Both halves of a Draco "SHO" stack can be finished.** The Draco saves an
+  SHO capture as one file holding two images: the HO stack and the SO stack.
+  AstroWizard and Siril only ever open the first, so the SO half was out of
+  reach. **Send to AstroWizard…** now lists such a stack once per image (`…_HO`
+  and `…_SO`), and sending one writes that image out as a file of its own in the
+  object's `astrowizard/` folder. Unlike a normal send this is a real copy, so it
+  takes disk space. The telescope's file is left exactly as it was. In the
+  object's gallery, hovering the stack's tile names both images; the thumbnail
+  still shows the HO image.
+- **N.I.N.A. and PINS imports.** Frames captured with N.I.N.A. (or PINS, its
+  Raspberry Pi edition) now import cleanly, whatever file pattern you set in N.I.N.A.:
+  M110 routes them by their FITS headers, not by folder names. The Import page
+  labels them **N.I.N.A.**
+  - **Mosaic panels stay together.** N.I.N.A.'s framing assistant names panels
+    "M 45 Panel 1", "M 45 Panel 2" and so on, in any of its languages. They now
+    import as one **M45_mosaic** dataset instead of one new object per panel.
+  - **Darks go to your telescope's dark library.** A dark, flat or bias with no
+    target goes to **Calibration/&lt;telescope&gt;/**. It no longer creates an
+    object named "DARK".
+  - **One Seestar, not two.** A Seestar driven by N.I.N.A. over Alpaca reports
+    itself as "S50 Prime". M110 now reads the unit's serial from the camera name,
+    so these frames join the same telescope on the Devices page as the subs from
+    the Seestar app.
+- **Calibration follows how a frame was captured.** The Seestar app subtracts a dark
+  on the telescope before saving each sub. The same telescope driven by N.I.N.A.
+  does not, so those frames are now calibrated with darks.
+- **One object can mix Seestar-app and N.I.N.A. captures.** When the frames you stack
+  need different calibration, **m110-stack** calibrates each set with its own match
+  and then stacks them together. That covers app subs (no dark) beside N.I.N.A. subs
+  (dark), and also two exposures, which used to stack with no calibration at all.
+  N.I.N.A.'s name for the Seestar's UV/IR-cut filter ("IR") now reads as the app's
+  "IRCUT", so both kinds of capture are treated as one filter.
+- **…in the Siril GUI too.** Siril prep now gives each kind its own job folder: for
+  example `siril/IRCUT/` holds the app subs and gets no darks, and
+  `siril/IRCUT_30s/` holds the N.I.N.A. subs with their darks. The Naztronomy script
+  then calibrates each correctly; stack each folder and combine the stacks in Siril.
+  Point **m110-stack** at either folder and it stacks both in one pass.
+  Prep also writes `siril/.m110_calibration.json`, which names the master dark (or
+  raw dark set) chosen for each job folder's lights and why, so other tools such as
+  Stackhammer can use the same calibration.
+- **A Seestar sub that doesn't say how it was captured isn't guessed at.** The
+  Seestar app marks its subs (`CREATOR`, `BIAS`), and N.I.N.A. marks its own
+  (`SWCREATE`). A sub with none of these is not calibrated, and M110 says why, rather
+  than assume either way.
+- **Raw darks become a master automatically.** Calibration frames shot one at a
+  time (as N.I.N.A. takes them) are grouped by exposure, gain, night and
+  temperature. Siril prep links the matching set, and **m110-stack** builds the
+  master dark, flat or bias itself before calibrating. On the Devices page each set
+  is one row ("20 raw frames · 2026-11-06 · 5.7 °C").
+- **Retarget an off-catalog target from the Import preview.** A target named for a
+  field, such as "NGC 2024 IC 434", gets a dropdown that offers the catalog objects
+  in its name, plus the nearest one to where the telescope pointed.
+
+### Changed
+- **`seestar-stacks` is now `device-stacks`.** Each target's folder of on-telescope
+  stacks (`Images/<target>/seestar-stacks/`) holds Dwarf 3 and Draco stacks too, so
+  it now has a name that fits every telescope. M110 renames it for you the first
+  time this version opens your library — nothing to do, and nothing is lost: if
+  both folders somehow exist, their contents are merged, a file whose name is taken
+  is kept alongside as `<name>-2`, and an exact duplicate is left where it was. In
+  the gallery these images are now labelled **Device stack**, and the import
+  preview calls them **device stack**. If you point another program (or an older
+  M110) at that folder, update it to the new name.
+
+### Fixed
+- **A stacked image is never mistaken for a light frame again.** Import used to
+  tell a stack from a sub by its filename, so a stack named without a "stacked"
+  token (DwarfLab's Draco test stack `stack_linear_uint16.fits`) was filed as a
+  single 300 s light, where it would have counted as a session and been handed to
+  Siril as a sub. Import now reads the file itself: a frame count above one in
+  the header or a three-colour image is a stack, and goes to the object's
+  `device-stacks/` folder. A device stack found loose outside its session folder
+  goes there too, instead of into working files.
+- **"Remember alias?" remembers the target name.** After you retarget a row, the
+  alias now keys on the name in the frames' headers. It used to key on the folder,
+  and with N.I.N.A.'s stock layout every target shares one `LIGHT` folder.
+- **m110-stack calibration works in Siril 1.4.5.** Every calibrated stack failed at
+  `calibrate` ("… not found"). Siril read the quotes around the master's path as
+  part of the file name. Each option is now quoted the way Siril expects, spaces in
+  paths included.
+- **Session dates for headers with local time.** A session from N.I.N.A. is dated by
+  the site's local date (`DATE-LOC`), the same way as Seestar sessions. An evening
+  in the Americas is no longer dated as the next day.
+- **Combined targets with NGC/IC names count for both objects.** A target such as
+  "NGC 2024 IC 434" now counts toward NGC 2024 and IC 434, the way "M81 M82" already
+  did.
+
+## [0.3.0-beta.10] - 2026-11-03
+
+### Added
+- **A third capture status: how far along you are.** Objects now read **Initial**
+  (yellow) when you've barely started, **"62% of goal"** (blue) once you're a
+  quarter of the way, and **Deep Stack** (green) when you reach the goal — in the
+  Library, the object pane, the sky map (with a new legend entry) and on your
+  published site.
+- **Goals are per telescope.** Each telescope model now has its own integration
+  goal for an object: a Dwarf 3 or an S30 is no longer measured against the S50's
+  numbers. Defaults come from the object type, scaled by the telescope's f-ratio
+  (a faster scope needs less time). Two units of the same model count together.
+  Hover the status in the Library to see each telescope's progress.
+- **Priority targets are ranked for the telescope you're planning with.** An object
+  you've finished on one scope still counts as new work on another, unless it's in
+  a goal that any telescope can satisfy (more below). Switching telescope in
+  Planning re-ranks at once, and the ranking shows each target's **Of goal**
+  progress; hover it to see which telescope that's for.
+- **A goal can belong to one telescope.** A goal such as Messier can count captures
+  from **any telescope** (the default, as before) or from **one telescope model**
+  only, so "Messier again, on the new scope" isn't marked done by the old one.
+  Goal counts, the Overview checklists and the sky map follow the goal's telescope.
+- **The assistant can suggest an integration goal.** `propose_integration_goal`
+  proposes how many minutes an object needs on a telescope (say, after measuring
+  the noise in the faint outer disk), with the before/after progress and ranking.
+  You accept it from the assistant banner, as with its other suggestions.
+- **Set an object's integration goal yourself.** The object's detail pane has an
+  **Integration goals** section: one row per telescope with its progress and a
+  **Set goal…** button (minutes, plus an optional reason kept with the number; for
+  a goal you've set, the same dialog has **Use default**). Statuses and the Planning
+  ranking follow at once.
+- **Choose which telescope a goal counts.** Under Overview → Manage goals, each
+  active goal has a telescope choice (Any telescope, or one), and **Track for
+  another telescope…** copies a goal for one telescope — e.g. *Messier · Draco*
+  alongside your everyday Messier.
+- **Optics on the Devices page.** Each telescope shows its aperture, focal length,
+  f-ratio and pixel size, and how that scales its goals. For a telescope M110 doesn't
+  recognise you can enter them, which gives its goals a proper default.
+
+### Changed
+- **Status is judged per telescope, not on all your time added together.** Minutes
+  from two different telescopes don't stack into one picture, so an object no longer
+  turns Deep Stack from their sum; it shows its best telescope's progress. If you
+  shoot with more than one telescope, or with anything other than an S50, some
+  objects will change status after this update.
+- The sky map legend says **Initial** where it said **Captured**, matching the
+  status pill.
+- **`priorities.toml` is retired.** M110 stopped reading it long ago (the ranking is
+  automatic), yet every library still got one, so editing it silently did nothing.
+  New libraries no longer get it, and an existing one gains a comment at the top
+  saying it isn't read — your text is kept. Library format version 5.
+- The assistant's `get_object` and `get_image` report the goal for the telescope
+  you're planning with, and every telescope's progress on the object.
+- **The StackingWizard guide is up to date again.** It said mono and filter sets
+  weren't supported and sent you to Siril for those targets; StackingWizard has
+  handled them since the end of August — a night of Ha/OIII/SII or LRGB stacks per
+  filter, and the set goes on to AstroWizard's *Combine Mono Channels*. The guide
+  also now says a night can leave **several** stacks in the folder rather than one
+  (one per filter, plus mosaic and combined-night forms — M110 already recognised
+  all of them), and warns that a stack made with StackingWizard's Drizzle option
+  won't plate-solve, because drizzling drops the header cards that tie the picture
+  to the sky.
+
+### Fixed
+- **Enrich online works when Simbad's main server is down.** It now uses Simbad's
+  Harvard mirror when the Strasbourg server doesn't answer (it was unreachable for
+  days in early November), and it gives up in seconds rather than over a minute. If
+  neither answers, the message says so plainly instead of listing possible causes.
+- **Enrich online fills in objects that have no V magnitude.** M 1, NGC 6992, IC 434
+  and others came back as "not found", so their type and size were never filled in.
+- **Quitting no longer stalls for several seconds.** Clicking back into M110 starts a
+  sync of your library, so quitting right afterwards waited for the whole sync to
+  finish (up to 18 seconds on a large library). Quit now stops the sync where it is,
+  and nothing is left half-written. The next launch syncs as usual.
+- **The assistant's stacking command now runs as pasted.** It gave a bare
+  `m110-stack`, which isn't on your PATH, so the terminal answered *command not
+  found*. It now gives the full path of the `m110-stack` that comes with the M110
+  app you have open, and says which install that is. If several copies of M110 are
+  installed, it picks the one you're running.
+- **Planning's priority targets show proper names for objects you haven't shot
+  yet.** A goal member not yet in your Library showed an internal id such as
+  `ngc-7009` or `m92`. It now shows its catalog designations, e.g. **C55 (NGC 7009,
+  Ben 126)**, the same label the Overview checklists use.
+- **An object no longer loses its cover image to one damaged file.** If the image
+  M110 would normally pick (say, a truncated or half-copied PNG) can't be opened,
+  it now uses the next best one, such as the JPG or the FITS stack beside it,
+  instead of showing no image at all.
+- **Choosing a telescope on the Devices page now reaches Planning.** "Use for planning",
+  a new nickname, retiring a telescope or saving its limits changed the setting, but
+  Planning's Telescope picker kept showing the old one until the next sync, even
+  though the ranking and night plan already used the new telescope.
+- **The object pane no longer scrolls sideways when it shows integration goals.** At the
+  default window size a goal row was wider than the pane, so the pane scrolled
+  horizontally and the goal buttons were cut off. The goal dialog is also wider, so its
+  title isn't truncated.
+- **`m110-stack --feather 0` now turns feathering off.** It was ignored, so a mosaic
+  still stacked with its default 30 px feathering. The same was true when the assistant
+  proposed `feather: 0`, although its command said `--feather 0`. Turning feathering off
+  on a mosaic now also warns that it can leave visible tile edges.
+- **`m110-stack --drizzle 0` now turns drizzle off,** the same as `--no-drizzle`. It
+  used to turn drizzle on at scale 0, which also skipped debayering. A negative
+  `--drizzle` or `--feather` is now refused with a message.
+- **The assistant's object list shows how many sessions each object has.** `list_objects`
+  reported 0 sessions for every object, even ones you've shot on many nights; asking
+  about a single object (`get_object`) already gave the right number.
+
+## [0.3.0-beta.9] - 2026-10-22
+
+### Added
+- **Your Seestar's dark library comes in with your captures.** Recent Seestar
+  firmware keeps its master darks in a `darklibrary` folder next to `MyWorks`.
+  Importing from the Seestar — its entry on the Import page, or browsing to its
+  `MyWorks` folder — now offers them as a **master darks** row and copies them into
+  `Calibration/<your telescope>/darks/` (named after your unit, e.g.
+  `S50_15e7e390`); reconnecting copies only new ones.
+  M110 never applies them: the Seestar already subtracts a dark from every sub
+  before saving it, and doing it again would subtract twice. If you put darks on a
+  Seestar object yourself, Siril prep and `m110-stack` now warn about that.
+- **See which dark each capture got, and how far off it was.** The Sessions tables
+  have a new **Dark** column: the dark the Seestar most likely used for that capture
+  and how far the sensor's temperature drifted from it ("24.9 °C · Δ10.5 ⚠"). Over
+  3 °C, hot pixels in the drifted subs come out over- or under-subtracted;
+  `m110-stack` warns about those frames and `--max-dark-gap 3` (also available to
+  the assistant) leaves them out. The Seestar doesn't record which dark it used, so
+  M110 works it out from when each dark was made and the sensor temperature, and
+  says whether a link is confirmed or inferred.
+- **A Devices page.** Every telescope you've imported from now has its own place
+  on the left-hand rail (the last entry, Ctrl+6): what it captured (total time,
+  nights, and how long it spent on each object), its dark library (with previews),
+  every capture with the dark it used, and its sensor health over time. Give a
+  scope a nickname, tell M110 its model when it can't tell from the files, or mark
+  one retired to tidy it out of the list. A dark is named the same way everywhere
+  ("Oct 15 21:52 · 13.9 °C"), and selecting a capture highlights the dark(s) it
+  used — or a dark, the captures it served. Right-click a dark or a capture to
+  reveal the file in Finder.
+- **Planning plans for your telescope.** Night plans used the Seestar S50's limits
+  whatever you own. Planning now plans for the telescope you pick — a **Telescope**
+  choice next to Location appears once M110 knows more than one, and the Devices page
+  has **Use for planning** — with that model's limits (a Dwarf's softer 80° ceiling,
+  for example). Adjust a telescope's start ceiling, exposure or gain on its Devices
+  page; field guides now say which telescope a plan is for.
+- **Sessions show which telescope shot them.** The session tables have a
+  **Device** column, and two scopes shooting the same object on the same night are
+  now two sessions rather than one merged row.
 - **A calibration library per telescope.** Your library now has a top-level
   `Calibration/<telescope>/` folder (`darks/`, `flats/`, `biases/`) for master
   calibration frames that belong to a telescope rather than to one object. The
@@ -37,16 +280,6 @@ changes a **user** would notice, per release.
   another M110 library's `Calibration/` folder (a backup, a second computer) files
   the masters back there, never as an object. Backups keep the library at every
   level.
-- **The Draco's calibration masters import into that library.** The Draco ships
-  master darks, flats and a bias for the whole device in a `CALI_FRAME` folder.
-  Import recognizes it and files the masters under `Calibration/<telescope>/`,
-  named after the telescope the session folder next to it was shot with. If no
-  session folder is beside them, they go to the holding area with a note saying
-  why. The pre-release masters carry no information in their headers, so M110
-  writes the exposure, gain, binning, temperature and frame count from the
-  filename into *its own copy* (marked with an `M110STMP` header card); the files
-  on your device are never modified. (For the Draco, the flats' filter indexes
-  are not yet mapped to filter names, so no flat is chosen yet.)
 - **Processing uses the right master automatically.** When an object has no
   calibration frames of its own, preparing it for Siril now picks one master per
   kind from its telescope's library: the dark with the same exposure, gain and
@@ -59,25 +292,71 @@ changes a **user** would notice, per release.
   object always win, and an object shot on two different telescopes is never
   given one telescope's masters.
 
-- **Both halves of a Draco "SHO" stack can be finished.** The Draco saves an
-  SHO capture as one file holding two images: the HO stack and the SO stack.
-  AstroWizard and Siril only ever open the first, so the SO half was out of
-  reach. **Send to AstroWizard…** now lists such a stack once per image (`…_HO`
-  and `…_SO`), and sending one writes that image out as a file of its own in the
-  object's `astrowizard/` folder. Unlike a normal send this is a real copy, so it
-  takes disk space. The telescope's file is left exactly as it was. In the
-  object's gallery, hovering the stack's tile names both images; the thumbnail
-  still shows the HO image.
+### Changed
+- **"Reveal" now selects the file.** Revealing an image, a field guide or a dark
+  opens Finder (or Explorer) with that file selected, instead of just opening its
+  folder, and the menu item says "Reveal in Finder" on a Mac.
+- **Siril frame selection is tuned per filter, and the same way everywhere.** The
+  four quality filters measure different things, so M110 no longer sets one
+  percentage for all of them: up to 500 frames roundness and star count keep 95%
+  while wFWHM and background keep 98%, and above 500 all four keep 95%. The values
+  come from stacking the same 767 M1 subs three ways: 95% on all four gave about
+  3% better signal-to-noise than a tighter roundness cut with background and star
+  count off, with stars the same to within 0.3%. Below 100 frames nothing is
+  filtered. The Siril
+  preset and `m110-stack` now use the same table, so an object no longer gets
+  different frame selection depending on how you stack it. `m110-stack` picks the
+  tier from how many frames cover each part of the sky, so a large mosaic isn't
+  filtered as hard as a deep single field, and below 100 frames it no longer
+  filters at all. New `--filter-round`, `--filter-wfwhm`, `--filter-bkg` and
+  `--filter-nbstars` options (also available to the assistant) adjust one filter
+  at a time.
+- **M110 asks before replacing a Siril preset.** When new subs change what M110
+  would suggest, or you have saved your own preset from Naztronomy, importing no
+  longer re-tunes or silently skips the preset. A dialog lists what would change,
+  per object. **Replace** moves the old file to `presets/archive/` and writes the
+  new one; **Keep existing** leaves it alone, and M110 won't ask again until its
+  suggestion changes.
+- **The Dark column now follows the Seestar switching darks mid-capture.** Looking
+  at more nights showed the telescope changes to a better-matched dark partway
+  through a long capture once the sensor has cooled about 2.5 °C away from the one
+  in use. The column (and `m110-stack`'s drift warning) now accounts for that, so a
+  capture that switched shows each dark it used ("24.9→23.2→13.9 °C · Δ6.7") and a
+  smaller, more accurate drift than before. Sessions pick this up on the next Sync.
+- **Backups no longer carry Siril's `process/` scratch.** Siril rebuilds the
+  converted, calibrated and registered frames in `process/` every time you stack,
+  so there is nothing in it you can't get back by stacking again — but backups were
+  storing it — about 40 GB on one real library. Every backup level now skips it,
+  both the live folder and the
+  copies already filed in past runs' `archive/` folders. Nothing is deleted from
+  your library; your existing backups keep what they have until they're pruned.
+- **Importing finished work leaves Siril's `process/` folder where it is.** It used
+  to be moved into the run's `archive/` folder along with everything else, so every
+  archived run kept a copy of a scratch folder you'd never open again. Now it stays
+  put for Siril to reuse or clear: the Naztronomy script asks whether to delete it
+  when you start the next run, and `m110-stack` clears it itself.
 
 ### Fixed
-- **A stacked image is never mistaken for a light frame again.** Import used to
-  tell a stack from a sub by its filename, so a stack named without a "stacked"
-  token (DwarfLab's Draco test stack `stack_linear_uint16.fits`) was filed as a
-  single 300 s light, where it would have counted as a session and been handed to
-  Siril as a sub. Import now reads the file itself: a frame count above one in
-  the header or a three-colour image is a stack, and goes to the object's device
-  stack tier. A device stack found loose outside its session folder goes there
-  too, instead of into working files.
+- **Importing finished work can no longer break a stack that is still running.**
+  If you ran *Import finished work* while `m110-stack --run` was working in the
+  same object, the import's clean-up moved the stack's working files into
+  `siril/archive/`, and the next stage failed with only *"Registration failed"*.
+  Nothing was lost — the files were all in the archive — but the run was. Now
+  `m110-stack` marks the folder while it runs, and the import tells you a stack is
+  running and to wait, without changing anything. Automatic processing prep and
+  rejected-sub clean-up skip that object until the run is over. For a run you
+  started in Siril itself, which leaves no mark, the import warns when Siril wrote
+  to `process/` in the last few minutes and defaults to leaving the folder as it
+  is. If a stack's working files do disappear mid-run, `m110-stack` now says so
+  plainly, and says where they went if they were archived.
+- **LP and Dwarf presets now name the right filter and telescope.** Every Siril
+  preset said "No Filter (Broadband)" on a ZWO Seestar S50, including LP subs and
+  Dwarf 3 captures, so SPCC calibrated colour for the wrong filter and
+  `m110-stack` warned about the mismatch on every LP stack. LP jobs now say
+  "LP (Narrowband)", and Dwarf 3 / Dwarf Mini captures get their own telescope
+  with "Astro filter (UV/IR)" or "Dual-Band". Dwarf captures are also split into
+  per-filter jobs by the filter in their FITS headers, as Seestar captures already
+  were.
 - **Calibration frames now reach every Siril job on a mixed-filter object.** They
   were linked once at the top of the processing folder, but the Naztronomy script
   looks for `darks/` next to the `lights/` it is run on, which for an object shot

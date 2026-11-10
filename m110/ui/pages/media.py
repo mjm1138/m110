@@ -41,7 +41,7 @@ from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
     NumItem, ROW_THUMB_SIZE, ThumbnailLoader, connect_context_menu, defer,
     drain_worker, make_numeric, make_segment, make_table, open_in_default,
-    reveal_in_manager,
+    reveal_in_manager, reveal_label,
 )
 
 MEDIA_VIEW_KEY = "media_view_mode"      # "list" | "grid"
@@ -474,7 +474,7 @@ class MediaPage(QWidget):
         menu = QMenu(self)
         act_open = menu.addAction("Play" if item.kind == "video" else "Open")
         act_default = menu.addAction("Open in default app")
-        act_reveal = menu.addAction("Reveal in file manager")
+        act_reveal = menu.addAction(reveal_label())
         act_export = menu.addAction("Export for sharing…") if item.kind == "photo" else None
         chosen = menu.exec(gpos)
         if chosen is None:

@@ -74,7 +74,7 @@
         <td class="num">{{ t.frames }}</td>
         <td class="num">{{ t.integration_hms }}</td>
         <td>{{ t.filters|join('/') }}</td>
-        <td><span class="badge {{ t.status }}">{{ t.status|status_label }}</span></td>
+        <td><span class="badge {{ t.status }}">{{ t.status|status_label(t.progress) }}</span></td>
       </tr>
     {% endfor %}
     </tbody>

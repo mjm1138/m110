@@ -208,7 +208,7 @@ def test_a_multi_layer_stack_shows_a_row_per_layer_and_sends_the_chosen_one(
     from tests._helpers import make_sho
     root = seed_root(tmp_path, monkeypatch)
     slug, target = seed_capture(root)
-    make_sho(config.seestar_stacks_dir(target) / "sho.fits")
+    make_sho(config.device_stacks_dir(target) / "sho.fits")
 
     d = _dialog(slug, monkeypatch)
     try:

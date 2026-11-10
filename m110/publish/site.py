@@ -61,6 +61,14 @@ def _require_deps():
     return jinja2, md_lib
 
 
+def _status_label(status, progress=None) -> str:
+    """The capture-status badge text, matching the app's pill ("62% of goal")."""
+    if status == "in_progress" and progress is not None:
+        return f"{int(progress * 100)}% of goal"
+    return {"deep_stack": "Deep Stack", "in_progress": "In progress",
+            "initial": "Initial"}.get(status, status or "—")
+
+
 def _env(jinja2):
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
@@ -68,9 +76,7 @@ def _env(jinja2):
         trim_blocks=True,
         lstrip_blocks=True,
     )
-    env.filters["status_label"] = lambda s: {
-        "deep_stack": "Deep Stack", "initial": "Initial",
-    }.get(s, s or "—")
+    env.filters["status_label"] = _status_label
     env.filters["bar_pct"] = lambda v: max(0, min(100, v or 0))
     return env
 

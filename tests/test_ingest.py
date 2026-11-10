@@ -1,7 +1,7 @@
 """Tests for the staging ingest planner + apply (temp fixtures, never live data).
 
 dest_rel is relative to the data root, so destinations read as
-``Images/<target>/lights``, ``Images/<target>/seestar-stacks``, ``Media/<cat>``.
+``Images/<target>/lights``, ``Images/<target>/device-stacks``, ``Media/<cat>``.
 """
 import json
 from pathlib import Path
@@ -253,7 +253,7 @@ def test_plan_classifies_subs_stacks_media(tmp_path, monkeypatch):
     assert all(op.new_object for op in by_kind["light"])  # M13 target doesn't exist
     assert "Images/M13/lights/" in by_kind["light"][0].dest_rel
     assert len(by_kind["stack"]) == 1                     # only the Stacked_ one
-    assert by_kind["stack"][0].dest_rel.startswith("Images/M13/seestar-stacks/")
+    assert by_kind["stack"][0].dest_rel.startswith("Images/M13/device-stacks/")
     assert len(by_kind["media"]) == 1
     assert by_kind["media"][0].dest_rel.startswith("Media/Lunar_photo/")
 
@@ -390,7 +390,7 @@ def test_scan_directory_plan_recurses_nested_tree(tmp_path, monkeypatch):
     assert all(op.action == "copy" for op in ops)     # never moves an external src
     assert len(by_kind["light"]) == 1
     assert "Images/M13/lights/" in by_kind["light"][0].dest_rel
-    assert any("Images/M51/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+    assert any("Images/M51/device-stacks/" in o.dest_rel for o in by_kind["stack"])
 
 
 def test_seestar_plan_recurses_nested_subfolders(tmp_path, monkeypatch):
@@ -580,6 +580,22 @@ def test_m110_store_layout_routes_subdirs(tmp_path, monkeypatch):
     assert not any(s.endswith("process/lights.fit") for s in all_srcs)  # sandbox skipped
 
 
+@pytest.mark.parametrize("tier", ["device-stacks", "seestar-stacks"])
+def test_m110_store_source_device_stack_tier_routes_to_device_stacks(tmp_path, monkeypatch, tier):
+    """Importing from another M110 store (or a backup of one): its device-stack tier
+    lands in `device-stacks/` under either name — `seestar-stacks/` is how a store
+    older than v6 still has it."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "Other" / "Images" / "M1"
+    _fits_hdr(src / "lights" / "Light_M1_a.fit", imagetyp="Light")
+    (src / tier).mkdir(parents=True)
+    (src / tier / "Stacked_10_M1.fit").write_text("s")
+
+    ops = ingest.scan_directory_plan(tmp_path / "Other")
+    stacks = [op for op in ops if op.kind == "stack"]
+    assert [op.dest_rel for op in stacks] == ["Images/M1/device-stacks/Stacked_10_M1.fit"]
+
+
 def test_siril_project_root_imports_lights_calibration_and_root_stack(tmp_path, monkeypatch):
     """#57: point import at a folder of Siril projects. A project *root* (M1/ that
     contains lights/darks/flats/biases) is recognized, and the loose files Siril
@@ -734,17 +750,21 @@ def test_raw_fits_pile_sorts_by_header(tmp_path, monkeypatch):
     pile = tmp_path / "dump"
     _fits_hdr(pile / "a.fit", object="M51", imagetyp="Light")
     _fits_hdr(pile / "b.fit", object="M51", imagetyp="Dark")
-    _fits_hdr(pile / "c.fit", imagetyp="Bias")          # no OBJECT → folder name
+    _fits_hdr(pile / "c.fit", imagetyp="Bias")          # no OBJECT, no device → holding
     _fits_hdr(pile / "junk.fit")                         # no type/object → holding (6c)
 
     ops = ingest.scan_directory_plan(tmp_path / "dump")
-    by_kind = {op.kind: op for op in ops}
-    assert set(by_kind) == {"light", "dark", "bias", "unassigned"}
-    assert by_kind["light"].dest_rel.startswith("Images/M51/lights/")
-    assert by_kind["dark"].dest_rel.startswith("Images/M51/darks/")
-    assert by_kind["bias"].dest_rel.startswith("Images/dump/biases/")  # folder fallback
-    assert by_kind["unassigned"].dest_rel == "Inbox/dump/junk.fit"     # 6c holding
-    assert by_kind["light"].layout == "raw-fits"
+    by_kind: dict = {}
+    for op in ops:
+        by_kind.setdefault(op.kind, []).append(op)
+    assert set(by_kind) == {"light", "dark", "unassigned"}
+    assert by_kind["light"][0].dest_rel.startswith("Images/M51/lights/")
+    assert by_kind["dark"][0].dest_rel.startswith("Images/M51/darks/")
+    # A calibration frame naming neither an object nor a telescope belongs to no
+    # target: it is held, never filed under an object named after its folder (#203).
+    assert sorted(o.dest_rel for o in by_kind["unassigned"]) == [
+        "Inbox/dump/c.fit", "Inbox/dump/junk.fit"]
+    assert by_kind["light"][0].layout == "raw-fits"
 
 
 def _stack_fits(path, *, obj=None, planes=3, stackcnt=None, ncombine=None, ra=None, dec=None):
@@ -784,10 +804,10 @@ def test_a_stack_is_known_by_its_header_never_imported_as_a_light(tmp_path, monk
     ops = ingest.scan_directory_plan(pile)
     by_src = {Path(o.src).name: o for o in ops}
     assert by_src["stack_linear_uint16.fits"].kind == "stack"
-    assert by_src["stack_linear_uint16.fits"].dest_rel.startswith("Images/IC 1805/seestar-stacks/")
+    assert by_src["stack_linear_uint16.fits"].dest_rel.startswith("Images/IC 1805/device-stacks/")
     assert by_src["stacked-16_HD 335129_300s120_Duo-Band_x.fits"].dest_rel.startswith(
-        "Images/HD 335129/seestar-stacks/")
-    assert by_src["mono_master.fits"].dest_rel.startswith("Images/M51/seestar-stacks/")
+        "Images/HD 335129/device-stacks/")
+    assert by_src["mono_master.fits"].dest_rel.startswith("Images/M51/device-stacks/")
     assert by_src["Light_M51_a.fit"].kind == "light"
     assert by_src["nameless.fits"].kind == "unassigned"                      # held, not guessed
     assert not any("/lights/" in o.dest_rel and o.kind != "light" for o in ops)
@@ -803,7 +823,7 @@ def test_a_stack_in_a_folder_named_for_its_object_takes_the_folder_name(tmp_path
     _stack_fits(tmp_path / "M51" / "result.fits", planes=3, ncombine=20)     # no OBJECT
     ops = ingest.scan_directory_plan(tmp_path / "M51")
     assert len(ops) == 1 and ops[0].kind == "stack"
-    assert ops[0].dest_rel == "Images/M51/seestar-stacks/result.fits"
+    assert ops[0].dest_rel == "Images/M51/device-stacks/result.fits"
 
 
 def test_unknown_object_gets_a_pointing_hint_and_a_suggestion(tmp_path, monkeypatch):
@@ -826,7 +846,7 @@ def test_unknown_object_gets_a_pointing_hint_and_a_suggestion(tmp_path, monkeypa
     assert far.pointing is None and far.suggested is None
     # taking the suggestion works like any remap
     moved = ingest.retarget(veil, "NGC 6960")
-    assert moved.ops[0].dest_rel.startswith("Images/NGC 6960/seestar-stacks/")
+    assert moved.ops[0].dest_rel.startswith("Images/NGC 6960/device-stacks/")
 
 
 def test_header_wins_over_sub_folder(tmp_path, monkeypatch):

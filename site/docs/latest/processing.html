@@ -13,10 +13,11 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.8</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
+      <a href="devices.html">Your telescopes — the Devices page</a>
       <a href="processing.html" class="on">Processing prep & hardlinks</a>
       <a href="backup.html">Backing up your library</a>
       <a href="planning.html">Session planning</a>
@@ -40,7 +41,7 @@ through. See <a href="#stacking-without-opening-siril">Stacking without opening 
 <pre><code>Images/&lt;target&gt;/siril/
   lights/            your light subs, ready for Siril (see &quot;Hardlinks&quot; below)
   presets/           a Siril preset tuned to your frame count
-  process/           scratch space for Siril's intermediate files
+  process/           Siril's scratch space (left in place on import; not backed up)
   next-steps.md      a short, per-target guide to what to do in Siril
   archive/&lt;ts&gt;/      past runs, kept so you can re-process later
 </code></pre>
@@ -48,8 +49,41 @@ through. See <a href="#stacking-without-opening-siril">Stacking without opening 
 finished work</strong> (from the object's detail pane) to pull the render into <code>finished/</code>
 and the stack into <code>stacks/</code>. M110 then archives the run so the sandbox is ready for
 next time — it never deletes your lights or your work.</p>
-<p>You don't trigger any of this by hand: prep is automatic and idempotent. If you edit
-a preset, M110 preserves your edits and won't overwrite them.</p>
+<p>You don't trigger any of this by hand: prep is automatic and idempotent.</p>
+<p>An object shot through <strong>two filters</strong> (say LP and IRCUT on a Seestar, or Astro and
+Duo-Band on a Dwarf) gets one self-contained job folder per filter,
+<code>siril/LP/</code>, <code>siril/IRCUT/</code> and so on, each with its own <code>lights/</code> and preset. The
+filter comes from the FITS headers, and each preset names the right filter and
+telescope, so Siril's colour calibration (SPCC) uses the right one.</p>
+<h3 id="calibration-frames">Calibration frames</h3>
+<p>If the object has its own <code>darks/</code>, <code>flats/</code> or <code>biases/</code> folders, those are used:
+they always win. Otherwise M110 looks in the telescope's calibration library,
+<code>Calibration/&lt;telescope&gt;/</code> (see <strong><a href="ingest.html">Ingest</a></strong>), and picks <strong>one master of
+each kind</strong>:</p>
+<ul>
+<li><strong>dark</strong>: same exposure, gain and binning as the lights, and the nearest sensor
+  temperature;</li>
+<li><strong>bias</strong>: the same binning;</li>
+<li><strong>flat</strong>: only when exactly one matches the filter.</li>
+</ul>
+<p>The chosen masters are linked into each job folder and the preset's calibration
+switches are turned on. <code>next-steps.md</code> says which were used and why any were
+skipped. Two exceptions: an object shot on two different telescopes is never given
+one telescope's masters, and a <strong>Seestar</strong> is never given a dark. It has already
+subtracted one from every sub, and doing it twice would ruin them (see
+<strong><a href="devices.html#the-dark-library-seestar">the Devices page</a></strong>).</p>
+<h3 id="frame-selection">Frame selection</h3>
+<p>The preset tells Siril what share of frames to keep on each of four quality
+measures. Below 100 frames nothing is filtered. From 100 to 500 frames, roundness and
+star count keep 95% while wFWHM and background keep 98%; above 500, all four keep
+95%. <code>m110-stack</code> uses the same table.</p>
+<h3 id="when-m110-would-change-a-preset">When M110 would change a preset</h3>
+<p>When new subs change what M110 would suggest, or you've saved your own preset from
+Naztronomy, M110 doesn't quietly overwrite it. After the import, an <strong>Update Siril
+presets?</strong> window lists each object and what would change (<code>roundness: 98 → 95</code>).
+<strong>Replace selected</strong> moves the old file to <code>presets/archive/</code> and writes the new one.
+<strong>Keep existing</strong> leaves it alone, and M110 won't ask again until its suggestion
+changes.</p>
 <h2 id="process-in-siril-one-click">Process in Siril (one click)</h2>
 <p>You don't have to find the working folder yourself. <strong>Right-click an object</strong> — in the
 Library, on the Processing page, or use the <strong>Process in Siril</strong> button on its detail
@@ -87,6 +121,10 @@ reject the bad ones, combine. There's nothing to look at while it happens, and o
 mosaic it runs for hours. So M110 will do it for you, from the command line:</p>
 <pre><code>m110-stack &quot;M101&quot;
 </code></pre>
+<p><code>m110-stack</code> comes with M110 but isn't on your PATH, so type its full path:
+<code>/Applications/M110.app/Contents/MacOS/m110-stack</code> on a Mac, the <code>m110-stack.exe</code>
+in M110's install folder on Windows, or the M110 AppImage followed by <code>--stack</code> on Linux. If you
+plan the stack with the assistant, it gives you the complete command.</p>
 <p>That <strong>measures and proposes — it doesn't stack</strong>. You get how many frames you have,
 whether exposures or gain are mixed, whether it's a mosaic, how deep the coverage
 actually is, and the settings that supports (drizzle, rejection, weighting,
@@ -128,9 +166,31 @@ hour looks like progress rather than a hang, and the full Siril log streams to
 leaving it off — it's there for when you'd rather watch than <code>tail</code> a log. The
 <code>[mm:ss]</code> stage lines still appear in the stream, so you can find where each step
 began. For an exact interval, <code>--heartbeat 120</code> overrides the one <code>-v</code> picks.</p>
-<p>Useful flags: <code>--only-exposure 30</code> (stack one exposure when a set mixes them),
-<code>--exclude-night 2026-06-10</code>, <code>--restack</code> (retry stack settings without repeating
-registration), <code>--handoff</code> (see below). <code>m110-stack --help</code> lists the rest.</p>
+<p>Useful flags:</p>
+<ul>
+<li><code>--only-exposure 30</code> stacks one exposure when a set mixes them.</li>
+<li><code>--exclude-night 2026-06-10</code> leaves a night out.</li>
+<li><code>--restack</code> retries the stack settings without repeating registration.</li>
+<li><code>--handoff</code> sends the result to AstroWizard (see below).</li>
+<li><code>--max-dark-gap 3</code> (Seestar) leaves out frames whose sensor drifted more than 3 °C
+  from the dark the telescope applied. Without it, <code>m110-stack</code> warns about those
+  frames but keeps them.</li>
+<li><code>--no-calibration</code> ignores master darks, flats and biases and stacks the raw
+  frames. Otherwise it calibrates exactly as <a href="#calibration-frames">prep does</a>, on
+  the frames it's about to stack.</li>
+<li><code>--filter-pct 90</code> sets all four frame-selection thresholds at once. To change just
+  one, use <code>--filter-round</code>, <code>--filter-wfwhm</code>, <code>--filter-bkg</code> or <code>--filter-nbstars</code>
+  (100 turns that filter off). The defaults follow
+  <a href="#frame-selection">the table above</a>, picked by how many frames cover each part of
+  the sky, so a large mosaic isn't filtered as hard as a deep single field.</li>
+</ul>
+<p><code>m110-stack --help</code> lists the rest.</p>
+<h3 id="while-a-stack-is-running">While a stack is running</h3>
+<p><code>m110-stack --run</code> marks the folder while it works. <strong>Import finished work</strong> on that
+object then tells you a stack is running and to wait, and changes nothing. Automatic
+prep and clean-up skip the object until the run is over. A stack you started in Siril
+itself leaves no mark. Instead, the import warns if Siril wrote to <code>process/</code> in the
+last few minutes, and defaults to leaving the folder alone.</p>
 <h3 id="when-some-frames-wont-plate-solve">When some frames won't plate-solve</h3>
 <p>Before it can register anything, Siril has to work out where each frame is pointing.
 Some frames won't: thin cloud, a bump to the mount, a night that just wasn't good
@@ -186,21 +246,31 @@ object gets an <code>astrowizard/</code> folder containing your subs as hardlink
 disk, and they're skipped by backup because the originals are already in it.</p>
 <p>Then use <strong>Stack in StackingWizard…</strong> on the object. M110 opens the app and
 reveals that folder; point StackingWizard at it. It reads the frames, sorts them by
-header, stacks, and writes <code>&lt;object&gt;_wizardstack.fits</code> back into the same folder —
-which is exactly where AstroWizard expects to find it, and where <strong>Import finished
-work</strong> looks for your finish afterwards.</p>
-<p>M110 treats that stack as the folder's <em>input</em>, so tidying up after a finish never
-archives it. Re-finish as often as you like; the stack stays put.</p>
-<p>Two things worth knowing:</p>
+header, stacks, and writes its stack back into the same folder — which is exactly
+where AstroWizard expects to find it, and where <strong>Import finished work</strong> looks for
+your finish afterwards.</p>
+<p>The stack is named <code>&lt;object&gt;_wizardstack.fits</code>, and you may get more than one: a
+mono or filtered night produces <strong>one stack per filter</strong>, a mosaic lands as
+<code>&lt;object&gt;_mosaic_wizardstack_&lt;n&gt;f.fits</code>, and combining several nights writes
+<code>&lt;object&gt;_combined_wizardstack.fits</code>. M110 recognises all of them.</p>
+<p>M110 treats those stacks as the folder's <em>input</em>, so tidying up after a finish never
+archives them. Re-finish as often as you like; the stacks stay put.</p>
+<p>Three things worth knowing:</p>
 <ul>
 <li><strong>Point it at the <code>astrowizard/</code> folder, not <code>siril/</code>.</strong> Its scan is recursive,
   so pointing it at the Siril folder also works — but then its stack and
   AstroWizard's working files land in Siril's workspace, where M110 reads them as
   Siril's leftovers. If you've already done that, move those files into
   <code>astrowizard/</code> and everything lines up.</li>
-<li><strong>Mono/filter sets aren't supported by StackingWizard yet</strong> (its own beta notes
-  say so). For those targets, stack in Siril or with <code>m110-stack</code> and use <strong>Send to
-  AstroWizard</strong> instead.</li>
+<li><strong>Mono and filter sets work.</strong> A night of Ha/OIII/SII (or LRGB) sorts, grades and
+  stacks per filter, and the set goes on to AstroWizard's <em>Combine Mono Channels</em>.
+  Note that AstroWizard combines one family at a time, so RGB and narrowband stacks
+  go through it separately.</li>
+<li><strong>If you use its Drizzle option, the stack won't plate-solve.</strong> Drizzle rebuilds
+  the stack on a grid twice as fine, and StackingWizard restates the header's
+  per-pixel scale to match but drops the cards that pin the sky to the original
+  pixel grid (it marks the stack <code>DRZWCS</code>). The stack imports and finishes normally;
+  it just has no usable plate solution until something solves it afresh.</li>
 </ul>
 <h3 id="bringing-the-finish-back">Bringing the finish back</h3>
 <p>When you've finished an image in AstroWizard, save your export into that same
@@ -275,7 +345,7 @@ data for every processing run.</p>
   — it's the same file. Treat subs as read-only everywhere.</li>
 </ul>
 <p>Next: <strong><a href="backup.html">Backing up your library →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.8 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

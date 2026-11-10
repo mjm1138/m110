@@ -17,7 +17,7 @@ After an ingest (and again whenever it notices a target missing one), M110 build
 Images/<target>/siril/
   lights/            your light subs, ready for Siril (see "Hardlinks" below)
   presets/           a Siril preset tuned to your frame count
-  process/           scratch space for Siril's intermediate files
+  process/           Siril's scratch space (left in place on import; not backed up)
   next-steps.md      a short, per-target guide to what to do in Siril
   archive/<ts>/      past runs, kept so you can re-process later
 ```
@@ -27,8 +27,48 @@ finished work** (from the object's detail pane) to pull the render into `finishe
 and the stack into `stacks/`. M110 then archives the run so the sandbox is ready for
 next time — it never deletes your lights or your work.
 
-You don't trigger any of this by hand: prep is automatic and idempotent. If you edit
-a preset, M110 preserves your edits and won't overwrite them.
+You don't trigger any of this by hand: prep is automatic and idempotent.
+
+An object shot through **two filters** (say LP and IRCUT on a Seestar, or Astro and
+Duo-Band on a Dwarf) gets one self-contained job folder per filter,
+`siril/LP/`, `siril/IRCUT/` and so on, each with its own `lights/` and preset. The
+filter comes from the FITS headers, and each preset names the right filter and
+telescope, so Siril's colour calibration (SPCC) uses the right one.
+
+### Calibration frames
+
+If the object has its own `darks/`, `flats/` or `biases/` folders, those are used:
+they always win. Otherwise M110 looks in the telescope's calibration library,
+`Calibration/<telescope>/` (see **[Ingest](ingest.md)**), and picks **one master of
+each kind**:
+
+- **dark**: same exposure, gain and binning as the lights, and the nearest sensor
+  temperature;
+- **bias**: the same binning;
+- **flat**: only when exactly one matches the filter.
+
+The chosen masters are linked into each job folder and the preset's calibration
+switches are turned on. `next-steps.md` says which were used and why any were
+skipped. Two exceptions: an object shot on two different telescopes is never given
+one telescope's masters, and a **Seestar** is never given a dark. It has already
+subtracted one from every sub, and doing it twice would ruin them (see
+**[the Devices page](devices.md#the-dark-library-seestar)**).
+
+### Frame selection
+
+The preset tells Siril what share of frames to keep on each of four quality
+measures. Below 100 frames nothing is filtered. From 100 to 500 frames, roundness and
+star count keep 95% while wFWHM and background keep 98%; above 500, all four keep
+95%. `m110-stack` uses the same table.
+
+### When M110 would change a preset
+
+When new subs change what M110 would suggest, or you've saved your own preset from
+Naztronomy, M110 doesn't quietly overwrite it. After the import, an **Update Siril
+presets?** window lists each object and what would change (`roundness: 98 → 95`).
+**Replace selected** moves the old file to `presets/archive/` and writes the new one.
+**Keep existing** leaves it alone, and M110 won't ask again until its suggestion
+changes.
 
 ## Process in Siril (one click)
 
@@ -81,6 +121,11 @@ mosaic it runs for hours. So M110 will do it for you, from the command line:
 m110-stack "M101"
 ```
 
+`m110-stack` comes with M110 but isn't on your PATH, so type its full path:
+`/Applications/M110.app/Contents/MacOS/m110-stack` on a Mac, the `m110-stack.exe`
+in M110's install folder on Windows, or the M110 AppImage followed by `--stack` on Linux. If you
+plan the stack with the assistant, it gives you the complete command.
+
 That **measures and proposes — it doesn't stack**. You get how many frames you have,
 whether exposures or gain are mixed, whether it's a mosaic, how deep the coverage
 actually is, and the settings that supports (drizzle, rejection, weighting,
@@ -109,9 +154,33 @@ leaving it off — it's there for when you'd rather watch than `tail` a log. The
 `[mm:ss]` stage lines still appear in the stream, so you can find where each step
 began. For an exact interval, `--heartbeat 120` overrides the one `-v` picks.
 
-Useful flags: `--only-exposure 30` (stack one exposure when a set mixes them),
-`--exclude-night 2026-06-10`, `--restack` (retry stack settings without repeating
-registration), `--handoff` (see below). `m110-stack --help` lists the rest.
+Useful flags:
+
+- `--only-exposure 30` stacks one exposure when a set mixes them.
+- `--exclude-night 2026-06-10` leaves a night out.
+- `--restack` retries the stack settings without repeating registration.
+- `--handoff` sends the result to AstroWizard (see below).
+- `--max-dark-gap 3` (Seestar) leaves out frames whose sensor drifted more than 3 °C
+  from the dark the telescope applied. Without it, `m110-stack` warns about those
+  frames but keeps them.
+- `--no-calibration` ignores master darks, flats and biases and stacks the raw
+  frames. Otherwise it calibrates exactly as [prep does](#calibration-frames), on
+  the frames it's about to stack.
+- `--filter-pct 90` sets all four frame-selection thresholds at once. To change just
+  one, use `--filter-round`, `--filter-wfwhm`, `--filter-bkg` or `--filter-nbstars`
+  (100 turns that filter off). The defaults follow
+  [the table above](#frame-selection), picked by how many frames cover each part of
+  the sky, so a large mosaic isn't filtered as hard as a deep single field.
+
+`m110-stack --help` lists the rest.
+
+### While a stack is running
+
+`m110-stack --run` marks the folder while it works. **Import finished work** on that
+object then tells you a stack is running and to wait, and changes nothing. Automatic
+prep and clean-up skip the object until the run is over. A stack you started in Siril
+itself leaves no mark. Instead, the import warns if Siril wrote to `process/` in the
+last few minutes, and defaults to leaving the folder alone.
 
 ### When some frames won't plate-solve
 
@@ -184,23 +253,34 @@ disk, and they're skipped by backup because the originals are already in it.
 
 Then use **Stack in StackingWizard…** on the object. M110 opens the app and
 reveals that folder; point StackingWizard at it. It reads the frames, sorts them by
-header, stacks, and writes `<object>_wizardstack.fits` back into the same folder —
-which is exactly where AstroWizard expects to find it, and where **Import finished
-work** looks for your finish afterwards.
+header, stacks, and writes its stack back into the same folder — which is exactly
+where AstroWizard expects to find it, and where **Import finished work** looks for
+your finish afterwards.
 
-M110 treats that stack as the folder's *input*, so tidying up after a finish never
-archives it. Re-finish as often as you like; the stack stays put.
+The stack is named `<object>_wizardstack.fits`, and you may get more than one: a
+mono or filtered night produces **one stack per filter**, a mosaic lands as
+`<object>_mosaic_wizardstack_<n>f.fits`, and combining several nights writes
+`<object>_combined_wizardstack.fits`. M110 recognises all of them.
 
-Two things worth knowing:
+M110 treats those stacks as the folder's *input*, so tidying up after a finish never
+archives them. Re-finish as often as you like; the stacks stay put.
+
+Three things worth knowing:
 
 - **Point it at the `astrowizard/` folder, not `siril/`.** Its scan is recursive,
   so pointing it at the Siril folder also works — but then its stack and
   AstroWizard's working files land in Siril's workspace, where M110 reads them as
   Siril's leftovers. If you've already done that, move those files into
   `astrowizard/` and everything lines up.
-- **Mono/filter sets aren't supported by StackingWizard yet** (its own beta notes
-  say so). For those targets, stack in Siril or with `m110-stack` and use **Send to
-  AstroWizard** instead.
+- **Mono and filter sets work.** A night of Ha/OIII/SII (or LRGB) sorts, grades and
+  stacks per filter, and the set goes on to AstroWizard's *Combine Mono Channels*.
+  Note that AstroWizard combines one family at a time, so RGB and narrowband stacks
+  go through it separately.
+- **If you use its Drizzle option, the stack won't plate-solve.** Drizzle rebuilds
+  the stack on a grid twice as fine, and StackingWizard restates the header's
+  per-pixel scale to match but drops the cards that pin the sky to the original
+  pixel grid (it marks the stack `DRZWCS`). The stack imports and finishes normally;
+  it just has no usable plate solution until something solves it afresh.
 
 ### Bringing the finish back
 

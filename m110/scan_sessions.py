@@ -63,12 +63,16 @@ def _session_key(path: Path) -> tuple[str, float, str] | None:
     try:
         from astropy.io import fits
         hdr = fits.getheader(str(path))
-        obs = str(hdr.get("DATE-OBS") or "").strip()
+        # The site's LOCAL date when the header has it (N.I.N.A. writes DATE-LOC),
+        # the same convention as the Seestar filename clock above; else DATE-OBS
+        # (UTC), which labels a western-hemisphere evening with tomorrow's date.
+        obs = str(hdr.get("DATE-LOC") or hdr.get("DATE-OBS") or "").strip()
         iso = obs.split("T", 1)[0]              # 'YYYY-MM-DD' from ISO datetime
         exp = float(hdr.get("EXPTIME"))
         if len(iso) != 10 or exp <= 0:
             return None
-        filt = str(hdr.get("FILTER") or "").strip().upper()
+        from . import capture_profiles      # renames (N.I.N.A.'s Seestar IR → IRCUT)
+        filt = (capture_profiles.filter_name(hdr) or "").upper()
         return iso, exp, filt
     except Exception:
         return None
@@ -108,6 +112,158 @@ def _session_bounds(files: list[Path]) -> tuple[str | None, str | None]:
         return first, last
     stamps = sorted(s for s in (_read_date_obs(f) for f in ordered) if s)
     return (stamps[0], stamps[-1]) if stamps else (None, None)
+
+
+# ── per-segment capture facts: telescope, gain, sensor temperature ────────────
+# Read from a bounded sample of each segment's subs (first, last and up to
+# `_SAMPLE_BETWEEN` evenly spaced between, in capture order) and cached per file.
+# Dense on purpose: the on-device dark switch (rule v2) is path-dependent, so a
+# sparse sample can step over the window where a switch happened and then never
+# make it (≈4 min spacing on a 3 h run ≈ a few tenths of a °C of cooling)
+# in derived/ — keyed on name + size, since a raw sub never changes — so an
+# unchanged store re-reads no headers on refresh. The cache is derived state:
+# safe to delete, rebuilt on the next scan.
+_SAMPLE_BETWEEN = 46
+_HEADER_CACHE_NAME = "session_headers.json"
+
+
+def _sample(ordered: list[Path]) -> list[Path]:
+    if len(ordered) <= _SAMPLE_BETWEEN + 2:
+        return ordered
+    step = (len(ordered) - 1) / (_SAMPLE_BETWEEN + 1)
+    idx = sorted({round(i * step) for i in range(_SAMPLE_BETWEEN + 2)})
+    return [ordered[i] for i in idx]
+
+
+class _HeaderCache:
+    """{"<object_dir>/<file>": {"size", "telescop", "gain", "binning", "temp_c",
+    "device", "darks_applied", "capture"}}."""
+
+    def __init__(self):
+        self.path = config.DERIVED_DIR / _HEADER_CACHE_NAME
+        try:
+            self.data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self.data = {}
+        self.used: set[str] = set()
+        self.dirty = False
+
+    def facts(self, f: Path) -> dict:
+        key = f"{f.parent.parent.name}/{f.name}"
+        self.used.add(key)
+        try:
+            size = f.stat().st_size
+        except OSError:
+            size = None
+        hit = self.data.get(key)
+        # An entry from before the capture profiles (#203) has no "capture": read
+        # the header again once, so an old cache heals on the next Sync.
+        if hit and hit.get("size") == size and "capture" in hit:
+            return hit
+        facts = {"size": size, **_read_capture_facts(f)}
+        self.data[key] = facts
+        self.dirty = True
+        return facts
+
+    def save(self):
+        stale = set(self.data) - self.used
+        if not (self.dirty or stale):
+            return
+        for k in stale:
+            del self.data[k]
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self.data, sort_keys=True), encoding="utf-8")
+        except OSError:
+            pass                                 # a cache; the scan result stands
+
+
+def _read_capture_facts(path: Path) -> dict:
+    from . import capture_profiles
+    out = {"telescop": None, "gain": None, "binning": None, "temp_c": None,
+           "device": None, "darks_applied": False, "capture": "generic"}
+    try:
+        from astropy.io import fits
+        h = fits.getheader(str(path))
+    except Exception:
+        return out
+    out.update(capture_profiles.facts(h))
+    tel = h.get("TELESCOP")
+    temp = h.get("CCD-TEMP") if h.get("CCD-TEMP") is not None else h.get("DET-TEMP")
+    for key, val, cast in (("gain", h.get("GAIN"), int), ("binning", h.get("XBINNING"), int),
+                           ("temp_c", temp, lambda v: round(float(v), 2))):
+        try:
+            out[key] = cast(val) if val is not None else None
+        except (TypeError, ValueError):
+            pass
+    out["telescop"] = (str(tel).strip() or None) if tel not in (None, "") else None
+    return out
+
+
+def _capture_fields(files: list[Path], exp: float, cache: "_HeaderCache",
+                    libraries: dict) -> dict:
+    """The per-session capture facts and, for a device that dark-subtracts on
+    board, which library darks it most likely applied (calibration.applied_darks,
+    rule v2, simulated over the sampled subs in capture order) and the widest gap
+    between a sampled sub's temperature and the dark in use for it."""
+    from . import calibration, devices
+    ordered = sorted(files, key=lambda p: p.name)        # name order = capture order
+    sample = _sample(ordered)
+    facts = [cache.facts(f) for f in sample]
+    temps = [ff["temp_c"] for ff in facts if ff.get("temp_c") is not None]
+    tel = next((ff["telescop"] for ff in facts if ff.get("telescop")), None)
+    device = next((ff["device"] for ff in facts if ff.get("device")), None)
+    applied = any(ff.get("darks_applied") for ff in facts)
+    gain = next((ff["gain"] for ff in facts if ff.get("gain") is not None), None)
+    binning = next((ff["binning"] for ff in facts if ff.get("binning") is not None), None)
+    out = {
+        "telescop": tel, "gain": gain,
+        "temp_first": facts[0].get("temp_c") if facts else None,
+        "temp_last": facts[-1].get("temp_c") if facts else None,
+        "temp_min": min(temps) if temps else None,
+        "temp_max": max(temps) if temps else None,
+        "dark_ref": None, "dark_temp_c": None, "dark_gap_c": None,
+        "dark_link": None, "dark_rule": None, "dark_refs": [],
+    }
+    # Only frames dark-subtracted when saved (the Seestar app, by capture path —
+    # capture_profiles) had a library dark applied on the device to infer.
+    if not ordered or not applied or not device:
+        return out
+    if device not in libraries:
+        libraries[device] = calibration.library(device).get("darks", [])
+    used = calibration.applied_darks(
+        [(f.name, ff.get("temp_c")) for f, ff in zip(sample, facts)],
+        exptime=exp, gain=gain, binning=binning, masters=libraries[device])
+    if not used or used[0] is None:
+        return out
+    first = used[0]
+    gaps = [g for g in (ad.gap(ff.get("temp_c")) for ad, ff in zip(used, facts))
+            if g is not None]
+    refs = list(dict.fromkeys(ad.master.path.name for ad in used))
+    out.update(dark_ref=first.master.path.name, dark_temp_c=first.master.temp_c,
+               dark_gap_c=round(max(gaps), 1) if gaps else None,
+               dark_link=first.link, dark_rule=first.rule, dark_refs=refs)
+    return out
+
+
+def _device_of(subs: list[Path], cache: "_HeaderCache"):
+    """A function giving each sub of one target folder its (device key, capture
+    profile id). A folder is almost always one telescope's, shot one way, so a
+    bounded sample decides: if every sampled sub agrees, the whole folder is that
+    and no other header is read. Only when the sample shows two or more does every
+    sub's header get read (once — `_HeaderCache` keeps it)."""
+    from . import devices
+
+    def key_of(f: Path) -> tuple[str, str]:
+        ff = cache.facts(f)
+        return (ff.get("device") or devices.folder_name(ff.get("telescop")),
+                ff.get("capture") or "generic")
+
+    seen = {key_of(f) for f in _sample(subs)}
+    if len(seen) <= 1:
+        only = next(iter(seen), (devices.UNKNOWN, "generic"))
+        return lambda f: only
+    return key_of
 
 
 def _read_eqmode(path: Path) -> bool | None:
@@ -213,14 +369,19 @@ def folder_to_slugs(folder_name: str, catalog_slugs: set[str]) -> list[str]:
     # on the Library never containing such an entry.
     # Spaced designations are collapsed first ("M 97 M 108" → "M97 M108") so the
     # split works whichever way the designations are typed.
+    # Each part resolves as a designation first: NGC/IC slugs are hyphenated
+    # ("NGC2024" → ngc-2024), which a bare slugify ("ngc2024") never finds — so a
+    # "NGC 2024 IC 434" target (N.I.N.A., named for a field) split into nothing.
+    from .catalog import slug_for_designation
     parts = re.split(r"\s+", re.sub(r"([A-Za-z]+)\s+(\d)", r"\1\2", folder_name))
-    out = [ps for ps in (slugify(p) for p in parts) if ps in catalog_slugs]
+    out = list(dict.fromkeys(
+        ps for ps in ((slug_for_designation(p) or slugify(p)) for p in parts)
+        if ps in catalog_slugs))
     if len(out) >= 2:
         return out
     s = slugify(folder_name)
     # A folder named by a *catalog number* ("C 6") names an object the reference
     # keys by its primary designation (ngc-6543), so ask catalog membership.
-    from .catalog import slug_for_designation
     by_desig = slug_for_designation(folder_name)
     if by_desig in catalog_slugs:
         return [by_desig]
@@ -283,7 +444,9 @@ def load_catalog_slugs() -> set[str]:
     return slugs
 
 
-def scan() -> list[dict]:
+def scan(checkpoint=None) -> list[dict]:
+    """`checkpoint()`, when given, is called per object folder and per session
+    segment and may raise to abandon the scan (it only reads, so that's safe)."""
     images = config.IMAGES_DIR
     if not images.is_dir():
         print(f"Images dir not found: {images}", file=sys.stderr)
@@ -291,42 +454,52 @@ def scan() -> list[dict]:
 
     catalog_slugs = load_catalog_slugs()
     rows: list[dict] = []
+    cache = _HeaderCache()
+    libraries: dict = {}                     # device → its library darks (one read)
 
     for obj_dir in sorted(images.iterdir()):
+        if checkpoint:
+            checkpoint()
         if not obj_dir.is_dir() or obj_dir.name in SKIP_DIRS:
             continue
         lights = obj_dir / "lights"
         if not lights.is_dir():
             continue
 
-        # Bucket by (iso-date, exp, filt) to compress to one row per session-segment.
-        # Each light's key comes from the filename (Seestar fast path) or its FITS
-        # header (device-agnostic fallback — see `_session_key`).
-        bucket: dict[tuple[str, float, str], int] = defaultdict(int)
-        rep: dict[tuple[str, float, str], Path] = {}   # one sub per bucket → EQMODE read
-        members: dict[tuple[str, float, str], list[Path]] = defaultdict(list)
-        for f in lights.iterdir():
-            if not f.is_file() or not config.is_fits_file(f.name):
-                continue
+        # Bucket by (iso-date, exp, filt, device) to compress to one row per
+        # session-segment. Each light's (date, exp, filter) comes from the filename
+        # (Seestar fast path) or its FITS header (device-agnostic fallback — see
+        # `_session_key`); its device from `_device_of` (one TELESCOP for the
+        # whole folder unless a sample shows two scopes shot it).
+        bucket: dict[tuple, int] = defaultdict(int)
+        rep: dict[tuple, Path] = {}                      # one sub per bucket → EQMODE read
+        members: dict[tuple, list[Path]] = defaultdict(list)
+        subs = sorted(f for f in lights.iterdir()
+                      if f.is_file() and config.is_fits_file(f.name))
+        device_of = _device_of(subs, cache)
+        for f in subs:
             key = _session_key(f)
             if key is None:
                 continue
+            key = (*key, *device_of(f))
             bucket[key] += 1
             rep.setdefault(key, f)
             members[key].append(f)
 
         slugs = folder_to_slugs(obj_dir.name, catalog_slugs)
-        for (iso, exp, filt), n in sorted(bucket.items()):
+        for (iso, exp, filt, device, capture), n in sorted(bucket.items()):
+            if checkpoint:
+                checkpoint()
             session_date = datetime.strptime(iso, "%Y-%m-%d").date()
             # One header read per session-segment (mount mode is constant within a
             # capture run) — negligible next to the filename fast-path for the subs.
-            mount_mode = _mount_mode(rep.get((iso, exp, filt)), session_date)
+            mount_mode = _mount_mode(rep.get((iso, exp, filt, device, capture)), session_date)
             # The segment's real UTC window. `date` is the *observing night's*
             # label, not a calendar day of these timestamps — subs shot after
             # local midnight carry the previous evening's label and a DATE-OBS
             # on the following day — so anything comparing a session to a
             # timestamped event (a stack's FITS `DATE`) has to use these.
-            first_obs, last_obs = _session_bounds(members[(iso, exp, filt)])
+            first_obs, last_obs = _session_bounds(members[(iso, exp, filt, device, capture)])
             row = {
                 "date": iso,
                 "object_dir": obj_dir.name,
@@ -339,8 +512,12 @@ def scan() -> list[dict]:
                 "pre_new_start": session_date < NEW_START,
                 "first_obs": first_obs,      # UTC DATE-OBS of the segment's
                 "last_obs": last_obs,        # earliest / latest sub (None if unreadable)
+                **_capture_fields(members[(iso, exp, filt, device, capture)], exp, cache, libraries),
+                "device": device,            # capture_profiles.device_key, or "unknown"
+                "capture": capture,          # capture profile id (seestar-app, nina, …)
             }
             rows.append(row)
+    cache.save()
     rows.sort(key=lambda r: (r["date"], r["object_dir"], r["exposure_s"]))
     return rows
 

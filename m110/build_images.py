@@ -28,7 +28,7 @@ _INTERMEDIATE_FIT_RE = re.compile(r"_(og|crop|stretch|stretched|spcc)(_|\.)", re
 # The finished vocabulary is user-editable and shared — see `hints.py`.
 # Hero source preference, best → fallback. Each entry maps to a per-target
 # subfolder via the matching config helper in `_tier_dir`.
-HERO_TIERS = ["finished", "stacks", "seestar-stacks"]
+HERO_TIERS = ["finished", "stacks", "device-stacks"]
 
 
 def _is_intermediate_fit(path: Path) -> bool:
@@ -135,7 +135,7 @@ def discover_images(slug: str, folders: list[str], by_folder: dict) -> list[dict
             (config.finished_dir(fname), "Finished render"),
             (config.stacks_dir(fname), "Siril stack"),
             (config.working_files_dir(fname), "Working file"),
-            (config.seestar_stacks_dir(fname), "Seestar in-app stack"),
+            (config.device_stacks_dir(fname), config.DEVICE_STACK_LABEL),
         ]:
             if not src_dir.is_dir():
                 continue
@@ -171,20 +171,27 @@ def _hero_sort_key(p: Path):
 _TIER_DIR = {
     "finished": config.finished_dir,
     "stacks": config.stacks_dir,
-    "seestar-stacks": config.seestar_stacks_dir,
+    "device-stacks": config.device_stacks_dir,
 }
 
 
-def find_hero_source(folders: list[str]) -> Path | None:
+def _tier_candidates(folders: list[str]) -> list[Path]:
+    """Every raster hero candidate, best first: tier by tier, each tier PNG > JPG,
+    newest first."""
+    out: list[Path] = []
     for tier in HERO_TIERS:
         tier_dir = _TIER_DIR[tier]
         cands = []
         for fname in folders:
             cands += _photos_in(tier_dir(fname))
-        if cands:
-            cands.sort(key=_hero_sort_key)
-            return cands[0]
-    return None
+        cands.sort(key=_hero_sort_key)
+        out += cands
+    return out
+
+
+def find_hero_source(folders: list[str]) -> Path | None:
+    cands = _tier_candidates(folders)
+    return cands[0] if cands else None
 
 
 def hero_source_path(slug: str) -> Path | None:
@@ -199,30 +206,29 @@ def hero_source_path(slug: str) -> Path | None:
         return None
     if not first:
         return None
-    p = config.DATA_ROOT / first
+    p = config.DATA_ROOT / config.upgrade_legacy_rel(first)
     return p if p.is_file() else None
 
 
-def _hero_source(slug: str, folders: list[str], imgs: list[dict]) -> Path | None:
-    """Honour frontmatter overrides (hero: filename, or hero_image: path),
-    else fall back to tier auto-discovery."""
+def _hero_candidates(slug: str, folders: list[str], imgs: list[dict]) -> list[Path]:
+    """Hero sources in preference order, de-duplicated: frontmatter overrides
+    (hero: filename, then hero_image: path), then the raster tier order, then every
+    discovered image newest first — which may be a FITS stack. The renderer uses
+    the first that actually decodes, so one truncated file can't leave no hero."""
+    out: list[Path] = []
     fm, _ = objects.read_journal(slug)
     name = fm.get("hero")
     if name:
-        for im in imgs:
-            if im.get("name") == name:
-                return im["path"]
+        out += [im["path"] for im in imgs if im.get("name") == name][:1]
     hp = fm.get("hero_image")
     if hp:
-        p = config.DATA_ROOT / hp
+        # A pre-v6 `hero_image:` may still name the old `seestar-stacks/` tier.
+        p = config.DATA_ROOT / config.upgrade_legacy_rel(str(hp))
         if p.is_file():
-            return p
-    # Prefer a raster (jpg/png) photo via the tier order; otherwise fall back to
-    # the newest discovered image — which may be a FITS stack (rendered below).
-    photo = find_hero_source(folders)
-    if photo:
-        return photo
-    return imgs[0]["path"] if imgs else None
+            out.append(p)
+    out += _tier_candidates(folders)
+    out += [im["path"] for im in imgs]
+    return list(dict.fromkeys(out))
 
 
 def _hero_identity(src: Path) -> str:
@@ -270,6 +276,13 @@ def _render_hero(src: Path, dst: Path) -> bool:
         return False
 
 
+def _render_first_hero(cands: list[Path], dst: Path) -> bool:
+    """Render the hero from the first candidate that decodes — a truncated or
+    placeholder raster falls through to the next. The `.src` sidecar ends up
+    naming the file actually used."""
+    return any(_render_hero(src, dst) for src in cands)
+
+
 def rebuild_hero(slug: str) -> bool:
     """Re-render just one object's hero from its current source (honoring a `hero`
     frontmatter override). Fast, synchronous — for an interactive set-hero, so the
@@ -280,15 +293,20 @@ def rebuild_hero(slug: str) -> bool:
     if not folders:
         return False
     imgs = discover_images(slug, folders, by_folder)
-    src = _hero_source(slug, folders, imgs)
-    if not src:
+    cands = _hero_candidates(slug, folders, imgs)
+    if not cands:
         return False
     config.HERO_DIR.mkdir(parents=True, exist_ok=True)
-    return _render_hero(src, config.HERO_DIR / f"{slug}.jpg")
+    return _render_first_hero(cands, config.HERO_DIR / f"{slug}.jpg")
 
 
-def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dict:
-    """Generate thumbnails + heroes for captured objects and write images.json."""
+def render_images(catalog: dict, totals: dict, slugs=None, progress=None,
+                  checkpoint=None) -> dict:
+    """Generate thumbnails + heroes for captured objects and write images.json.
+
+    `checkpoint()`, when given, is called per object and may raise to abandon the
+    render: images.json and the orphan prune only happen at the end, so the
+    previous manifest stays intact and still points at files that exist."""
     by_folder = totals.get("by_folder", {})
     renders = config.RENDERS_DIR
     hero_dir = config.HERO_DIR
@@ -298,6 +316,8 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
     manifest: dict[str, list] = {}
     targets = list(slugs) if slugs is not None else list(catalog.keys())
     for i, slug in enumerate(targets, 1):
+        if checkpoint:
+            checkpoint()
         folders = folders_for_slug(slug, by_folder)
         if not folders:
             continue
@@ -335,9 +355,8 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
                     entry["layers"] = [lay.as_dict() for lay in found]
             entries.append(entry)
         manifest[slug] = entries
-        src = _hero_source(slug, folders, imgs)
-        if src:
-            _render_hero(src, hero_dir / f"{slug}.jpg")
+        _render_first_hero(_hero_candidates(slug, folders, imgs),
+                           hero_dir / f"{slug}.jpg")
         if progress:
             progress(i, len(targets))
 

@@ -83,7 +83,7 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Library", "Overview", "Planning", "Import", "Processing"]
+            ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
         # A store with captures lands on the Library (home); Library is index 0.
         assert win.stack.currentIndex() == win._catalog_index == 0
         win.open_object(slug)                         # link from another page
@@ -107,6 +107,44 @@ def test_quit_waits_for_running_refresh_worker(tmp_path, monkeypatch, qapp):
         assert win._worker is not None
         win._stop_worker()                      # must block until it finishes
         assert not win._worker.isRunning()      # safe to tear down now
+    finally:
+        win._ready = False
+        win._stop_worker()
+        win.close()
+        win.deleteLater()
+        qapp.processEvents()
+
+
+def test_quit_cancels_a_running_sync_instead_of_waiting_it_out(tmp_path, monkeypatch, qapp):
+    """Every focus-in starts a sync, so Cmd+Q right after clicking into the window
+    used to block until a whole scan finished (18 s on a large library)."""
+    import threading
+    import time
+    from m110 import refresh
+    seed_root(tmp_path, monkeypatch)
+    started = threading.Event()
+
+    def slow_sync(should_cancel=None, **_):
+        started.set()
+        deadline = time.monotonic() + 30           # a sync far longer than quit may wait
+        while time.monotonic() < deadline:
+            if should_cancel and should_cancel():
+                raise refresh.RefreshCancelled
+            time.sleep(0.01)
+        return {"sessions": 0}
+    monkeypatch.setattr(refresh, "run_refresh", slow_sync)
+
+    from m110.ui.main import MainWindow
+    win = MainWindow()
+    win._ready = True
+    try:
+        win._do_refresh()
+        assert started.wait(5)
+        t = time.monotonic()
+        win._stop_worker()
+        assert time.monotonic() - t < 2
+        assert not win._worker.isRunning()
+        assert not win._refreshing and win.refresh_action.isEnabled()   # a later sync can run
     finally:
         win._ready = False
         win._stop_worker()
@@ -143,7 +181,7 @@ def _seed_object_with_images(tmp_path, monkeypatch):
     slug, tid = seed_capture(root)                      # light → session → totals
     fin = config.finished_dir(tid); fin.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (80, 60), (200, 30, 30)).save(fin / "M_final.png")
-    ss = config.seestar_stacks_dir(tid); ss.mkdir(parents=True, exist_ok=True)
+    ss = config.device_stacks_dir(tid); ss.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (80, 60), (30, 30, 200)).save(ss / "Stacked_1_x.jpg")
     refresh.run_refresh()                               # render=True → images.json
     e = catalog.load_library()[slug]
@@ -189,7 +227,7 @@ def test_gallery_tooltip_names_the_layers_of_a_multi_layer_stack(
     from tests._helpers import make_sho, seed_capture, seed_root
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
-    make_sho(config.seestar_stacks_dir(tid) / "sho.fits", shape=(3, 40, 40))
+    make_sho(config.device_stacks_dir(tid) / "sho.fits", shape=(3, 40, 40))
     refresh.run_refresh()
 
     from m110.ui.detail import DetailPane
@@ -350,5 +388,97 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
                      for i in range(flow.count()))
         assert flow.minimumSize().width() == widest
         assert flow.heightForWidth(widest + 8) > flow.heightForWidth(4000)
+    finally:
+        d.deleteLater(); qapp.processEvents()
+
+
+def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatch, qapp):
+    """Set goal… with 420 min, then Set goal… → Use default clears it (#184)."""
+    from m110 import derived, integration_goals
+    from m110.ui import goal_dialog
+    from m110.ui.detail import DetailPane
+    from tests._helpers import seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    slug, _tid = seed_capture(root)
+    from m110 import catalog
+    e = catalog.load_library()[slug]
+    model = next(iter(derived.totals_by_slug()[slug]["by_model"]))
+    from PySide6.QtWidgets import QDialog
+    monkeypatch.setattr(goal_dialog.GoalDialog, "exec",
+                        lambda self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(goal_dialog.GoalDialog, "minutes", lambda self: 420)
+    monkeypatch.setattr(goal_dialog.GoalDialog, "reason", lambda self: "outer disk")
+
+    d = DetailPane()
+    try:
+        fired = []
+        d.goals_changed.connect(lambda: fired.append(True))
+        d.show_object(slug, e, derived.totals_by_slug()[slug])
+        btn = next(b for b in d._content.findChildren(QPushButton)
+                   if b.text() == "Set goal…")
+        btn.click()
+        qapp.processEvents()
+        assert integration_goals.load()[slug][model] == {"min": 420.0,
+                                                         "reason": "outer disk"}
+        assert derived.totals_by_slug()[slug]["by_model"][model]["goal_min"] == 420
+        assert fired == [True]
+        labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
+        assert "of 420 min" in labels and "your goal" in labels
+
+        # One button per row: Use default lives in the dialog now.
+        assert _count(d._content, "Use default") == 0
+        monkeypatch.setattr(goal_dialog.GoalDialog, "use_default", lambda self: True)
+        btn = next(b for b in d._content.findChildren(QPushButton)
+                   if b.text() == "Set goal…")
+        btn.click()
+        qapp.processEvents()
+        assert integration_goals.load() == {}
+        labels = " ".join(lbl.text() for lbl in d._content.findChildren(QLabel))
+        assert "your goal" not in labels
+    finally:
+        d.deleteLater(); qapp.processEvents()
+
+
+def test_the_goal_dialog_says_cancel_only_with_edits(qapp):
+    from m110.ui.goal_dialog import GoalDialog
+    dlg = GoalDialog("M77", "ZWO Seestar S50", 240, 240, calibrated=False)
+    try:
+        assert dlg._reject_btn.text() == "Close"
+        dlg._minutes.setValue(420)
+        assert dlg._reject_btn.text() == "Cancel"
+        assert dlg.minutes() == 420 and dlg.reason() == ""
+    finally:
+        dlg.deleteLater(); qapp.processEvents()
+
+
+def test_the_goal_dialog_offers_use_default_only_for_your_goal(qapp):
+    from m110.ui.goal_dialog import GoalDialog
+    plain = GoalDialog("M77", "ZWO Seestar S50", 240, 240)
+    mine = GoalDialog("M77", "ZWO Seestar S50", 420, 240, "outer disk", custom=True)
+    try:
+        assert plain._default_btn is None
+        assert mine._default_btn is not None and not mine.use_default()
+        mine._default_btn.click()
+        assert mine.result() == mine.DialogCode.Accepted and mine.use_default()
+    finally:
+        plain.deleteLater(); mine.deleteLater(); qapp.processEvents()
+
+
+def test_the_goal_rows_never_widen_the_pane(tmp_path, monkeypatch, qapp):
+    """At the default window size the pane is ~440 px wide. Unwrapped, a goal row
+    (model name · progress · whose + two buttons) set a ~510 px minimum → the pane
+    scrolled sideways and clipped "Use default" (found in the 2026-10-27 GUI pass)."""
+    from m110 import catalog, derived, integration_goals
+    from m110.ui.detail import DetailPane
+    from tests._helpers import seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    slug, _tid = seed_capture(root)
+    model = next(iter(derived.totals_by_slug()[slug]["by_model"]))
+    integration_goals.set_goal(slug, model, 420, "a reason")     # "· your goal"
+    d = DetailPane()
+    try:
+        d.show_object(slug, catalog.load_library()[slug], derived.totals_by_slug()[slug])
+        qapp.processEvents()
+        assert d._content.minimumSizeHint().width() < 400
     finally:
         d.deleteLater(); qapp.processEvents()

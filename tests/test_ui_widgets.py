@@ -211,3 +211,31 @@ def test_flow_layout_take_at_hands_items_back(qapp):
     assert taken == btns
     assert flow.itemAt(0) is None and flow.takeAt(0) is None
     host.deleteLater(); qapp.processEvents()
+
+
+
+def test_reveal_selects_a_file_on_macos_and_windows(tmp_path, monkeypatch, qapp):
+    """Reveal shows the file *selected* (Finder `open -R`, Explorer `/select,`);
+    a folder, or any path on Linux, opens the folder."""
+    import subprocess
+    import sys
+    from PySide6.QtGui import QDesktopServices
+    from m110.ui import widgets
+    f = tmp_path / "MasterDark_5_20.0s_13.9C_20261015-215239.fit"
+    f.write_bytes(b"x")
+    ran, opened = [], []
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **kw: ran.append(args))
+    monkeypatch.setattr(QDesktopServices, "openUrl",
+                        lambda url: opened.append(url.toLocalFile()) or True)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    widgets.reveal_in_manager(f)
+    assert ran[-1] == ["/usr/bin/open", "-R", str(f)]
+    assert widgets.reveal_label() == "Reveal in Finder"
+    widgets.reveal_in_manager(tmp_path)                 # a folder just opens
+    assert opened[-1] == str(tmp_path)
+    monkeypatch.setattr(sys, "platform", "win32")
+    widgets.reveal_in_manager(f)
+    assert ran[-1] == ["explorer", f"/select,{f}"]
+    monkeypatch.setattr(sys, "platform", "linux")
+    widgets.reveal_in_manager(f)
+    assert opened[-1] == str(tmp_path) and len(ran) == 2

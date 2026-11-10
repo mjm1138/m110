@@ -17,17 +17,19 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import catalog, config, ingest
+from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
 
 KIND_LABEL = {
-    "light": "lights", "stack": "Seestar stack", "media": "media",
+    "light": "lights", "stack": "device stack", "media": "media",
     "dark": "darks", "flat": "flats", "bias": "biases",
     "siril-stack": "Siril stack", "finished": "finished",
     "preview": "sub previews", "unassigned": "→ holding area",
     "rejected": "rejected subs",
     # device-level calibration library (Calibration/<device>/…); the row's
-    # "object" is the telescope
-    "cal-dark": "master darks", "cal-flat": "master flats",
-    "cal-bias": "master biases",
+    # "object" is the telescope. "library", not "master": since #203 a row may be
+    # a capture program's raw frames (N.I.N.A.'s single darks), not masters.
+    "cal-dark": "library darks", "cal-flat": "library flats",
+    "cal-bias": "library biases",
 }
 
 # Kinds whose rows have no pointing to verify (the Pointing column shows "—").
@@ -105,7 +107,10 @@ class _ApplyWorker(QThread):
                                   for op in self._ops if op.kind == "light"
                                   and len(Path(op.dest_rel).parts) > 1})
                 if targets:
-                    processing.run_autoprep(targets, should_cancel=self._cancel.is_set)
+                    # Presets that differ from the proposal come back here, for
+                    # the done slot to ask about (`resolve_preset_conflicts`).
+                    res["autoprep"] = processing.run_autoprep(
+                        targets, should_cancel=self._cancel.is_set)
             self.done.emit(res)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
@@ -266,10 +271,12 @@ class IngestDialog(QDialog):
         return sorted((e.get("id") or s) for s, e in self._cat.items())
 
     def _set_object_cell(self, r, g):
-        """Plain label, or a remap dropdown when the frame's pointing disagrees."""
-        if g.pointing and g.kind != "media":
+        """Plain label, or a remap dropdown when the frame's pointing disagrees or
+        the object is off-catalog with catalog candidates (its name's designations,
+        the nearest by pointing — `ingest.annotate_pointing`, #203)."""
+        if (g.pointing or g.candidates) and g.kind != "media":
             combo = QComboBox()
-            order = [g.object]
+            order = [g.object] + [c for c in g.candidates if c != g.object]
             self._catalog_ids()   # ensure self._cat is loaded
             if g.suggested:
                 sid = self._cat.get(g.suggested, {}).get("id") or g.suggested
@@ -299,9 +306,9 @@ class IngestDialog(QDialog):
         self._update_summary()
         if QMessageBox.question(
                 self, "Remember alias?",
-                f"Always route “{g.group}” to {new_id} on future ingests?",
+                f"Always route “{g.alias_key}” to {new_id} on future ingests?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            ingest.add_alias(g.group, new_id)
+            ingest.add_alias(g.alias_key, new_id)
 
     def _selected_groups(self):
         out = []
@@ -403,6 +410,7 @@ class IngestDialog(QDialog):
         moved = result.get("moved", 0)
         skipped = result.get("skipped", 0)
         cancelled = result.get("cancelled", False)
+        resolve_preset_conflicts(self, result)
         self.ingested.emit(moved)
         # Do NOT auto-rescan: a fresh device scan here is slow and pops another
         # modal (the "modal won't close" report). Clear the consumed plan; the

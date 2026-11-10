@@ -350,7 +350,7 @@ def _seeded_three_tier_store(tmp_path, monkeypatch):
     _, tid = seed_capture(root)
     for d, name, color in [
             (config.finished_dir(tid), f"{tid}_final.png", (40, 80, 160)),
-            (config.seestar_stacks_dir(tid), f"{tid}_device.jpg", (160, 80, 40)),
+            (config.device_stacks_dir(tid), f"{tid}_device.jpg", (160, 80, 40)),
             (config.stacks_dir(tid), f"{tid}_stack.png", (80, 160, 40))]:
         d.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (64, 64), color).save(d / name)

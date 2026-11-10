@@ -6,7 +6,7 @@
 
 * **Prepare** arranges a *contained* Siril sandbox `Images/<target>/siril/` with a
   literal `lights/` (Siril needs that exact name), the Naztronomy preset in
-  `presets/` (auto-loaded), and `next-steps.md`. Lights are placed by **hardlink**
+  `presets/` (what Naztronomy's *Load Presets* opens), and `next-steps.md`. Lights are placed by **hardlink**
   (no extra disk; reversible). Mixed-filter targets get one job per filter
   (`siril/<FILTER>/`). Set up **automatically on ingest** (`autoprep`).
 * Siril runs *inside* the sandbox (it makes its own `process/`, scatters
@@ -20,14 +20,16 @@ Mirrors `ingest`'s read-only-plan → gated-apply contract.
 from __future__ import annotations
 
 import json
+from collections import Counter
 import logging
 import os
 import re
 import shutil
+import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import calibration, config, roundtrip
+from . import calibration, config, devices, roundtrip
 
 _log = logging.getLogger("m110")
 
@@ -51,6 +53,23 @@ def filter_of(filename: str) -> str:
     return m.group(1).upper() if m else OTHER_FILTER
 
 
+# A header FILTER value becomes a job folder name (`siril/<FILTER>/`), and headers
+# are attacker-controlled like OBJECT — so only a short, plain token is used.
+_FILTER_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _+-]{0,31}$")
+
+
+def frame_filter(path: Path) -> str:
+    """The filter a light was shot through: the Seestar filename token as a fast
+    path (it mirrors the header), else the header ``FILTER`` card (DwarfLab writes
+    ``Astro`` / ``Duo-Band`` / ``VIS``), else `OTHER_FILTER`."""
+    tok = filter_of(path.name)
+    if tok != OTHER_FILTER:
+        return tok
+    facts = calibration.frame_facts(path) or {}
+    filt = (facts.get("filter") or "").strip()
+    return filt if _FILTER_TOKEN_RE.match(filt) else OTHER_FILTER
+
+
 # ── Naztronomy preset ────────────────────────────────────────────────────────
 
 def drizzle_for(usable_frames: int) -> tuple[bool, float, float]:
@@ -68,36 +87,103 @@ def drizzle_for(usable_frames: int) -> tuple[bool, float, float]:
     return True, 2.0, 0.5
 
 
-def filter_quality_for(usable_frames: int) -> tuple[bool, float]:
-    """(filters_on, quality_pct) for the star-quality reject filters, by frame
-    count. More frames ⇒ afford to be pickier (keep a smaller top %); below the
-    drizzle floor there aren't enough to filter.
-      <100 → off; 100–500 → 98%; 501–1500 → 95%; >1500 → 90%.
-    Applied to all four percentile filters (roundness / fwhm / star_count / bg)."""
-    if usable_frames < 100:
-        return False, 98.0
-    if usable_frames <= 500:
-        return True, 98.0
-    if usable_frames <= 1500:
-        return True, 95.0
-    return True, 90.0
+#: The four frame-selection filters, under neutral names. `m110-stack` uses
+#: these keys as-is; the Naztronomy preset spells two of them differently
+#: (`_PRESET_FILTER_KEYS`).
+FILTER_KEYS = ("roundness", "fwhm", "star_count", "bg")
+_PRESET_FILTER_KEYS = {"roundness": "roundness", "fwhm": "fwhm",
+                       "star_count": "star_count_filter", "bg": "bg_filter"}
+
+# (upper frame bound inclusive, {share kept per filter}) — first row whose bound
+# holds. Each percentage is the share Siril KEEPS, ranked on that one metric over
+# the whole set; the four cuts are ANDed and the drops roughly add (#174).
+#
+# Measured on M1 (767 LP subs, 732 solved; same frames, only the filters
+# varied — DONE.md): roundness 92 / wFWHM 95 kept 675 frames at core SNR 27.89;
+# adding background 98 kept 665 at 28.12; 95% on all four kept 660 at 28.66.
+# Star size and roundness agreed to within 0.3% across all three. So the
+# background and star-count cuts pay for themselves even on a dual-band filter,
+# and a roundness cut tighter than 95% only costs signal.
+_FILTER_TIERS = (
+    (500, {"roundness": 95.0, "fwhm": 98.0, "star_count": 95.0, "bg": 98.0}),
+    (None, {"roundness": 95.0, "fwhm": 95.0, "star_count": 95.0, "bg": 95.0}),
+)
+_FILTER_FLOOR = 100          # below this there are not enough frames to filter
 
 
-def default_preset(usable_frames: int,
-                   filter_label: str = "No Filter (Broadband)",
-                   darks: bool = False, flats: bool = False,
-                   biases: bool = False) -> dict:
+def is_dual_band(filt: str | None) -> bool:
+    """True for a dual-band (Hα + OIII) light-pollution filter: the Seestar's
+    ``LP`` and the DwarfLab ``Duo-Band``. It picks the Naztronomy filter label
+    (`naztronomy_scope`); it no longer changes the frame-selection filters."""
+    return re.sub(r"[^a-z]", "", (filt or "").lower()) in {"lp", "duoband", "dualband"}
+
+
+def filter_quality_for(usable_frames: int, filt: str | None = "") -> tuple[bool, dict]:
+    """(filters_on, {roundness, fwhm, star_count, bg}) — the share of frames each
+    frame-selection filter keeps, by frame count (#174, revised on the M1 A/B/C
+    stacks). `filt` is accepted for callers that key on it; the values are the
+    same for every filter.
+
+    * **100–500 frames:** roundness and star count 95%, wFWHM and background 98%
+      — 95% across the board cut 21 of 231 frames on M15 with no FWHM gain.
+    * **over 500:** 95% on all four, the best of the three M1 runs.
+    * **Roundness never goes tighter than 95%.** When elongation is in nearly
+      every sub (optics, not wind), a tighter cut drops signal without making
+      the stars any rounder.
+    * **Background stays on, dual-band included.** wFWHM weighting scores
+      sharpness and star count, not sky brightness, so a sharp bright-sky frame
+      keeps full weight unless this filter drops it.
+
+    Below 100 frames the filters are off; the values are the first tier's."""
+    for bound, quality in _FILTER_TIERS:
+        if bound is None or usable_frames <= bound:
+            break
+    return usable_frames >= _FILTER_FLOOR, dict(quality)
+
+
+# Naztronomy's `telescope` choice and its two filter labels (broadband, dual-band)
+# per `devices.preset_key`. The script sets the telescope first, which refills its
+# filter list, then the label — and silently ignores a label that list lacks, so
+# the pair must agree. The label drives SPCC (`-oscfilter`, or `-narrowband` with
+# Hα/OIII bandwidths for DwarfLab). Unknown devices keep the original S50 default.
+_NAZ_SEESTAR = ("No Filter (Broadband)", "LP (Narrowband)")
+_NAZ_DWARF = ("Astro filter (UV/IR)", "Dual-Band")
+_NAZ_SCOPES = {
+    "seestar_s50": ("ZWO Seestar S50", *_NAZ_SEESTAR),
+    "seestar_s30": ("ZWO Seestar S30", *_NAZ_SEESTAR),
+    "seestar_s30_pro": ("ZWO Seestar S30 Pro", *_NAZ_SEESTAR),
+    "dwarf_3": ("Dwarf 3", *_NAZ_DWARF),
+    "dwarf_mini": ("Dwarf Mini", *_NAZ_DWARF),
+}
+_NAZ_DEFAULT = _NAZ_SCOPES["seestar_s50"]
+#: Every Naztronomy filter label that means a dual-band filter.
+DUAL_BAND_LABELS = frozenset({_NAZ_SEESTAR[1], _NAZ_DWARF[1]})
+
+
+def naztronomy_scope(telescop: str | None, filt: str | None = "") -> tuple[str, str]:
+    """(Naztronomy telescope, filter label) for a ``TELESCOP`` header and a filter
+    token."""
+    scope, broadband, dual = _NAZ_SCOPES.get(devices.preset_key(telescop) or "",
+                                             _NAZ_DEFAULT)
+    return scope, dual if is_dual_band(filt) else broadband
+
+
+def default_preset(usable_frames: int, filt: str | None = "",
+                   telescop: str | None = None, darks: bool = False,
+                   flats: bool = False, biases: bool = False) -> dict:
     """A sensible *starting* Naztronomy Smart Scope preset (refined in the GUI).
     Constant keys are the empirical modal default across the reference presets;
-    drizzle (`drizzle_for`) and the star-quality filters (`filter_quality_for`)
-    are set by `usable_frames`. The `darks`/`flats`/`biases` toggles are turned on
-    when the sandbox has those calibration frames hardlinked in (#57), so the
-    script calibrates by default when the frames are present."""
+    drizzle (`drizzle_for`) is set by `usable_frames`, the frame-selection filters
+    (`filter_quality_for`) by count and filter, and the telescope and filter label
+    by device and filter (`naztronomy_scope`). The `darks`/`flats`/`biases`
+    toggles are turned on when the sandbox has those calibration frames
+    hardlinked in (#57), so the script calibrates by default when they are present."""
     drizzle, amount, pixel_fraction = drizzle_for(usable_frames)
-    filters_on, quality = filter_quality_for(usable_frames)
+    filters_on, quality = filter_quality_for(usable_frames, filt)
+    telescope, label = naztronomy_scope(telescop, filt)
     return {
-        "telescope": "ZWO Seestar S50",
-        "filter": filter_label,
+        "telescope": telescope,
+        "filter": label,
         "darks": darks,
         "flats": flats,
         "biases": biases,
@@ -108,10 +194,7 @@ def default_preset(usable_frames: int,
         "drizzle_amount": amount,
         "pixel_fraction": pixel_fraction,
         "filters": filters_on,
-        "roundness": quality,
-        "fwhm": quality,
-        "star_count_filter": quality,
-        "bg_filter": quality,
+        **{_PRESET_FILTER_KEYS[k]: v for k, v in quality.items()},
         "feather": False,
         "feather_amount": 20,
         "stack_weighting": True,
@@ -119,29 +202,6 @@ def default_preset(usable_frames: int,
         "spcc": False,
         "compression": False,
     }
-
-
-# One representative frame count per (drizzle × filter) bucket. Because the
-# default preset is a step function of frame count, an *unedited* preset must
-# equal the canonical default at one of these — so this set is exactly "every
-# preset M110 could have generated" (for a given filter label). Update if the
-# `drizzle_for` / `filter_quality_for` breakpoints change.
-_DEFAULT_PRESET_REPS = (50, 200, 400, 800, 2000)
-
-
-def is_default_preset(preset: dict) -> bool:
-    """True if `preset` is an untouched M110-generated default (for its own
-    filter label and calibration toggles) at *some* frame count — i.e. the user
-    hasn't hand-edited it. Lets `apply_prep` re-tune a pristine preset as the
-    frame count grows while never clobbering values the user changed. The
-    calibration toggles are read back off the preset so a default generated *with*
-    calibration (#57) still reads as pristine."""
-    label = preset.get("filter", "No Filter (Broadband)")
-    darks = bool(preset.get("darks", False))
-    flats = bool(preset.get("flats", False))
-    biases = bool(preset.get("biases", False))
-    return any(preset == default_preset(n, label, darks, flats, biases)
-               for n in _DEFAULT_PRESET_REPS)
 
 
 #: Moved to `roundtrip` when a second sandbox started holding frames — both build
@@ -153,12 +213,30 @@ _link_or_copy = roundtrip.link_or_copy
 
 @dataclass
 class PrepJob:
-    filt: str                       # filter token, or "" for the single-filter sandbox root
+    filt: str                       # job folder token ("IRCUT", "IRCUT_30s"), or "" for the single-job sandbox root
     job_dir: str                    # working dir Siril opens (has lights/ + presets/)
     preset_path: str
     links: list = field(default_factory=list)  # (src, dst) hardlink ops
     preset: dict = field(default_factory=dict)
     usable_frames: int = 0
+    # what writing `preset` would do: "new" (no file yet), "same" (already equal),
+    # "differs" (a different preset is there — asks before replacing), or
+    # "declined" (differs, but the user already kept theirs against this proposal)
+    preset_state: str = "new"
+    # what the job holds, for people: the filter, plus why it is its own folder
+    # when one filter was split by calibration ("IRCUT · 30 s · N.I.N.A.")
+    label: str = ""
+
+
+@dataclass
+class PresetConflict:
+    """A job whose preset on disk differs from the one M110 would write. Nothing
+    is replaced until the user chooses (`apply_preset_choices`)."""
+    target: str
+    job: str                        # filter token, or "" for the sandbox root
+    preset_path: str
+    proposed: dict
+    changes: list                   # [(key, on disk, proposed)]; None = absent
 
 
 @dataclass
@@ -181,6 +259,12 @@ class PrepPlan:
     # tier matched from Calibration/<device>/), or "" (none)
     calib_source: str = ""
     calib_notes: list = field(default_factory=list)   # what the library match said
+    # {filter: [job folder tokens]} for a filter split by calibration, the folder
+    # that needs no calibration first — written to `JOB_GROUPS_NAME` so m110-stack
+    # can stack the subsets together (`job_group`)
+    job_groups: dict = field(default_factory=dict)
+    # what `CALIBRATION_MANIFEST_NAME` will say (`calibration_manifest`); {} = none
+    manifest: dict = field(default_factory=dict)
 
 
 def _lights(target: str) -> list[Path]:
@@ -218,6 +302,105 @@ def _calib_frames(target: str) -> dict[str, list[Path]]:
     return out
 
 
+_CAPTURE_WORD = {"nina": "N.I.N.A.", "seestar-app": "Seestar app",
+                 "dwarf-app": "DwarfLab app", "generic": "other software"}
+
+
+def _calibration_subsets(filt: str, files: list[Path], device: str | None,
+                         should_cancel=None) -> list[tuple[str, str, list[Path], dict, list[str], dict]]:
+    """One filter's lights as the job folders they need: ``[(folder token, label,
+    files, {tier: [calibration frames]}, notes, info)]`` — ``info`` is what the
+    calibration manifest records of the subset (`_subset_info`).
+
+    Frames are grouped by (dark-subtracted when saved, exposure, gain, binning) —
+    every header read, since a small N.I.N.A. block among thousands of app subs
+    must not be sampled away — and each group is matched on its own frames
+    (`calibration.match_for_facts`). Groups that need the same calibration are one
+    folder again, so an ordinary target is still ONE job named after its filter.
+    When a filter does split, the subset that needs NO calibration keeps the plain
+    filter name (an existing job folder of app subs stays valid, and never gains a
+    darks/: Naztronomy would subtract it a second time); the others are suffixed by
+    exposure, then capture software, until the names are unique."""
+    facts: list[tuple[Path, dict]] = []
+    for f in files:
+        if should_cancel and should_cancel():
+            raise PrepCancelled()
+        facts.append((f, calibration.frame_facts(f) or {}))
+    groups: dict[tuple, list[tuple[Path, dict]]] = {}
+    for f, ff in facts:
+        key = (ff.get("darks_applied"), ff.get("exptime"), ff.get("gain"),
+               ff.get("binning"))
+        groups.setdefault(key, []).append((f, ff))
+    merged: dict[str, dict] = {}
+    for key, members in groups.items():
+        fr = [ff for _f, ff in members]
+        gfacts = calibration.facts_from_frames(fr)
+        match = calibration.match_for_facts(gfacts, gfacts.get("device") or device)
+        cal = match.files()
+        sig = json.dumps({t: [str(p) for p in ps] for t, ps in cal.items()},
+                         sort_keys=True)
+        entry = merged.setdefault(sig, {"cal": cal, "files": [], "notes": [],
+                                        "keys": [], "capture": Counter(),
+                                        "facts": [], "match": match})
+        entry["files"] += [f for f, _ff in members]
+        entry["facts"] += fr
+        entry["keys"].append(key)
+        entry["capture"].update(ff.get("capture") or "generic" for ff in fr)
+        entry["notes"] += [n for n in match.notes if n not in entry["notes"]]
+    entries = list(merged.values())
+    if len(entries) == 1:
+        e = entries[0]
+        return [(filt, filt, sorted(e["files"]), e["cal"], e["notes"], _subset_info(e))]
+
+    def _words(e):
+        exps = sorted({k[1] for k in e["keys"] if k[1] is not None})
+        exp = "+".join(f"{x:g}s" for x in exps) or "unknown"
+        cap = e["capture"].most_common(1)[0][0]
+        return exp, cap
+    out = []
+    used = {filt} if any(not e["cal"] for e in entries) else set()
+    plain_taken = False
+    for e in sorted(entries, key=lambda e: (bool(e["cal"]), sorted(e["files"])[0].name)):
+        exp, cap = _words(e)
+        if not e["cal"] and not plain_taken:
+            token, plain_taken = filt, True
+        else:
+            token = f"{filt}_{exp}"
+            if token in used:
+                token = f"{filt}_{exp}_{cap}"
+            n = 2
+            base = token
+            while token in used:
+                token, n = f"{base}_{n}", n + 1
+        used.add(token)
+        label = " · ".join([filt, exp.replace("s", " s").replace("+", " + "),
+                            _CAPTURE_WORD.get(cap, cap)])
+        out.append((token, label, sorted(e["files"]), e["cal"], e["notes"],
+                    _subset_info(e)))
+    return out
+
+
+def _subset_info(e: dict) -> dict:
+    """A calibration subset's facts for the manifest: the capture path, the
+    exposure settings it holds (frames per setting), the lights' median sensor
+    temperature, and the match (`MatchResult`, for each chosen master's facts)."""
+    fr = e["facts"]
+    flags = {ff.get("darks_applied") for ff in fr}
+    settings: Counter = Counter((ff.get("exptime"), ff.get("gain"), ff.get("binning"))
+                                for ff in fr)
+    temps = [ff["temp_c"] for ff in fr if ff.get("temp_c") is not None]
+    return {
+        "darks_applied": next(iter(flags)) if len(flags) == 1 else None,
+        "capture": dict(sorted(e["capture"].items())),
+        "settings": [{"exptime": k[0], "gain": k[1], "binning": k[2], "frames": n}
+                     for k, n in sorted(settings.items(),
+                                        key=lambda kv: tuple(-1 if v is None else v
+                                                             for v in kv[0]))],
+        "temp_c": round(statistics.median(temps), 2) if temps else None,
+        "match": e.get("match"),
+    }
+
+
 def plan_prep(target: str, usable_frames: int | None = None,
               star_removal: bool = False, should_cancel=None) -> PrepPlan:
     """Read-only plan: lay each filter's lights into a literal `lights/` inside a
@@ -227,55 +410,85 @@ def plan_prep(target: str, usable_frames: int | None = None,
     for the drizzle preset. Reads only."""
     lights = _lights(target)
     # Calibration: the target's own darks/flats/biases win (a user's per-project
-    # frames); otherwise ONE matched master per tier from the device library
+    # frames); otherwise ONE matched master — or one matched raw set, which the
+    # Naztronomy script stacks into a master itself — per tier from the device library
     # (calibration.py — exposure/gain/binning, nearest temperature). Either way
     # the frames are hardlinked into **every job dir** below, because the
     # Naztronomy script looks for `darks/` next to the `lights/` it is run on.
     calib = _calib_frames(target)
     calib_source = "target" if calib else ""
     calib_notes: list[str] = []
-    if not calib and lights:
-        match = calibration.match_for_target(target)
-        calib_notes = list(match.notes)
-        if match:
-            calib = {tier: [p] for tier, p in match.as_dict().items()}
-            calib_source = "library"
-    calib_kinds = list(calib)
-    calib_links: list[tuple[str, str]] = []
+    # The telescope picks the preset's Naztronomy telescope + filter label.
+    facts = calibration.target_facts(target, sample=3) if lights else {}
+    telescop = facts.get("device")
+    if "darks" in calib and facts.get("darks_applied"):
+        calib_notes.append("this object's darks/ will be applied, but its telescope "
+                           "already dark-subtracted the subs — that subtracts twice; "
+                           "remove darks/ unless that is intended")
     by_filter: dict[str, list[Path]] = {}
     total_bytes = 0
     for f in lights:
         if should_cancel and should_cancel():
             raise PrepCancelled()
-        by_filter.setdefault(filter_of(f.name), []).append(f)
+        by_filter.setdefault(frame_filter(f), []).append(f)
         try:
             total_bytes += f.stat().st_size
         except OSError:
             pass
-
     filters = sorted(by_filter)
-    multi = len(filters) > 1
-    jobs: list[PrepJob] = []
+
+    # One job per (filter, calibration subset). The target's own darks/flats/biases
+    # are one set for every job. Otherwise each filter is matched against the
+    # device library on its OWN frames (a flat belongs to one filter), and a filter
+    # whose frames need different calibration — the Seestar app's subs (already
+    # dark-subtracted) beside the same scope's N.I.N.A. subs (not), or two
+    # exposures — is split into one job folder per subset: the Naztronomy script
+    # calibrates a whole folder with its darks/, so a separate folder is the only
+    # way to dark one subset and not the other (`_calibration_subsets`).
+    planned: list[tuple[str, str, str, list[Path], dict, list[str], dict]] = []
     for filt in filters:
-        files = by_filter[filt]
-        job_dir = config.siril_job_dir(target, filt if multi else None)
-        # single-filter target may pass a post-rejection override
+        if calib_source == "target" or not by_filter[filt]:
+            planned.append((filt, filt, filt, by_filter[filt], calib, [], {}))
+            continue
+        for token, label, files, cal, notes, info in _calibration_subsets(
+                filt, by_filter[filt], telescop, should_cancel):
+            planned.append((token, label, filt, files, cal, notes, info))
+    multi = len(planned) > 1
+    jobs: list[PrepJob] = []
+    calib_links: list[tuple[str, str]] = []
+    kinds: set[str] = set(calib)
+    for token, label, filt, files, cal, notes, info in planned:
+        job_dir = config.siril_job_dir(target, token if multi else None)
+        # single-job target may pass a post-rejection override
         job_usable = (usable_frames if (usable_frames is not None and not multi)
                       else len(files))
         links = [(str(f), str(job_dir / "lights" / f.name)) for f in files]
         calib_links += [(str(f), str(job_dir / kind / f.name))
-                        for kind, frames in calib.items() for f in frames]
+                        for kind, frames in cal.items() for f in frames]
+        if cal and calib_source != "target":
+            calib_source = "library"
+        kinds |= set(cal)
+        calib_notes += [f"{label}: {n}" if multi else n for n in notes]
         jobs.append(PrepJob(
-            filt=filt if multi else "",
+            filt=token if multi else "",
             job_dir=str(job_dir),
             preset_path=str(job_dir / "presets" / PRESET_NAME),
             links=links,
-            preset=default_preset(job_usable,
-                                  darks="darks" in calib,
-                                  flats="flats" in calib,
-                                  biases="biases" in calib),
+            preset=(preset := default_preset(job_usable, filt, telescop,
+                                             darks="darks" in cal,
+                                             flats="flats" in cal,
+                                             biases="biases" in cal)),
             usable_frames=job_usable,
+            preset_state=_preset_state(job_dir / "presets" / PRESET_NAME, preset),
+            label=label,
         ))
+    calib_kinds = [t for t in ("darks", "flats", "biases") if t in kinds]
+    job_groups: dict[str, list[str]] = {}
+    for token, _label, filt, *_rest in planned:
+        job_groups.setdefault(filt, []).append(token)
+    job_groups = {f: ts for f, ts in job_groups.items() if len(ts) > 1}
+    manifest = calibration_manifest(target, telescop, calib_source, planned, multi,
+                                    job_groups)
 
     return PrepPlan(
         target=target,
@@ -290,10 +503,155 @@ def plan_prep(target: str, usable_frames: int | None = None,
         calib_kinds=calib_kinds,
         calib_source=calib_source,
         calib_notes=calib_notes,
+        job_groups=job_groups,
+        manifest=manifest,
     )
 
 
 # ── prepare: apply (writes the sandbox) ──────────────────────────────────────
+
+# Beside the job folders: which of them are one filter split by calibration
+# ({"groups": {"IRCUT": ["IRCUT", "IRCUT_30s"]}}). App-written, rewritten by every
+# prep, and read by m110-stack — names are never parsed for this.
+JOB_GROUPS_NAME = ".m110_jobs.json"
+
+
+def _write_job_groups(siril_dir: Path, groups: dict) -> None:
+    path = siril_dir / JOB_GROUPS_NAME
+    if groups:
+        siril_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"version": 1, "groups": groups}, indent=2,
+                                   sort_keys=True) + "\n", encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+
+
+def job_group(job_dir: Path) -> list[Path] | None:
+    """The job folders stacked together with `job_dir` — every subset of its split
+    filter, the one needing no calibration first — or None when it isn't part of a
+    split (or a member has gone)."""
+    job_dir = Path(job_dir)
+    try:
+        data = json.loads((job_dir.parent / JOB_GROUPS_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    groups = data.get("groups") if isinstance(data, dict) else None
+    if not isinstance(groups, dict):
+        return None
+    for tokens in groups.values():
+        if (isinstance(tokens, list) and job_dir.name in tokens and len(tokens) > 1
+                and all(isinstance(t, str) and t and "/" not in t and t not in (".", "..")
+                        for t in tokens)):
+            members = [job_dir.parent / t for t in tokens]
+            if all((m / "lights").is_dir() for m in members):
+                return members
+    return None
+
+
+# Beside the job folders: which calibration goes with which lights, per job — the
+# masters manifest Stackhammer's `prepare` reads (agreed with its calibration spike,
+# mjm1138/stackhammer#22, 2026-11-07). M110 is the source of truth for the MASTERS
+# (it owns Calibration/<device>/ and matches it); the frames' headers stay the
+# source of truth for the SUBSETS: a reader recomputes them from the lights with
+# the capture rule (capture_profiles) and refuses when they disagree with
+# ``lights`` here, then checks each master against its subset itself. Rewritten by
+# every prep; app-written, never hand-edited. Schema: DATA_MODEL.md.
+CALIBRATION_MANIFEST_NAME = ".m110_calibration.json"
+CALIBRATION_MANIFEST_VERSION = 1
+
+
+def _master_entry(tier: str, m, files: list[Path], job_dir: Path, sandbox: Path) -> dict:
+    """One tier of a job's calibration, as the manifest says it."""
+    def rel(p: Path, base: Path) -> str:
+        try:
+            return Path(p).relative_to(base).as_posix()
+        except ValueError:
+            return Path(p).name
+    linked = [rel(job_dir / tier / Path(f).name, sandbox) for f in files]
+    out: dict = {"files": linked, "library": [rel(f, config.DATA_ROOT) for f in files]}
+    if m is None:                                  # the target's own frames
+        out["kind"] = "target"
+        return out
+    out.update({
+        "kind": "raw-set" if m.is_set else "master",
+        "frames": len(m.frames) if m.is_set else 1,
+        "exptime": m.exptime, "gain": m.gain, "binning": m.binning,
+        "temp_c": m.temp_c, "filter": m.filter,
+    })
+    if m.is_set:
+        out["night"] = m.night
+    if m.ncombine is not None and not m.is_set:
+        out["ncombine"] = m.ncombine
+    return out
+
+
+def calibration_manifest(target: str, device: str | None, source: str,
+                         planned: list, multi: bool, job_groups: dict) -> dict:
+    """The masters manifest for a prep plan (pure: builds, never writes). One entry
+    per job folder: its lights (by name, in ``<folder>/lights/``), the subset's
+    capture path and settings, each tier's master or raw set (paths relative to
+    the ``siril/`` sandbox, as linked into the job's ``darks/`` etc.; the library
+    file it came from relative to the data root; and its header facts), and the
+    match's notes — the reasons, refusals included. {} when there are no jobs."""
+    if not planned:
+        return {}
+    sandbox = config.siril_dir(target)
+    group_of = {t: ts for ts in job_groups.values() for t in ts}
+    jobs = []
+    for token, label, filt, files, cal, notes, info in planned:
+        job_dir = config.siril_job_dir(target, token if multi else None)
+        match = info.get("match")
+        chosen = getattr(match, "chosen", {}) if match is not None else {}
+        jobs.append({
+            "folder": token if multi else ".",
+            "filter": filt,
+            "label": label,
+            "group": group_of.get(token) if multi else None,
+            "lights": [Path(f).name for f in files],
+            "darks_applied": info.get("darks_applied"),
+            "capture": info.get("capture", {}),
+            "settings": info.get("settings", []),
+            "temp_c": info.get("temp_c"),
+            "calibration": {t: _master_entry(t, chosen.get(t), fs, job_dir, sandbox)
+                            for t, fs in cal.items()},
+            "notes": list(notes),
+        })
+    return {"version": CALIBRATION_MANIFEST_VERSION, "target": target,
+            "device": device, "source": source or None, "jobs": jobs}
+
+
+def _write_manifest(siril_dir: Path, manifest: dict) -> None:
+    path = siril_dir / CALIBRATION_MANIFEST_NAME
+    if manifest:
+        siril_dir.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.part")
+        tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def read_manifest(siril_dir: Path) -> dict | None:
+    """The manifest a prep wrote (`calibration_manifest`), or None when absent,
+    unreadable or of another version."""
+    try:
+        data = json.loads((Path(siril_dir) / CALIBRATION_MANIFEST_NAME)
+                          .read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("version") != CALIBRATION_MANIFEST_VERSION:
+        return None
+    return data
+
+
+def _filters_md(preset: dict) -> str:
+    if not preset.get("filters"):
+        return "frame filters off"
+    names = (("roundness", "roundness"), ("fwhm", "wFWHM"),
+             ("bg_filter", "background"), ("star_count_filter", "star count"))
+    on = [f"{label} {preset[k]:g}%" for k, label in names if preset.get(k, 100) < 100]
+    return "keep " + " · ".join(on) if on else "frame filters off"
+
 
 def _next_steps_md(plan: PrepPlan) -> str:
     lines = [
@@ -314,9 +672,13 @@ def _next_steps_md(plan: PrepPlan) -> str:
         drizz = (f"drizzle {p['drizzle_amount']}× / pixel {p['pixel_fraction']}"
                  if p["drizzle"] else "no drizzle (1.0×)")
         where = job.job_dir
-        label = job.filt or "all frames"
+        label = job.label if job.filt else "all frames"
         lines.append(f"- **{label}** → open Siril in `{where}` "
-                     f"({len(job.links)} subs, {drizz})")
+                     f"({len(job.links)} subs, {drizz}, {_filters_md(p)}; "
+                     f"{p['telescope']} · {p['filter']})")
+        if job.preset_state in ("differs", "declined"):
+            lines.append("  - the preset in this folder differs from these "
+                         "suggestions and was kept as it is")
     if plan.calib_kinds:
         src = ("this object's own frames" if plan.calib_source == "target"
                else "one matching master per tier from the telescope's "
@@ -326,6 +688,17 @@ def _next_steps_md(plan: PrepPlan) -> str:
             f"Calibration ({', '.join(plan.calib_kinds)}/) was hardlinked into each "
             f"job folder — {src} — and the preset's matching toggles are on. A "
             "folder holding a single file is treated by the script as a master.",
+        ]
+    split = [j for j in plan.jobs if j.label and j.label != j.filt]
+    if split:
+        lines += [
+            "",
+            "Some of one filter's subs need different calibration (a Seestar's own "
+            "app subs come off the telescope already dark-subtracted; the same "
+            "telescope's N.I.N.A. subs don't), so they are separate job folders: "
+            "stack each one, then combine the stacks in Siril. The folder with no "
+            "`darks/` must stay that way. To calibrate and stack them in one go, "
+            "use `m110-stack` (it calibrates each set separately, then merges them).",
         ]
     if plan.calib_notes:
         lines += [""] + [f"- Calibration note: {n}" for n in plan.calib_notes]
@@ -350,18 +723,108 @@ def _next_steps_md(plan: PrepPlan) -> str:
 
 
 def _read_preset(path: Path) -> dict:
-    """On-disk preset as a dict, or {} if missing/unreadable (→ treated as
-    non-default, so `apply_prep` preserves rather than clobbers an odd file)."""
+    """On-disk preset as a dict, or {} if missing/unreadable (an unreadable file
+    differs from any proposal, so it is never replaced without asking)."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}
+
+
+# Beside the preset: the proposal the user last answered "Keep existing" to, so
+# the same question is not asked on every ingest — only once the proposal itself
+# changes (a frame-count tier crossed, a new device or filter rule).
+_DECLINED_NAME = ".m110_declined_preset.json"
+PRESET_ARCHIVE_DIR = "archive"          # presets/archive/<name>.<stamp>.json
+
+
+def _proposal_hash(preset: dict) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(preset, sort_keys=True).encode()).hexdigest()
+
+
+def _declined_hash(preset_path: Path) -> str | None:
+    try:
+        data = json.loads((preset_path.parent / _DECLINED_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data.get("proposal_sha256") if isinstance(data, dict) else None
+
+
+def _preset_state(preset_path: Path, proposed: dict) -> str:
+    if not preset_path.exists():
+        return "new"
+    if _read_preset(preset_path) == proposed:
+        return "same"
+    if _declined_hash(preset_path) == _proposal_hash(proposed):
+        return "declined"
+    return "differs"
+
+
+def _preset_changes(existing: dict, proposed: dict) -> list:
+    keys = list(proposed) + [k for k in existing if k not in proposed]
+    return [(k, existing.get(k), proposed.get(k)) for k in keys
+            if existing.get(k) != proposed.get(k)]
+
+
+def _write_preset(path: Path, preset: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(preset, indent=4) + "\n", encoding="utf-8")
+
+
+def archive_preset(preset_path: Path) -> Path | None:
+    """Move the preset at `preset_path` into ``presets/archive/``, stamped with
+    the time, and return where it went (None if there was nothing there).
+    Naztronomy's Load Presets opens only the exact preset name, so an archived
+    copy is never picked up by accident."""
+    if not preset_path.exists():
+        return None
+    from datetime import datetime
+    adir = preset_path.parent / PRESET_ARCHIVE_DIR
+    adir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = adir / f"{preset_path.stem}.{stamp}{preset_path.suffix}"
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = adir / f"{preset_path.stem}.{stamp}-{n}{preset_path.suffix}"
+    os.replace(preset_path, dest)
+    return dest
+
+
+def apply_preset_choices(conflicts, replace) -> dict:
+    """Settle the conflicts `apply_prep` reported. Each one whose `preset_path` is
+    in `replace` has its preset archived and the proposal written; every other one
+    records that the user kept theirs against this proposal, so it is not asked
+    again until the proposal changes. THE WRITER for presets that already exist —
+    the caller has shown the user the conflicts and taken their answer."""
+    replace = set(replace)
+    replaced, kept = [], []
+    for c in conflicts:
+        pp = Path(c.preset_path)
+        side = pp.parent / _DECLINED_NAME
+        if c.preset_path in replace:
+            archive_preset(pp)
+            _write_preset(pp, c.proposed)
+            side.unlink(missing_ok=True)
+            replaced.append(c.preset_path)
+        else:
+            pp.parent.mkdir(parents=True, exist_ok=True)
+            side.write_text(json.dumps({"proposal_sha256": _proposal_hash(c.proposed)})
+                            + "\n", encoding="utf-8")
+            kept.append(c.preset_path)
+    if replaced or kept:
+        _log.info("presets: replaced %d, kept %d", len(replaced), len(kept))
+    return {"replaced": replaced, "kept": kept}
 
 
 def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
     """Create the sandbox, hardlink lights per job (+ shared darks/flats/biases at
     the sandbox root), write presets + next-steps. THE WRITER — callers confirm (or
-    it runs via `autoprep` after ingest). Idempotent: existing links are skipped."""
+    it runs via `autoprep` after ingest). Idempotent: existing links are skipped.
+    A preset is written only where none exists; one that differs from the
+    proposal comes back in ``preset_conflicts`` for `apply_preset_choices`."""
     ops = [(src, dst) for job in plan.jobs for (src, dst) in job.links]
     ops += list(plan.calib_links)          # calibration → sandbox root (shared)
     linked = skipped = 0
@@ -381,33 +844,46 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
         if progress:
             progress(i, total)
 
+    conflicts: list[PresetConflict] = []
     if not cancelled:
         for job in plan.jobs:
             pp = Path(job.preset_path)
             pp.parent.mkdir(parents=True, exist_ok=True)
-            # Re-tune only a pristine (unedited) preset as the frame count grows;
-            # never clobber a preset the user has hand-edited. First write always.
-            if not pp.exists() or is_default_preset(_read_preset(pp)):
-                pp.write_text(json.dumps(job.preset, indent=4) + "\n", encoding="utf-8")
+            # Only a missing preset is written here. One that differs — the user
+            # saved their own from Naztronomy, or M110's proposal moved on — is
+            # reported, and replaced only when the user says so.
+            state = _preset_state(pp, job.preset)
+            if state == "new":
+                _write_preset(pp, job.preset)
+            elif state == "differs":
+                conflicts.append(PresetConflict(
+                    target=plan.target, job=job.filt, preset_path=str(pp),
+                    proposed=job.preset,
+                    changes=_preset_changes(_read_preset(pp), job.preset)))
         Path(plan.siril_dir).mkdir(parents=True, exist_ok=True)
+        _write_job_groups(Path(plan.siril_dir), plan.job_groups)
+        _write_manifest(Path(plan.siril_dir), plan.manifest)
         # next-steps.md is app guidance (not user-owned) — always refreshed so the
         # recommended drizzle/filters for the current count stay visible.
         (Path(plan.siril_dir) / "next-steps.md").write_text(_next_steps_md(plan), encoding="utf-8")
 
-    return {"linked": linked, "skipped": skipped, "cancelled": cancelled}
+    return {"linked": linked, "skipped": skipped, "cancelled": cancelled,
+            "preset_conflicts": conflicts}
 
 
 def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
     """Set up sandboxes for the given targets — idempotent, and **skips** any
-    target whose sandbox already holds un-imported finished output (never
-    disturbs in-progress/finished processing). Qt-free.
+    target whose sandbox already holds un-imported finished output or has a stack
+    running in it (`roundtrip.sandbox_busy`: never disturbs in-progress/finished
+    processing — the next sync retries). Qt-free.
 
     `only_missing=True` additionally skips any target that already has a `siril/`
     sandbox — so a refresh-time backfill creates only the absent ones and never
     rewrites an existing (possibly hand-edited) preset. The default (ingest) path
-    re-runs the full prep so new lights get linked and the preset tracks the
-    current frame count."""
-    prepared, skipped = [], []
+    re-runs the full prep so new lights get linked; a preset that no longer
+    matches the proposal for the current frame count is returned in
+    ``preset_conflicts`` for the caller to put to the user."""
+    prepared, skipped, conflicts = [], [], []
     for target in targets:
         if should_cancel and should_cancel():
             break
@@ -418,14 +894,15 @@ def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:
             continue
         if not _lights(target):
             continue
-        if has_unimported_output(target):
+        if has_unimported_output(target) or roundtrip.sandbox_busy(target, SANDBOX):
             skipped.append(target)
             continue
         plan = plan_prep(target, should_cancel=should_cancel)
         if plan.total_lights:
-            apply_prep(plan, should_cancel=should_cancel)
+            res = apply_prep(plan, should_cancel=should_cancel)
+            conflicts += res["preset_conflicts"]
             prepared.append(target)
-    return {"prepared": prepared, "skipped": skipped}
+    return {"prepared": prepared, "skipped": skipped, "preset_conflicts": conflicts}
 
 
 def _sandbox_lights_dirs(base: Path) -> list[Path]:
@@ -458,13 +935,15 @@ def prune_rejected(target: str) -> dict:
       A sub that merely vanished from ``lights/`` is left alone and counted as an
       orphan: it may be the *last* copy (on a filesystem where `_link_or_copy` fell
       back to a byte copy it certainly is);
-    * a target holding un-imported finished output is skipped whole — the same guard
-      `autoprep` uses, so an in-progress run is never disturbed.
+    * a target holding un-imported finished output, or with a stack running in it
+      (a live m110-stack marker, or `process/` written in the last few minutes —
+      Siril's `link` points its scratch at these very files), is skipped whole —
+      the same guards `autoprep` uses, so an in-progress run is never disturbed.
     """
     base = config.siril_dir(target)
     if not base.is_dir():
         return {"pruned": 0, "orphans": 0, "skipped": False}
-    if has_unimported_output(target):
+    if has_unimported_output(target) or roundtrip.sandbox_busy(target, SANDBOX):
         return {"pruned": 0, "orphans": 0, "skipped": True}
 
     rdir = config.rejected_dir(target)
@@ -502,9 +981,15 @@ def prune_rejected(target: str) -> dict:
 # `siril.apply_import` / `siril.has_unimported_output`, and an extraction that is
 # behaviour-preserving should not also be an API break.
 
-# Kept in each job dir on cleanup, so the sandbox is ready for another run.
-_ARCHIVE_KEEP = {"lights", "darks", "flats", "biases",
-                 "presets", "archive", "next-steps.md"}
+# Kept in each job dir on cleanup, so the sandbox is ready for another run. Siril's
+# `process/` scratch stays too: the tools manage it, and an archived copy is
+# regenerable bytes multiplied by keep-N (see `config.SANDBOX_SCRATCH`).
+# The prep's own records (the job groups, the masters manifest) are app guidance
+# like next-steps.md: a run doesn't make them stale, the next prep rewrites them.
+_ARCHIVE_KEEP = ({"lights", "darks", "flats", "biases",
+                  "presets", "archive", "next-steps.md",
+                  JOB_GROUPS_NAME, CALIBRATION_MANIFEST_NAME}
+                 | config.SANDBOX_SCRATCH["siril"])
 
 # Sandbox subdirs that never hold fresh, importable output: the hardlinked
 # inputs, Siril's scratch, the preset, and prior archived runs.

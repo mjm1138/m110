@@ -102,5 +102,5 @@ def test_prepare_missing_noop_when_disabled(tmp_path, monkeypatch):
 def test_store_targets_lists_only_targets_with_lights(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
     _target_with_lights("M5")
-    (config.IMAGES_DIR / "M99" / "seestar-stacks").mkdir(parents=True)  # no lights
+    (config.IMAGES_DIR / "M99" / "device-stacks").mkdir(parents=True)  # no lights
     assert processing._store_targets() == ["M5"]

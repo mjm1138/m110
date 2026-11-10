@@ -18,7 +18,7 @@ This module is that something, and nothing more:
   pixel-exact (the raw integers and their BZERO/BSCALE go across untouched).
 
 The device file itself is never modified: the split happens at handoff, into a
-workflow sandbox (``stacking.apply_handoff``), so ``seestar-stacks/`` keeps exactly
+workflow sandbox (``stacking.apply_handoff``), so ``device-stacks/`` keeps exactly
 what the telescope wrote. Qt-free.
 """
 from __future__ import annotations

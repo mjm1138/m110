@@ -8,7 +8,7 @@ the content tree without explicit confirmation."
 
 Staging layout recognised:
   <object>_sub/      raw Light_*.fit    → Images/<object>/lights/
-  <object>/          in-app stacks      → Images/<object>/seestar-stacks/
+  <object>/          in-app stacks      → Images/<object>/device-stacks/
   <Category>_photo|_video/  media       → Media/<Category>_photo|_video/
 """
 from __future__ import annotations
@@ -17,12 +17,13 @@ import json
 import logging
 import math
 import os
+import functools
 import re
 import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from . import catalog, config, hints, media
+from . import capture_profiles, catalog, config, devices, hints, media
 
 _log = logging.getLogger("m110")
 
@@ -55,6 +56,10 @@ class IngestOp:
     size_bytes: int = 0       # source file size (stat'd on the scan worker)
     layout: str = "seestar"   # recognizer that claimed it (LAYOUTS id)
     object: str = ""          # canonical object/category label this op lands under
+    # The name the object was resolved FROM (the OBJECT header after the capture
+    # profile's panel fold, or the folder name) — what `canonical_target` looked up,
+    # so the key a "Remember alias?" must store (#203: never the folder `LIGHT`).
+    source_name: str = ""
     note: str = ""            # provenance the preview must show (e.g. "identified by
                               # pointing"); folded into IngestGroup.pointing by group_ops
     stamp: dict | None = None # header cards apply_ops writes into M110's COPY (never
@@ -77,6 +82,15 @@ class IngestGroup:
     pointing: str | None = None    # warning text if the frame's RA/DEC ≠ the name
     suggested: str | None = None   # slug of a better-matching catalog object
     layout: str = "seestar"        # detected source layout (LAYOUTS id)
+    source_name: str = ""          # the pre-canonical name (IngestOp.source_name)
+    # Catalog ids worth offering when retargeting an off-catalog new object: the
+    # designations its name contains, then the nearest by pointing (#203).
+    candidates: list = field(default_factory=list)
+
+    @property
+    def alias_key(self) -> str:
+        """What a remembered retarget is keyed on: the source name, else the folder."""
+        return self.source_name or self.group
 
 
 # ── layout-recognizer registry (6b) ────────────────────────────────────────────
@@ -95,7 +109,9 @@ LAYOUTS = [
     Layout("seestar",         "Seestar",         True),   # folder-name conventions (_sub/Stacked_/_photo)
     Layout("dwarf",           "DwarfLab Dwarf / Draco", True),  # <model>_RAW_TELE|WIDE_* / STARTRAILS_* session folders
     Layout("m110-store",      "M110 store",      True),    # FITS/<obj>/{lights,darks,…}, Finished Images/, Seestar_stacks/
-    Layout("calibration",     "Calibration masters", True), # DwarfLab CALI_FRAME/ tree or a store's Calibration/<device>/
+    Layout("calibration",     "Calibration masters", True), # DwarfLab CALI_FRAME/ tree or a store's Calibration/<device>/<tier>/
+    Layout("seestar-darks",   "Seestar dark library", True), # <volume>/darklibrary/<exp>s/MasterDark_*
+    Layout("nina",            "N.I.N.A.",        True),    # N.I.N.A./PINS (SWCREATE), any folder layout, by header
     Layout("raw-fits",        "Raw FITS",        True),    # loose FITS sorted by header
     Layout("finished-render", "Finished render", True),    # a loose *_processed/final raster in an object folder
     Layout("asiair",          "ZWO ASIAIR",      False),   # registered placeholder
@@ -377,7 +393,8 @@ def _normalize_imagetyp(raw) -> str | None:
 
 def frame_info(path: str) -> dict | None:
     """Normalized header facts from a FITS frame, or None.
-    Returns {object, imagetyp, filter, ra_deg, dec_deg} — `imagetyp` folded onto
+    Returns {object, imagetyp, filter, ra_deg, dec_deg, telescop, device,
+    darks_applied, capture} — `imagetyp` folded onto
     light/dark/flat/bias (or None), coords in degrees (Seestar RA/DEC, else
     sexagesimal OBJCTRA/OBJCTDEC). Header-only read (no pixel load)."""
     try:
@@ -400,7 +417,6 @@ def frame_info(path: str) -> dict | None:
                     ra_deg, dec_deg = parsed
     except (ValueError, TypeError):
         ra_deg = dec_deg = None
-    obj = hdr.get("OBJECT")
     tel = hdr.get("TELESCOP")
     # A stack announces itself in the header: Siril/DwarfLab write STACKCNT, the
     # FITS convention is NCOMBINE, and a demosaiced 3-plane image is never a raw
@@ -419,15 +435,21 @@ def frame_info(path: str) -> dict | None:
         planes = int(hdr.get("NAXIS3") or 1) if int(hdr.get("NAXIS", 2)) >= 3 else 1
     except (TypeError, ValueError):
         planes = 1
+    profile = capture_profiles.profile_for(hdr)
     return {
-        "object": str(obj).strip() if obj not in (None, "") else None,
+        # the target name to resolve: the profile's object card, a mosaic panel
+        # folded onto "<object>_mosaic" (capture_profiles.object_name)
+        "object": capture_profiles.object_name(hdr, profile),
         "imagetyp": _normalize_imagetyp(hdr.get("IMAGETYP")),
-        "filter": (str(hdr.get("FILTER")).strip() or None) if hdr.get("FILTER") else None,
+        "filter": capture_profiles.filter_name(hdr, profile),
         "ra_deg": ra_deg,
         "dec_deg": dec_deg,
         "telescop": str(tel).strip() if tel not in (None, "") else None,
         "stack_frames": frames,
         "planes": planes,
+        "device": capture_profiles.device_key(hdr, profile),
+        "darks_applied": capture_profiles.darks_applied(hdr, profile),
+        "capture": profile.id,
     }
 
 
@@ -503,9 +525,11 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
                           # object *is* the nearest catalog entry, so re-checking it
                           # at POINTING_TOL_DEG would only overwrite the note
         radec = frame_radec(g.ops[0].src)
+        slug = _slug_for_object(g.object, cat)
+        if slug is None and g.kind == "light":
+            g.candidates = _candidates_for(g, coords, cat, radec)
         if radec is None:
             continue
-        slug = _slug_for_object(g.object, cat)
         proposed = coords.get(slug) if slug else None
         if proposed is None:
             # The device named something the catalog doesn't know (the Draco wrote
@@ -534,6 +558,34 @@ def annotate_pointing(groups: list[IngestGroup], should_cancel=None,
     return groups
 
 
+def _candidates_for(g: IngestGroup, coords: dict, cat: dict, radec) -> list[str]:
+    """Catalog ids to offer for an off-catalog light group (#203): the designations
+    its name contains (``'NGC 2024 IC 434'`` → NGC 2024, IC 434 — the same split the
+    derived layer applies, `scan_sessions.folder_to_slugs`), then the nearest
+    catalog object by the frame's pointing within `IDENTIFY_TOL_DEG`."""
+    from . import scan_sessions
+    ref = catalog.load_reference()
+
+    def _id(slug):
+        return (cat.get(slug, {}).get("id") or ref.get(slug, {}).get("id") or slug)
+    slugs: list[str] = []
+    name = scan_sessions.undecorated_name(g.source_name or g.object)
+    try:
+        slugs += scan_sessions.folder_to_slugs(name, scan_sessions.load_catalog_slugs())
+    except Exception:
+        pass
+    if radec is not None and coords:
+        near, sep = _nearest(coords, *radec)
+        if near and sep <= IDENTIFY_TOL_DEG:
+            slugs.append(near)
+    out: list[str] = []
+    for sl in slugs:
+        cid = _id(sl)
+        if cid not in out and cid != g.object:
+            out.append(cid)
+    return out
+
+
 def retarget(group: IngestGroup, new_object: str) -> IngestGroup:
     """Rebuild a group's ops to land under a different destination object (used by
     the remap dropdown). Media groups don't retarget; every per-target kind does."""
@@ -547,7 +599,8 @@ def retarget(group: IngestGroup, new_object: str) -> IngestGroup:
                                dest_rel=str(dest.relative_to(root)),
                                new_object=new_flag, object=new_object))
     return replace(group, object=new_object, dest_dir=str(dst_dir.relative_to(root)),
-                   new_object=new_flag, ops=new_ops, pointing=None, suggested=None)
+                   new_object=new_flag, ops=new_ops, pointing=None, suggested=None,
+                   candidates=[])
 
 
 # ── planning ────────────────────────────────────────────────────────────────
@@ -569,7 +622,7 @@ _KIND_DIR = {
     "cal-dark": lambda dev: config.calibration_dir(dev, "darks"),
     "cal-flat": lambda dev: config.calibration_dir(dev, "flats"),
     "cal-bias": lambda dev: config.calibration_dir(dev, "biases"),
-    "stack": config.seestar_stacks_dir,
+    "stack": config.device_stacks_dir,
     "siril-stack": config.stacks_dir,
     "finished": config.finished_dir,
     "working": config.working_files_dir,
@@ -596,7 +649,10 @@ def _import_sub_previews() -> bool:
 # under one of these parents (Finished Images/<obj>, Seestar_stacks/<obj>).
 _STORE_SUBDIR_KIND = {
     "lights": "light", "darks": "dark", "flats": "flat", "biases": "bias",
-    "stacks": "siril-stack", "seestar-stacks": "stack", "finished": "finished",
+    "stacks": "siril-stack", "finished": "finished",
+    # The device-stack tier, under its current name and its pre-v6 one (an older
+    # store or backup imported as a source).
+    "device-stacks": "stack", "seestar-stacks": "stack",
     # Importing from another M110 store (a backup, the precursor library) must
     # preserve the exclusion — without this the subs read as loose FITS, route by
     # OBJECT header, and land back in `lights/` (#110).
@@ -638,7 +694,7 @@ _ROOT_STACK_RE = re.compile(r"stacked|result|\d+x\d+sec", re.IGNORECASE)
 
 
 def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
-                action: str, layout: str) -> list[IngestOp]:
+                action: str, layout: str, source_name: str = "") -> list[IngestOp]:
     """Ops routing `files` (names in `src_dir`) into the target subdir for `kind`
     under object `obj`, skipping ones already present at the dest. `group` is the
     grouping/label key shown in the preview.
@@ -652,12 +708,14 @@ def _emit_files(src_dir: Path, files, kind: str, obj: str, group: str,
     if kind == "light":
         subs = [f for f in files if config.is_light_frame(f)]
         nonsubs = [f for f in files if not config.is_light_frame(f)]
-        ops = _emit_one_kind(src_dir, subs, "light", obj, group, action, layout)
+        ops = _emit_one_kind(src_dir, subs, "light", obj, group, action, layout,
+                             source_name)
         if nonsubs:
             ops += _emit_one_kind(src_dir, nonsubs, "working", obj, group,
-                                  action, layout)
+                                  action, layout, source_name)
         return ops
-    return _emit_one_kind(src_dir, files, kind, obj, group, action, layout)
+    return _emit_one_kind(src_dir, files, kind, obj, group, action, layout,
+                          source_name)
 
 
 # The two tiers that hold raw subs. A sub in **either** is already in the library,
@@ -674,7 +732,7 @@ def _light_tier_names(obj: str) -> set[str]:
 
 
 def _emit_one_kind(src_dir: Path, files, kind: str, obj: str, group: str,
-                   action: str, layout: str) -> list[IngestOp]:
+                   action: str, layout: str, source_name: str = "") -> list[IngestOp]:
     """Route `files` into the single target subdir for `kind` (skip already-present)."""
     root = config.DATA_ROOT
     dst_dir = _KIND_DIR[kind](obj)
@@ -688,8 +746,19 @@ def _emit_one_kind(src_dir: Path, files, kind: str, obj: str, group: str,
         dest = dst_dir / f
         ops.append(IngestOp(str(src_dir / f), str(dest), kind, group,
                             str(dest.relative_to(root)), new_object, action,
-                            _size(src_dir / f), layout, obj))
+                            _size(src_dir / f), layout, obj,
+                            source_name=source_name))
     return ops
+
+
+@functools.lru_cache(maxsize=512)
+def _sniff_capture(path: str) -> str | None:
+    """The capture-profile id of one FITS file (one header read), or None."""
+    try:
+        from astropy.io import fits
+        return capture_profiles.profile_for(fits.getheader(path)).id
+    except Exception:
+        return None
 
 
 def _detect_layout(src_dir: Path, name: str) -> str | None:
@@ -701,6 +770,8 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
     # rule below and import as a capture target named after the device.
     if _is_dwarflab_cali_dir(src_dir, name) or _is_store_calibration_dir(src_dir, name):
         return "calibration"
+    if _is_seestar_darklib_dir(src_dir, name):
+        return "seestar-darks"
     # M110-store-shaped (precursor like ~/Astronomy/Images): a known content
     # subdir under an <object>, or an <object> under a known container.
     if name.lower() in _STORE_SUBDIR_KIND or src_dir.parent.name.lower() in _STORE_PARENT_KIND:
@@ -720,8 +791,13 @@ def _detect_layout(src_dir: Path, name: str) -> str | None:
         return "seestar"
     if any(is_stacked_fit(f) for f in _fit_files(src_dir)):
         return "seestar"
-    # Anything else holding loose FITS → sort by header.
-    if _fit_files(src_dir):
+    # Anything else holding loose FITS → sort by header. Frames from capture
+    # software with a profile of its own (N.I.N.A./PINS, by SWCREATE) are labelled
+    # so — one header read — and classified the same way, profile-aware per frame.
+    fits_files = _fit_files(src_dir)
+    if fits_files:
+        if _sniff_capture(str(src_dir / fits_files[0])) == "nina":
+            return "nina"
         return "raw-fits"
     return None
 
@@ -903,7 +979,7 @@ def _classify_dwarf_dir(src_dir: Path, name: str, action: str,
       • raw subs → ``lights/`` (object from the OBJECT header; a header
         IMAGETYP=DARK/FLAT/BIAS splits to its calibration dir);
       • ``stacked-16_*`` + ``stacked.jpg``/``stacked-16_*.png`` → the object's
-        ``seestar-stacks/`` (generic device-stack) tier;
+        ``device-stacks/`` tier;
       • **Startrails** (``STARTRAILS_`` prefix — subs have an empty OBJECT) →
         ``.mp4`` to ``Media/Startrails_video/`` + composite ``stacked.jpg`` to
         ``Media/Startrails_photo/``; raw subs ignored (not a stackable target);
@@ -1203,12 +1279,81 @@ def _object_by_pointing(info: dict) -> tuple[str | None, str]:
     return canonical_target(disp), f"identified by pointing — {sep:.2f}° from {disp}"
 
 
+# ── Seestar dark library (<volume>/darklibrary/<exp>s/) ───────────────────────
+# Since its 2026-10 firmware the Seestar keeps its master darks beside MyWorks:
+# ``darklibrary/20s/MasterDark_5_20.0s_13.9C_20261015-215239.fit`` (+ a full .jpg
+# and a _thn.jpg). The masters carry EXPTIME/GAIN/XBINNING/CCD-TEMP/STACKCNT but
+# no TELESCOP, so the device is read from the lights on the same volume. They are
+# archived, never applied: the subs are already dark-subtracted on the device
+# (devices.darks_applied_on_device).
+_SEESTAR_DARKLIB_DIRNAME = "darklibrary"
+_SEESTAR_MASTER_RE = re.compile(r"^MasterDark_", re.IGNORECASE)
+_VOLUME_DEVICE_READS = 12          # header reads to find a TELESCOP on the volume
+
+
+def _is_seestar_darklib_dir(src_dir: Path, name: str) -> bool:
+    return (src_dir.parent.name.lower() == _SEESTAR_DARKLIB_DIRNAME
+            and any(_SEESTAR_MASTER_RE.match(f) for f in _fit_files(src_dir)))
+
+
+def _device_from_volume_lights(volume: Path, ctx: dict | None = None) -> str | None:
+    """The Seestar a volume belongs to: the ``TELESCOP`` of the first raw sub under
+    ``<volume>/MyWorks/*_sub/`` that names one (at most `_VOLUME_DEVICE_READS`
+    header reads), or None. Memoised per scan in `ctx`."""
+    key = ("volume_device", str(volume))
+    if ctx is not None and key in ctx:
+        return ctx[key]
+    found = None
+    reads = 0
+    myworks = volume / "MyWorks"
+    subdirs = (sorted(d for d in myworks.iterdir() if d.is_dir() and d.name.endswith("_sub"))
+               if myworks.is_dir() else [])
+    for d in subdirs:
+        for f in _fit_files(d)[:2]:
+            reads += 1
+            tel = (frame_info(str(d / f)) or {}).get("telescop")
+            if tel and (devices.preset_key(tel) or "").startswith("seestar"):
+                found = tel
+                break
+        if found or reads >= _VOLUME_DEVICE_READS:
+            break
+    if ctx is not None:
+        ctx[key] = found
+    return found
+
+
+def _classify_seestar_darks_dir(src_dir: Path, name: str, action: str,
+                                handled: set, ctx: dict | None) -> list[IngestOp]:
+    """Route a Seestar ``darklibrary/<exp>s/`` into ``Calibration/<TELESCOP>/darks/``
+    — each master plus its full-size ``.jpg`` preview (the ``_thn.jpg`` is not
+    content). No device on the volume → nothing claimed: the sweep holds the files
+    and `identify_holding` explains why."""
+    device = _device_from_volume_lights(src_dir.parent.parent, ctx)
+    if not device:
+        return []
+    dev = _safe_segment(devices.folder_name(device))
+    masters = [f for f in _fit_files(src_dir) if _SEESTAR_MASTER_RE.match(f)]
+    previews = [p for p in (Path(f).stem + ".jpg" for f in masters)
+                if (src_dir / p).is_file()]
+    files = masters + previews
+    handled.update(files)
+    return _emit_one_kind(src_dir, files, "cal-dark", dev, f"{dev} dark library",
+                          action, "seestar-darks")
+
+
 def _classify_raw_dir(src_dir: Path, name: str, action: str,
-                      handled: set, should_cancel=None) -> list[IngestOp]:
-    """Header-sort a directory of loose FITS (6b raw-FITS fallback). Each frame is
-    routed by its IMAGETYP; the object comes from the OBJECT header, else the
-    containing folder name. Frames with neither a usable type nor an object are left
-    unclassified (the 6c holding area). Records recognized files in `handled`."""
+                      handled: set, should_cancel=None, *,
+                      layout: str = "raw-fits") -> list[IngestOp]:
+    """Header-sort a directory of loose FITS (6b raw-FITS fallback; N.I.N.A. too).
+    Each frame is routed by its IMAGETYP; the object comes from the capture
+    profile's object card (OBJECT, a mosaic panel folded onto ``<object>_mosaic`` —
+    capture_profiles.object_name), else the containing folder name when that names
+    a catalog object. A dark/flat/bias that names no object belongs to the
+    telescope, not a target: it goes to the device library
+    (``Calibration/<device>/<tier>/``, device = capture_profiles.device_key) — never
+    to an object named after its folder ("DARK", #203). Frames with no usable type,
+    object or device are left unclassified (the 6c holding area). Records
+    recognized files in `handled`."""
     # Folder-name fallback for a Siril project named after its target (M51/…): when
     # a loose sub has no usable header (no IMAGETYP and no OBJECT), route it by the
     # folder name — but only if that resolves to a known catalog object, so a date/
@@ -1219,7 +1364,7 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
         _lib = {}
     folder_obj = _project_object(name)
     folder_is_object = _slug_for_object(folder_obj, _lib) is not None
-    buckets: dict[tuple, list[str]] = {}          # (kind, obj) → files
+    buckets: dict[tuple, list[str]] = {}          # (kind, obj, source) → files
     for f in _fit_files(src_dir):
         if should_cancel and should_cancel():     # per-frame: header reads over a
             raise IngestCancelled()               # slow share must stay cancellable
@@ -1227,26 +1372,49 @@ def _classify_raw_dir(src_dir: Path, name: str, action: str,
         kind = info["imagetyp"] if info else None
         usable = _usable_object(info["object"]) if info else None
         obj_hdr = canonical_target(usable) if usable else None
+        source = usable or ""
         if is_stack_header(info) and kind not in ("dark", "flat", "bias"):
             # A stacked product (STACKCNT/NCOMBINE > 1 or 3 planes) → the device/
             # in-app stack tier, never lights/. Object from the header, else the
             # folder when that names a catalog object; otherwise it is held.
-            if not (obj_hdr or folder_is_object):
+            if obj_hdr:
+                kind, obj = "stack", obj_hdr
+            elif folder_is_object:
+                kind, obj, source = "stack", folder_obj, name
+            else:
                 continue
-            kind, obj = "stack", (obj_hdr or folder_obj)
         elif kind in ("dark", "flat", "bias"):
-            obj = obj_hdr or canonical_target(name)
+            profile = capture_profiles.BY_ID.get(info.get("capture") or "",
+                                                 capture_profiles.BY_ID["generic"])
+            if obj_hdr:
+                obj = obj_hdr                     # shot for a target: its own tier
+            elif (info.get("device")
+                  and profile.uncategorized_calibration == "library"):
+                kind = "cal-" + kind
+                obj = _safe_segment(devices.folder_name(info["device"]))
+                source = ""
+            elif folder_is_object:
+                obj, source = folder_obj, name
+            else:
+                continue                          # no object, no device → holding
         elif kind == "light" or obj_hdr:
-            kind, obj = "light", (obj_hdr or canonical_target(name))
+            if obj_hdr:
+                kind, obj = "light", obj_hdr
+            elif _normalize_imagetyp(name) is None:
+                kind, obj, source = "light", canonical_target(name), name
+            else:
+                continue          # a nameless light in a "LIGHT/" folder → holding
         elif config.is_light_frame(f) and folder_is_object:   # filename-only sub (#57)
-            kind, obj = "light", folder_obj
+            kind, obj, source = "light", folder_obj, name
         else:
             continue                              # unclassifiable → 6c holding area
         handled.add(f)                            # recognized (even if skipped as dup)
-        buckets.setdefault((kind, obj), []).append(f)
+        buckets.setdefault((kind, obj, source), []).append(f)
     ops: list[IngestOp] = []
-    for (kind, obj), fs in buckets.items():       # one dest listing per (kind, obj)
-        ops += _emit_files(src_dir, fs, kind, obj, name, action, "raw-fits")
+    for (kind, obj, source), fs in buckets.items():   # one dest listing per bucket
+        group = (f"{obj} {_CAL_KINDS[kind][:-1]} frames" if kind in _CAL_KINDS
+                 else name)
+        ops += _emit_files(src_dir, fs, kind, obj, group, action, layout, source)
     return ops
 
 
@@ -1294,12 +1462,15 @@ def _classify_dir(src_dir: Path, name: str, action: str,
         ops = _classify_store_dir(src_dir, name, action, handled)
     elif layout == "calibration":
         ops = _classify_calibration_dir(src_dir, name, action, handled, ctx)
+    elif layout == "seestar-darks":
+        ops = _classify_seestar_darks_dir(src_dir, name, action, handled, ctx)
     elif layout == "dwarf":
         ops = _classify_dwarf_dir(src_dir, name, action, handled, should_cancel)
     elif layout == "seestar":
         ops = _classify_seestar_dir(src_dir, name, action, handled, should_cancel)
-    elif layout == "raw-fits":
-        ops = _classify_raw_dir(src_dir, name, action, handled, should_cancel)
+    elif layout in ("raw-fits", "nina"):
+        ops = _classify_raw_dir(src_dir, name, action, handled, should_cancel,
+                                layout=layout)
     else:
         ops = []
     # Claim a loose finished/processed raster (a Siril export dropped in an object
@@ -1324,7 +1495,7 @@ def _claim_loose_finished(src_dir: Path, name: str, action: str, handled: set,
     """Route unclaimed loose `*_processed/final/finished` rasters to the object's
     `finished/` tier (object = folder name). Skips dirs already handled by the
     multi-file recognizers (m110-store/seestar handle their own finished outputs)."""
-    if layout not in (None, "raw-fits"):
+    if layout not in (None, "raw-fits", "nina"):
         return []
     files = [f for f in _content_files(src_dir)
              if f not in handled and _is_finished_raster(f)]
@@ -1528,7 +1699,9 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
             group=gops[0].group,        # display label = source folder name (not the key)
             object=_object_label(gops[0]),
             kind=kind,
-            frames=len(gops),
+            # a calibration row counts masters, not their .jpg previews
+            frames=(sum(1 for o in gops if config.is_fits_file(Path(o.src).name))
+                    if kind in _CAL_KINDS else len(gops)),
             size_bytes=sum(o.size_bytes for o in gops),
             dest_dir=dest_dir,
             new_object=any(o.new_object for o in gops),
@@ -1538,6 +1711,7 @@ def group_ops(ops: list[IngestOp]) -> list[IngestGroup]:
             # same column as a pointing warning, and enables the retarget combo
             pointing=next((o.note for o in gops if o.note), None),
             layout=gops[0].layout,
+            source_name=gops[0].source_name,
         ))
     # media rows after catalog objects, then by natural catalog order (M1, M2, …
     # M100 — not M1, M10, M100), then kind
@@ -1553,12 +1727,40 @@ def scan_staging_plan(should_cancel=None, progress=None) -> list[IngestOp]:
 
 
 def scan_seestar_plan(should_cancel=None, progress=None) -> list[IngestOp]:
-    """Dry-run plan for a mounted Seestar's MyWorks (copies — leaves the device
-    untouched). Empty if no Seestar is mounted. Reads only. Delegates to the
-    recursive `scan_directory_plan` so nested MyWorks subfolders are found (#32 — the
-    old shallow one-level scan silently missed them)."""
-    return scan_directory_plan(config.find_seestar_myworks(), "copy",
-                               should_cancel, progress)
+    """Dry-run plan for a mounted Seestar's MyWorks **and** its sibling
+    ``darklibrary/`` when present (copies — leaves the device untouched). Empty if no
+    Seestar is mounted. Reads only. Delegates to the recursive `scan_directory_plan`
+    so nested MyWorks subfolders are found (#32 — the old shallow one-level scan
+    silently missed them)."""
+    return scan_source_plan(config.find_seestar_myworks(), "copy",
+                            should_cancel, progress)
+
+
+def source_scan_roots(root) -> list[Path]:
+    """The folders an import from `root` covers: `root` itself, plus — when `root`
+    is a Seestar ``MyWorks`` — the ``darklibrary/`` beside it. The device keeps its
+    master darks there, outside MyWorks, so a scan of MyWorks alone never sees
+    them; this is what makes every way of picking the Seestar (the Import page's
+    device entry, a recent folder, Browse… to MyWorks) bring the darks too."""
+    if root is None:
+        return []
+    root = Path(root)
+    roots = [root]
+    if root.name.lower() == "myworks":
+        darklib = root.parent / _SEESTAR_DARKLIB_DIRNAME
+        if darklib.is_dir():
+            roots.append(darklib)
+    return roots
+
+
+def scan_source_plan(root, action: str = "copy", should_cancel=None,
+                     progress=None) -> list[IngestOp]:
+    """`scan_directory_plan` over every folder in `source_scan_roots(root)` — the
+    entry point for an import the user picked a folder for. Reads only."""
+    ops: list[IngestOp] = []
+    for r in source_scan_roots(root):
+        ops += scan_directory_plan(r, action, should_cancel, progress)
+    return ops
 
 
 # ── holding area (6c): manual assign of unclassifiable files ───────────────────
@@ -1716,6 +1918,13 @@ def identify_holding(group: IngestGroup, coords: dict | None = None,
             info["suggested_kind"] = {"darks": "dark", "flats": "flat",
                                       "biases": "bias"}[parsed["tier"]]
             info["note"] = _CAL_HOLD_NOTE
+    if _SEESTAR_MASTER_RE.match(Path(fits_path).name):
+        # a Seestar master dark held because its volume named no device: it is
+        # never a capture target, so say what to do instead of suggesting one
+        info["note"] = ("a Seestar master dark from an unidentified telescope — "
+                        "import the device (MyWorks and darklibrary together) so "
+                        "it files under Calibration/<telescope>/darks/")
+        return info
 
     slug, reason = _suggest_slug(hdr, coords, cat, ref)
     if slug:

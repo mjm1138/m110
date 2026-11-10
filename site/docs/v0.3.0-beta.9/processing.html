@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Processing prep & hardlinks — M110 docs</title>
+<meta name="description" content="← Back to the guide">
+<link rel="icon" type="image/png" href="/assets/app-icon.png">
+<link rel="stylesheet" href="/docs/assets/docs.css">
+<link rel="canonical" href="https://m110.space/docs/latest/processing.html">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.9</span><a href="/docs/">all versions</a></div>
+    <nav><a href="index.html">M110 — User Guide</a>
+      <a href="ingest.html">Ingest & the library layout</a>
+      <a href="library.html">The library & object metadata</a>
+      <a href="processing.html" class="on">Processing prep & hardlinks</a>
+      <a href="backup.html">Backing up your library</a>
+      <a href="planning.html">Session planning</a>
+      <a href="publishing.html">Publishing your collection</a>
+      <a href="assistant.html">Using an AI assistant with your library</a>
+      <a href="upcoming.html">On the roadmap</a>
+      <a href="changelog.html">Changelog</a></nav>
+  </aside>
+  <main class="main">
+    
+    <article class="card"><h1 id="processing-prep-hardlinks">Processing prep &amp; hardlinks</h1>
+<p>← <a href="index.html">Back to the guide</a></p>
+<p>M110 <strong>prepares a clean, self-contained workspace</strong> so you can process in
+<a href="https://siril.org/">Siril</a>, then imports your finished work back into the library.
+This is the "prepare-and-guide" model — with one exception: M110 <em>can</em> run the
+<strong>stacking</strong> step for you, unattended, because that's the part nobody wants to sit
+through. See <a href="#stacking-without-opening-siril">Stacking without opening Siril</a> below.</p>
+<h2 id="what-m110-sets-up">What M110 sets up</h2>
+<p>After an ingest (and again whenever it notices a target missing one), M110 builds a
+<strong>Siril sandbox</strong> at <code>Images/&lt;target&gt;/siril/</code>:</p>
+<pre><code>Images/&lt;target&gt;/siril/
+  lights/            your light subs, ready for Siril (see &quot;Hardlinks&quot; below)
+  presets/           a Siril preset tuned to your frame count
+  process/           Siril's scratch space (left in place on import; not backed up)
+  next-steps.md      a short, per-target guide to what to do in Siril
+  archive/&lt;ts&gt;/      past runs, kept so you can re-process later
+</code></pre>
+<p>Open <code>next-steps.md</code>, follow it in Siril, and when you have a result, use <strong>Import
+finished work</strong> (from the object's detail pane) to pull the render into <code>finished/</code>
+and the stack into <code>stacks/</code>. M110 then archives the run so the sandbox is ready for
+next time — it never deletes your lights or your work.</p>
+<p>You don't trigger any of this by hand: prep is automatic and idempotent. If you edit
+a preset, M110 preserves your edits and won't overwrite them.</p>
+<h2 id="process-in-siril-one-click">Process in Siril (one click)</h2>
+<p>You don't have to find the working folder yourself. <strong>Right-click an object</strong> — in the
+Library, on the Processing page, or use the <strong>Process in Siril</strong> button on its detail
+page — and M110 launches Siril already pointed at that object's <code>siril/</code> sandbox as its
+<strong>working directory</strong>.</p>
+<p>M110 finds Siril automatically in the usual place. If yours is installed somewhere
+unusual, set its location under <strong>Preferences → Processing tools</strong> (on macOS you can pick
+<code>Siril.app</code> directly; elsewhere, the Siril executable).</p>
+<blockquote>
+<h3 id="quit-siril-when-you-finish-an-object">⚠ Quit Siril when you finish an object</h3>
+<p><strong>When you're done processing an object, quit Siril before moving to the next one.</strong></p>
+<p>M110 can only set Siril's working directory <em>as Siril launches</em>. If Siril is <strong>already
+open</strong>, clicking "Process in Siril" for a different object just brings the existing
+window to the front — it <strong>does not</strong> switch the working directory. You'd then be
+processing the new object while Siril is still pointed at the previous object's folder,
+and your results would land in the wrong place.</p>
+<p>Quitting Siril between objects guarantees the next "Process in Siril" opens fresh, at
+the correct folder. (If you'd rather keep Siril open, use <strong>Reveal working folder</strong> and
+set the directory yourself — see below.)</p>
+</blockquote>
+<h3 id="if-you-prefer-to-open-siril-yourself">If you prefer to open Siril yourself</h3>
+<p>The one easy mistake when doing it by hand is pointing Siril's working directory at the
+object folder (<code>Images/&lt;target&gt;/</code>) instead of its <code>siril/</code> sub-folder — Siril then saves
+your results one level too high. To avoid it, use <strong>Reveal working folder</strong> (the button
+beside Process in Siril, and a right-click option): it opens the <code>siril/</code> folder in your
+file manager so you can set <em>that</em> as Siril's working directory.</p>
+<p>(And if you do save outside the sandbox anyway, M110 also scans the object folder as a
+fallback when importing, so your work isn't lost.)</p>
+<p>You can also right-click any image in an object's gallery to <strong>Open in default app</strong> or
+<strong>Reveal in file manager</strong>.</p>
+<hr />
+<h2 id="stacking-without-opening-siril">Stacking without opening Siril</h2>
+<p>Stacking is the long, unattended part: load hundreds of subs, calibrate, register,
+reject the bad ones, combine. There's nothing to look at while it happens, and on a
+mosaic it runs for hours. So M110 will do it for you, from the command line:</p>
+<pre><code>m110-stack &quot;M101&quot;
+</code></pre>
+<p>That <strong>measures and proposes — it doesn't stack</strong>. You get how many frames you have,
+whether exposures or gain are mixed, whether it's a mosaic, how deep the coverage
+actually is, and the settings that supports (drizzle, rejection, weighting,
+feathering), each with the reason it was picked. Read it, then:</p>
+<pre><code>m110-stack &quot;M101&quot; --run
+</code></pre>
+<p>It prints the current stage every minute with how long it's been there, so a quiet
+hour looks like progress rather than a hang, and the full Siril log streams to
+<code>siril_stack.log</code> in the working folder. The result lands in the sandbox, where
+<strong>Import finished work</strong> already looks for it.</p>
+<p>Want to hear from it more often? Add <code>-v</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What you see while it runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(none)</em></td>
+<td>the current stage, every 60 seconds</td>
+</tr>
+<tr>
+<td><code>-v</code></td>
+<td>the current stage, every 30 seconds</td>
+</tr>
+<tr>
+<td><code>-vv</code></td>
+<td>the current stage, every 10 seconds</td>
+</tr>
+<tr>
+<td><code>-vvv</code></td>
+<td>every 10 seconds, plus everything Siril prints, as it prints it</td>
+</tr>
+</tbody>
+</table>
+<p><code>-vvv</code> is the same text that goes to <code>siril_stack.log</code>, so nothing is lost by
+leaving it off — it's there for when you'd rather watch than <code>tail</code> a log. The
+<code>[mm:ss]</code> stage lines still appear in the stream, so you can find where each step
+began. For an exact interval, <code>--heartbeat 120</code> overrides the one <code>-v</code> picks.</p>
+<p>Useful flags: <code>--only-exposure 30</code> (stack one exposure when a set mixes them),
+<code>--exclude-night 2026-06-10</code>, <code>--restack</code> (retry stack settings without repeating
+registration), <code>--handoff</code> (see below). <code>m110-stack --help</code> lists the rest.</p>
+<h3 id="when-some-frames-wont-plate-solve">When some frames won't plate-solve</h3>
+<p>Before it can register anything, Siril has to work out where each frame is pointing.
+Some frames won't: thin cloud, a bump to the mount, a night that just wasn't good
+enough to show the stars needed. That used to be able to kill the whole run — not
+always, which is why it seemed random; it depended on whether the one frame Siril
+measures everything else against was among the failures. Now it doesn't stop the run
+at all: the frames that <em>did</em> solve are registered and stacked, and you're told what
+was left out:</p>
+<pre><code>  Plate solving solved 123 of 221 frames (56%).
+  Failures by night:
+      2026-06-05      0 of   33    0%
+      2026-06-10      1 of   81    1%
+      2026-06-28     94 of  104   90%  &lt;--
+      2026-07-03      3 of    3  100%  &lt;--
+</code></pre>
+<p>Failures almost always belong to a session rather than being scattered, and that's
+the useful part: here two nights account for nearly all of them, and the other two
+were fine. If you'd rather drop those nights outright than stack a thinned version of
+them, the run prints the flags to do it:</p>
+<pre><code>m110-stack &quot;M101&quot; --run --exclude-night 2026-06-28 --exclude-night 2026-07-03
+</code></pre>
+<p>One note if you do re-run: M110 clears the temporary working files at the start of
+every run (it tells you how much it freed). It has to — Siril reuses those files
+rather than rebuilding them, so before this, a re-run after a failure quietly
+ignored <code>--exclude-night</code> and stacked the night you'd asked it to drop. <code>--restack</code>
+still reuses them deliberately, for retrying stack settings without repeating the
+registration.</p>
+<p>If almost nothing solves, it stops instead. At that point the problem is more likely
+your setup than the sky — usually a missing local star catalogue, or a focal length
+or pixel size Siril has wrong — and a spread of failures across <em>every</em> night is the
+sign of it. Set your own bar with <code>--min-solved</code> (a percentage; 25 by default).</p>
+<p>This needs <strong>Siril installed</strong> — M110 runs Siril's own commands rather than
+reimplementing anything. If you've connected an <a href="assistant.html">AI assistant</a>, it can
+talk the settings through with you and hand you the command; it can't start a stack
+itself.</p>
+<h3 id="handing-a-stack-to-astrowizard">Handing a stack to AstroWizard</h3>
+<p><code>m110-stack "M101" --run --handoff</code> also drops the finished stack into
+<code>Images/M101/astrowizard/</code>, ready to open in
+<a href="https://astrowizard.lukomatico.com/">AstroWizard</a>. It's a hardlink, so it costs no
+extra disk, and it's kept apart from the Siril sandbox on purpose: your stack took
+hours and won't change, while a finishing pass is cheap and you'll redo it often.</p>
+<p>You can also do it from the app: right-click a stack in the object's detail pane and
+choose <strong>Send to AstroWizard</strong>. Afterwards M110 offers to <strong>open it in AstroWizard</strong>,
+which loads the stack straight away — with one catch worth knowing: that only works
+if AstroWizard isn't already running. If it is, quit it first, or use <strong>Reveal
+folder</strong> and open the file yourself.</p>
+<h3 id="stacking-with-stackingwizard">Stacking with StackingWizard</h3>
+<p><a href="https://astrowizard.lukomatico.com/">StackingWizard</a> is AstroWizard's companion:
+it stacks a night's frames and hands the result straight over. M110 keeps your
+frames ready for it.</p>
+<p>Tick <strong>AstroWizard</strong> in <strong>Preferences → Processing workflows you use</strong>, and each
+object gets an <code>astrowizard/</code> folder containing your subs as hardlinks — no extra
+disk, and they're skipped by backup because the originals are already in it.</p>
+<p>Then use <strong>Stack in StackingWizard…</strong> on the object. M110 opens the app and
+reveals that folder; point StackingWizard at it. It reads the frames, sorts them by
+header, stacks, and writes <code>&lt;object&gt;_wizardstack.fits</code> back into the same folder —
+which is exactly where AstroWizard expects to find it, and where <strong>Import finished
+work</strong> looks for your finish afterwards.</p>
+<p>M110 treats that stack as the folder's <em>input</em>, so tidying up after a finish never
+archives it. Re-finish as often as you like; the stack stays put.</p>
+<p>Two things worth knowing:</p>
+<ul>
+<li><strong>Point it at the <code>astrowizard/</code> folder, not <code>siril/</code>.</strong> Its scan is recursive,
+  so pointing it at the Siril folder also works — but then its stack and
+  AstroWizard's working files land in Siril's workspace, where M110 reads them as
+  Siril's leftovers. If you've already done that, move those files into
+  <code>astrowizard/</code> and everything lines up.</li>
+<li><strong>Mono/filter sets aren't supported by StackingWizard yet</strong> (its own beta notes
+  say so). For those targets, stack in Siril or with <code>m110-stack</code> and use <strong>Send to
+  AstroWizard</strong> instead.</li>
+</ul>
+<h3 id="bringing-the-finish-back">Bringing the finish back</h3>
+<p>When you've finished an image in AstroWizard, save your export into that same
+<code>astrowizard/</code> folder. Back in M110, <strong>Import finished work</strong> on the object picks it
+up and files it into the object's finished images, exactly as it does for Siril. If
+both Siril and AstroWizard have something waiting, M110 asks which one you mean.</p>
+<p>AstroWizard saves a separate working file for every step you take — crops,
+stretches, each curve tweak — so a single finish can leave a couple of dozen files
+behind. M110 doesn't offer those to you as things to import, and tidies them away
+when you import (see below).</p>
+<h2 id="keeping-working-files-under-control">Keeping working files under control</h2>
+<p>Every time you import finished work, M110 files the run that produced it into an
+<code>archive/</code> folder inside that object's working folder, stamped with the date and
+time. Nothing is deleted — it's moved — so you can always go back to a previous
+attempt.</p>
+<p>The catch is that archived runs only ever pile up. Nothing replaces them and nothing
+cleans them out, and they're not small: a mosaic's run can be several GB, and an
+AstroWizard finish can be a couple of GB on its own. They're included in your
+backups too, so the growth shows up twice.</p>
+<p><strong>Preferences → Processing workflows you use → "Keep the last N processing
+sessions"</strong> is the control:</p>
+<ul>
+<li><strong>A number (default 3 for a new library)</strong> — M110 keeps that many archived runs per
+  working folder and deletes older ones when you import.</li>
+<li><strong>"all"</strong> — nothing is ever deleted. This is the default <strong>if you already had an
+  M110 library before this feature existed</strong>, so nothing you already have
+  disappears without you choosing it.</li>
+</ul>
+<p>Whatever you set, three things always hold:</p>
+<ul>
+<li><strong>The most recent run is never deleted.</strong></li>
+<li><strong>Nothing happens unless an import actually archived something.</strong> Choosing "Leave
+  the sandbox as-is" at import time, or just refreshing your library, never deletes
+  anything.</li>
+<li><strong>Anything you put in that <code>archive/</code> folder yourself is left alone.</strong> M110 only
+  ever removes folders it created, which it recognises by their date-and-time names.</li>
+</ul>
+<p>If you're not sure, "all" is the safe setting — you can always lower it later, and
+the space is reclaimed on your next import.</p>
+<h2 id="hardlinks-what-they-are-and-why-it-matters">Hardlinks — what they are, and why it matters</h2>
+<p>This is the one technical detail worth understanding, because M110 uses <strong>hardlinks</strong>
+in two places (processing sandboxes and backups) and their behavior surprises people.</p>
+<p><strong>A hardlink is a second name for the exact same file on disk</strong> — not a copy, and not
+a shortcut/alias. The file's data exists once; two (or more) names point at it. So:</p>
+<ul>
+<li><strong>It costs no extra disk space.</strong> Hardlinking 40 GB of subs into the sandbox adds
+  ~0 bytes — both <code>Images/&lt;target&gt;/lights/</code> and <code>Images/&lt;target&gt;/siril/lights/</code> are
+  names for the same bytes.</li>
+<li><strong>The names are equal peers.</strong> Neither is "the original." The data lives until the
+  <em>last</em> name is removed.</li>
+<li><strong>Deleting one name is safe</strong> for the others. Removing a hardlink just drops that
+  one directory entry; the data stays as long as another name points at it.</li>
+<li><strong>Editing the <em>contents</em> through one name changes it for all of them</strong> — it's the
+  same file. (In practice this rarely bites you, because Siril and M110 write <em>new</em>
+  files for outputs rather than modifying subs in place.)</li>
+<li><strong>Hardlinks only work within one filesystem/volume.</strong> Across drives — or on some
+  network/SMB and exFAT shares — M110 automatically falls back to a real copy.</li>
+</ul>
+<h3 id="what-this-means-for-the-processing-sandbox">What this means for the processing sandbox</h3>
+<p>The subs in <code>Images/&lt;target&gt;/siril/lights/</code> are <strong>the same files</strong> as your real
+<code>Images/&lt;target&gt;/lights/</code> subs — hardlinked so M110 doesn't duplicate gigabytes of
+data for every processing run.</p>
+<ul>
+<li>✅ <strong>Safe:</strong> letting Siril read them, stack them, and write outputs. Siril doesn't
+  modify raw subs.</li>
+<li>✅ <strong>Safe:</strong> deleting the whole <code>siril/</code> sandbox — your <code>lights/</code> originals remain
+  untouched (they're a separate name for the same data).</li>
+<li>⚠️ <strong>Not a backup.</strong> Because the sandbox subs share storage with your originals,
+  the sandbox is <em>not</em> a second copy of your data. If a disk fails, both names are
+  gone. For real redundancy, use <a href="backup.html">Backup</a>.</li>
+<li>⚠️ <strong>Don't hand-edit a sub inside the sandbox</strong> expecting the original to be spared
+  — it's the same file. Treat subs as read-only everywhere.</li>
+</ul>
+<p>Next: <strong><a href="backup.html">Backing up your library →</a></strong></p></article>
+    <p class="foot">M110 v0.3.0-beta.9 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+  </main>
+</div>
+</body>
+</html>

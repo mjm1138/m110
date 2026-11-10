@@ -5,7 +5,7 @@
   <header class="obj-header">
     <h1>{{ obj.entry.id }} <span class="muted">— {{ obj.entry.name or '' }}</span></h1>
     <div class="meta">
-      <span class="badge {{ obj.totals.status }}">{{ obj.totals.status|status_label }}</span>
+      <span class="badge {{ obj.totals.status }}">{{ obj.totals.status|status_label(obj.totals.progress) }}</span>
       <span>{{ obj.entry.type|replace('_', ' ') }}{% if obj.entry.magnitude %} · mag {{ obj.entry.magnitude }}{% endif %}{% if obj.entry.size %} · {{ obj.entry.size }}{% endif %}</span>
     </div>
   </header>

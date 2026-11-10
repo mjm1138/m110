@@ -68,7 +68,8 @@ def test_prepare_single_filter_literal_lights(tmp_path, monkeypatch):
     assert len(plan.jobs) == 1 and plan.jobs[0].filt == ""
 
     res = siril.apply_prep(plan)
-    assert res == {"linked": 350, "skipped": 0, "cancelled": False}
+    assert res == {"linked": 350, "skipped": 0, "cancelled": False,
+                   "preset_conflicts": []}
     sb = config.siril_dir(target)
     lights = sb / "lights"                      # LITERAL 'lights' (Siril needs it)
     assert lights.is_dir() and len(list(lights.glob("*.fit"))) == 350
@@ -137,7 +138,6 @@ def test_prep_hardlinks_calibration_and_sets_toggles(tmp_path, monkeypatch):
         assert got[0].stat().st_nlink > 1                 # hardlinked, no extra bytes
     d = json.loads((sb / "presets" / siril.PRESET_NAME).read_text())
     assert (d["darks"], d["flats"], d["biases"]) == (True, True, True)
-    assert siril.is_default_preset(d)                     # still pristine/re-tunable
 
 
 def test_prep_without_calibration_is_lights_only(tmp_path, monkeypatch):
@@ -163,12 +163,13 @@ def test_prep_partial_calibration_toggles_only_present_tiers(tmp_path, monkeypat
     assert (d["darks"], d["flats"], d["biases"]) == (True, False, False)
 
 
-def test_is_default_preset_reads_calibration_toggles():
-    """A calibration-on default still reads as pristine (re-tunable); a hand edit
-    on top of it does not — so autoprep never clobbers a user's changes."""
-    pristine = siril.default_preset(200, darks=True, flats=True)
-    assert siril.is_default_preset(pristine)
-    assert not siril.is_default_preset(dict(pristine, batch_size=999))
+def test_calibration_preset_is_stable_across_preps(tmp_path, monkeypatch):
+    """A calibration-on preset re-proposes identically, so a second prep has
+    nothing to ask about."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    _add_calibration(target, darks=10, flats=8)
+    siril.apply_prep(siril.plan_prep(target))
+    assert siril.apply_prep(siril.plan_prep(target))["preset_conflicts"] == []
 
 
 def test_import_archive_keeps_calibration(tmp_path, monkeypatch):
@@ -300,7 +301,8 @@ def test_autoprep_sets_up_and_skips_pending(tmp_path, monkeypatch):
 
     # drop a finished output → autoprep must now skip (don't disturb)
     (config.siril_dir(target) / f"{target}_processed.png").write_text("p")
-    assert siril.autoprep([target]) == {"prepared": [], "skipped": [target]}
+    assert siril.autoprep([target]) == {"prepared": [], "skipped": [target],
+                                        "preset_conflicts": []}
 
 
 # ── import: detect / scan / apply / cleanup ──────────────────────────────────
@@ -506,6 +508,50 @@ def test_archive_per_filter_jobs(tmp_path, monkeypatch):
     # archived within the IRCUT job, lights kept
     assert any((sb / "IRCUT" / "archive").rglob("*_processed.png"))
     assert (sb / "IRCUT" / "lights").is_dir()
+
+
+@pytest.mark.parametrize("filt", [None, "IRCUT"])
+def test_archive_leaves_siril_scratch_in_place(tmp_path, monkeypatch, filt):
+    """Siril's `process/` is the tool's own scratch, rebuilt every run, so the
+    archive sweep leaves it where the tools manage it (Naztronomy asks before
+    clearing it, `m110-stack` clears it unless `--restack`) instead of filing a
+    copy — up to several GB — into every `archive/<ts>/` keep-N retains. A
+    `process/` already inside an older archived run is not touched either."""
+    kw = {"ircut": 120} if filt is None else {"ircut": 120, "lp": 40}
+    target = _make_target(tmp_path, monkeypatch, **kw)
+    siril.apply_prep(siril.plan_prep(target))
+    job = config.siril_job_dir(target, filt)
+    (job / "process").mkdir()
+    (job / "process" / "r_pp_lights_.seq").write_text("seq")
+    (job / "process" / "r_pp_lights_00001.fit").write_text("sub")
+    old = job / "archive" / "20261004-113230" / "process"
+    old.mkdir(parents=True)
+    (old / "pp_lights_.seq").write_text("old seq")
+    (job / f"{target}_processed.png").write_text("p")
+
+    res = siril.apply_import(target, [], cleanup="archive")
+
+    assert res["cleaned"] == "archive"
+    assert (job / "process" / "r_pp_lights_.seq").read_text() == "seq"
+    assert (job / "process" / "r_pp_lights_00001.fit").is_file()
+    new = [d for d in (job / "archive").iterdir() if d.name != "20261004-113230"]
+    assert len(new) == 1 and (new[0] / f"{target}_processed.png").is_file()
+    assert not (new[0] / "process").exists()
+    assert (old / "pp_lights_.seq").read_text() == "old seq"
+
+
+def test_scratch_alone_is_not_a_run_to_archive(tmp_path, monkeypatch):
+    """With nothing but `process/` left behind, there is no run to file away — so
+    no empty `archive/<ts>/` appears and retention is not triggered."""
+    target = _make_target(tmp_path, monkeypatch, ircut=120)
+    siril.apply_prep(siril.plan_prep(target))
+    sb = config.siril_dir(target)
+    (sb / "process").mkdir()
+    (sb / "process" / "pp_lights_.seq").write_text("seq")
+
+    assert siril.apply_import(target, [], cleanup="archive")["cleaned"] == "none"
+    assert not (sb / "archive").exists()
+    assert (sb / "process" / "pp_lights_.seq").is_file()
 
 
 def test_resolve_import_dest_dispositions(tmp_path):

@@ -13,10 +13,11 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.8</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
+      <a href="devices.html">Your telescopes — the Devices page</a>
       <a href="processing.html">Processing prep & hardlinks</a>
       <a href="backup.html">Backing up your library</a>
       <a href="planning.html" class="on">Session planning</a>
@@ -49,6 +50,14 @@ coordinates, elevation, and timezone; open <strong>Manage site profiles</strong>
 </ul>
 <p>The <strong>Location</strong> selector at the top picks the active profile; the ranking and the
 planner both use it.</p>
+<h2 id="which-telescope">Which telescope</h2>
+<p>Once M110 knows more than one telescope, a <strong>Telescope</strong> picker appears next to
+Location. Planning plans for the telescope you pick, with that model's limits: the
+altitude it may start a capture at (a Seestar refuses to start near the zenith; a
+Dwarf's ceiling is a softer 80°), its exposure and gain. The ranking follows it too
+(see below). You can also choose it with <strong>Use for planning</strong> on the
+<strong><a href="devices.html#planning-limits">Devices</a></strong> page, which is where you adjust a
+telescope's limits. Field guides say which telescope a plan is for.</p>
 <h2 id="priority-targets-the-ranking">Priority targets — the ranking</h2>
 <p>The table ranks every target you're pursuing (your active goals plus everything
 you've captured), weighing:</p>
@@ -57,8 +66,11 @@ you've captured), weighing:</p>
 <li><strong>seasonal urgency</strong> — an object about to leave the evening sky outranks one that
   will keep for months;</li>
 <li><strong>completion</strong> — read through the <strong>Strategy</strong> toggle: <em>capture many</em> favors
-  untouched targets, <em>go deep</em> favors started-but-shallow ones. Thresholds are
-  type-aware (a faint nebula needs far more integration than a cluster);</li>
+  untouched targets, <em>go deep</em> favors started-but-shallow ones. Progress is measured
+  against each object's <a href="library.html#integration-goals-how-deep-is-deep-enough">integration goal</a>
+  <strong>for the telescope you're planning with</strong> — an object finished on one scope is still
+  new work on another, unless it's in a goal any telescope can satisfy. Switching
+  telescope re-ranks at once, and the <strong>Of goal</strong> column shows where each target stands;</li>
 <li><strong>tonight</strong> — how high, and for how long, it sits in <em>your</em> dark sky.</li>
 </ul>
 <p>The <strong>tuning weights</strong> re-rank instantly as you adjust them. Right-click
@@ -113,13 +125,13 @@ conditions.</p>
 <h2 id="field-guides">Field guides</h2>
 <p><strong>Save field guide…</strong> writes the plan as clean Markdown into the <strong><code>Plans/</code></strong> folder
 of your library — dark window, moon summary, the schedule table, and your per-object
-remarks. Each guide records both when it was generated and which night it's for.</p>
+remarks. Each guide records when it was generated, which night it's for, and which telescope.</p>
 <p>Saved guides are listed on the Planning page under <strong>Saved field guides</strong>.
 <strong>Double-click</strong> one to read it in the app (from there you can copy or print it), or
 <strong>right-click</strong> a row for <strong>View</strong>, <strong>Reveal in file manager</strong> (to open the <code>Plans/</code>
 folder), and <strong>Delete</strong>.</p>
 <p>Next: <strong><a href="publishing.html">Publishing your collection →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.8 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

@@ -38,6 +38,7 @@ SAFE_WRITE_ACTIONS = {
     "set_pins": "pins.set_state",
     "append_journal": "objects.write_journal",
     "save_field_guide": "fieldguide.save",
+    "set_integration_goal": "integration_goals.set_goal",
 }
 
 
@@ -65,6 +66,10 @@ def store_fingerprint(*, journal_slug: str | None = None) -> dict:
         "totals_mtime": (datetime.fromtimestamp(totals.stat().st_mtime).isoformat()
                          if totals.is_file() else None),
         "journal_sha256": None,
+        # A goal proposal reasons over the goals file as it was.
+        "integration_goals_sha256": (
+            hashlib.sha256(config.INTEGRATION_GOALS_TOML.read_bytes()).hexdigest()
+            if config.INTEGRATION_GOALS_TOML.is_file() else None),
     }
     if journal_slug:
         try:

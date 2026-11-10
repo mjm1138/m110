@@ -31,12 +31,13 @@ MIN_HIT_PX = 11.0          # a comfortable click target when zoomed out
 MIN_ZOOM, MAX_ZOOM = 1.0, 16.0
 ZOOM_STEP = 1.15
 
-# Legend tiers, in the order they're keyed. "Uncaptured" rather than "not yet
-# shot": on a goal-filtered map these are the list's members you haven't got to,
-# and it matches the Library's own captured/uncaptured language.
+# Legend tiers, in the order they're keyed — the status pill's own words, so a
+# marker and a chip read the same. "Uncaptured" rather than "not yet shot": on a
+# goal-filtered map these are the list's members you haven't got to.
 LEGEND_TIERS = (
     (skymap.STATUS_DEEP, "Deep"),
-    (skymap.STATUS_INITIAL, "Captured"),
+    (skymap.STATUS_PROGRESS, "In progress"),
+    (skymap.STATUS_INITIAL, "Initial"),
     (skymap.STATUS_UNCAPTURED, "Uncaptured"),
 )
 
@@ -381,6 +382,7 @@ def status_colors() -> dict:
 
     return {
         skymap.STATUS_DEEP: status_color(skymap.STATUS_DEEP).name(),
+        skymap.STATUS_PROGRESS: status_color(skymap.STATUS_PROGRESS).name(),
         skymap.STATUS_INITIAL: status_color(skymap.STATUS_INITIAL).name(),
         skymap.STATUS_UNCAPTURED: active_tokens().text_secondary,
     }

@@ -27,6 +27,7 @@ from m110.ui.ingest_dialog import (
     _ScanWorker, _ApplyWorker, _fmt_size, KIND_LABEL, ASSIGNABLE_KINDS,
     NO_POINTING_KINDS,
 )
+from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
 from m110.ui.widgets import fit_cell_widgets
 
 RECENTS_KEY = "import_recents"
@@ -211,9 +212,11 @@ class ImportPage(QWidget):
         root = self._root
         self._set_busy(True)
         self._make_progress("Scanning…", 0, "Scanning")   # 0 max = indeterminate
+        # scan_source_plan, not scan_directory_plan: a Seestar's MyWorks brings
+        # the darklibrary/ beside it (the device keeps its master darks there)
         plan_fn = (lambda should_cancel=None, progress=None, r=root:
-                   ingest.scan_directory_plan(r, should_cancel=should_cancel,
-                                              progress=progress))
+                   ingest.scan_source_plan(r, should_cancel=should_cancel,
+                                           progress=progress))
         self._worker = _ScanWorker(plan_fn, self._cancel_event, self)
         self._worker.done.connect(self._on_scan_done)
         self._worker.cancelled.connect(self._on_scan_cancelled)
@@ -430,6 +433,7 @@ class ImportPage(QWidget):
         self._close_progress()
         self._set_busy(False)
         moved = result.get("moved", 0)
+        resolve_preset_conflicts(self, result)
         self.imported.emit(moved)
         self.refresh_holding()
 
@@ -658,16 +662,19 @@ class ImportPage(QWidget):
         self._close_progress()
         self._set_busy(False)
         moved = result.get("moved", 0)
+        resolve_preset_conflicts(self, result)
         self.imported.emit(moved)
         if moved and QMessageBox.question(
                 self, "Remember alias?",
-                f"Always route “{group.group}” to {obj} on future imports?",
+                f"Always route “{group.alias_key}” to {obj} on future imports?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            ingest.add_alias(group.group, obj)
+            ingest.add_alias(group.alias_key, obj)
         self.refresh_holding()
 
     def _set_object_cell(self, r, g):
-        """Plain label, or a remap dropdown when the frame's pointing disagrees."""
+        """Plain label, or a remap dropdown when the frame's pointing disagrees or
+        the object is off-catalog with catalog candidates (its name's designations,
+        the nearest by pointing — `ingest.annotate_pointing`, #203)."""
         # Clear any stale label/combo first — setRowCount reuses rows across scans,
         # and setCellWidget/setItem don't remove each other, so a row switching
         # between label and dropdown would otherwise render both, overlapping.
@@ -677,9 +684,9 @@ class ImportPage(QWidget):
             # Held for the holding-area panel; not assigned inline here.
             self.table.setItem(r, 1, QTableWidgetItem("—"))
             return
-        if g.pointing and g.kind != "media":
+        if (g.pointing or g.candidates) and g.kind != "media":
             combo = QComboBox()
-            order = [g.object]
+            order = [g.object] + [c for c in g.candidates if c != g.object]
             self._catalog_ids()
             if g.suggested:
                 sid = self._cat.get(g.suggested, {}).get("id") or g.suggested
@@ -709,9 +716,9 @@ class ImportPage(QWidget):
         self._update_summary()
         if QMessageBox.question(
                 self, "Remember alias?",
-                f"Always route “{g.group}” to {new_id} on future imports?",
+                f"Always route “{g.alias_key}” to {new_id} on future imports?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes:
-            ingest.add_alias(g.group, new_id)
+            ingest.add_alias(g.alias_key, new_id)
 
     def _selected_groups(self):
         out = []
@@ -816,6 +823,7 @@ class ImportPage(QWidget):
         moved = result.get("moved", 0)
         skipped = result.get("skipped", 0)
         cancelled = result.get("cancelled", False)
+        resolve_preset_conflicts(self, result)
         self.imported.emit(moved)
         self.refresh_holding()      # unclassified files may have landed in Inbox/
         bits = [f"{moved} file(s) imported"]

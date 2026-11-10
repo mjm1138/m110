@@ -64,7 +64,7 @@ def test_ensure_data_root_creates_and_seeds(tmp_path):
     internal = root / config.INTERNAL_DIRNAME
     # seeded static files now live in the hidden internal store
     assert (internal / "library.toml").is_file()
-    assert (internal / "priorities.toml").is_file()
+    assert not (internal / "priorities.toml").exists()   # retired, no longer seeded
     # a "don't touch" README accompanies the internals
     assert (internal / "README.txt").is_file()
     # directory skeleton: two visible axes + Media/Inbox/Plans + the device-level

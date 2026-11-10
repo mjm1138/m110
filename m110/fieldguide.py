@@ -88,6 +88,8 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
     heading = title or f"Observing plan — {day.isoformat()}"
     lines = [f"# {heading}", ""]
     lines.append(f"**Site:** {site.name}  ")
+    if plan.get("device"):
+        lines.append(f"**Telescope:** {plan['device']}  ")
     if dusk and dawn:
         lines.append(f"**Astro dark:** {_hm(dusk)} – {_hm(dawn)}  ")
     illum = moon.get("illum")

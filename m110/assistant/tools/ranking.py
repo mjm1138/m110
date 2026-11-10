@@ -66,7 +66,7 @@ def rank_targets(strategy: str | None = None, visible_tonight_only: bool = False
                      "cannot build them (the astropy pass takes minutes)."),
         }
 
-    rows = prioritize.rank(contexts, weights, strategy, pins.load())
+    rows = prioritize.rank_for_active(contexts, weights, strategy, pins.load())
     total = len(rows)
     if visible_tonight_only:
         rows = prioritize.filter_visible_tonight(rows)

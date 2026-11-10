@@ -16,11 +16,11 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | # | Milestone | Status | Detail |
 |---|---|---|---|
 | — | **MVP v0.1 — "the Library"** (catalog, ingest, rendering, processing-prep, two-axis store) | ✅ shipped | [`DONE.md`](DONE.md) |
-| 0 | **Navigation IA** — 5-pane rail (Library · Overview · Planning · Import · Processing) | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
+| 0 | **Navigation IA** — 6-pane rail (Library · Overview · Planning · Import · Processing · Devices) | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | — | **UI design system** — tokens, light/dark theming, restyled surfaces, branding | ✅ shipped | [`DONE.md`](DONE.md), [`UI_ROADMAP.md`](UI_ROADMAP.md) |
 | 1 | **Session planning** — site profiles + light-dome glow, deterministic prioritizer, night planner + sequencer, field guides | ✅ shipped *(follow-up refinements open [↓](#1--session-planning-follow-ups-non-blocking-refinements))* | [`DONE.md`](DONE.md) Checkpoints A/B + tuning arc; [`docs-archive/PLANNING_ROADMAP.md`](docs-archive/PLANNING_ROADMAP.md) |
 | 5 | **Library, catalogs & goals** — multi-list tracking, 6 bundled catalogs, custom goals | ✅ shipped *(catalog growth open [↓](#5--catalog-growth))* | [`DONE.md`](DONE.md) |
-| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3 | ✅ 6a–6c + Dwarf 3 shipped *(6d open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
+| 6 | **Import** — any-directory recursive scan, header classification, holding area, Dwarf 3, N.I.N.A./PINS | ✅ 6a–6c + Dwarf 3 + N.I.N.A. (#203 part 1) shipped *(6d + #203 part 2 open [↓](#6d--multi-device-device-under-target--dwarf-remainders))* | [`DONE.md`](DONE.md) |
 | 8 | **Publishing** — selective static-site export + publisher registry + GitHub Pages deploy | ✅ 8a + GitHub Pages shipped *(more targets open [↓](#8--publishing-remaining-targets))* | [`DONE.md`](DONE.md) |
 | 10 | **Library backup** — mirrored + pooled snapshots, verify, selective restore, auto-backup, offsite S3 | ✅ shipped, incl. two slots (local + cloud) side by side *(N-destination list → #93)* | [`DONE.md`](DONE.md) |
 | 7 | **Processing & curation UX** | 🔶 #17 hinting + curation gallery shipped; #18/#19 open [↓](#7--processing--curation-ux-remainder) | [`DONE.md`](DONE.md), [`BUGS.md`](BUGS.md) |
@@ -33,6 +33,79 @@ catalog, track, ingest, and process-prep a smart-telescope deep-sky collection.
 | 13 | **Image annotation** (plate-solved object overlays; needs ASTAP) | ⬜ open — scoped, agreed with upstream ([#98](https://github.com/mjm1138/m110/issues/98)) | [↓](#13--image-annotation-plate-solved-object-overlays) |
 | 9 | **Import triage toolkit** (header inspector, plate-solving) | ⬜ deferred | [↓](#9--full-import-triage-toolkit-deferred) |
 | 3 | **Equipment monitor** | 💤 deprioritized (vision revised) | [↓](#3--equipment-monitor-deprioritized) |
+
+---
+
+## 1.0 release criteria
+
+*Drafted 2026-10-22.* **1.0 is a stability promise, not a feature milestone.** The
+feature surface is already there: everything ✅ above, including session planning,
+which the original beta plan had deferred until after beta. What 1.0 adds is a
+commitment: a store you can upgrade and restore across without loss, shipped flows
+that give correct output, and installers verified on every platform we ship. So the
+gate is a hardening list plus a freeze, not more milestones.
+
+### The freeze
+
+- Once 0.3.0-beta.9 is cut, the next cycle is a **freeze**: the blockers below and
+  regression fixes only. No new rail pages, no new top-level store directories, no
+  `.store_version` bump.
+- Tag 1.0 after **one or two consecutive betas with no store-shape change** and no
+  open blocker.
+- **Draco does not gate 1.0.** Device-level calibration on `main` is additive, and the
+  header-stamp shim lives only on `feature/draco`. But Draco work must not land store
+  changes during the freeze; it ships in 1.x.
+
+### Blockers
+
+Each one points at its full entry in [`BUGS.md`](BUGS.md).
+
+**Data safety**
+- [ ] **#40d — Restore has no store-version gate** *(Backup & restore)*. Restoring an
+  older snapshot into a newer store must migrate it or refuse. Highest priority:
+  1.0 implicitly promises that your data survives an upgrade.
+- [ ] **No user-facing way to merge or rename a capture target** *(Import)*. A
+  mis-filed capture has no way out today. That's a hole in the data model, not polish.
+
+**Correctness of shipped flows**
+- [ ] **A library re-match leaves the previous master linked in a Siril job**
+  *(Processing)*.
+- [ ] **The library flat is matched per target, not per filter job** *(Processing)*.
+  Both give wrong output in device-library calibration, which landed after
+  0.3.0-beta.8.
+
+**Supportability**
+- [ ] **A failed stack's log is destroyed by the next attempt** *(Processing)*. Beta
+  reports need that log.
+
+**Security & release integrity**
+- [ ] **F8 — pin `uranometria`** to a SHA or tag *(Security)*. BUGS rates it Medium
+  once packaged builds install it the same way, and `release.yml` now does (the Linux
+  and Windows jobs), so the trigger has fired. One line in each of `ci.yml` and
+  `release.yml`.
+- [ ] **F9 — guard `objects.write_journal` at the writer** *(Security)*. Latent and
+  cheap; same shape as the fixed F1.
+- [ ] **`release.py` smoke phase can watch the wrong run** *(Packaging & release)*. It
+  has to fail closed before a 1.0 tag relies on it.
+
+**Platform QE**
+- [ ] **Smoke-test the packaged installers on real hardware for all three platforms**,
+  recorded in [`TESTING.md`](TESTING.md): the notarized macOS `.dmg`, the Linux
+  AppImage on an x86_64 desktop distro (so far only a from-source ARM run on a Pi 5 is
+  confirmed), and the Windows installer on a real Windows machine.
+
+### Explicitly not 1.0
+
+Items **2, 9, 11, 12c–e, 13, 15**, assistant **M1/M2**, the N-destination backup list,
+publishing targets beyond GitHub Pages, **#18**, **#21** refinements and **#45**
+guidance all land in 1.x. None is a promise 1.0 makes.
+
+### Open questions
+
+- **Windows code signing.** The beta decision was "ship unsigned, revisit on uptake."
+  Does the 1.0 label change that?
+- **Is there enough feedback?** Is beta usage broad enough to call the surface
+  validated, or should the freeze cycle recruit more testers?
 
 ---
 
@@ -247,23 +320,54 @@ artifact every time a cheap one is redone.
 - **AstroWizard bundles its own hardened Python** (PyInstaller, `Python.framework`).
   Launch it through `launch._launch_macos` / `_child_env` like Siril, or the
   two-Qt and responsible-process failures apply.
-- **StackingWizard still takes no arguments** — re-verified against the 2026.08.27
-  and again the 2026.10.05 build; no `argv`, no document types, no URL types, no Apple events. Its folder
+- **StackingWizard still takes no arguments** — re-verified against the 2026.08.27,
+  2026.10.05, 2026.10.20, 2026.10.25 and 2026.10.31 builds; no `argv`, no document types, no URL types, and
+  no Apple event that carries a path (2026.10.20 added `::tk::mac::Quit` and
+  `::tk::mac::ReopenApplication` only — see [`BUGS.md`](BUGS.md)). Its folder
   picker seeds `initialdir` from `last_folder` in
   `~/Library/Application Support/StackingWizard/settings.json`, read once in
   `__init__`, which is the only seam for a folder hand-off and is another app's
   private config. Open item + the trade-off in [`BUGS.md`](BUGS.md) → Processing &
   curation UX; developer outreach pending before we reach into it.
-  **Feature request to be sent (2026-10-05)** to the developer (Luke, Lukomatico —
-  `wizard@lukomatico.com`, the address in the app's own footer): accept a folder as
-  the first argument (`StackingWizard <folder>`, or `--folder`), treated as if chosen
-  in the picker; optionally a per-run way to supply Workbench settings (JSON/flags)
-  without touching the saved defaults. Decision: **no `last_folder` pre-seed** —
-  wait for the upstream argument. When it ships, fill `workdir_args` in
-  `launch._TOOLS["stackingwizard"]` and drop the reveal-the-folder workaround.
+  **Feature request sent 2026-10-05, unanswered as of 2026-11-03** — to the developer
+  (Luke, Lukomatico — `wizard@lukomatico.com`, the address in the app's own footer):
+  accept a folder as the first argument (`StackingWizard <folder>`, or `--folder`),
+  treated as if chosen in the picker; optionally a per-run way to supply Workbench
+  settings (JSON/flags) without touching the saved defaults. Four builds have shipped
+  since (10.20, 10.25, 10.31 among them) with no sign of it, and their site says
+  feedback is read but not answered — so read the silence as neither refusal nor
+  queue position, and **don't re-send or chase it**.
+
+  **Status: shelved, not blocked.** Decision stands — **no `last_folder` pre-seed**;
+  the folder hand-off waits. This costs us only the reveal-the-folder step, which
+  works, so there is nothing to design around in the meantime. The triggers to watch
+  for, any one of which reopens this: a build whose `Info.plist` gains
+  `CFBundleDocumentTypes`/`CFBundleURLTypes`, whose code gains `argv` or
+  `::tk::mac::OpenDocument`; the parent-folder line leaving their published "not built
+  yet" list; or AstroWizard's 2026-10-31 `odoc` support propagating to its sibling.
+  When one lands, fill `workdir_args` in `launch._TOOLS["stackingwizard"]` and drop
+  the reveal-the-folder workaround. The check itself is cheap and the method is
+  recorded in [`BUGS.md`](BUGS.md) — one extract-and-scan per release, no need to
+  re-derive the ruled-out surface.
   Also noted in the 2026.10.05 build: Workbench knobs persist under a `workbench`
   key in the same `settings.json` (global, not per folder); the "set aside" folder
   (`SET_ASIDE_DIR`) must be skipped by any M110 walk of a StackingWizard folder.
+  New in the 2026.10.20 build: StackingWizard's Handoff page has its own **Send to
+  AstroWizard**, launching it with `open -a … --args <stack>` (the same route M110's
+  `launch_with_file` uses, so that route is confirmed). A user can now go
+  StackingWizard → AstroWizard without the stack passing through M110's
+  `astrowizard/` sandbox, so the import side must not assume M110 made the handoff.
+  **Two things in the 2026.10.31 build strengthen the request, if it has not gone
+  yet.** First, the *sibling app shipped the affordance on the same day*:
+  AstroWizard's 2026-10-31 build added "drop a FITS, TIFF or XISF on AstroWizard's
+  Dock icon, or open one with it from the Finder" — the `odoc` route StackingWizard
+  still lacks, from the same developer, so the ask becomes "do for StackingWizard
+  what you just did for AstroWizard." Second, their **own** published "Not built
+  yet" list on
+  [stackingwizard.html](https://astrowizard.lukomatico.com/stackingwizard.html) now
+  carries *"Pointing at a parent folder and letting the wizard handle each night
+  inside it"* — our use case, acknowledged upstream as a known gap, which makes this
+  a vote for something already on their list rather than a new request.
 - **A sandbox that hardlinks a directory of frames must say so in
   `config.SANDBOX_LINKED_INPUTS`.** AstroWizard as scoped links a single file —
   `stacking.apply_handoff` hardlinks the stack into `astrowizard/` root — so its
@@ -546,7 +650,12 @@ output stops at the field guide, which is unaffected.
 
 **Permission requested 2026-09-28** — asked ZWO whether a supported plan-import
 interface already exists or is planned and, if not, whether they would publish
-one or grant written permission on terms they set. Awaiting a reply.
+one or grant written permission on terms they set. **No substantive reply (as of
+2026-10-19):** ZWO sent only an automated acknowledgement (ticket 61063) and,
+days later, a satisfaction survey — the ticket appears to have been closed
+without an answer. That is silence, not a refusal, so 2b stays shelved on the
+same terms as above. A possible next step is a neutral question on ZWO's user
+forum asking whether a documented plan format is on the Seestar roadmap.
 
 **2c — Dwarf plan hand-off** — *surveyed 2026-09-29; same deferral as the SSC
 option above.* The equivalent question for DwarfLab, asked because the answer
@@ -588,9 +697,13 @@ the noted refinements, none blocking:
   is on: past-peak-and-falling (closing opportunity) outranks
   rising-toward-peak at the same altitude (sign+slope of dark-window peak
   altitude a few nights out — a finer partner to `nights_to_close`).
-- **Per-object integration target.** A user-set override of the type-default
-  deep threshold (object detail carries it; badge + scorer read it), and a
-  **v2 surface-brightness basis** (mag + size) refining the per-type table.
+- ✅ **Per-object integration goals** ([#184](https://github.com/mjm1138/m110/issues/184),
+  done 2026-10-27, three PRs — see [`DONE.md`](DONE.md)): goals per (object,
+  telescope model) with f-ratio-scaled defaults, the three-state status, goal
+  lists scoped to one telescope, ranking for the active telescope,
+  `propose_integration_goal`, and the editors (detail pane, Manage goals,
+  Devices-page optics). Still open: a **v2 surface-brightness basis** (mag + size)
+  refining the per-type table.
 - Data/robustness follow-ups tracked in BUGS: **#38b** (reference V-mag audit),
   **#40b/#40d**. (#44, the assistant foundation, shipped with item 4 M0.)
 
@@ -927,6 +1040,18 @@ per-object lookup misses degrade to warning strings.
   explicitly, and we can enforce it for free: `hints.is_intermediate_name`
   already recognises `starless` / `starmask`, so those tiles simply don't offer
   the action.
+- **A drizzled StackingWizard stack arrives with no WCS, and says so.** Its
+  2026.10.31 build (Beta 4.5 onward) offers **Drizzle 2x**, and a drizzled stack's
+  header divides the per-pixel cards (`XPIXSZ`/`PIXSIZE*`/`CD*`/`CDELT*`) by the
+  factor while **dropping `CRPIX*`/`CRVAL*`/`CTYPE*` entirely** — deliberately,
+  since the drizzled canvas is wider than the frame those cards described and a
+  plausible-looking wrong WCS misleads worse than none (their note cites a user
+  whose drizzled stack would not solve where the plain one did). `RA`/`DEC` stay,
+  and the stack is stamped `DRZWCS` plus `DRIZZLE` (output pixels per frame pixel).
+  So this is a *solve-from-scratch* input, not a re-use-the-header one: `DRZWCS` is
+  a reliable tell, the surviving `RA`/`DEC` still feed the pointing hint, and the
+  factor matters if we ever cache a solve against pixel scale. Siril's own drizzle
+  (`siril.drizzle_for`, 1.5×) is a separate convention — don't assume one factor.
 - **Online vs offline.** Field-star identity comes from CDS (VizieR Gaia DR3
   for magnitudes/distances, Tycho-2 designations, SIMBAD named stars).
   `allow_online=False` degrades to bundled-catalog DSOs only — wire it to the
@@ -1023,7 +1148,7 @@ remaining device-source gaps collect here:
 - **DwarfLab Draco** *(in progress on `feature/draco` — the device ships Nov–Dec
   2026; one pre-release sample so far)*. Landed: the `<model>_RAW_TELE|WIDE_`
   session-folder recognizer (`ingest._SESSION_DIR_RE`), a `draco` device preset
-  (300 s / gain 60, soft 80° — UNVERIFIED), `devices.py` (TELESCOP → folder name /
+  (300 s / gain 60, soft 80°; optics 90 mm / 340 mm f/3.8 for the integration-goal speed factor — UNVERIFIED), `devices.py` (TELESCOP → folder name /
   preset key), and **pointing-named targets**: a placeholder `OBJECT` whose RA/DEC
   sits within `IDENTIFY_TOL_DEG` of a catalog object is routed to it in the
   preview with an "identified by pointing" note (`ingest._object_by_pointing`).
@@ -1079,9 +1204,92 @@ remaining device-source gaps collect here:
   `Duo-Band`) — relevant to the still-empty `FILTER_INDEX["draco"]`; the stack's
   filename stamp is the session *start* and `DATE-OBS` its *end*, same clock;
   `MACADDR` tells units apart (both test units say `TELESCOP 'Draco'`).
-  Follow-up proposed for `main`: rename `seestar-stacks/` to a device-neutral name.
+  The device-neutral tier name followed on `main` (#205, `device-stacks/`, store v6)
+  and was merged here 2026-11-10.
+- **Capture software M110 doesn't know — #203.** Part 1 **landed** in
+  `feature/nina-import`: capture profiles (`capture_profiles.py`, header-matched
+  built-ins for N.I.N.A., the Seestar app, the Dwarf app and generic FITS) decide the
+  device key, whether a frame was dark-subtracted before saving, and the object/mosaic
+  name; N.I.N.A./PINS imports by header whatever its file pattern; raw calibration sets
+  in the device library, built into masters by `m110-stack`. Open:
+  - **Part 2: user-editable profiles** — `import_profiles.toml` in the store (same
+    `CaptureProfile` shape), the profile that matched shown per group in the Import
+    preview, and "save this retarget as a rule" alongside the alias. For SharpCap,
+    ASIAIR, KStars/Ekos, APT, and any N.I.N.A. setup the built-in doesn't cover.
+  - Per-subset calibration for mixed targets **landed** with it: in m110-stack
+    (`calibration_subsets`), and for the Naztronomy script as split job folders.
+  - **Stackhammer hand-over: a masters manifest** (Mike, 2026-11-07, over "the
+    whole recipe"). **M110's side landed** with it: every Siril prep writes
+    `siril/.m110_calibration.json` (`siril.calibration_manifest`, schema in
+    DATA_MODEL.md) — per job folder, its lights by name and the master or raw set
+    matched for them, with the reasons. Stackhammer's `prepare` recomputes the
+    subsets from headers, refuses a disagreement, checks each master and writes its
+    own Siril commands (stackhammer#22, decision 1; its M3+ work).
+  - **Dark flats (not yet handled).** N.I.N.A.'s flat wizard can save dark flats
+    (`IMAGETYP = 'DARKFLAT'`, exposure matched to the flats), which Siril uses in
+    place of a bias to calibrate flats. M110 has no `DARKFLAT` kind, library tier
+    or manifest tier yet. When flats work starts: route them on import, match them
+    by the flats' exposure, and add a `darkflats` tier (manifest v2). No flats in
+    Mike's data yet, so not blocking (raised by the Stackhammer spike, 2026-11-07).
 - **`DWARF_DARK/` routing** → darks tier (`CALI_FRAME/` is handled above; the
   library it feeds is on `main`, #168).
+- **Seestar dark library** — slice 1 **shipped 2026-10-18** (`feature/seestar-darks`,
+  see [`DONE.md`](DONE.md)): `darklibrary/` imports into `Calibration/<S50_serial>/darks/`,
+  the never-re-apply guard (`devices.darks_applied_on_device`), per-session capture
+  facts + the inferred on-device dark and its temperature gap (rule v1; `m110-stack
+  --max-dark-gap`), and a Devices view (library, captures, sensor health). This is
+  also the first per-session device record (`telescop` on every session row).
+  Follow-ups:
+  - **Confirm the trigger rule on the device** — a controlled two-target plan at
+    dusk (≥2.5 °C vs ≈1.5 °C of cooling between targets); rule v1's ≈2 °C threshold
+    and "nearest dark, held for the run" are inferred from three nights, not
+    documented by ZWO. Revise `calibration.applied_dark` (bump `DARK_RULE`) on any
+    surprise.
+  - **Cosmetic correction from the hot-pixel map** — feed the warmest master to
+    Siril's cosmetic correction to clean residual hot pixels without a second dark
+    subtraction.
+  - **Re-darking** (research): `sub + D_applied − D_matched` took a real 13.9 °C
+    M 72 sub's hot-pixel residue from −142 to −8 ADU. Opt-in, sandbox-only, never
+    `lights/`; needs the device's subtraction model confirmed first.
+  - **Open questions** (from the 2026-10-18 analysis; none blocks slice 1):
+    - *Does the firmware prune old darks?* If it does, M110's copy is the only
+      lasting record — the archive then matters more, and the Devices view should
+      say which masters are gone from the device.
+    - ~~*Does the device re-pick the nearest dark per frame or once per target
+      run?*~~ **Answered 2026-10-19 — neither: a sticky window.** It switches
+      mid-run, but only once the sensor is ≈2.5 °C off the dark in use, and only to
+      a dark within ≈2.5 °C; otherwise it keeps the current one. Shipped as **rule
+      v2** (`calibration.applied_darks`; DONE.md). Still open: switch *timing* is
+      matched to within a few minutes (the window fits anywhere in 2.4–2.6 °C, and
+      the device may decide on a smoothed or periodically sampled temperature) —
+      three observed switches can't pin it closer; more cooling runs would.
+    - *S30 / S30 Pro:* `devices.darks_applied_on_device` assumes they dark-subtract
+      on-device like the S50 (same ZWO pipeline) — unmeasured. If wrong, those users
+      silently lose dark calibration. Verify with one S30 sub + master (the same
+      hot-pixel check as the S50).
+    - *Which firmware / app version introduced the dark library?* Unknown; record it
+      so "subs before the library" can be dated and the S30 question scoped.
+    - *A real `m110-stack` run on a Seestar target* (needs Siril) — slice 1's
+      proposal was validated header-only (`build_plan`), not end to end.
+- **Devices as first-class — shipped 2026-10-21** (`feature/devices-page`): a
+  **Devices** rail page (replacing the Tools dialog); the **registry**
+  `devices.toml` (nickname, retired, model override — devices themselves are
+  discovered); sessions **split by device** (two scopes on one target/night/exposure
+  were one merged row); **per-device integration** (`totals.json` `by_device` per
+  object and folder; per-device totals + objects in `devices.json`); darks named
+  alike in both tables with cross-selection; Reveal selects the file. **Planning
+  uses the device** (`feature/planning-device`, same day): the active telescope
+  (per user, like the active site; default = most recently used) supplies the night
+  plan's start ceiling / exposure limits — its preset + per-device overrides edited
+  on the Devices page — and plans and field guides name it; the orphaned
+  `profiles/device.toml` is now only a fallback and no longer lists as a site.
+  Next: **per-object integration targets** (item 1 follow-up), which read
+  `by_device`. Still open: the
+  `Images/<target>/<device>/` path level (+ migration), and telling two Dwarf 3s
+  apart (their TELESCOP is the model string; needs `MACADDR`).
+- **Device-stack tier renamed — shipped 2026-11-10** (`feature/device-stacks`, store
+  v6): `Images/<target>/seestar-stacks/` → `device-stacks/`, since Dwarf 3 and
+  Draco stacks land there too; migrated in place, see [`DONE.md`](DONE.md).
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +
@@ -1120,7 +1328,8 @@ when extending an existing subsystem).
 
 - **MVP v0.1 — "the Library"** — 0.1a–0.1f, own data root + bootstrap, the
   image-rendering port, the two-axis store (#13), the processing-prep round-trip.
-- **0 — Navigation IA** — the 5-pane nav rail after the pre-launch 8→4 cleanup
+- **0 — Navigation IA** — the nav rail after the pre-launch 8→4 cleanup (Devices
+  added 2026-10-21 as the sixth pane)
   (Overview merged Summary+Goals; Media/Journal/Sessions absorbed into Library);
   Planning added post-beta. **Media brought up to parity** (`feature/media-first-class`):
   its own List/Grid views swapped into the Library's view segment, a detail pane,

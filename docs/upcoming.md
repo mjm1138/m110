@@ -16,9 +16,10 @@ scheduler with its altitude timeline, and saved field guides.
 **What's coming.** **Device-ready schedule export** — writing a plan straight into a
 format your telescope's automation can run (such as an SSC file for
 `seestar_alp`-style schedulers) instead of a human-readable guide only. And the
-telescope constraints for the Seestar **S30 / S30 Pro** are currently assumed to
-match the S50 — if your S30 accepts or refuses high starts differently, we'd love
-the report.
+default telescope limits for the Seestar **S30 / S30 Pro** are currently assumed to
+match the S50. You can adjust any telescope's limits on its
+**[Devices](devices.md#planning-limits)** page, and if your S30 accepts or refuses
+high starts differently, we'd love the report.
 
 ## Publishing & sharing
 

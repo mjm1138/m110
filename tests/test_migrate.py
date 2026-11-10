@@ -91,7 +91,7 @@ def test_migrate_reshapes_store(tmp_path):
     assert (t / "stacks" / "Stacked_sub.fit").is_file()
     assert (t / "stacks" / "M101_root.fit").is_file()       # root-level stack folded in
     assert (t / "darks" / "dark1.fit").is_file()            # other subdirs preserved
-    assert (t / "seestar-stacks" / "Stacked_10.fit").is_file()
+    assert (t / "device-stacks" / "Stacked_10.fit").is_file()
     assert (t / "finished" / "final.png").is_file()
 
     # media + staging → top-level siblings
@@ -165,3 +165,137 @@ def test_migrate_v3_to_v4_prunes_combined_target_objects(tmp_path):
     assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
     # idempotent
     assert migrate.migrate_store(root) is False
+
+
+def test_migrate_v4_to_v5_marks_a_retired_priorities_file(tmp_path):
+    """v4 → v5: a hand-edited priorities.toml (no longer read by anything) gets a
+    header saying so; the user's text is kept verbatim, and only once."""
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    mine = '[[priority]]\nid = "M77"\ntarget_integration_min = 420\n'
+    (internal / "priorities.toml").write_text(mine)
+    (internal / ".store_version").write_text("4")
+
+    assert migrate.migrate_store(root) is True
+    text = (internal / "priorities.toml").read_text()
+    assert text.startswith("# M110 no longer reads this file")
+    assert text.endswith(mine)
+    assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
+    (internal / ".store_version").write_text("4")      # even re-run from v4…
+    assert migrate.migrate_store(root) is False         # …it isn't prepended twice
+    assert text == (internal / "priorities.toml").read_text()
+
+
+def test_migrate_v4_to_v5_without_a_priorities_file_is_a_noop(tmp_path):
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    (internal / ".store_version").write_text("4")
+    assert migrate.migrate_store(root) is False
+    assert not (internal / "priorities.toml").exists()
+
+
+# ── v5 → v6: Images/<t>/seestar-stacks/ → device-stacks/ ─────────────────────
+
+def _v5_root(tmp_path):
+    root = tmp_path / "M110"
+    internal = root / INTERNAL
+    internal.mkdir(parents=True)
+    (internal / ".store_version").write_text("5")
+    return root, internal
+
+
+def test_migrate_v5_to_v6_renames_the_device_stack_tier(tmp_path):
+    """A v5 store's `seestar-stacks/` becomes `device-stacks/` with its contents
+    (subdirs included), the old folder is gone, a hero `.src` sidecar that named a
+    file in it is repointed, and other sidecars are left byte-for-byte."""
+    root, internal = _v5_root(tmp_path)
+    old = root / "Images" / "M42" / "seestar-stacks"
+    (old / "sub").mkdir(parents=True)
+    (old / "Stacked_10_M42.fit").write_text("stack")
+    (old / "stacked.jpg").write_text("jpg")
+    (old / "sub" / "nested.fit").write_text("nested")
+    (old / ".DS_Store").write_text("")                  # junk can't keep it alive
+    (root / "Images" / "M42" / "lights").mkdir()
+    hero = internal / "renders" / "hero"
+    hero.mkdir(parents=True)
+    (hero / "m42.src").write_text("Images/M42/seestar-stacks/stacked.jpg\nabc123")
+    (hero / "m31.src").write_text("Images/M31/finished/final.png\ndef456")
+
+    assert migrate.migrate_store(root) is True
+    new = root / "Images" / "M42" / "device-stacks"
+    assert (new / "Stacked_10_M42.fit").read_text() == "stack"
+    assert (new / "stacked.jpg").read_text() == "jpg"
+    assert (new / "sub" / "nested.fit").read_text() == "nested"
+    assert not old.exists()
+    assert (root / "Images" / "M42" / "lights").is_dir()
+    assert (hero / "m42.src").read_text() == "Images/M42/device-stacks/stacked.jpg\nabc123"
+    assert (hero / "m31.src").read_text() == "Images/M31/finished/final.png\ndef456"
+    assert (internal / ".store_version").read_text().strip() == str(migrate.STORE_VERSION)
+
+
+def test_migrate_v5_to_v6_is_idempotent_once_migrated(tmp_path):
+    """An already-migrated store (only `device-stacks/`) is untouched — whether the
+    version stamp says so or not."""
+    root, internal = _v5_root(tmp_path)
+    new = root / "Images" / "M42" / "device-stacks"
+    new.mkdir(parents=True)
+    (new / "a.fit").write_text("a")
+
+    assert migrate.migrate_store(root) is False          # nothing to rename
+    assert (new / "a.fit").read_text() == "a"
+    assert not (root / "Images" / "M42" / "seestar-stacks").exists()
+    assert migrate.migrate_store(root) is False          # stamped: short-circuits
+    (internal / ".store_version").write_text("5")
+    assert migrate.migrate_store(root) is False          # re-run from v5: still a no-op
+    assert sorted(p.name for p in new.iterdir()) == ["a.fit"]
+
+
+def test_migrate_v5_to_v6_merges_when_both_tiers_exist(tmp_path):
+    """Both folders present (an older build wrote the old one after an upgrade):
+    the contents merge without overwriting anything. A different file under a taken
+    name is kept beside it as `<stem>-2`; a byte-identical copy stays where it was
+    (nothing deleted), so the old folder survives holding just that."""
+    root, _ = _v5_root(tmp_path)
+    t = root / "Images" / "M42"
+    old, new = t / "seestar-stacks", t / "device-stacks"
+    old.mkdir(parents=True)
+    new.mkdir()
+    (new / "same.fit").write_text("identical")
+    (new / "clash.fit").write_text("newer")
+    (old / "same.fit").write_text("identical")
+    (old / "clash.fit").write_text("older")
+    (old / "only_old.fit").write_text("only")
+
+    assert migrate.migrate_store(root) is True
+    assert (new / "clash.fit").read_text() == "newer"     # never overwritten
+    assert (new / "clash-2.fit").read_text() == "older"   # kept both
+    assert (new / "only_old.fit").read_text() == "only"
+    assert (new / "same.fit").read_text() == "identical"
+    assert not (new / "same-2.fit").exists()               # no duplicate piled up
+    assert [p.name for p in old.iterdir()] == ["same.fit"]  # left, not deleted
+
+
+def test_migrate_v5_to_v6_merges_with_nothing_left_behind(tmp_path):
+    """Both present, no name collisions: everything moves and the old folder goes."""
+    root, _ = _v5_root(tmp_path)
+    t = root / "Images" / "M42"
+    old, new = t / "seestar-stacks", t / "device-stacks"
+    old.mkdir(parents=True)
+    new.mkdir()
+    (new / "b.fit").write_text("b")
+    (old / "a.fit").write_text("a")
+
+    assert migrate.migrate_store(root) is True
+    assert sorted(p.name for p in new.iterdir()) == ["a.fit", "b.fit"]
+    assert not old.exists()
+
+
+def test_v0_reshape_lands_seestar_stacks_in_device_stacks(tmp_path):
+    """The original v0 reshape goes straight to the v6 name."""
+    root = tmp_path / "M110"
+    _build_old_layout(root)
+    migrate.migrate_store(root)
+    assert (root / "Images" / "M101" / "device-stacks" / "Stacked_10.fit").is_file()
+    assert not (root / "Images" / "M101" / "seestar-stacks").exists()

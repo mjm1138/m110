@@ -32,12 +32,14 @@ makes such a target stackable with calibration.
 """
 from __future__ import annotations
 
+import re
 import statistics
 from collections import Counter
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, devices
+from . import capture_profiles, config, devices
 from .ingest import _normalize_imagetyp, _safe_segment
 
 TIERS = config.CALIBRATION_TIERS                     # ("darks", "flats", "biases")
@@ -54,6 +56,11 @@ FILTER_INDEX: dict[str, dict[str, str]] = {
 }
 
 
+DARKS_ON_DEVICE_NOTE = ("subs from this telescope are already dark-subtracted on the "
+                        "device; its library darks are kept for reference and are "
+                        "never applied again")
+
+
 @dataclass
 class MasterInfo:
     path: Path
@@ -64,6 +71,17 @@ class MasterInfo:
     temp_c: float | None = None
     filter: str | None = None
     ncombine: int | None = None
+    # A RAW calibration frame (a capture program's single dark/flat/bias, e.g.
+    # N.I.N.A.'s), not a master: `raw_sets` groups them into candidate sets.
+    raw: bool = False
+    night: str | None = None          # local capture night (raw frames only)
+    # For a raw SET candidate (`raw_sets`): every member frame. `path` is then the
+    # first member, `temp_c` the median and `ncombine` the member count.
+    frames: tuple = ()
+
+    @property
+    def is_set(self) -> bool:
+        return bool(self.frames)
 
 
 @dataclass
@@ -73,11 +91,22 @@ class MatchResult:
     biases: Path | None = None
     notes: list = field(default_factory=list)
     device: str | None = None
+    # {tier: [raw frame paths]} when the tier matched a raw SET rather than a
+    # master: the consumer builds the master (the Naztronomy script in Siril prep,
+    # m110-stack's prelude). The tier's own field then names the set's first frame.
+    sets: dict = field(default_factory=dict)
+    # {tier: MasterInfo} — what each matched tier was chosen from (its header facts,
+    # for the Stackhammer calibration manifest, `siril.calibration_manifest`)
+    chosen: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Path]:
-        """{tier: master path} for the tiers that matched."""
+        """{tier: master path} for the tiers that matched (a raw set's first frame)."""
         return {t: p for t, p in (("darks", self.darks), ("flats", self.flats),
                                   ("biases", self.biases)) if p is not None}
+
+    def files(self) -> dict[str, list[Path]]:
+        """{tier: [paths]} for the tiers that matched: one master, or a raw set."""
+        return {t: list(self.sets.get(t) or [p]) for t, p in self.as_dict().items()}
 
     def __bool__(self) -> bool:
         return bool(self.as_dict())
@@ -90,15 +119,41 @@ def _num(v, cast=float):
         return None
 
 
+def _night(h) -> str | None:
+    """The local capture night a frame belongs to (``YYYY-MM-DD`` of the evening):
+    DATE-LOC (N.I.N.A.) else DATE-OBS, shifted back 12 h so a 05:00 dark files under
+    the evening its night began."""
+    from datetime import timedelta
+    raw = h.get("DATE-LOC") or h.get("DATE-OBS")
+    if not raw:
+        return None
+    try:
+        t = datetime.fromisoformat(str(raw).strip()[:19])
+    except ValueError:
+        return None
+    return (t - timedelta(hours=12)).date().isoformat()
+
+
+def _is_raw(h, ncombine: int | None) -> bool:
+    """A single calibration exposure rather than a master — said POSITIVELY by the
+    header: a typed frame (IMAGETYP 'DARK', not 'Master Dark'), no frame count above
+    one, and a capture time. An untyped or uncounted file stays a master (the
+    folder is trusted, as before)."""
+    typ = str(h.get("IMAGETYP") or "").strip().lower()
+    return (bool(typ) and not typ.startswith("master") and (ncombine or 0) <= 1
+            and bool(h.get("DATE-OBS")))
+
+
 def frame_facts(path) -> dict | None:
     """The header facts calibration matching keys on, or None if unreadable.
-    ``temp_c`` is CCD-TEMP, else DET-TEMP (what some DwarfLab devices write)."""
+    ``temp_c`` is CCD-TEMP, else DET-TEMP (what some DwarfLab devices write);
+    ``device`` / ``darks_applied`` / ``capture`` come from the capture profile
+    (capture_profiles.facts)."""
     try:
         from astropy.io import fits
         h = fits.getheader(str(path))
     except Exception:
         return None
-    filt = h.get("FILTER")
     tel = h.get("TELESCOP")
     temp = h.get("CCD-TEMP")
     if temp is None:
@@ -109,10 +164,16 @@ def frame_facts(path) -> dict | None:
                         else h.get("EXPOSURE")),
         "gain": _num(h.get("GAIN"), int),
         "binning": _num(h.get("XBINNING"), int),
-        "temp_c": _num(temp),
-        "filter": (str(filt).strip() or None) if filt not in (None, "") else None,
-        "ncombine": _num(h.get("NCOMBINE"), int),
+        # rounded: a float32 card reads 13.8999996185303 for the 13.9 °C it means
+        "temp_c": round(t, 2) if (t := _num(temp)) is not None else None,
+        "filter": capture_profiles.filter_name(h),       # profile renames applied
+        # frames averaged into a master: NCOMBINE, or the Seestar's STACKCNT
+        "ncombine": (ncomb := _num(h.get("NCOMBINE") if h.get("NCOMBINE") is not None
+                                   else h.get("STACKCNT"), int)),
         "telescop": (str(tel).strip() or None) if tel not in (None, "") else None,
+        "raw": _is_raw(h, ncomb),
+        "night": _night(h),
+        **capture_profiles.facts(h),
     }
 
 
@@ -140,9 +201,63 @@ def library(device: str) -> dict[str, list[MasterInfo]]:
             masters.append(MasterInfo(
                 path=f, tier=tier, exptime=facts["exptime"], gain=facts["gain"],
                 binning=facts["binning"], temp_c=facts["temp_c"],
-                filter=facts["filter"], ncombine=facts["ncombine"]))
+                filter=facts["filter"], ncombine=facts["ncombine"],
+                raw=facts["raw"], night=facts["night"] if facts["raw"] else None))
         if masters:
             out[tier] = masters
+    return out
+
+
+# Raw frames whose sensor temperatures sit further apart than this are separate
+# sets even within one night (a dark run started warm and finished cold).
+SET_TEMP_SPLIT_C = 2.5
+
+
+def raw_sets(frames: list[MasterInfo]) -> list[MasterInfo]:
+    """Group a tier's RAW frames into candidate sets — same exposure, gain, binning,
+    filter (flats only: a dark's FILTER is the wheel's 'Dark' slot) and capture
+    night, split where sorted temperatures jump more than `SET_TEMP_SPLIT_C`. Each
+    set is one `MasterInfo` with ``frames`` = its members, ``temp_c`` = their median
+    and ``ncombine`` = their count. Deterministic (sorted by key, then name)."""
+    groups: dict[tuple, list[MasterInfo]] = {}
+    for m in frames:
+        if not m.raw:
+            continue
+        filt = m.filter if m.tier == "flats" else None
+        groups.setdefault((m.exptime, m.gain, m.binning, filt, m.night), []).append(m)
+    out: list[MasterInfo] = []
+    for key in sorted(groups, key=lambda k: tuple("" if v is None else str(v) for v in k)):
+        members = sorted(groups[key], key=lambda m: (m.temp_c is None, m.temp_c or 0.0,
+                                                     m.path.name))
+        runs: list[list[MasterInfo]] = [[]]
+        for m in members:
+            prev = runs[-1][-1] if runs[-1] else None
+            if (prev is not None and m.temp_c is not None and prev.temp_c is not None
+                    and m.temp_c - prev.temp_c > SET_TEMP_SPLIT_C):
+                runs.append([])
+            runs[-1].append(m)
+        for run in runs:
+            run.sort(key=lambda m: m.path.name)
+            temps = [m.temp_c for m in run if m.temp_c is not None]
+            first = run[0]
+            out.append(MasterInfo(
+                path=first.path, tier=first.tier, exptime=first.exptime,
+                gain=first.gain, binning=first.binning,
+                temp_c=round(statistics.median(temps), 2) if temps else None,
+                filter=first.filter, ncombine=len(run), raw=True, night=first.night,
+                frames=tuple(m.path for m in run)))
+    return out
+
+
+def candidates(frames: list[MasterInfo]) -> list[MasterInfo]:
+    """What a tier can be matched against: its masters, plus its raw frames grouped
+    into sets (`raw_sets`). A one-frame set is used as it is — the same as a master."""
+    out = [m for m in frames if not m.raw]
+    for st in raw_sets(frames):
+        if len(st.frames) == 1:
+            out.append(MasterInfo(**{**st.__dict__, "frames": ()}))
+        else:
+            out.append(st)
     return out
 
 
@@ -171,12 +286,24 @@ def _same(a, b, tol=0.0) -> bool:
     return abs(a - b) <= tol
 
 
+def _take(res: MatchResult, tier: str, m: MasterInfo) -> None:
+    """Record `m` as the tier's match; a raw set also lists its frames + a note."""
+    setattr(res, tier, m.path)
+    res.chosen[tier] = m
+    if m.is_set:
+        res.sets[tier] = list(m.frames)
+        temp = f", {m.temp_c:g} °C" if m.temp_c is not None else ""
+        res.notes.append(f"{tier[:-1]}: {len(m.frames)} raw frames from "
+                         f"{m.night or 'an undated night'}{temp} — a master is built "
+                         "from them")
+
+
 def match_masters(facts: dict, device: str) -> MatchResult:
     """The one master per tier for lights with `facts` (``exptime``, ``gain``,
     ``binning``, ``temp_c``, ``filter``) from `device`'s library. Missing tiers
     are None; every non-match and every judgement call lands in ``notes``."""
     res = MatchResult(device=device)
-    lib = library(device)
+    lib = {t: candidates(ms) for t, ms in library(device).items()}
     if not lib:
         res.notes.append(f"no calibration library for {device} "
                          f"(Calibration/{device}/ is empty)")
@@ -186,19 +313,28 @@ def match_masters(facts: dict, device: str) -> MatchResult:
     what = (f"{exp:g} s" if exp is not None else "? s") + \
            f", gain {gain if gain is not None else '?'}, bin {binning if binning is not None else '?'}"
 
-    # dark: exact exposure/gain/binning, nearest temperature
+    # dark: exact exposure/gain/binning, nearest temperature — unless the device
+    # already subtracted one before saving the subs (devices.darks_applied_on_device)
     darks = [m for m in lib.get("darks", [])
              if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
-    if darks:
+    # Per frame, by capture path (capture_profiles): the same S50 dark-subtracts
+    # through its own app and not under N.I.N.A. Facts without the key (an older
+    # caller) fall back to the telescope model.
+    on_device = (bool(facts["darks_applied"]) if facts.get("darks_applied") is not None
+                 else devices.darks_applied_on_device(device))
+    if on_device:
+        res.notes.append(DARKS_ON_DEVICE_NOTE)
+    elif darks:
         def _rank(m: MasterInfo):
             dt = abs(m.temp_c - temp) if (m.temp_c is not None and temp is not None) else 999.0
-            return (dt, -(m.ncombine or 0), m.path.name)
+            return (dt, m.is_set, -(m.ncombine or 0), m.path.name)   # tie → a master
         best = min(darks, key=_rank)
-        res.darks = best.path
+        _take(res, "darks", best)
         if best.temp_c is not None and temp is not None:
             dt = best.temp_c - temp
             if abs(dt) > 5:
-                res.notes.append(f"nearest master dark is {abs(dt):.0f} °C "
+                res.notes.append(f"nearest {'raw dark set' if best.is_set else 'master dark'}"
+                                 f" is {abs(dt):.0f} °C "
                                  f"{'warmer' if dt > 0 else 'cooler'} than the lights "
                                  f"({best.temp_c:g} vs {temp:g} °C)")
         elif temp is None:
@@ -215,8 +351,8 @@ def match_masters(facts: dict, device: str) -> MatchResult:
     if biases:
         same_gain = [m for m in biases if m.gain == gain]
         pool = same_gain or biases
-        pool.sort(key=lambda m: m.path.name)
-        res.biases = pool[0].path
+        pool.sort(key=lambda m: (m.is_set, m.path.name))      # a master first
+        _take(res, "biases", pool[0])
         if not same_gain:
             res.notes.append(f"no master bias at gain {gain}; using {pool[0].path.name} "
                              f"(gain {pool[0].gain}) — the device's bias/flat gain scale "
@@ -225,14 +361,18 @@ def match_masters(facts: dict, device: str) -> MatchResult:
             res.notes.append(f"{len(pool)} master biases match; using {pool[0].path.name}")
     elif lib.get("biases"):
         res.notes.append(f"no master bias at bin {binning}")
-    else:
+    elif not on_device:          # a darks-only Seestar library has no bias tier by design
         res.notes.append(f"no master bias in the {device} library")
 
     # flat: binning + a filter that resolves to the lights' filter, unambiguous
     flats_bin = [m for m in lib.get("flats", []) if m.binning == binning]
     flats = [m for m in flats_bin if filter_matches(filt, m.filter, device)]
+    if len(flats) > 1 and any(not m.raw for m in flats):
+        flats = [m for m in flats if not m.raw]                # a master over raw sets
+    if len(flats) > 1 and all(m.is_set for m in flats):
+        flats = [max(flats, key=lambda m: (m.night or "", m.ncombine or 0))]  # newest
     if len(flats) == 1:
-        res.flats = flats[0].path
+        _take(res, "flats", flats[0])
     elif len(flats) > 1:
         names = ", ".join(m.filter or m.path.name for m in flats)
         res.notes.append(f"{len(flats)} master flats could apply ({names}); "
@@ -244,7 +384,7 @@ def match_masters(facts: dict, device: str) -> MatchResult:
                          "unverified, so no flat was linked")
     elif lib.get("flats"):
         res.notes.append(f"no master flat at bin {binning}")
-    else:
+    elif not on_device:
         res.notes.append(f"no master flats in the {device} library")
     return res
 
@@ -257,14 +397,28 @@ def facts_from_frames(frames: list[dict]) -> dict:
     its median temperature, its most common filter, the first telescope seen.
     ``mixed`` says whether more than one group was present, and ``groups`` how
     many frames each had; ``telescopes`` lists every distinct TELESCOP (more
-    than one is refused by `match_for_facts`)."""
+    than one is refused by `match_for_facts`). ``device`` / ``devices`` are the
+    capture-profile device keys (``device`` per frame, else ``folder_name`` of its
+    TELESCOP); ``darks_applied`` is the frames' shared per-frame flag, and
+    ``mixed_capture`` says some were dark-subtracted before saving and some not
+    (Seestar-app subs beside N.I.N.A. subs) — refused like mixed settings."""
+    def _dev(f):
+        return f.get("device") or (devices.folder_name(f["telescop"])
+                                   if f.get("telescop") else None)
+    flags = {bool(f["darks_applied"]) for f in frames
+             if f.get("darks_applied") is not None}
+    # a frame that SAYS it can't tell (key present, value None) — not an older
+    # caller that never passed the key
+    unknown = sum(1 for f in frames if "darks_applied" in f and f["darks_applied"] is None)
+    devs = sorted({d for d in map(_dev, frames) if d})
     groups: Counter = Counter()
     for f in frames:
         groups[(f.get("exptime"), f.get("gain"), f.get("binning"))] += 1
     if not groups:
         return {"exptime": None, "gain": None, "binning": None, "temp_c": None,
                 "filter": None, "telescop": None, "mixed": False, "groups": {},
-                "telescopes": []}
+                "telescopes": [], "device": None, "devices": [],
+                "darks_applied": None, "mixed_capture": False, "capture_unknown": 0}
     (exp, gain, binning), _n = groups.most_common(1)[0]
     members = [f for f in frames
                if (f.get("exptime"), f.get("gain"), f.get("binning")) == (exp, gain, binning)]
@@ -279,6 +433,11 @@ def facts_from_frames(frames: list[dict]) -> dict:
         "mixed": len(groups) > 1,
         "groups": {f"{k[0]}s/g{k[1]}/b{k[2]}": n for k, n in groups.items()},
         "telescopes": sorted({f["telescop"] for f in frames if f.get("telescop")}),
+        "device": next((d for d in map(_dev, frames) if d), None),
+        "devices": devs,
+        "darks_applied": (next(iter(flags)) if len(flags) == 1 and not unknown else None),
+        "mixed_capture": len(flags) > 1,
+        "capture_unknown": unknown,
     }
 
 
@@ -302,23 +461,37 @@ def target_facts(target: str, sample: int = 24) -> dict:
 
 
 def device_for_target(target: str) -> str | None:
-    """The telescope a target was shot with — its subs' ``TELESCOP``, as the
-    library folder name — or None when no sub says."""
-    tel = target_facts(target, sample=3).get("telescop")
-    return devices.folder_name(tel) if tel else None
+    """The telescope a target was shot with — its subs' device key (the library
+    folder name, capture_profiles.device_key) — or None when no sub says."""
+    return target_facts(target, sample=3).get("device")
 
 
 def match_for_facts(facts: dict, device: str | None) -> MatchResult:
     """`match_masters` with the two refusals in front: no device, or mixed
     capture settings (which would silently calibrate half the frames wrong)."""
     if not device:
-        return MatchResult(notes=["lights carry no TELESCOP header, so no device "
-                                  "library can be chosen"])
-    if len(facts.get("telescopes") or []) > 1:
+        return MatchResult(notes=["lights name no telescope (no TELESCOP/INSTRUME "
+                                  "header), so no device library can be chosen"])
+    many = facts.get("devices") or facts.get("telescopes") or []
+    if len(many) > 1:
         return MatchResult(device=device, notes=[
-            f"frames from more than one telescope ({', '.join(facts['telescopes'])})"
+            f"frames from more than one telescope ({', '.join(many)})"
             " — each has its own calibration library; stack them separately or "
             "add per-target darks/flats/biases"])
+    if facts.get("capture_unknown"):
+        n = facts["capture_unknown"]
+        return MatchResult(device=device, notes=[
+            f"can't tell whether {n} frame{'s' if n != 1 else ''} came off the telescope "
+            "already dark-subtracted: a Seestar's own app writes CREATOR and BIAS, "
+            "other capture software writes SWCREATE, and these carry none of the "
+            "three — so no calibration was chosen rather than guess. Which "
+            "software saved them?"])
+    if facts.get("mixed_capture"):
+        return MatchResult(device=device, notes=[
+            "frames that were dark-subtracted when saved (the telescope's own app) "
+            "mixed with frames that were not (other capture software, e.g. N.I.N.A.)"
+            " — no one dark suits both. m110-stack calibrates each set with its "
+            "own match and merges them; the Naztronomy script cannot"])
     if facts.get("mixed"):
         groups = ", ".join(f"{k} ×{n}" for k, n in facts["groups"].items())
         return MatchResult(device=device, notes=[
@@ -331,5 +504,335 @@ def match_for_facts(facts: dict, device: str | None) -> MatchResult:
 def match_for_target(target: str) -> MatchResult:
     """The library masters for a target's lights (prep-time entry point)."""
     facts = target_facts(target)
-    tel = facts.get("telescop")
-    return match_for_facts(facts, devices.folder_name(tel) if tel else None)
+    return match_for_facts(facts, facts.get("device"))
+
+
+# ── device-applied darks: which master a capture got, and how far off it was ──
+# A Seestar subtracts a dark on the device before it saves a sub
+# (devices.darks_applied_on_device), choosing from its own dark library. Nothing
+# in a sub's header says which dark, so it is INFERRED (rule v2, measured on an
+# S50 2026-10-15…18, DONE.md): at the start of each target run the device uses the
+# library dark at the same exposure/gain/binning whose temperature is nearest the
+# sensor's, taking a new one first when none is within ~2 °C. During the run the
+# choice is *sticky*: it keeps the current dark while the sensor stays within
+# `DARK_WINDOW_C` of it, and once it drifts further, switches to the nearest dark
+# that IS within the window — or, when none is, keeps the current one (it never
+# takes a dark mid-run). Rule v1 assumed no mid-run switch; real C 6 runs showed
+# 24.9→23.2 at 22.1 °C and 23.2→13.9 at ≈16.2 °C. The gap between a sub's CCD-TEMP
+# and the dark in use is the quality signal: hot pixels come out over- or
+# under-subtracted in proportion.
+#
+# The Seestar's masters carry no DATE-OBS, so *when* a dark existed is read from
+# the device's own filename clock — `device_clock`, the ONE filename-time parser
+# for this, compared only with the lights' filename clock (same device, both local
+# time; no timezone arithmetic) and corroborated by temperature.
+
+DARK_RULE = "v2"
+DARK_WINDOW_C = 2.5            # the device's mid-run switching window (rule v2)
+DARK_GAP_WARN_C = 3.0          # gap above which the hot-pixel residue is visible
+_CONFIRM_WINDOW_S = 10 * 60    # a dark this soon before the run was made for it
+_CONFIRM_TEMP_C = 1.0          # …if it matches the run's starting temperature
+# Device-clock gap that separates two runs of one target. Generous on purpose: a
+# plan's frames of one target are one run (a cloud pause must not look like a new
+# target start, which would wrongly re-pick the dark); nights are hours apart.
+RUN_BREAK_S = 2 * 60 * 60
+
+_DEVICE_CLOCK_RE = re.compile(r"_(\d{8})-(\d{6})(?:_thn)?\.[A-Za-z]+$")
+
+
+def device_clock(name: str):
+    """The device's local-time stamp at the end of a Seestar filename
+    (``…_20261015-215239.fit``) as a naive datetime, or None. Only ever compared
+    with another stamp from the same device's clock."""
+    m = _DEVICE_CLOCK_RE.search(name)
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+@dataclass
+class AppliedDark:
+    master: MasterInfo
+    link: str                  # "confirmed" | "inferred"
+    rule: str = DARK_RULE
+
+    def gap(self, temp_c: float | None) -> float | None:
+        if temp_c is None or self.master.temp_c is None:
+            return None
+        return abs(temp_c - self.master.temp_c)
+
+
+def applied_dark(run_start, temp_start: float | None, *, exptime, gain, binning,
+                 masters: list[MasterInfo]) -> AppliedDark | None:
+    """The library dark the device most likely applied to a run that began at
+    device-clock `run_start` with the sensor at `temp_start` — or None when no
+    master at these settings existed yet (captures before the library)."""
+    if run_start is None:
+        return None
+    cands = [(made, m) for made, m in _dark_candidates(masters, exptime, gain, binning)
+             if made <= run_start]
+    if not cands:
+        return None
+    if temp_start is None:
+        made, best = max(cands, key=lambda c: c[0])
+    else:
+        made, best = min(cands, key=lambda c: (
+            abs((c[1].temp_c if c[1].temp_c is not None else 999.0) - temp_start),
+            -c[0].timestamp()))
+    confirmed = (temp_start is not None and best.temp_c is not None
+                 and (run_start - made).total_seconds() <= _CONFIRM_WINDOW_S
+                 and abs(best.temp_c - temp_start) <= _CONFIRM_TEMP_C)
+    return AppliedDark(best, "confirmed" if confirmed else "inferred")
+
+
+def _dark_candidates(masters: list[MasterInfo], exptime, gain, binning) -> list:
+    """(device-clock made, master) for every master at these settings that says
+    when it was made."""
+    out = []
+    for m in masters:
+        made = device_clock(m.path.name)
+        if (made is not None and not m.raw and _same(m.exptime, exptime, 0.01)
+                and m.gain == gain and m.binning == binning):
+            out.append((made, m))
+    return out
+
+
+def applied_darks(frames: list[tuple[str, float | None]], *, exptime, gain, binning,
+                  masters: list[MasterInfo]) -> list[AppliedDark | None]:
+    """The dark in use for each frame of ONE target run (`frames` = (filename,
+    CCD-TEMP) in capture order), by rule v2: the run's starting dark
+    (`applied_dark`), then the sticky `DARK_WINDOW_C` switch. A switched-to dark is
+    always "inferred". All None when no master existed at the run's start."""
+    if not frames:
+        return []
+    name0, temp0 = frames[0]
+    current = applied_dark(device_clock(name0), temp0, exptime=exptime, gain=gain,
+                           binning=binning, masters=masters)
+    if current is None:
+        return [None] * len(frames)
+    cands = _dark_candidates(masters, exptime, gain, binning)
+    out: list[AppliedDark | None] = []
+    for name, temp in frames:
+        held = current.master.temp_c
+        if temp is not None and held is not None and abs(temp - held) > DARK_WINDOW_C:
+            now = device_clock(name)
+            near = [m for made, m in cands
+                    if (now is None or made <= now) and m.temp_c is not None
+                    and abs(temp - m.temp_c) <= DARK_WINDOW_C]
+            if near:
+                best = min(near, key=lambda m: (abs(temp - m.temp_c), m.path.name))
+                if best.path != current.master.path:
+                    current = AppliedDark(best, "inferred")
+        out.append(current)
+    return out
+
+
+def split_runs(names: list[str]) -> list[list[str]]:
+    """Group sub filenames into target runs by device clock (a gap over
+    `RUN_BREAK_S` starts a new run). Names without a stamp form their own run."""
+    stamped = sorted((c, n) for n in names if (c := device_clock(n)) is not None)
+    runs: list[list[str]] = []
+    prev = None
+    for c, n in stamped:
+        if prev is None or (c - prev).total_seconds() > RUN_BREAK_S:
+            runs.append([])
+        runs[-1].append(n)
+        prev = c
+    loose = [n for n in names if device_clock(n) is None]
+    return runs + ([loose] if loose else [])
+
+
+# ── sensor health + the per-device rollup (derived/devices.json) ──────────────
+
+_STATS_CACHE_NAME = "master_stats.json"
+HOT_SIGMA = 10.0               # a hot pixel: above median + HOT_SIGMA × robust σ
+
+
+def master_stats(path: Path) -> dict | None:
+    """Pixel statistics of one master: median, mean, robust σ (1.4826 × MAD), the
+    hot-pixel count (> median + `HOT_SIGMA` σ) and shape. None if unreadable."""
+    try:
+        from astropy.io import fits
+        import numpy as np
+        data = fits.getdata(str(path)).astype("float64")
+    except Exception:
+        return None
+    med = float(np.median(data))
+    sigma = 1.4826 * float(np.median(np.abs(data - med)))
+    hot = int((data > med + HOT_SIGMA * max(sigma, 1.0)).sum())
+    return {"median": round(med, 2), "mean": round(float(data.mean()), 2),
+            "sigma": round(sigma, 2), "hot_px": hot, "shape": list(data.shape)}
+
+
+def _content_key(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def dark_label(made, temp_c: float | None) -> str:
+    """How every table names a master dark: its device-clock time and header
+    temperature — ``"Oct 15 21:52 · 13.9 °C"``. `made` is a datetime or ISO
+    string (or None for a master with no device-clock stamp)."""
+    if isinstance(made, str):
+        try:
+            made = datetime.fromisoformat(made)
+        except ValueError:
+            made = None
+    when = f"{made:%b} {made.day} {made:%H:%M}" if made else "undated"
+    temp = f"{temp_c:g} °C" if temp_c is not None else "? °C"
+    return f"{when} · {temp}"
+
+
+def device_rollup(sessions: list[dict], totals: dict | None = None) -> dict:
+    """``derived/devices.json``: per device — every ``Calibration/<device>/``, every
+    device a session names, ``"unknown"`` only when some session has no TELESCOP —
+    its identity (registry nickname/retired/preset, label, model, serial), its
+    totals (integration, sessions, nights, objects, first/last capture), the
+    objects it shot (from `totals` ``by_slug[...].by_device``), its library masters
+    with header facts, device-clock time, a display label and pixel statistics,
+    and its captures with their inferred dark(s), labels and gap. Pixel stats are
+    cached by content hash in ``derived/master_stats.json``, so a refresh only reads
+    masters it has never seen. Deterministic (sorted, no timestamps)."""
+    import json
+    from .build_derived import session_device
+    cache_path = config.DERIVED_DIR / _STATS_CACHE_NAME
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    used: dict = {}
+    registry = devices.load_registry()
+    by_slug = (totals or {}).get("by_slug", {})
+    by_folder = (totals or {}).get("by_folder", {})
+
+    names = set()
+    if config.CALIBRATION_DIR.is_dir():
+        names |= {d.name for d in config.CALIBRATION_DIR.iterdir()
+                  if d.is_dir() and not config.is_hidden_name(d.name)}
+    names |= {session_device(r) for r in sessions}
+
+    out = []
+    for dev in sorted(names):
+        caps = sorted((r for r in sessions if session_device(r) == dev),
+                      key=lambda r: (r["date"], r["object_dir"]))
+        served: Counter = Counter(ref for r in caps
+                                  for ref in (r.get("dark_refs") or
+                                              ([r["dark_ref"]] if r.get("dark_ref") else [])))
+        masters = []
+        for tier, ms in sorted(library(dev).items()):
+            # Raw frames (N.I.N.A.'s single darks) are listed as the SETS matching
+            # uses (`candidates`), one row each, not one row per frame; a set's
+            # pixel stats are its first frame's (cheap, and they still chart the
+            # pedestal and the hot pixels).
+            for m in candidates(ms):
+                try:
+                    key = _content_key(m.path)
+                except OSError:
+                    continue
+                stats = cache.get(key) or master_stats(m.path)
+                if stats is not None:
+                    used[key] = stats
+                made = device_clock(m.path.name)
+                if m.raw:
+                    n = len(m.frames) or 1
+                    temp = f" · {m.temp_c:g} °C" if m.temp_c is not None else ""
+                    masters.append({
+                        "tier": tier, "file": m.path.name,
+                        "rel": m.path.relative_to(config.DATA_ROOT).as_posix(),
+                        "preview": None, "raw": True,
+                        "members": [p.name for p in (m.frames or (m.path,))],
+                        "exptime": m.exptime, "gain": m.gain, "binning": m.binning,
+                        "temp_c": m.temp_c, "frames": n,
+                        "made": m.night,
+                        "label": f"{n} raw frame{'s' if n != 1 else ''} · "
+                                 f"{m.night or 'undated'}{temp}",
+                        "captures": 0,
+                        **(stats or {}),
+                    })
+                    continue
+                preview = m.path.with_suffix(".jpg")
+                masters.append({
+                    "tier": tier, "file": m.path.name,
+                    "rel": m.path.relative_to(config.DATA_ROOT).as_posix(),
+                    "preview": (preview.relative_to(config.DATA_ROOT).as_posix()
+                                if preview.is_file() else None),
+                    "exptime": m.exptime, "gain": m.gain, "binning": m.binning,
+                    "temp_c": m.temp_c, "frames": m.ncombine,
+                    "made": made.isoformat() if made else None,
+                    "label": dark_label(made, m.temp_c),
+                    "captures": served.get(m.path.name, 0),
+                    **(stats or {}),
+                })
+        masters.sort(key=lambda m: (m["tier"], m["made"] or "", m["file"]))
+        label_of = {m["file"]: m["label"] for m in masters}
+
+        captures = []
+        for r in caps:
+            c = {k: r.get(k) for k in (
+                "date", "object_dir", "slugs", "frames", "exposure_s", "filter",
+                "integration_min", "temp_first", "temp_min", "temp_max", "dark_ref",
+                "dark_temp_c", "dark_gap_c", "dark_link", "dark_refs", "dark_rule")}
+            refs = r.get("dark_refs") or ([r["dark_ref"]] if r.get("dark_ref") else [])
+            c["dark_refs"] = refs
+            c["dark_labels"] = [label_of.get(n) or n for n in refs]
+            c["lights_rel"] = (config.lights_dir(r["object_dir"])
+                               .relative_to(config.DATA_ROOT).as_posix())
+            captures.append(c)
+
+        dates = sorted({r["date"] for r in caps})
+        folder_minutes = sum(f.get("by_device", {}).get(dev, {}).get("integration_min", 0.0)
+                             for f in by_folder.values())
+        objects = sorted(
+            ({"slug": slug, "id": t.get("id") or slug,
+              **t["by_device"][dev]}
+             for slug, t in by_slug.items() if dev in t.get("by_device", {})),
+            key=lambda o: (-o["integration_min"], o["slug"]))
+        entry = registry.get(dev, {})
+        out.append({
+            "device": dev,
+            "label": devices.label(dev, registry),
+            "nickname": entry.get("nickname"),
+            "retired": bool(entry.get("retired")),
+            "preset": devices.effective_preset(dev, registry),
+            "model": devices.model_name(dev, registry),
+            "serial": devices.serial(dev),
+            "darks_applied_on_device": devices.darks_applied_on_device(dev),
+            # capture profiles its sessions came through (seestar-app, nina, …)
+            # (a session from before #203 has no "capture": its device's app)
+            "captured_via": sorted({r.get("capture") or (
+                "seestar-app" if devices.darks_applied_on_device(dev) else "generic")
+                for r in caps}),
+            "totals": {
+                # folder-level, so a two-object folder ("M81 M82") counts once
+                "integration_min": round(folder_minutes or
+                                         sum(r["integration_min"] for r in caps), 2),
+                "sessions": len(caps),
+                "nights": len(dates),
+                "objects": len(objects),
+                "first_capture": dates[0] if dates else None,
+                "last_capture": dates[-1] if dates else None,
+            },
+            "objects": objects,
+            "masters": masters,
+            "captures": captures,
+        })
+    # most recent capture first (never-used last), retired at the end — stable
+    # sorts, applied least-significant first
+    out.sort(key=lambda d: d["device"])
+    out.sort(key=lambda d: d["totals"]["last_capture"] or "", reverse=True)
+    out.sort(key=lambda d: d["retired"])
+    if used != cache:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(used, sort_keys=True), encoding="utf-8")
+        except OSError:
+            pass
+    return {"devices": out}
+

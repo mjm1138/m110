@@ -14,12 +14,13 @@ each page links to the next.
 2. [Getting around](#getting-around) — the navigation rail, menus, and updates
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
 4. **[The library & object metadata](library.md)** — the List/Grid/Feed views, adding objects, filling in details, and per-image curation
-5. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), the **AstroWizard** round-trip, **keeping working files under control** (how many past runs M110 keeps), and *what hardlinks mean for your files* (important)
-6. **[Backing up your library](backup.md)** — local and cloud snapshots, retention, and how hardlinked backups behave
-7. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
-8. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
-9. **[Using an AI assistant](assistant.md)** — connect your own assistant to your library, the skills and tools it gets, and why it can't change anything
-10. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
+5. **[Your telescopes — the Devices page](devices.md)** — nicknames, planning limits, optics, what each telescope captured, and the Seestar's dark library
+6. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), the **AstroWizard** round-trip, **keeping working files under control** (how many past runs M110 keeps), and *what hardlinks mean for your files* (important)
+7. **[Backing up your library](backup.md)** — local and cloud snapshots, retention, and how hardlinked backups behave
+8. **[Session planning](planning.md)** — site profiles, the automatic target ranking, planning a night, and field guides
+9. **[Publishing your collection](publishing.md)** — the static-site export and one-click GitHub Pages deploy
+10. **[Using an AI assistant](assistant.md)** — connect your own assistant to your library, the skills and tools it gets, and why it can't change anything
+11. **[On the roadmap](upcoming.md)** — features you'll see referenced in the UI that aren't finished yet
 
 ---
 
@@ -49,7 +50,7 @@ later (Library → Preferences) takes effect on restart.
 
 ## Getting around
 
-M110 has a **navigation rail** down the left side with five pages. The **Library** is
+M110 has a **navigation rail** down the left side with six pages. The **Library** is
 home — it opens there once you have a collection. (A brand-new, empty library opens on
 **Overview** instead, with a welcome card and an *Import images…* button to get you
 started.)
@@ -61,6 +62,7 @@ started.)
 | **Planning** | What to shoot next, and tonight's plan — site profiles, the automatic target ranking, the night scheduler, and saved field guides. See **[Session planning](planning.md)**. |
 | **Import** | Bring in new captures from your telescope, a mounted card, or any folder. |
 | **Processing** | The Siril processing-prep queue — what needs a first stack, what's out of date, and what has finished work ready to import. |
+| **Devices** | Your telescopes — nicknames, planning limits, optics, what each one captured, and the Seestar's dark library. See **[the Devices page](devices.md)**. |
 
 ### The Library
 

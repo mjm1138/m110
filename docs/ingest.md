@@ -37,6 +37,63 @@ the masters go to the holding area with a note explaining why.
 M110 reads the FITS headers to identify each frame (object, date, exposure, filter,
 pointing), so it works across devices regardless of their filename conventions.
 
+### The Seestar's dark library
+
+Recent Seestar firmware keeps its master darks in a `darklibrary/` folder beside
+`MyWorks/`. Importing from the Seestar brings those in too, filed under
+`Calibration/<telescope>/darks/` (the telescope is named from the subs on the same
+device, e.g. `S50_15e7e390`). Reconnecting copies only darks you don't have yet.
+
+M110 **never applies** these darks to the Seestar app's subs. The app already
+subtracts a dark from every sub before saving it, so subtracting one again would do
+it twice. (Frames from the same Seestar driven by N.I.N.A. are not dark-subtracted;
+see below.) They're kept as a
+record of what the telescope did:
+
+- The **Dark** column in an object's Sessions table (and in the full session log)
+  shows the dark the telescope most likely used and how far the sensor drifted from
+  it during the capture — "24.9 °C · Δ10.5 ⚠". A ⚠ means more than 3 °C: hot pixels
+  in the drifted subs are over- or under-subtracted. `m110-stack --max-dark-gap 3`
+  leaves those subs out of a stack.
+- The **[Devices](devices.md)** page (last on the rail) shows each telescope's dark
+  library, the captures each dark served, and its sensor health (dark level and
+  hot-pixel count against temperature). Darks are named by when the telescope made
+  them and at what temperature ("Oct 15 21:52 · 13.9 °C") in both tables; select a
+  capture to highlight its darks, and right-click a dark to reveal its file.
+
+Which dark a capture got is *inferred* — the Seestar doesn't record it — from
+when each dark was made (its filename time) and the sensor temperature. A link says
+**confirmed** when the dark was made for that capture minutes before it started at
+the same temperature, and **inferred** otherwise.
+
+### N.I.N.A. and PINS
+
+Frames captured with **N.I.N.A.** or **PINS** (N.I.N.A. on a Raspberry Pi), for
+example a Seestar driven over Alpaca, import from any folder layout: N.I.N.A.'s file
+pattern is your choice, so M110 reads the headers rather than the folder names. The
+preview labels these rows **N.I.N.A.**
+
+- **Mosaic panels** named by N.I.N.A.'s framing assistant ("M 45 Panel 1",
+  "M 45 Panel 2" and so on, in any language N.I.N.A. uses) import together as one
+  **M45_mosaic** dataset.
+- **Darks, flats and biases** shot without a target go to your telescope's library,
+  `Calibration/<telescope>/`. A Seestar keeps one name whether you captured with its
+  app or with N.I.N.A.: M110 reads its serial from the camera name.
+- **Darks are applied.** Unlike the Seestar app, N.I.N.A. saves frames without
+  subtracting a dark. M110 groups N.I.N.A.'s single dark frames by exposure, gain,
+  night and temperature. When you stack, `m110-stack` builds a master from the
+  matching group first, and Siril prep links the group for the Naztronomy script.
+  An object can hold both N.I.N.A. and Seestar-app captures (N.I.N.A.'s "IR" filter
+  on a Seestar is the app's "IRCUT"). Siril prep gives each kind its own job folder.
+  For example, `siril/IRCUT/` holds the app subs with no darks, and
+  `siril/IRCUT_30s/` holds the N.I.N.A. subs with theirs, so the Naztronomy script
+  calibrates each correctly. Stack each folder and combine the stacks in Siril, or
+  point `m110-stack` at either folder: it stacks both together in one pass, each with
+  its own calibration.
+- A target named for a field, such as "NGC 2024 IC 434", gets a dropdown in the
+  preview offering the catalog objects in its name. If you accept **Remember
+  alias?**, M110 remembers that target name, not the folder.
+
 ## Where things land — the library layout
 
 Your data folder is organized around **two views of the same collection**:
@@ -48,12 +105,13 @@ Your data folder is organized around **two views of the same collection**:
   Images/<target>/            one folder per capture target
     lights/                     raw light subs — the immutable originals
     stacks/                     Siril stacks you've imported back
-    seestar-stacks/             the device's own in-app stacks
+    device-stacks/              the telescope's own in-app stacks
     finished/                   your finished, hand-processed renders
     working_files/              processing by-products (starless, crop, stretch…)
     previews/                   per-sub JPG previews (only if you opt in)
     siril/                      the processing sandbox (see Processing)
     (darks/ flats/ biases/)     calibration frames, if you have them
+  Calibration/<telescope>/     master darks/flats/biases that belong to a telescope
   Media/<category>_photo|_video/   lunar / planetary / scenery / startrails
   Plans/                      saved session field guides (see Session planning)
   Inbox/                      holding area for files awaiting manual assignment
@@ -72,8 +130,9 @@ finished renders in separate folders on purpose:
 - `lights/` holds **only** raw light subs. M110 treats these as immutable — it reads
   them but never writes into this folder. This is what everything else is derived
   from, so keep it clean.
-- `stacks/` and `seestar-stacks/` hold integrated stacks (yours from Siril, and the
-  device's in-app stacks respectively).
+- `stacks/` and `device-stacks/` hold integrated stacks (yours from Siril, and the
+  telescope's own in-app stacks — Seestar, Dwarf or Draco — respectively).
+  (Older versions called it `seestar-stacks/`; M110 renames it for you.)
 - `finished/` holds your deliverables — the images you've hand-processed and are
   proud of.
 

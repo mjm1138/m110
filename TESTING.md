@@ -67,7 +67,7 @@ rm -rf /tmp/m110-test                     # reset between runs
   root's `Inbox/`.
 - To test capture status / rendering without a device, copy a few real objects'
   folders into the temp root's `Images/<target>/lights/` and
-  `Images/<target>/seestar-stacks/`, then Refresh.
+  `Images/<target>/device-stacks/`, then Refresh.
 
 > ⚠ **`M110_DATA_ROOT` is not the whole story.** Settings live at
 > **`~/.m110/settings.json`, outside the data root**, and the log lives beside
@@ -146,6 +146,16 @@ at the copy, and launch. The store should reshape into
 `Objects/<id>/journal.md` populated, renders under `.m110_internal_data/renders/`,
 and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
 
+**v5 → v6 (`seestar-stacks/` → `device-stacks/`).** On a **copy** of a v5 store (or
+the unpacked test corpus): write `5` into `.m110_internal_data/.store_version`,
+rename one target's `device-stacks/` back to `seestar-stacks/`, and for the merge
+case also create `device-stacks/` beside it holding one byte-identical file and one
+*different* file under a shared name. Launch: the old folder is gone (or, in the
+merge case, holds only the identical file), the different one sits beside its
+namesake as `<name>-2`, `~/.m110/logs/m110.log` has a `store v6:` line for each,
+the gallery labels those images **Device stack**, and the hero did not change.
+Relaunch → no further change.
+
 ### 0.3 Synthetic test corpus (recommended starting point)
 
 Instead of hand-copying folders, generate a ready-made store that exercises the
@@ -176,6 +186,8 @@ What it contains (and what each fixture exercises):
 | **AppleDouble `._` sidecars** beside one M51 light, the M51 Seestar stack, the M63 finished render, `profiles/default.toml` and the M51 journal (the real 48-byte header) | **#161 — a data root on NFS/SMB from a Mac**: the app must start (the `._default.toml` is not a profile), sessions count M51's real subs only, Siril prep links no `._` file, the gallery shows no `._` render, and a backup copies none of them. A tester on a real NFS mount gets these for free; a local-disk tester gets them from the corpus | §2.1, §2.4 |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) + a **Draco** `Veil_nebula/` folder (an `Unknown` session that points at NGC 6992, beside a headerless `CALI_FRAME/` tree: 5 darks the store lacks + the flats/bias it already has) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
 | **`M110-test-device-mount/`** (a sibling folder, also unpacked from the tar): `Seestar S50/MyWorks/M101_sub/` holding **every** M101 frame the device captured — *including the two the store has rejected* — plus 2 genuinely new subs; `DWARF3/Astronomy/DWARF_RAW_TELE_M 42_…` doing the same for M42 | **#110 no-re-sync**: point Import at it and only the **new** subs are offered — a rejected frame is already in the library (in the other tier) and must not come back. A telescope is just a mounted filesystem, so this directory is a faithful stand-in for one | §2.2, §2.4 |
+| `M 72` + `M 76` (Seestar S50 `S50_c0ffee00`, TELESCOP/GAIN/CCD-TEMP subs replaying 2026-10-15) + `Calibration/S50_c0ffee00/darks/` (4 **real** masters from `tests/data/seestar_darklibrary/`); the device mount adds `Seestar S50/darklibrary/20s/` (all 5) + `MyWorks/M 72_sub` | **Seestar dark library**: the never-apply guard, the Sessions **Dark** column (M 72 Δ10.5 ⚠ confirmed), the **Devices** page, a device import offering exactly one new dark | §2.2 |
+| A second scope `S30_deadbeef` ("Travel S30" in `devices.toml`): all of M13 + a 6-frame M51 session the same night as the S50's; every synthetic Seestar sub carries `TELESCOP` | **Devices page**: three devices, a nickname from the registry, per-device objects/integration, and the same-night **session split** | §2.2 |
 
 The generator is covered by `tests/test_make_test_corpus.py`, which builds and
 self-checks a corpus on every `pytest -q` run (~1s, into a temp dir). Treat a
@@ -202,7 +214,7 @@ button**, which probes `/Volumes` for a `MyWorks` folder
   ```bash
   hdiutil create -size 100m -fs APFS -volname "Seestar S50" /tmp/seestar.dmg
   hdiutil attach /tmp/seestar.dmg
-  cp -R ~/Documents/M110-test-device-mount/"Seestar S50"/MyWorks "/Volumes/Seestar S50/"
+  cp -R ~/Documents/M110-test-device-mount/"Seestar S50"/{MyWorks,darklibrary} "/Volumes/Seestar S50/"
   ```
   M110 then offers **Seestar** as a source exactly as it would for the real scope.
   `hdiutil detach "/Volumes/Seestar S50"` when done.
@@ -307,7 +319,7 @@ re-run when its area changes and you want eyes on the visuals).
       (selected object + scroll preserved; no flicker).
 - [ ] An auto-refresh that **does** find changes preserves the selected object.
 - [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
-- [ ] Manual override still works: View menu → Refresh (Ctrl+R).
+- [ ] Manual override still works: **Library** menu → Refresh (Ctrl+R).
 
 #### Updates — banner + Preferences  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
 - [ ] **Help → Check for updates…**: an up-to-date build shows "You're up to date"; a
@@ -339,7 +351,7 @@ re-run when its area changes and you want eyes on the visuals).
       to `Images/<obj>/darks/`, not `lights/`.
 - [ ] Pointing column reads **—** for calibration/finished rows (no false ⚠).
 - [ ] Import a folder containing another library's `Calibration/<device>/darks/`
-      (copy one from a backup): the row reads **master darks** with the device as
+      (copy one from a backup): the row reads **library darks** with the device as
       its object, Pointing **—**, destination `Calibration/<device>/darks/`; after
       confirming, no `Images/<device>/` target appears, and re-importing offers nothing.
 - [ ] Pointing Import at the app's **own `Images/` tree** finds **nothing** to import.
@@ -366,6 +378,42 @@ re-run when its area changes and you want eyes on the visuals).
       literal `Unknown` target is created.
 - [ ] After importing the Dwarf object + Refresh: its `.fits` lights produce a **session**
       (Duo-Band filter) and the `stacked-16` stack renders a **hero + gallery thumbnail**.
+      The import source's `stacked-16_*.png` is a 3-byte placeholder that can't decode: the
+      hero must still appear (it falls through to `stacked.jpg`), not go blank.
+
+#### Import — N.I.N.A. / PINS  (#203)  ⚙ *(profiles/routing/raw sets/stacker prelude automated — `test_capture_profiles.py`, `test_ingest_nina.py`, `test_calibration.py`, `test_stacking.py`, `test_ui_import.py`)*
+- [ ] Browse the corpus import source's **`PINS/Seestar-S50/2026-06-19`** (N.I.N.A.'s
+      stock layout: every target in one `LIGHT/`, darks in `DARK/`). The Kind tooltip
+      says **N.I.N.A.**; the rows are **M33_mosaic** (both panels, one row), **M 72**,
+      **NGC 6960 NGC 6992** (new), and **S50_c0ffee00 dark frames →
+      `Calibration/S50_c0ffee00/darks`**. No row is named `LIGHT`, `DARK` or
+      `S50 Prime`.
+- [ ] The **NGC 6960 NGC 6992** row has a dropdown whose first choices after the
+      name are **NGC 6960** and **NGC 6992**. Pick one → the destination changes;
+      accept **Remember alias?** → the prompt names "NGC 6960 NGC 6992", not `LIGHT`.
+      Re-scan → the row now lands on your pick with no prompt.
+- [ ] Import + Refresh → **Devices**: the corpus S50 is still **one** telescope; its
+      Dark library adds a row **"4 raw frames · 2026-06-19 · 14 °C"** beside the app
+      masters, and the heading says app subs are dark-subtracted on the telescope and
+      N.I.N.A. frames are not. Sessions for the PINS targets show **no** inferred Dark.
+- [ ] **Mixed target, from the corpus:** after importing the PINS night, M 72 holds
+      its Seestar-app subs and 3 N.I.N.A. subs. Processing → **Process in Siril**
+      offers `IRCUT` (app subs, **no** `darks/`) and `IRCUT_20s` (N.I.N.A. subs + 4
+      raw darks); `next-steps.md` explains the split.
+- [ ] Beside them, `siril/.m110_calibration.json` (the masters manifest for
+      Stackhammer) lists both folders with `"group": ["IRCUT", "IRCUT_20s"]`: `IRCUT`
+      has an empty `calibration` and a note that its subs were dark-subtracted on the
+      telescope; `IRCUT_20s` names a `raw-set` of 4 darks (`IRCUT_20s/darks/…`).
+- [ ] `m110-stack "M 72/IRCUT_20s"` (proposal only): "Stacking IRCUT + IRCUT_20s
+      together"; calibration shows two subsets (**dark ✓ (4 raw)** for the N.I.N.A.
+      subs, none for the app subs); the solve script starts with `setcompress 0` and
+      `stack cal_darks_1_ … -out=master_darks_1.fit`, and each calibrate line quotes
+      the whole option (`"-dark=master_darks_1.fit"`).
+- [ ] *(Siril installed)* `m110-stack "M 72/IRCUT" --run` finishes, stacking both
+      folders (one `calibrate … -prefix=ppN_` per subset, then a `merge`).
+- [ ] *(real data, optional)* Point Import at a real PINS night: panels fold to one
+      `<object>_mosaic`, no-OBJECT darks go to the S50's library, and
+      `m110-stack --run` on a NINA-only target builds the master and finishes.
 
 #### Import — DwarfLab Draco  (6d, pre-release)  ⚙ *(classification automated — `test_ingest_dwarf.py` Draco block, `test_calibration_ingest.py`; the corpus import source's `Veil_nebula/` mirrors the real sample at `~/Documents/M110-test-import-source/Veil_nebula`, counts below are the real sample's / the corpus's)*
 - [ ] Browse **`Veil_nebula/`**. Its `Draco_RAW_TELE_Unknown_…` session (OBJECT =
@@ -379,7 +427,7 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Loose stacks are stacks** (corpus `mixed_dump/stack_linear_uint16.fits`, a
       3-plane `NCOMBINE 36` file with no name marker; or DwarfLab's real October test
       stacks in `~/Documents/M110-test-import-source/Draco_test_data_2026-10/`): the
-      preview shows a **Seestar stack** row → `Images/<object>/seestar-stacks/`, never a
+      preview shows a **device stack** row → `Images/<object>/device-stacks/`, never a
       lights row. *(`test_ingest.py` header-stack tests.)*
 - [ ] **Unknown name, known pointing**: the real Veil stack (OBJECT `HD 335129`) shows the
       Pointing cell *"“HD 335129” is not in the catalog — points 0.37° from NGC 6960"* and
@@ -431,6 +479,52 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **EPERM regression:** copying from an SMB mount succeeds (no "Operation not
       permitted").
 
+#### Seestar dark library + the Devices page  ⚙ *(guard/ingest/rule v2/rollup/page automated — `test_seestar_darks.py`, `test_devices.py`, `test_ui_devices.py`)*
+> Corpus: `M 72` and `M 76` are Seestar S50 captures (`S50_c0ffee00`) replaying a
+> real night; `Calibration/S50_c0ffee00/darks/` holds four of the five **real**
+> masters, the device mount all five.
+- [ ] **Import → Browse…** → `M110-test-device-mount/Seestar S50/MyWorks` (the folder
+      the page's **Seestar device** entry points at — the darks live *beside* it, and
+      must still be offered): one **library darks** row, object `S50_c0ffee00`, **1** frame (the
+      7.7 °C master; its `.jpg` rides along), Pointing **—**, destination
+      `Calibration/S50_c0ffee00/darks/`. Import it; re-browsing offers nothing.
+- [ ] M 72 detail → **Sessions**: the **Dark** column reads `24.9 °C · Δ10.5 ⚠` in the
+      warning color; hover: the master's filename, `confirmed (rule v2)`, sensor
+      14.4–24.8 °C, the `--max-dark-gap` hint. M 76 reads `13.9 °C · Δ2.7` with no ⚠.
+      Overview → View all sessions… has the same **Dark** column (sortable).
+- [ ] **Devices** (last on the rail, Ctrl+6): the list shows `ZWO Seestar S50 ·
+      c0ffee00`, `Travel S30` (nickname from the corpus `devices.toml`) and `DwarfLab
+      Dwarf 3`, most recent first. The S50's heading carries its totals + the
+      never-applied note; **Objects** lists what it shot; **Dark library** names each
+      master "Oct 15 21:52 · 13.9 °C" with a preview icon, median, hot px and captures
+      served; **Captures** lists M 72 + M 76 (plus the May targets, no dark);
+      **Sensor health** draws two scatters (newest master in the accent color). Check
+      light **and** dark theme.
+- [ ] Select the M 76 capture → the 13.9 °C dark highlights in the library; select
+      the 24.9 °C dark → M 72 highlights. The capture's Dark cell names the dark
+      exactly as the library row does.
+- [ ] Right-click a dark → **Reveal in Finder** opens Finder with that `.fit`
+      selected. Right-click a capture → reveal its dark, its lights folder, or open
+      the object.
+- [ ] Double-click a capture or an object → the Library selects that object.
+- [ ] Nickname the S50 → Save → the list and every session table's **Device** column
+      use it; Revert is enabled only while edited. Tick **Retired** → it leaves the
+      list until **Show retired**. The Dwarf shows no dark library and no Dark column.
+- [ ] M51's detail → **Sessions**: the 2026-05-20 night is **two** rows (S50 12
+      frames, Travel S30 6 frames) — two scopes, one night.
+- [ ] **Planning** shows a **Telescope** picker next to Location (three scopes known),
+      defaulting to the most recently used (the S50). Pick **DwarfLab Dwarf 3** → an
+      existing plan clears; plan a night → the start ceiling is the Dwarf's soft 80°,
+      and a saved field guide says "**Telescope:** DwarfLab Dwarf 3".
+- [ ] Devices → the S50 → **Planning**: "Use for planning" when another scope is
+      active; set Start ceiling 74° → **Save limits** → only that change is noted
+      ("Your changes to the … limits"); **Model defaults** + Save clears it.
+- [ ] M 72's `siril/` has **no** `darks/`, and `next-steps.md` carries the
+      "already dark-subtracted on the device" note.
+- [ ] With your own Seestar: browse to its volume; the darks land under your unit's
+      `S50_<serial>`; with no `MyWorks` subs on the volume they go to the holding area
+      and the Inspect dialog says why.
+
 #### Ingest crash/cancel safety  *(Bug #2 regressions — do these deliberately)*
 - [ ] **Close the Ingest window while a scan is running** → no crash.
 - [ ] **Close the Ingest window right after a copy finishes** → no crash.
@@ -475,7 +569,29 @@ re-run when its area changes and you want eyes on the visuals).
       `N captured / N total`. (Uncaptured catalog members live in **Goals**.)
 - [ ] **Object column sorts naturally** (M1, M2, … M10, M100 — *not* lexical),
       and NGC after Messier; click headers to sort each column. *(eyes-on check.)*
-- [ ] Status colours: deep-stack green, initial amber, uncaptured muted.
+- [ ] Status colours: deep-stack green, in-progress blue ("n% of goal"), initial amber,
+      uncaptured muted. A **selected** row/tile draws its chip in the selection's text
+      colour (a blue chip must not vanish into a blue highlight).
+
+#### Integration goals (#184)  ⚙ *(engine, buttons + scope picker automated — `test_integration_goals.py`, `test_goal_scope.py`, `test_ui_detail.py`, `test_ui_devices.py`)*
+- [ ] Corpus **M51**: Library pill **Deep Stack** (its S30 reached 2 min); hover the
+      status → one line per telescope ("ZWO Seestar S50: 11 of 18 min (61%, your goal)").
+- [ ] M51 detail → **Integration goals**: an S50 row and a Travel S30 row. **Set goal…**
+      on the S50 → 10 min → the S50 row and the Library pill update at once (no Sync);
+      **Set goal…** again → **Use default** (only offered for a goal you set) restores it.
+      Each row has one button. The dialog's button reads Close until you edit.
+- [ ] **Overview → Manage goals**: the corpus **Travel scope** goal's picker shows the
+      **model**, *ZWO Seestar S30* (goals are per model, not per unit), and counts 2/3 (M42 is Dwarf-only). Set **Messier** to the S30 → its captured
+      count drops to the S30's objects; back to *Any telescope* restores it.
+- [ ] **Track for another telescope…** on Messier → pick the Dwarf 3 → a *Messier ·
+      DwarfLab Dwarf 3* goal appears, active, counting only M42.
+- [ ] **Planning** with two telescopes: switching the telescope re-ranks at once; the
+      **Of goal** column's tooltip names the telescope.
+- [ ] **Devices**: the S50 shows 50 mm · 250 mm · f/5.0 · 2.9 µm, read-only; a telescope
+      with no preset shows editable Optics, and **Save optics** turns "f-ratio unknown"
+      into a scale factor.
+- [ ] An old library with a hand-edited `priorities.toml` gains the "no longer reads
+      this file" header on first launch (text kept); a new library has no such file.
 
 #### Add object / metadata enrichment (5c/5d)
 - [ ] **Add object…** (Library menu): type a name/designation (e.g. `NGC 6888`) → an
@@ -560,6 +676,24 @@ re-run when its area changes and you want eyes on the visuals).
       objects that already have one are untouched (edited presets preserved). The
       **Tools → Prepare working folders** menu action does the same on demand and
       reports how many were created.
+- [ ] **Per-filter tiers + labels (#174):** an LP job's preset says
+      `"filter": "LP (Narrowband)"`, an IRCUT job `"No Filter (Broadband)"`; the
+      filter values are the same for both: roundness/wFWHM/background/star count
+      95/98/98/95 at 100–500 subs and 95 on all four above 500.
+      The corpus's Dwarf 3 capture (M42, Duo-Band) gets `"telescope": "Dwarf 3"`
+      and `"filter": "Dual-Band"`. A Dwarf target holding both
+      `Astro` and `Duo-Band` subs splits into `siril/Astro/` + `siril/Duo-Band/` by
+      the header `FILTER`, as a Seestar LP + IRCUT target already does.
+- [ ] **Ask before replacing a preset (#174):** the corpus's M101 sandbox ships an
+      old-style preset (98% × 4, broadband label on LP subs). Import the device
+      mount's two new M101 subs → after the progress dialog closes, **Update Siril
+      presets?** lists M101 with each change (`roundness: 98 → 95`, `filter: No
+      Filter (Broadband) → LP (Narrowband)`, …). **Replace selected** → the old file
+      is in `siril/presets/archive/naztronomy_smart_scope_presets.<stamp>.json` and
+      the new one is in place. Repeat with **Keep existing** (or closing the window)
+      on a fresh corpus → the file is untouched, and a second import with no new
+      tier crossed does **not** ask again.
+- [ ] An import that changes no preset shows no dialog at all.
 
 **Import finished work**
 - [ ] Simulate Siril: drop a `*_processed.png` and a `*_processed.fit` into
@@ -568,10 +702,12 @@ re-run when its area changes and you want eyes on the visuals).
       render (→ `finished/`) and stack (→ `stacks/`) checked, intermediates absent;
       a **hero** picker lists the raster(s); a **cleanup** choice is offered.
 - [ ] Import (cleanup = *archive*) → render shows in the gallery, the chosen hero
-      becomes the hero; the run's output + intermediates (incl. Siril's `process/`)
-      are **moved** into a visible `siril/[<FILTER>/]archive/<timestamp>/`
-      (nothing deleted), while `lights/` + `presets/` stay so the sandbox is ready
-      for another run. `Images/<target>/lights/` originals are untouched.
+      becomes the hero; the run's output + intermediates are **moved** into a
+      visible `siril/[<FILTER>/]archive/<timestamp>/` (nothing deleted), while
+      `lights/` + `presets/` stay so the sandbox is ready for another run — and so
+      does Siril's `process/` scratch, which is **not** in the new archive folder
+      (`config.SANDBOX_SCRATCH`; the next Naztronomy run asks to clear it).
+      `Images/<target>/lights/` originals are untouched.
 - [ ] **Re-import keeps the hero:** process again, import again → the hero picker
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
@@ -679,6 +815,21 @@ m110-stack "<copy>" --run
 - [ ] Ctrl-C mid-run leaves no half-written stack.
 - [ ] Three Siril runs happen, not two — `siril_stack.log` (solve),
       `siril_stack_register.log`, `siril_stack_stack.log` all appear in the working dir.
+- [ ] **An import cannot disturb a running stack.** Run this on a copy that lives
+      **inside a test store** (so M110 can see it), with some finished output in the
+      sandbox. While it runs, `ls -a` the working dir: `.m110-stack.running` is there.
+      In M110, open *Import finished work* for that object: it must say *"A stack is
+      running in this sandbox — wait for it to finish"* with **Import** disabled, and
+      `process/` must stay put. After the run ends (success, failure or Ctrl-C) the
+      marker is gone and the import works again. `kill -9` a run: the leftover
+      marker must not block the next import (its pid is dead, so it is ignored and
+      removed).
+- [ ] Start a second `m110-stack --run` on the same folder while one is running: it
+      refuses (*"Not starting a second run in the same folder"*) and the first run
+      carries on.
+- [ ] Siril GUI run (no marker): run the Naztronomy script on a sandbox and open
+      *Import finished work* while it works. The dialog warns *"Siril may still be
+      working here"* and the clean-up defaults to *Leave the sandbox as-is*.
 
 **A partial plate solve** — the case that used to lose the whole run. Hard to force
 on purpose; if a real set doesn't produce one, the orchestration is covered by
@@ -733,7 +884,7 @@ m110-stack "<copy>" --run --handoff
 
 - [ ] Open M63 → the detail pane shows **Send to AstroWizard…**. An object with no
       stacks at all does *not* show it.
-- [ ] The dialog lists both M63 stacks plus the Seestar in-app stack, newest first,
+- [ ] The dialog lists both M63 stacks plus the Seestar in-app stack (tier `device-stacks`), newest first,
       with frames and integration filled in.
 - [ ] The **stretched** one is at the top (it is newest) but the **linear** one is
       what's highlighted. This is the point of the feature — a stretched image is
@@ -769,13 +920,13 @@ m110-stack "<copy>" --run --handoff
 - [ ] `Images/NGC 6960/astrowizard/…_SO.fits` opens in Siril as one RGB image, and
       its header says `FILTER = 'SO'`, `STACKCNT = 39`, `M110LAYR = 'SOO'`, with
       `OBJECT`/`TELESCOP`/`GAIN` carried over from the primary. The file in
-      `seestar-stacks/` is unchanged (same size and modification time).
+      `device-stacks/` is unchanged (same size and modification time).
 - [ ] Reopen the dialog: the SO row says it's already there; HO does not.
 - [ ] In the object's gallery, hover the SHO stack tile: the tooltip reads
       *"2 layers — HO 20 frames · SO 39 frames"*.
 - [ ] Real data (if you have it, never imported into a live store):
       `~/Documents/M110-test-import-source/Draco_test_data_2026-10/C20_SHO/` imports to
-      `Images/NGC 7000/seestar-stacks/` and offers HO 20 / SO 39.
+      `Images/NGC 7000/device-stacks/` and offers HO 20 / SO 39.
 
 **Launch and Preferences** — needs AstroWizard actually installed.
 
@@ -836,7 +987,10 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
       confirm the destination's used space didn't roughly double.
 - [ ] **A sandbox's work is backed up; its links are not.** In the first snapshot,
       open `Images/M101/siril/`: `archive/20260701-214500/` is there with its four
-      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**.
+      intermediates, `presets/` and `next-steps.md` are there — and `lights/` is **not**,
+      nor is Siril's `process/` scratch, either at `siril/process/` or inside
+      `archive/20260701-214500/process/` (`config.SANDBOX_SCRATCH`; both are in the
+      corpus, so their absence is the rule working, at both tiers).
       Then confirm `Images/M101/lights/` *is* there with all 18 subs. This is the whole
       rule (`config.SANDBOX_LINKED_INPUTS`): the frames are backed up once, under the
       path they really live at, while the hand-work beside them is kept. Getting it
@@ -1089,7 +1243,8 @@ A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
       day number and weekday name renders (no "…"), the selected date is a clear
       accent block, and the **Night:** field itself is readable in **dark mode**.
 - [ ] **Generate plan:** pick a date + **Targets** count → schedule rows are
-      back-to-back (each Start = previous end), starts on 10-minute marks, no
+      back-to-back (each Start = previous end) — except a gap of whole 10-minute ticks
+      where no candidate is startable yet — starts on 10-minute marks, no
       **Alt** above ~75° (regression, #37), and the **Moon** column shows "—"
       whenever the moon is down at that slot (regression, #36). Changing **Targets**
       re-sequences instantly; changing the date **clears** the plan ("Night
@@ -1218,6 +1373,17 @@ python tools/smoke_mcp.py
 - [ ] Point the client at a **data root that doesn't exist** → a clear
       "store unavailable" message rather than a bare `FileNotFoundError`.
 
+**The stacking command names the right install** (#192):
+
+- [ ] With M110 open, ask the assistant to plan a stack. Paste `how_to_run` into a
+      fresh terminal with no venv active: it runs (no *command not found*), and it is
+      the `m110-stack` of the app you have open — the assistant says which install
+      (installed app or development environment) and its version.
+- [ ] Run the GUI from the dev venv while the client's server is the installed
+      bundle (or the reverse): the command still names the **GUI's** copy.
+- [ ] Quit M110 and ask again: `~/.m110/running.json` is gone, and the assistant says
+      no running app was found and which install the command uses instead.
+
 ---
 
 ### 2.9 Cross-check with the source workflow (optional)
@@ -1249,7 +1415,8 @@ data / a packaged build where noted).
 - [ ] **Planning date-picker readable** (#43): the **Night:** calendar popup renders every
       day/weekday, the selection is a clear accent block, and the field reads in **dark
       mode**.
-- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks, no
+- [ ] **Night-plan sanity** (#37/#36): schedule slots are back-to-back on 10-min marks (a gap
+      only where nothing is startable yet), no
       **Alt** above ~75°, **Moon** reads "—" when the moon is down, and changing the date
       **clears** the stale plan. *(`test_planning_night.py`.)*
 - [ ] **Publish — incremental + gallery-level** (#27): "Upload only what changed" sends
@@ -1263,6 +1430,11 @@ data / a packaged build where noted).
       Best on a large store, where the sync is slow enough to overlap.
       *(Policy half: `test_ui_modal_safety.py` — a real nested loop can't be pumped
       offscreen.)*
+- [ ] **Quit right after clicking into the window is prompt** (beta.10): switch to another
+      app and back (this starts a sync), then **Cmd+Q** at once. The app is gone within a
+      second, not after the sync. On a large library, relaunch: the Library looks the same,
+      and a Refresh completes normally. *(`test_refresh_cancel.py`,
+      `test_ui_detail.py::test_quit_cancels_a_running_sync_instead_of_waiting_it_out`.)*
 - [ ] **Backup on a destination that can't share files** (#92) — **real hardware**, see
       [§2.5a](#25a-local-destinations): the format
       switches to **pooled**, the window says why, and a second backup stores ~no new

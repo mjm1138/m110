@@ -26,6 +26,16 @@ Two optional layers make the math match *your* sky:
 The **Location** selector at the top picks the active profile; the ranking and the
 planner both use it.
 
+## Which telescope
+
+Once M110 knows more than one telescope, a **Telescope** picker appears next to
+Location. Planning plans for the telescope you pick, with that model's limits: the
+altitude it may start a capture at (a Seestar refuses to start near the zenith; a
+Dwarf's ceiling is a softer 80°), its exposure and gain. The ranking follows it too
+(see below). You can also choose it with **Use for planning** on the
+**[Devices](devices.md#planning-limits)** page, which is where you adjust a
+telescope's limits. Field guides say which telescope a plan is for.
+
 ## Priority targets — the ranking
 
 The table ranks every target you're pursuing (your active goals plus everything
@@ -35,8 +45,11 @@ you've captured), weighing:
 - **seasonal urgency** — an object about to leave the evening sky outranks one that
   will keep for months;
 - **completion** — read through the **Strategy** toggle: *capture many* favors
-  untouched targets, *go deep* favors started-but-shallow ones. Thresholds are
-  type-aware (a faint nebula needs far more integration than a cluster);
+  untouched targets, *go deep* favors started-but-shallow ones. Progress is measured
+  against each object's [integration goal](library.md#integration-goals-how-deep-is-deep-enough)
+  **for the telescope you're planning with** — an object finished on one scope is still
+  new work on another, unless it's in a goal any telescope can satisfy. Switching
+  telescope re-ranks at once, and the **Of goal** column shows where each target stands;
 - **tonight** — how high, and for how long, it sits in *your* dark sky.
 
 The **tuning weights** re-rank instantly as you adjust them. Right-click
@@ -81,7 +94,7 @@ conditions.
 
 **Save field guide…** writes the plan as clean Markdown into the **`Plans/`** folder
 of your library — dark window, moon summary, the schedule table, and your per-object
-remarks. Each guide records both when it was generated and which night it's for.
+remarks. Each guide records when it was generated, which night it's for, and which telescope.
 
 Saved guides are listed on the Planning page under **Saved field guides**.
 **Double-click** one to read it in the app (from there you can copy or print it), or

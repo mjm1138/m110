@@ -27,6 +27,37 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **One undecodable image left an object with no hero** (done —
+  `feature/hero-fallback`). 2026-10-27, TESTING.md walk-through: the Dwarf 3 `M1`
+  from `M110-test-import-source` has a 3-byte placeholder `stacked-16_…png` beside a
+  valid `stacked-16_….fits` and `stacked.jpg`. Hero selection preferred the PNG,
+  `_render_hero` couldn't open it, and nothing else was tried — M1 had no hero after
+  Refresh. The real-world trigger is a truncated or partially copied raster. Fix:
+  `build_images._hero_candidates` lists every source in the existing preference
+  order (frontmatter `hero` → `hero_image` → tiers, PNG > JPG, newest → every
+  discovered image newest first, FITS included) and `_render_first_hero` uses the
+  first that renders; the `.src` sidecar names the file used. A truncated PNG
+  (header parses, pixels don't) fails at `thumbnail()`, which `_render_hero`
+  already caught, so both shapes fall through. Costs one failed decode per refresh
+  while the bad file stays ahead of the good one.
+- [x] **An import mid-stack swept the running stack's scratch into the archive**
+  (done — `feature/stack-in-progress-guard`). 2026-10-20, M1: *Import finished
+  work* ran while `m110-stack --run` was between its plate-solve and registration
+  phases. `roundtrip.archive_run` moved every child of the job dir that
+  `archive_keep` doesn't protect, which included the live `process/` (3.5 GB, the
+  solved `bkg_pp_lights_` sequence) and the open `siril_stack.log`. Phase 2 failed
+  with Siril's *"No sequence `bkg_pp_lights_' found"* and m110-stack said only
+  *"Registration failed (exit 1)"*. No data was lost. The same hazard applied to a
+  Siril GUI run. Fix: `m110-stack --run` writes `.m110-stack.running` (pid, host,
+  start time, phase) for the whole run; `roundtrip.require_idle` makes
+  `apply_import`/`archive_run` raise `StackInProgress` before any write;
+  `autoprep` (both workflows) and `prune_rejected` skip the target via
+  `roundtrip.sandbox_busy`, which also counts `process/` written in the last
+  5 min (the Siril GUI heuristic); the import dialog refuses up front, and warns
+  plus defaults cleanup to *Leave as-is* on recent scratch activity; a phase whose
+  input sequence vanished says so (`stacking.scratch_lost`).
+  `tests/test_stack_in_progress.py`.
+
 - [x] **Siril prep linked calibration frames where a mixed-filter job never
   looks** (done — `feature/calibration-library`, ported from `feature/draco`).
   `plan_prep` hardlinked darks/flats/biases once, at the sandbox root, while the
@@ -36,6 +67,18 @@ Legend: `[ ]` open · `[~]` partially done
   every calibration test used a single-filter target, where root and job dir
   coincide. Fix: `calib_links` are built per job inside the filter loop.
   `tests/test_siril.py::test_prep_multi_filter_links_calibration_into_each_job_dir`.
+
+- [x] **`m110-stack --feather 0` was ignored; `--drizzle 0` turned drizzle on at
+  scale 0** ([#193](https://github.com/mjm1138/m110/issues/193); done —
+  `feature/stack-zero-overrides`). `build_plan`'s override block tested `if
+  ov.feather:`, so 0 read as "not given" and a mosaic kept `-feather=30` — through the
+  assistant's `plan_stack(feather=0)` too, whose `overrides_applied` and `how_to_run`
+  then disagreed with its `stack_script`. `--drizzle 0` hit `if ov.drizzle is not
+  None:` → `drizzle=True, drizzle_scale=0`, `debayer=False`. Fix: numeric overrides
+  test against `None`; `feather=0` stores `None` (so `build_ssf_stack` omits the flag)
+  with "disabled on the command line" and, on a mosaic, the NGC 7000 tiling warning;
+  `drizzle=0` takes the `--no-drizzle` branch; negative values raise `StackingError`.
+  `tests/test_stacking.py` (zero-valued overrides section, on a two-tile mosaic).
 
 - [ ] **A library re-match leaves the previous master linked in a Siril job.**
   `apply_prep` is idempotent and never removes a link, so when the matched master
@@ -50,6 +93,25 @@ Legend: `[ ]` open · `[~]` partially done
   for the dominant filter is linked into every filter's job. Fix: match per job
   (`facts_from_frames` over that job's lights). Latent until a device ships
   library flats for more than one filter.
+
+- [x] **`plan_stack`'s `how_to_run` gave a bare `m110-stack` that isn't on PATH**
+  ([#192](https://github.com/mjm1138/m110/issues/192); done —
+  `feature/stack-how-to-run`). The helper lives in the bundle
+  (`M110.app/Contents/MacOS/`) or a venv's `bin/`, so the pasted command failed
+  with *command not found*, and the skill's examples taught the bare name too.
+  The server's own sibling isn't the answer either: Claude's MCP server can be the
+  bundle while the GUI runs from the dev venv. Fix: new `m110/running_app.py` —
+  the GUI records itself in `~/.m110/running.json` (pid, data root, the argv of its
+  own `m110-stack`, install kind, version; removed at exit, and only by its owner);
+  `stacker()` trusts the record while the pid lives and the data root matches,
+  else falls back to the server's own install (`stack_command`, mirroring
+  `client_config.server_command`, AppImage via `--stack`). `shell_command` writes
+  `$HOME` as an unquoted `~` and `shlex.quote`s every word (repr broke on `$`,
+  backslashes, both quote characters). `plan_stack` adds `how_to_measure` and a
+  `stacker` block (install, version, `matches_running_app`, note); the skill says
+  to give the command verbatim and name the install. Known limit: a GUI run from a
+  worktree via `python -m` records the shared venv's `m110-stack`, i.e. main's code.
+  `tests/test_running_app.py`, `tests/test_assistant_tools.py`.
 
 - [ ] **`m110-stack` heartbeat repeats a stale "100.00%" through the whole stack
   pass.** Seen on NGC 6543/IRCUT (1360 frames, 2.0× drizzle, `-vv`,
@@ -203,7 +265,13 @@ Legend: `[ ]` open · `[~]` partially done
   is retention (keeping every log forever on a target that is re-stacked often is
   its own mess) and whether a *successful* run's log is worth keeping at all.
 
-- [ ] **Siril's converted-sequence cube is backed up as authored work.** The
+- [x] **Siril's converted-sequence cube is backed up as authored work.**
+  *(done 2026-10-20, `feature/scratch-out-of-archives`)* The structural signal
+  turned up: `lights.fit` sits in `archive/<ts>/process/`, not loose beside the
+  output — the archive sweep had filed Siril's whole `process/` scratch with each
+  run. `archive_run` now leaves `process/` at the job root, and `backup.scope`
+  skips it live and archived at every tier (`config.SANDBOX_SCRATCH`; measured
+  27 GB live + 14 GB archived). Original report: The
   narrowed scope above keeps everything in a sandbox that isn't a declared link
   tree, which sweeps in `lights.fit` — Siril's single-file conversion of the
   sequence, pure scratch, fully regenerable from frames the backup already has.
@@ -272,6 +340,86 @@ Legend: `[ ]` open · `[~]` partially done
   `OpenDocument`, `tk::mac` or any Apple-event handling. So `launch._TOOLS`'
   `workdir_args=[]` and the reveal-the-folder affordance both remain correct.
 
+  **Re-verified against 2026.10.20** (bundle dated 2026-10-19; changelog again silent
+  on it): still no folder hand-off. `Info.plist` is unchanged on this point, and none
+  of the four code units now shipped — `stacking_wizard_app`, `wizard_stack`, plus
+  the new `wizard_canvas` and `wizard_lang` — reads `argv`. The "zero `tk::mac`"
+  finding above **no longer holds**: `__init__` now registers `::tk::mac::Quit`
+  (beside `WM_DELETE_WINDOW`) and `::tk::mac::ReopenApplication` (Dock click
+  re-shows the window). Neither carries a path, and there is still no
+  `::tk::mac::OpenDocument`, so this changes nothing for us. `pick_folder` still
+  seeds `initialdir` from `last_folder`. Checked by extracting the PyInstaller
+  archive (`PyInstaller.archive.readers`) and string-scanning the marshalled code —
+  the bundle's Python is 3.11, so it can't be unmarshalled on our 3.14 venv.
+
+  **Re-verified against 2026.10.25** (bundle dated 2026-10-24; release notes not
+  updated since 2026.10.20): no change. `Info.plist` still declares no document or URL
+  types; no code unit reads `argv`; the only Apple-event hooks are still
+  `::tk::mac::Quit` and `::tk::mac::ReopenApplication`; `pick_folder` still seeds
+  `initialdir` from `last_folder`. The developer's site now says feedback is read but
+  not answered, so don't count on the upstream argument arriving.
+
+  **Re-verified against 2026.10.31** (bundle dated 2026-10-30; nothing in the app, but
+  the *site* changelog documents it fully as Beta 4.8.5 "Broad Sweep" — the in-app
+  notes lag the website, which is the authoritative source). This is a large release
+  (entry script 260 KB → 921 KB, engine 77 KB → 356 KB, new `wizard_canvas` /
+  `wizard_engine_room` modules, `rawpy` + `psutil` + 13 `lang_*` locales) and the
+  answer is still no: `Info.plist` declares no document or URL types, **none of the
+  five code units reads `argv`**, and the Apple-event hooks are still only
+  `::tk::mac::Quit` and `::tk::mac::ReopenApplication` — no `::tk::mac::OpenDocument`.
+  `pick_folder` still seeds `initialdir` from `last_folder`, and `settings.json` keeps
+  the same shape, so everything below still applies unchanged.
+
+  Three features we had been waiting on *did* land, which matters because our user
+  docs asserted the opposite: **mono/filter sets** (Beta 2.4, 2026-08-31 — one canvas
+  and one stack per filter, `filter_family()` classifying SHO / LRGB / LRGB+Ha /
+  HaRGB / mixed, the set going to AstroWizard's *Combine Mono Channels*), **Drizzle
+  2x** (Beta 4.5, off by default, pixel fraction derived from the night's measured
+  star size: 0.6 px at FWHM ≤2.0, 1.0 px at ≥3.5, 0.80 unmeasured), and **camera RAW**
+  via LibRaw (Beta 4.5; X-Trans still unread). Two consequences for us, both now
+  recorded where they belong: a night can produce **several** masters, not one
+  (`<object>_wizardstack.fits` per filter, plus `_mosaic_wizardstack_<n>f.fits` and
+  `_combined_wizardstack.fits` — `astrowizard.is_master` matches all of them, since
+  `MASTER_TOKEN` is a substring test, and the new `<master>_receipts.txt` is in
+  neither `_RASTER_EXTS` nor `_FIT_EXTS` so it stays out of the import preview), and a
+  **drizzled stack carries no usable WCS** (see ROADMAP item 13's gotchas). Beware
+  their site's summary "Not yet supported" lists — they go stale and contradicted the
+  dated beta notes on camera RAW for over a month; trust the dated notes.
+
+  **The whole input surface, swept on the 2026.10.31 build — one folder picker and
+  nothing else.** Earlier passes only ruled out arguments and the `odoc`/URL routes,
+  which left "is there some *other* stable hook?" open; it is now closed, so don't
+  re-derive it:
+
+  | Candidate | Result |
+  |---|---|
+  | CLI arguments | no `argv`/`sys.argv` in any of the five code units |
+  | argparse / getopt | only `wizard_stack.main()`, unreachable when frozen |
+  | Finder "Open With" / Dock drop | no `CFBundleDocumentTypes`, no `::tk::mac::OpenDocument` |
+  | URL scheme | no `CFBundleURLTypes` |
+  | AppleScript / `osascript` / `.sdef` | zero hits — no scripting support |
+  | Environment variables | all 7 `environ` reads accounted for, none an input (below) |
+  | IPC / socket / single-instance | none; `psutil` only reports RAM + core count |
+  | Watch / drop folder | none; `watch` is the UI label "watch the night build" |
+  | Recent-folders list | none; `recent` is a section header in the Fellowship file |
+  | stdin | a `Popen` kwarg, not an input channel |
+
+  The env-var negative is the load-bearing one, since it was the most plausible
+  remaining hook. All seven reads: four in the PyInstaller `*_ORIG` child-env
+  sanitizer (our `launch._child_env()`'s counterpart), one in the Linux `xdg-open`
+  helper, one in `wizard_stack.cache_candidates` for `LOCALAPPDATA`/`XDG_CACHE_HOME`,
+  one in `wizard_lang.computer_language` for `LANG`/`LC_ALL`. The `SW_*` tokens
+  (`SW_BETA`, `SW_BUILD_DATE`, `SW_DEV_ASTROWIZARD`, `SW_PAGE_URL`) are module
+  constants, not lookups, and `CACHE_OVERRIDE`/`BAYER_OVERRIDE` are Engine Room UI
+  settings placing the scratch cache and forcing a Bayer pattern — neither selects
+  the night's folder. On-disk state agrees: the app keeps only `settings.json`,
+  `fellowship_cache.txt` (fetched from their site) and `crash.log`, and nothing else
+  is read at startup.
+
+  So the "wait for the upstream argument" decision in ROADMAP item 14 is not a choice
+  between routes — the `last_folder` pre-seed is the *only* alternative to it. Weigh
+  it on that basis rather than looking for a side door again.
+
   One red herring worth recording so it isn't re-investigated: `wizard_stack` *does*
   carry an argparse `main()` with `--out` / `--progressive` / `--trim`. It is
   unreachable in the frozen app — PyInstaller's entry is `stacking_wizard_app`, which
@@ -292,10 +440,21 @@ Legend: `[ ]` open · `[~]` partially done
   `-d` has — `_load_cfg` runs once at startup, so if the app is already open our
   write does nothing *and* is liable to be clobbered on its next save. If we take it,
   it is best-effort polish wrapped in a `try/except` that can never block or fail the
-  launch, with reveal-the-folder staying the primary affordance. **Waiting on
-  developer outreach first** (`wizard@lukomatico.com`, the address in the app's own
-  "bugs and thoughts" string) — a supported argument or documented hand-off would be
-  strictly better than reaching into a file we don't own, and asking costs one email.
+  launch, with reveal-the-folder staying the primary affordance.
+
+  **The outreach has happened, and it did not land.** The feature request went to
+  `wizard@lukomatico.com` on **2026-10-05** and was **unanswered as of 2026-11-03**,
+  across four further builds; their site says feedback is read but not answered, so
+  the silence is not a refusal and not a queue position. That retires the "asking
+  costs one email" argument this entry used to rest on — it was asked, and the answer
+  is no information.
+
+  So this stays **shelved rather than blocked**: the pre-seed is still the only
+  alternative (see the swept surface above), the reveal-the-folder step works, and
+  nothing downstream is waiting on it. Reopen if a build gains an argument or an
+  `odoc` route — ROADMAP item 14 lists the triggers — or if the hand-off becomes
+  load-bearing for something new, at which point the pre-seed's trade-off is worth
+  re-weighing on its own merits rather than as a stopgap for an expected upstream fix.
 
 - [x] **Import misses output saved outside the sandbox** (done — `feature/reimport-object-root`).
   If Siril's working directory was set to `Images/<target>/` instead of its `siril/`
@@ -334,6 +493,16 @@ Legend: `[ ]` open · `[~]` partially done
   Related: `Images/M81/` has 327 lights and no `stacks/` tier at all, so it reads
   `not_processed` while its stack lives in the combined folder. Needs a user-facing
   reconcile/"move to the right target" flow, not a silent rule.
+  *Reconciled by hand 2026-10-21 (from the Astronomy session).* By **pointing**, the
+  `OBJECT = 'M 81'` LP subs in both folders are the combined framing (Dec 69.15–69.18°), so
+  "M81-only by header" holds for `OBJECT` only. Pointing is the signal a reconcile flow
+  should use. All 221 LP subs in `Images/M81/lights` were combined framing: the 111 that
+  duplicated `M81 M82/lights` byte-for-byte were trashed, and the other 110 were moved into
+  `M81 M82/lights` (hardlinked into `siril/LP/lights` and `astrowizard/lights`). `M81/`
+  now holds only its 106 genuinely M81-centred IRCUT subs (Dec 68.95°). Left behind:
+  `M81/siril/LP/` (a stale job whose `lights/` still hardlinks the moved frames, plus an
+  `M_81_120x10sec…_og.fit` stack built from them). The duplicates show that `m81`'s
+  object rollup had been counting those 111 frames twice.
 
 - [ ] **Directory precedence outranks the stack `DATE` — should it?** Follow-up to the
   mtime→`DATE` selection fix (`feature/stack-date-selection`, see DONE.md).
@@ -549,9 +718,139 @@ Legend: `[ ]` open · `[~]` partially done
   stack `stack_linear_uint16.fits` (3 planes, `NCOMBINE` 36, `EXPTIME` 300) was a
   300 s sub to the raw-FITS classifier: it would have become a session and a Siril
   input. Header truth now decides — `ingest.is_stack_header` (`STACKCNT`/`NCOMBINE`
-  > 1 or `NAXIS3` = 3) routes such a file to the device-stack tier, and a loose
+  > 1 or `NAXIS3` = 3) routes such a file to the device-stack tier (`device-stacks/`), and a loose
   on-device `stacked-16_*` outside its session folder goes there too instead of
   `working_files/`. `tests/test_ingest.py::test_a_stack_is_known_by_its_header_never_imported_as_a_light`.
+
+### NINA output (found 2026-11-07; umbrella issue #203)
+
+Source: a Seestar S50 run by PINS (NINA 3.3.0.1058) over Alpaca on 2026-11-06,
+1,364 frames. Found by reading `ingest.py` / `devices.py` / `calibration.py` against
+the real headers. NINA identifies itself in `SWCREATE` (`'PI N Stars (N.I.N.A. 3.3.0.1058 (arm64))'`).
+
+Fixed in `feature/nina-import` on a **capture-profile seam** (`m110/capture_profiles.py`:
+built-in profiles for N.I.N.A., the Seestar app, the Dwarf app and generic FITS, matched
+on header cards only; the user-editable profiles of #203 part 2 load the same shape).
+Verified against the real night: a read-only scan of all 1,364 frames gives M110, M74,
+`M45_mosaic`, `NGC 2024 IC 434` and 60 darks into `Calibration/S50_15e7e390/darks/`, and
+nothing named after a folder. A real `m110-stack --run` of M74 (30 subs) built the master
+dark from the 20 matching raw 30 s darks and calibrated with it.
+
+- [x] **NINA mosaic panels import as one new object per panel** (done). The N.I.N.A.
+  profile folds `<target> <panel word> <n>` onto `<target>_mosaic` (Panel, Panneau,
+  Pannello, Paneel, Painel, Панель, 面板, パネル, Tile …), so `M 45 Panel 1/2/3` →
+  one `M45_mosaic`. `tests/test_capture_profiles.py`, `tests/test_ingest_nina.py`.
+- [x] **NINA darks become an object named "DARK"** (done). A dark/flat/bias with no
+  usable `OBJECT` goes to the device library under `capture_profiles.device_key`; with
+  no device either, to the holding area. Folder names are never consulted, which also
+  fixes the same fall-back for generic raw FITS (`test_raw_fits_pile_sorts_by_header`
+  updated: a nameless, deviceless bias is now held, not filed under `Images/dump/`).
+  The library learned **raw frames** (`calibration._is_raw`, `raw_sets`): grouped by
+  exposure/gain/binning/night and temperature, matched like a master, and built into a
+  master by the consumer (Siril prep links the set; `m110-stack` stacks it first).
+- [x] **S50 frames taken through NINA/Alpaca are treated as already dark-subtracted**
+  (done). "Already dark-subtracted" is now a per-frame fact,
+  `capture_profiles.darks_applied`: the Seestar-app profile keeps the model rule, the
+  N.I.N.A. profile says no. Every reader carries it: `calibration.frame_facts` /
+  `facts_from_frames` / `match_masters`, `scan_sessions` (no applied-dark inference for
+  N.I.N.A. subs), `stacking` (`Frame.darks_applied`, geometry), `siril.plan_prep`.
+- [x] **Same scope, two device keys; and the NINA one has no serial** (done for the
+  identity). The N.I.N.A. profile reads the serial from `INSTRUME` (`Seestar
+  S50_15e7e390 Telephoto Camera` → `S50_15e7e390`), so NINA frames join the app's
+  device, library and Devices entry. Sessions record the path (`capture`). Evidence it
+  is one sensor: the app's 20 s master and the NINA 20 s darks share a pedestal
+  (476 vs 480 ADU) and their hot pixels coincide (85 of the top 200; 0 under any flip).
+- [x] **A target mixing Seestar-app subs and NINA subs stacked without darks** (done;
+  m110-stack). Every 11-06 NINA target already has Seestar-app subs: M110 (20 s), M74
+  (20 s) and IC 434 (20 s), against NINA's 30 s and 20 s. With one device key, a target
+  folder holds both. `stacking.calibration_subsets` now groups the selected frames by
+  (dark-subtracted on the telescope, exposure, gain, binning) and matches each group
+  on its own (`calibration_for_stack`). Groups with the same result are rejoined.
+  When more than one calibration remains, the solve script picks each subset out of
+  `lights_` (`unselect` all, then `select` its positions), runs
+  `calibrate … -prefix=ppN_` with that subset's masters (built by a suffixed prelude,
+  `master_darks_N.fit`), and `merge`s them into `pp_lights_`. So everything after is
+  unchanged. Merge renumbers in subset order, and `seq_order` maps solve failures back
+  to frames. Verified with a real Siril 1.4.5 run on a mixed M74: 30 live-store app
+  subs (20 s, no dark) plus 30 NINA subs (30 s, master built from 20 raw darks) →
+  merged, solved, stacked (34 frames). This also calibrates a **mixed-exposure** target
+  per exposure; it used to be refused.
+  **The GUI path (Naztronomy) too:** `siril.plan_prep` matches each filter on its own
+  frames. When a filter's frames need different calibration
+  (`_calibration_subsets`), it makes one job folder per subset. The subset needing no
+  calibration keeps the plain filter name and never gets a `darks/`; the others are
+  suffixed (`IRCUT_30s`). The split is recorded in `siril/.m110_jobs.json`, and
+  m110-stack pointed at any member stacks the whole group together
+  (`siril.job_group`, staged into `process/stack_lights/`, calibrated per subset from
+  the library). Verified on the mixed M74: prep made `IRCUT/` (30 app subs, no darks)
+  and `IRCUT_30s/` (30 NINA subs + 20 raw darks), and `m110-stack M74/IRCUT_30s --run`
+  stacked both in one pass. Agreed with Stackhammer's calibration spike (PR
+  mjm1138/stackhammer#22): subsets come from the headers, Naztronomy gets split
+  folders, and the app folder never has a `darks/`.
+  The app rule was aligned with that spike at the same time: an app frame is
+  `CREATOR ~ ^ZWO Seestar`, or a `BIAS` card with no `SWCREATE`. There is no `TELESCOP`
+  fallback. A Seestar-named frame with none of the three cards has an unknown capture
+  path and is refused with a note. Rule: read the lights, never Siril's `process/`
+  output, because Siril drops `SWCREATE`.
+  Needed with it: N.I.N.A.'s Seestar filter `IR` is the app's `IRCUT` (the ZWO Alpaca
+  name for the same UV/IR-cut slot). `capture_profiles.filter_name` renames it, so
+  the two populations share a job folder instead of splitting by filter.
+- [ ] **A mixed-exposure stack is named for one exposure** (found 2026-11-07, not
+  fixed). The mixed M74 stack (25 × 20 s app subs + 9 × 30 s NINA subs, 13 min) was
+  named `M_74_034x30sec_…`. The integration in the report is right, but the name's
+  `<n>x<exp>sec` reads as 34 × 30 s. Stackhammer names a mix with `+`
+  (`docs/design/result-name.md` there).
+- [ ] **The failures-by-night report undercounts** (found 2026-11-07, not fixed).
+  `parse_solve_log` collects only `Image … did not solve` lines, but Siril reports
+  most failures as `Image N: no stars found`. On the mixed M74 run the tally said
+  "34 of 60 solved", while the per-night table listed 5 + 6 = 11 failures, not 26.
+  The `--exclude-night` advice built on it is too optimistic.
+- [x] **"Remember alias?" after a retarget stores the folder name** (done). Ops and
+  groups carry `source_name`, the name `canonical_target` resolved from (the `OBJECT`
+  header after the panel fold). `IngestGroup.alias_key` is what both the Import page and
+  the legacy `IngestDialog` store. `test_the_alias_key_is_the_header_name_not_the_folder`,
+  plus a UI test that drives the combo.
+- [x] **No retarget dropdown for a new, off-catalog object** (done; it was real).
+  `annotate_pointing` sets `IngestGroup.candidates` for an off-catalog light group: the
+  catalog designations in its name, then the nearest object by pointing within 1°. The
+  combo shows when there are candidates. That needed `scan_sessions.folder_to_slugs` to
+  resolve each part as a designation (`NGC2024` → `ngc-2024`, never found by a bare
+  slugify). So a combined `NGC 2024 IC 434` target now also counts toward both objects.
+- [x] **m110-stack's calibrate line failed in Siril 1.4.5** (found here; done). Siril
+  keeps the quotes in `-dark="<path>"` as part of the file name (`"…".[any_allowed_extension]
+  not found`), absolute path or not, so every calibrated stack died at phase 1. Only
+  whole-token quoting works, spaces included: `"-dark=<path>"` (`stacking._siril_opt`;
+  `test_calibrate_options_quote_the_whole_token`). Also found: Siril persists
+  `setcompress` across runs, so the master prelude sets `setcompress 0` first, or the
+  master is written `.fit.fz` (quantised, and not the name calibrate is given).
+- [x] **Header-only sessions were dated by UTC** (found here; done). The
+  `_session_key` header fall-back used `DATE-OBS`, which puts a western-hemisphere
+  evening on the next day. It now prefers `DATE-LOC` (N.I.N.A. writes it), the same
+  local-date convention as the Seestar filename clock.
+
+- [x] **Launch crashed on the first run after upgrading to the Devices page**
+  (done — `fix/devices-page-old-rollup`). `MainWindow` builds the Devices page —
+  which reads `derived/devices.json` — before the launch Sync regenerates it, so the
+  first launch read the *previous* version's rollup (no `totals` key, from #169) and
+  `d["totals"]` raised `KeyError`. Every test built its fixture with the new schema.
+  Fix: `derived.load_devices` passes each entry through `normalize_device` (defaults
+  for every key readers use; entries with no device key dropped), and the page
+  normalizes injected data the same way. The rule this records: **a derived file is
+  read before the launch Sync rewrites it, so its readers must tolerate an older
+  schema.** `tests/test_ui_devices.py::test_a_rollup_from_an_older_version_does_not_crash_launch`
+  builds the real `MainWindow` over a #169-shaped rollup (fails without the fix).
+
+- [x] **The Import page never offered the Seestar's dark library** (done —
+  `fix/import-page-darklibrary`, found on a real S50 the day after #169 merged). #169
+  taught `ingest.scan_seestar_plan` to scan the `darklibrary/` beside `MyWorks`, but
+  the Import page — the path users actually take — called `scan_directory_plan` on the
+  chosen folder (`MyWorks`), so the darks never appeared and `Calibration/` stayed
+  empty. The tests and corpus `verify()` exercised the engine helper and a
+  volume-root scan, never the page. Fix: `ingest.source_scan_roots` /
+  `scan_source_plan` (a `MyWorks` root also covers its sibling `darklibrary/`), used
+  by the page and by `scan_seestar_plan`.
+  `tests/test_ui_import.py::test_picking_the_seestar_brings_its_dark_library` drives
+  the page's own source combo (fails without the fix).
 
 - [x] **Holding-area groups collided on the leaf folder name** (done —
   `feature/calibration-library`, ported from `feature/draco`). `scan_directory_plan`
