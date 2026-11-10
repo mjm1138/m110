@@ -181,6 +181,29 @@ def test_gallery_item_src_is_the_real_file_for_fits(tmp_path, monkeypatch, qapp)
         qapp.processEvents()
 
 
+def test_gallery_tooltip_names_the_layers_of_a_multi_layer_stack(
+        tmp_path, monkeypatch, qapp):
+    """A Draco "SHO" stack previews its HO primary only; the tile's tooltip says
+    the file also holds the SO layer."""
+    from m110 import refresh, catalog, derived
+    from tests._helpers import make_sho, seed_capture, seed_root
+    root = seed_root(tmp_path, monkeypatch)
+    slug, tid = seed_capture(root)
+    make_sho(config.seestar_stacks_dir(tid) / "sho.fits", shape=(3, 40, 40))
+    refresh.run_refresh()
+
+    from m110.ui.detail import DetailPane
+    d = DetailPane()
+    try:
+        d.show_object(slug, catalog.load_library()[slug],
+                      derived.totals_by_slug().get(slug, {}))
+        tips = [g.item(r).toolTip() for g in d._galleries for r in range(g.count())]
+        assert "sho.fits\n2 layers — HO 20 frames · SO 39 frames" in tips
+    finally:
+        d.deleteLater()
+        qapp.processEvents()
+
+
 def test_gallery_splits_finished_and_working(tmp_path, monkeypatch, qapp):
     slug, e, t = _seed_object_with_images(tmp_path, monkeypatch)
     from m110.ui.detail import DetailPane

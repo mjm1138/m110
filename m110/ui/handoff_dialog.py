@@ -63,6 +63,14 @@ class HandoffDialog(QDialog):
         lay.addWidget(note)
 
         self._rows = self._gather()
+        if any(c.layer is not None for _t, c in self._rows):
+            # A Draco "SHO" stack holds two images in one file; the tools open
+            # only the first, so each layer is offered as its own row and goes
+            # over as a file of its own — a real copy, unlike the hardlink.
+            note.setText(note.text() + (
+                " A stack that holds more than one image (a Draco SHO capture) "
+                "is listed once per layer; sending a layer writes it out as its "
+                "own file, which does take disk space."))
         self._table = make_table(_COLUMNS)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -105,7 +113,9 @@ class HandoffDialog(QDialog):
                         for c in stacking.handoff_candidates(target, self._tool)]
             except stacking.StackingError:
                 continue
-        out.sort(key=lambda tc: (tc[1].stacked_at or "", tc[1].size_bytes),
+        # Layers of one multi-image stack stay together, primary first.
+        out.sort(key=lambda tc: (tc[1].stacked_at or "", tc[1].size_bytes,
+                                 -(tc[1].layer or 0)),
                  reverse=True)
         return out
 
@@ -125,6 +135,9 @@ class HandoffDialog(QDialog):
             # Elided in the column, so the full name has to be reachable — these
             # names are how the user tells one stack from another.
             tip = str(c.path.name)
+            if c.layer is not None:
+                tip = (f"{c.name}\n\nThe {c.layer_name} layer of {c.path.name} — "
+                       f"sent as a file of its own")
             if c.already:
                 tip += f"\n\nAlready in {self._tool}/ — sending again is a no-op"
             name.setToolTip(tip)
@@ -137,8 +150,11 @@ class HandoffDialog(QDialog):
                         c.integration_min or 0),
                 # Sorted on the raw header value, not the display string: an
                 # undated stack shows "—", which would sort *first* descending.
+                # The negated layer keeps a multi-image stack's rows in file
+                # order (primary first) under the default descending sort, which
+                # would otherwise flip two equal dates.
                 NumItem((c.stacked_at or "—")[:16].replace("T", " "),
-                        c.stacked_at or ""),
+                        (c.stacked_at or "", -(c.layer or 0))),
                 # Sorts linear first, so a click on this header surfaces the
                 # usable stacks rather than ordering them alphabetically.
                 NumItem(_state(c.stretched), (0 if c.stretched is False else
@@ -220,6 +236,9 @@ class HandoffDialog(QDialog):
         rel = dest.relative_to(config.DATA_ROOT) if _within(dest) else dest
         if c.already:
             msg = "Already there — sending again changes nothing."
+        elif c.layer is not None:
+            msg = (f"Will write the <b>{c.layer_name}</b> layer of {c.path.name} "
+                   f"into <code>{rel}/</code> as <code>{c.name}</code>")
         else:
             msg = f"Will link into <code>{rel}/</code>"
         if c.stretched:
@@ -237,7 +256,7 @@ class HandoffDialog(QDialog):
             return
         _target, c = sel
         try:
-            self._sent = stacking.apply_handoff(c.path, self._tool)
+            self._sent = stacking.apply_handoff(c.path, self._tool, layer=c.layer)
         except (stacking.StackingError, OSError) as exc:
             QMessageBox.warning(self, f"Send to {self._label}", str(exc))
             return

@@ -59,6 +59,16 @@ changes a **user** would notice, per release.
   object always win, and an object shot on two different telescopes is never
   given one telescope's masters.
 
+- **Both halves of a Draco "SHO" stack can be finished.** The Draco saves an
+  SHO capture as one file holding two images: the HO stack and the SO stack.
+  AstroWizard and Siril only ever open the first, so the SO half was out of
+  reach. **Send to AstroWizard…** now lists such a stack once per image (`…_HO`
+  and `…_SO`), and sending one writes that image out as a file of its own in the
+  object's `astrowizard/` folder. Unlike a normal send this is a real copy, so it
+  takes disk space. The telescope's file is left exactly as it was. In the
+  object's gallery, hovering the stack's tile names both images; the thumbnail
+  still shows the HO image.
+
 ### Fixed
 - **A stacked image is never mistaken for a light frame again.** Import used to
   tell a stack from a sub by its filename, so a stack named without a "stacked"

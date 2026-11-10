@@ -230,6 +230,37 @@ def _draco_fits(path: Path, obj: str, ra: float, dec: float, exp: float,
         h["EQMODE"] = 0
 
 
+def _draco_sho_stack(folder: str, obj: str, ra: float, dec: float,
+                     when: datetime, seed: int):
+    """A Draco "SHO" on-device stack (firmware 1.1.0.55) → the device-stack tier.
+
+    ONE file, two images: a 3-plane uint16 HO primary with the full header and an
+    ``EXTNAME='SOO'`` SO extension that repeats only FILTER / EXPTIME / STACKCNT —
+    the shape of DwarfLab's C 20 test release. The AstroWizard handoff lists it
+    as two rows (``…_HO.fits`` / ``…_SO.fits``) and the gallery tooltip names
+    both layers; everything else previews the HO primary."""
+    d = config.seestar_stacks_dir(folder)
+    d.mkdir(parents=True, exist_ok=True)
+    stamp = when.strftime("%Y%m%d-%H%M%S")
+    ho = np.stack([_blob(seed=seed + i) for i in range(3)]).astype("uint16")
+    so = np.stack([_blob(seed=seed + 10 + i) for i in range(3)]).astype("uint16")
+    p = fits.PrimaryHDU(data=ho)
+    h = p.header
+    for k, v in (("DATE-OBS", (when + timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%S")),
+                 ("EXPTIME", 6000.0), ("GAIN", 120), ("RESTACK", 0),
+                 ("STACKCNT", 20), ("FILTER", "HO"), ("CAMERA", "TELE"),
+                 ("RA", round(ra, 5)), ("DEC", round(dec, 5)), ("OBJECT", obj),
+                 ("BAYERPAT", "BGGR"), ("FIRMWARE", "1.1.0.55"),
+                 ("TELESCOP", "Draco"), ("INSTRUME", "Draco"), ("ORIGIN", "DWARFLAB")):
+        h[k] = v
+    e = fits.ImageHDU(data=so, name="SOO")
+    e.header["FILTER"] = "SO"
+    e.header["EXPTIME"] = 11700.0
+    e.header["STACKCNT"] = 39
+    fits.HDUList([p, e]).writeto(
+        d / f"stacked-16_{obj}_300s120_SHO_{stamp}148.fits", overwrite=True)
+
+
 def _draco_lights(folder: str, obj: str, ra: float, dec: float, exp: int,
                   filt: str, start: datetime, n: int, seed0: int, gain: int = 60):
     """n Draco `.fits` subs → Images/<folder>/lights/ (Draco filename form)."""
@@ -502,6 +533,10 @@ def build(out: Path):
     _draco_lights("NGC 6960", "NGC 6960", ra, dec, 300, "Duo-Band",
                   base + timedelta(days=12), 6, 7000)
     _draco_calibration_library(7100)
+    # …plus a Draco "SHO" on-device stack: one FITS holding HO + SO images, so the
+    # Send-to-AstroWizard dialog shows one row per layer.
+    _draco_sho_stack("NGC 6960", "NGC 6960", ra, dec,
+                     base + timedelta(days=12, hours=2), 7200)
 
     # M13 (Hercules Cluster) — a captured globular, for object-type variety (the
     # corpus is otherwise galaxies + nebulae; the prioritizer type-weights + the
@@ -856,6 +891,14 @@ def verify(out: Path):
     assert "M13" in objs, "M13 cluster produced no session"
     print(f"  Dwarf M42: {len(m42_lights)} .fits lights + stacked-16 stack; "
           f"M13 cluster captured")
+
+    # Draco "SHO": one device stack, two images → two handoff rows.
+    from m110 import stacking
+    sho = [c for c in stacking.handoff_candidates("NGC 6960")
+           if c.layer is not None]
+    assert [c.layer_name for c in sho] == ["HO", "SO"], \
+        f"the Draco SHO stack should hand off as HO + SO layers, got {sho}"
+    print("  Draco NGC 6960: SHO stack offers HO + SO layers to AstroWizard")
 
     # Media (the Media scope). `list_media` is flat, recursive, and decides kind
     # per file — so these three assertions are the three things that broke before.

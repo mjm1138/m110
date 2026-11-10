@@ -13,7 +13,7 @@ import json
 import re
 from pathlib import Path
 
-from . import config, hints, objects
+from . import config, hints, layers, objects
 
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".fit", ".fits")
 VIEWABLE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -320,11 +320,20 @@ def render_images(catalog: dict, totals: dict, slugs=None, progress=None) -> dic
             except ValueError:
                 src_rel = None
             full = src_rel if im["viewable"] else None
-            entries.append({"name": im["name"],
-                            "label": im["label"], "size_mb": im["size_mb"],
-                            "mtime": im["mtime"], "viewable": im["viewable"],
-                            "thumb": tp.name if tp else None, "full": full,
-                            "src": src_rel})
+            entry = {"name": im["name"],
+                     "label": im["label"], "size_mb": im["size_mb"],
+                     "mtime": im["mtime"], "viewable": im["viewable"],
+                     "thumb": tp.name if tp else None, "full": full,
+                     "src": src_rel}
+            # A multi-image FITS (a Draco "SHO" stack: HO primary + SO extension)
+            # renders its primary like any stack; the other images are only
+            # *named*, so the gallery can say the file holds more than it shows.
+            # Optional key, present only when there is more than one layer.
+            if config.is_fits_file(im["path"].name):
+                found = layers.image_layers(im["path"])
+                if len(found) > 1:
+                    entry["layers"] = [lay.as_dict() for lay in found]
+            entries.append(entry)
         manifest[slug] = entries
         src = _hero_source(slug, folders, imgs)
         if src:

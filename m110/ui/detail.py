@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QToolButton, QMenu, QMessageBox,
 )
 
-from m110 import build_images, config, derived, objects, processing, siril
+from m110 import build_images, config, derived, layers, objects, processing, siril
 from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
@@ -536,7 +536,10 @@ class DetailPane(QScrollArea):
             name = im.get("name") or ""
             idx = len(self._gallery_items)         # global index across both groups
             item = QListWidgetItem(_square_icon(tp, _GALLERY_TILE), name)
-            item.setToolTip(name)
+            # A multi-image FITS (Draco "SHO") previews its first layer only;
+            # the tooltip says what else the file holds.
+            extra = layers.describe(im.get("layers"))
+            item.setToolTip(f"{name}\n{extra}" if extra else name)
             item.setData(Qt.UserRole, idx)
             gallery.addItem(item)
             full = im.get("full")

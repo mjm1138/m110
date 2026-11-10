@@ -165,7 +165,7 @@ What it contains (and what each fixture exercises):
 | `M81` (lights + stack + notes) | captured-with-stack vs captured-lights-only (no gallery) | §2.3 |
 | **`M101`** (18 lights, a `siril/` sandbox hardlinking **all 18**, then **2 moved to `rejected/`**) | the **#110 exclusion tier**, shipped mid-rejection: the sandbox pre-dates the rejection, so the first Refresh has real work to do (`processing.reconcile_rejected` prunes exactly those 2 links). Integration/sessions already exclude the pair; the frames are still on disk | §2.4 |
 | **`M42`** (**DwarfLab Dwarf 3**: Duo-Band **`.fits`** lights + an in-app `stacked-16_*.fits` stack + `stacked.jpg`) | the **`.fits`** extension end-to-end (sessions + rendering), a **narrowband** filter, a 2nd device in the store; `stacked.jpg` is force-curated **finished** → the detail **Finished / Working** split (#17) | §2.2, §2.3 |
-| **`NGC 6960`** (**DwarfLab Draco**, pre-release: 300 s BGGR `.fits` lights with `DET-TEMP` 11–14 °C, `TELESCOP='Draco'`) + the store's **`Calibration/Draco/`** library (5 darks across temperature/exposure/binning, 2 flats, 1 bias — stamped exactly as import stamps them) | the device-level calibration library: prep links **one** matched master per tier (the 13C dark, the bias; no flat — filter map unverified) into `siril/`, `next-steps.md` explains; `m110-stack` calibrates with them. (`NGC 6992` stays Seestar-captured: importing the Draco `Veil_nebula` session onto it makes a **two-device** target, which prep refuses to calibrate, with a note) | §2.2 (Draco block) |
+| **`NGC 6960`** (**DwarfLab Draco**, pre-release: 300 s BGGR `.fits` lights with `DET-TEMP` 11–14 °C, `TELESCOP='Draco'`) + the store's **`Calibration/Draco/`** library (5 darks across temperature/exposure/binning, 2 flats, 1 bias — stamped exactly as import stamps them) | a Draco **"SHO"** on-device stack (one FITS, HO + `SOO` images) for the per-layer AstroWizard handoff; the device-level calibration library: prep links **one** matched master per tier (the 13C dark, the bias; no flat — filter map unverified) into `siril/`, `next-steps.md` explains; `m110-stack` calibrates with them. (`NGC 6992` stays Seestar-captured: importing the Draco `Veil_nebula` session onto it makes a **two-device** target, which prep refuses to calibrate, with a note) | §2.2 (Draco block) |
 | **`M13`** (globular cluster: lights + Seestar stack) | object-**type** variety (the corpus is otherwise galaxies + nebulae) — the prioritizer type-weights + a non-galaxy hero | §2.6 |
 | `M63` (+ `finished/` render + `stacks/` stack, one linear `_og` + one stretched `_processed`) | "up to date" processing status, an imported deliverable in the gallery, and the **AstroWizard picker's** linear-vs-stretched choice | §2.4 |
 | `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) | §2.4 |
@@ -757,6 +757,25 @@ m110-stack "<copy>" --run --handoff
       the inode numbers (first column) must match.
 - [ ] Send the same stack again: no error, and the dialog now says it is already
       there.
+
+**A multi-image stack (Draco "SHO")**  ⚙ *(`test_layers.py`, `test_stacking.py`, `test_ui_handoff.py`)*
+
+- [ ] Open **NGC 6960** → Send to AstroWizard…: the `stacked-16_NGC 6960_300s120_SHO_…`
+      stack shows as **two rows**, `…_SHO_…_HO.fits` (20 frames) above
+      `…_SHO_…_SO.fits` (39 frames), and the note above the table says such a stack
+      is listed once per layer and a layer send takes disk space.
+- [ ] Select the SO row: the line under the table says it will write the **SO**
+      layer as `…_SO.fits`. Send.
+- [ ] `Images/NGC 6960/astrowizard/…_SO.fits` opens in Siril as one RGB image, and
+      its header says `FILTER = 'SO'`, `STACKCNT = 39`, `M110LAYR = 'SOO'`, with
+      `OBJECT`/`TELESCOP`/`GAIN` carried over from the primary. The file in
+      `seestar-stacks/` is unchanged (same size and modification time).
+- [ ] Reopen the dialog: the SO row says it's already there; HO does not.
+- [ ] In the object's gallery, hover the SHO stack tile: the tooltip reads
+      *"2 layers — HO 20 frames · SO 39 frames"*.
+- [ ] Real data (if you have it, never imported into a live store):
+      `~/Documents/M110-test-import-source/Draco_test_data_2026-10/C20_SHO/` imports to
+      `Images/NGC 7000/seestar-stacks/` and offers HO 20 / SO 39.
 
 **Launch and Preferences** — needs AstroWizard actually installed.
 

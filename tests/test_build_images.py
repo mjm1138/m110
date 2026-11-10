@@ -56,6 +56,34 @@ def test_render_generates_thumb_hero_manifest(tmp_path, monkeypatch):
     assert (internal / "renders" / "hero" / "m99.jpg").is_file()
 
 
+def test_a_multi_layer_stack_names_its_layers_and_renders_its_primary(
+        tmp_path, monkeypatch):
+    """A Draco "SHO" stack (HO primary + SO extension) previews as its primary,
+    like any stack; the manifest names every layer so the gallery can say the file
+    holds more than the thumbnail shows. An ordinary FITS gets no `layers` key."""
+    import numpy as np
+    from astropy.io import fits
+
+    from tests._helpers import make_sho
+    root, internal = _setup(tmp_path, monkeypatch)
+    make_sho(config.seestar_stacks_dir("NGC 7000") / "sho.fits", shape=(3, 40, 60))
+    plain = config.seestar_stacks_dir("NGC 7000") / "plain.fits"
+    fits.PrimaryHDU(np.random.default_rng(1).random((40, 60), dtype=np.float32)
+                    ).writeto(plain)
+    catalog = {"ngc-7000": {"id": "NGC 7000", "name": "North America Nebula"}}
+    totals = {"by_folder": {"NGC 7000": {"slugs": ["ngc-7000"]}}, "by_slug": {}}
+
+    build_images.render_images(catalog, totals)
+
+    entries = {e["name"]: e for e in json.loads(
+        (internal / "derived" / "images.json").read_text())["ngc-7000"]}
+    sho = entries["sho.fits"]
+    assert sho["thumb"] and (internal / "renders" / sho["thumb"]).is_file()
+    assert [(x["name"], x["filter"], x["frames"]) for x in sho["layers"]] == [
+        ("PRIMARY", "HO", 20), ("SOO", "SO", 39)]
+    assert "layers" not in entries["plain.fits"]
+
+
 def test_orphaned_thumb_pruned_on_reprocess(tmp_path, monkeypatch):
     """#14: a reprocessed source gets a new content-hash thumb; the stale one is
     pruned (not left to grow the renders cache)."""

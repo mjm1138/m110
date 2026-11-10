@@ -4,6 +4,8 @@ One copy of the temp-store setup and the small fixtures that several test module
 need (previously duplicated as `_seed_root` / `_seed_capture` / … in each file)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from m110 import config
 
 
@@ -161,3 +163,28 @@ def seed_sandbox(target="M51"):
     (sb / f"{target}_x_processed.png").write_text("png")
     (sb / f"{target}_x_processed.fit").write_text("fit")
     return sb
+
+
+def make_sho(path, *, shape=(3, 6, 8)):
+    """Write a Draco-shaped two-image FITS (firmware 1.1.0.55 "SHO": a uint16
+    3-plane HO primary with the full header, plus an ``SOO`` image extension that
+    repeats only FILTER / EXPTIME / STACKCNT). Returns (path, ho, so) pixels."""
+    import numpy as np
+    from astropy.io import fits
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(7)
+    ho = rng.integers(0, 65535, size=shape, dtype=np.uint16)
+    so = rng.integers(0, 65535, size=shape, dtype=np.uint16)
+    p = fits.PrimaryHDU(ho)
+    for k, v in (("DATE-OBS", "2026-11-03T07:18:51.008"), ("EXPTIME", 6000.0),
+                 ("GAIN", 120), ("STACKCNT", 20), ("FILTER", "HO"),
+                 ("OBJECT", "C 20"), ("TELESCOP", "Draco"), ("BAYERPAT", "BGGR")):
+        p.header[k] = v
+    p.header["HISTORY"] = "device stack"
+    e = fits.ImageHDU(so, name="SOO")
+    e.header["FILTER"] = "SO"
+    e.header["EXPTIME"] = 11700.0
+    e.header["STACKCNT"] = 39
+    fits.HDUList([p, e]).writeto(path)
+    return path, ho, so

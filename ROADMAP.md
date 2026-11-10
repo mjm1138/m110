@@ -1063,6 +1063,23 @@ remaining device-source gaps collect here:
   header on both DwarfLab devices, unlike the Seestar), the `ir_N` flat index ↔
   filter-name map (flats/bias also say `gain_2` while the lights say 60 — scale
   unknown), and re-validating the preset against a production unit.
+  **2026-11-07/10:** the page's C 20 "SHO" release (firmware **1.1.0.55**) is ONE
+  FITS with two image HDUs — primary HO (`FILTER 'HO'`, 20 frames) + an
+  `EXTNAME='SOO'` extension (`FILTER 'SO'`, 39 frames; it repeats only
+  FILTER/EXPTIME/STACKCNT). Every reader stopped at HDU 0; AstroWizard opens the
+  primary, and Siril 1.4.5 `load`s the file as a two-image *FITS sequence*
+  (writing a `.seq` beside it), not as an image. **Landed:** `m110/layers.py` (`image_layers` header-only,
+  `layer_header` = primary's cards overlaid by the layer's, `write_layer`
+  pixel-exact incl. BZERO, `.part` → `os.replace`); the AstroWizard handoff offers
+  one row per layer and writes the chosen one as `<stem>_<filter>.fits` (a real
+  file, not a link; the device file is untouched; a multi-layer stack without a
+  layer is refused); `images.json` names the layers (optional `layers` key) for the
+  gallery tooltip; previews stay the primary (owner's call: no M110 colour mapping).
+  Also learned: firmware 1.1.x writes `FILTER` `HO`/`SO`/`Astro` (1.0.999.x wrote
+  `Duo-Band`) — relevant to the still-empty `FILTER_INDEX["draco"]`; the stack's
+  filename stamp is the session *start* and `DATE-OBS` its *end*, same clock;
+  `MACADDR` tells units apart (both test units say `TELESCOP 'Draco'`).
+  Follow-up proposed for `main`: rename `seestar-stacks/` to a device-neutral name.
 - **`DWARF_DARK/` routing** → darks tier (`CALI_FRAME/` is handled above; the
   library it feeds is on `main`, #168).
 - **`Restacked/` (Mega Stack)** → the device-stack tier.

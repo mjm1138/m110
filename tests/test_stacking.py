@@ -1024,6 +1024,81 @@ def test_handoff_is_idempotent(tmp_path, monkeypatch):
     assert apply_handoff(stack) == apply_handoff(stack)   # re-running must not raise
 
 
+# ── multi-layer stacks (Draco "SHO": HO primary + SO extension) ──────────────
+
+def test_a_multi_layer_stack_is_offered_once_per_layer(tmp_path, monkeypatch):
+    """AstroWizard and Siril open only the primary HDU, so the SO half of a Draco
+    SHO stack is reachable only as a file of its own — one row per layer, with
+    that layer's own filter and frame count."""
+    from tests._helpers import make_sho
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "NGC 7000"
+    make_sho(config.seestar_stacks_dir(t) / "stacked-16_C 20_SHO.fits")
+
+    got = handoff_candidates(t)
+
+    assert [(c.name, c.layer, c.layer_name, c.filter, c.frames) for c in got] == [
+        ("stacked-16_C 20_SHO_HO.fits", 0, "HO", "HO", 20),
+        ("stacked-16_C 20_SHO_SO.fits", 1, "SO", "SO", 39)]
+    assert {c.path.name for c in got} == {"stacked-16_C 20_SHO.fits"}
+
+
+def test_handing_over_a_layer_writes_it_as_its_own_file(tmp_path, monkeypatch):
+    from astropy.io import fits
+
+    from tests._helpers import make_sho
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    t = "NGC 7000"
+    stack, _, so = make_sho(config.seestar_stacks_dir(t) / "sho.fits")
+    before = stack.read_bytes()
+
+    dest = apply_handoff(stack, layer=1)
+
+    assert dest == config.astrowizard_dir(t) / "sho_SO.fits"
+    with fits.open(dest) as out:
+        assert len(out) == 1                       # opens the same in any tool
+        assert out[0].header["FILTER"] == "SO" and out[0].header["STACKCNT"] == 39
+        assert out[0].header["OBJECT"] == "C 20"   # inherited from the primary
+        assert np.array_equal(out[0].data, so)
+    assert stack.read_bytes() == before            # the device file is untouched
+    prov = json.loads((dest.parent / "sho_SO.fits.src.json").read_text())
+    assert (prov["source"], prov["layer"], prov["layer_name"]) == ("sho.fits", 1, "SOO")
+    assert prov["filter"] == "SO" and prov["frames"] == 39
+    # Per layer: SO is now handed over, HO is not.
+    assert {c.layer: c.already for c in handoff_candidates(t)} == {0: False, 1: True}
+
+
+def test_a_layer_handoff_never_clobbers_what_is_already_there(tmp_path, monkeypatch):
+    from tests._helpers import make_sho
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    stack, _, _ = make_sho(config.seestar_stacks_dir("NGC 7000") / "sho.fits")
+    dest = apply_handoff(stack, layer=1)
+    dest.write_bytes(b"edited in the sandbox")
+    assert apply_handoff(stack, layer=1) == dest
+    assert dest.read_bytes() == b"edited in the sandbox"
+
+
+def test_a_multi_layer_stack_without_a_layer_is_refused(tmp_path, monkeypatch):
+    """Silently handing over only the primary is exactly the bug being fixed."""
+    from tests._helpers import make_sho
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    stack, _, _ = make_sho(config.seestar_stacks_dir("NGC 7000") / "sho.fits")
+    with pytest.raises(StackingError, match=r"2 images \(HO 20×, SO 39×\)"):
+        apply_handoff(stack)
+    with pytest.raises(StackingError, match="no image layer 7"):
+        apply_handoff(stack, layer=7)
+    assert not config.astrowizard_dir("NGC 7000").exists() or not any(
+        config.astrowizard_dir("NGC 7000").iterdir())
+
+
+def test_layer_zero_of_an_ordinary_stack_is_still_the_plain_link(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "IMAGES_DIR", tmp_path / "Images")
+    stack = _sub(config.siril_dir("M27") / "s.fit", OBJECT="M27", STACKCNT=10)
+    assert handoff_candidates("M27")[0].layer is None
+    dest = apply_handoff(stack, layer=0)
+    assert dest.name == "s.fit" and dest.stat().st_ino == stack.stat().st_ino
+
+
 def test_every_siril_spawn_sanitizes_the_child_environment():
     """Asserted on the source, because the failure is invisible from a dev run.
 

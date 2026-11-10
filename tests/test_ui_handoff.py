@@ -196,3 +196,31 @@ def test_an_intermediate_never_reaches_the_picker(tmp_path, monkeypatch, qapp):
         assert names == ["s.fit"]
     finally:
         d.deleteLater(); qapp.processEvents()
+
+
+def test_a_multi_layer_stack_shows_a_row_per_layer_and_sends_the_chosen_one(
+        tmp_path, monkeypatch, qapp):
+    """A Draco "SHO" stack holds HO and SO in one file; the dialog lists both,
+    primary first, and Send on the SO row writes the SO layer — not the primary
+    the tools would have opened from the device file."""
+    from astropy.io import fits
+
+    from tests._helpers import make_sho
+    root = seed_root(tmp_path, monkeypatch)
+    slug, target = seed_capture(root)
+    make_sho(config.seestar_stacks_dir(target) / "sho.fits")
+
+    d = _dialog(slug, monkeypatch)
+    try:
+        names = [d._table.item(r, 0).text() for r in range(d._table.rowCount())]
+        assert names == ["sho_HO.fits", "sho_SO.fits"]
+        assert "listed once per layer" in d.findChildren(
+            type(d._status))[0].text()
+        d._table.selectRow(1)
+        assert "<b>SO</b> layer of sho.fits" in d._status.text()
+        d._send.click()
+        assert d._sent == config.astrowizard_dir(target) / "sho_SO.fits"
+        with fits.open(d._sent) as out:
+            assert len(out) == 1 and out[0].header["FILTER"] == "SO"
+    finally:
+        d.deleteLater(); qapp.processEvents()

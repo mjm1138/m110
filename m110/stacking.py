@@ -1704,7 +1704,7 @@ def _is_stretched(history: list[str]) -> bool:
     return any(m in low for m in _STRETCH_MARKERS)
 
 
-def _provenance(stack: Path) -> dict:
+def _provenance(stack: Path, layer: int | None = None) -> dict:
     """What this stack *is*, from facts the pipeline recorded in its header.
 
     Deliberately not mtime and not a content hash: ingest and import both copy
@@ -1713,11 +1713,23 @@ def _provenance(stack: Path) -> dict:
     `DATE`, `STACKCNT` and `LIVETIME` are written by Siril when it made the file,
     so a re-stack changes them and the staleness is visible for free. Same
     identity-not-timestamp reasoning as the `hero/<slug>.src` sidecar (#17).
+
+    ``layer`` reads one image of a multi-layer FITS (a Draco "SHO" stack) through
+    `layers.read_layer_header`, so its FILTER / STACKCNT are the layer's own and
+    everything the extension does not repeat is the primary's.
     """
     info = {"source": stack.name, "size_bytes": stack.stat().st_size}
     try:
-        h = _fits().getheader(stack)
-    except (OSError, ValueError):
+        if layer is None:
+            h = _fits().getheader(stack)
+        else:
+            from m110 import layers
+            h = layers.read_layer_header(stack, layer)
+            info["layer"] = layer
+            name = h.get(layers.LAYER_CARD)
+            if name:
+                info["layer_name"] = str(name).strip()
+    except (OSError, ValueError, IndexError):
         return info
     steps = [str(x).strip() for x in h.get("HISTORY", [])]
     if steps:
@@ -1729,6 +1741,14 @@ def _provenance(stack: Path) -> dict:
         if v is not None:
             info[key] = str(v).strip() if isinstance(v, str) else v
     return info
+
+
+def layer_filename(stack_name: str, layer) -> str:
+    """The sandbox name for one layer of a multi-layer stack:
+    ``<stem>_<filter><suffix>`` (``…_SO.fits``) — the filter is what tells the two
+    files apart in AstroWizard's open dialog."""
+    p = Path(stack_name)
+    return f"{p.stem}_{layer.tag}{p.suffix}"
 
 
 @dataclass
@@ -1743,10 +1763,15 @@ class HandoffCandidate:
     filter: str | None = None
     already: bool = False          # a file of this name is already handed over
     stretched: bool | None = None  # None = no HISTORY to judge from
+    layer: int | None = None       # HDU index, for one image of a multi-layer stack
+    layer_name: str | None = None  # its short tag ("SO"), shown beside the file
+    dest_name: str | None = None   # the name it will have in the sandbox
 
     @property
     def name(self) -> str:
-        return self.path.name
+        """The name the stack has (or will have) in the sandbox — the file's own,
+        or ``<stem>_<filter>`` for one layer of a multi-layer stack."""
+        return self.dest_name or self.path.name
 
 
 def _sandbox_stacks(target: str) -> list[Path]:
@@ -1814,23 +1839,38 @@ def handoff_candidates(target: str,
     dest = dest_fn(target)
     existing = {q.name for q in dest.iterdir()} if dest.is_dir() else set()
 
+    from m110 import layers
+
     out: list[HandoffCandidate] = []
     for tier, path in _candidate_paths(target):
-        prov = _provenance(path)
-        live = prov.get("integration_sec")
-        out.append(HandoffCandidate(
-            path=path, tier=tier, size_bytes=prov.get("size_bytes", 0),
-            frames=prov.get("frames"),
-            integration_min=round(float(live) / 60.0, 1) if live else None,
-            stacked_at=prov.get("stacked_at"), filter=prov.get("filter"),
-            already=path.name in existing, stretched=prov.get("stretched"),
-        ))
+        # A multi-layer stack (Draco "SHO": HO primary + SO extension) is offered
+        # once per layer: AstroWizard and Siril open only the primary, so the only
+        # way to finish the other half is to hand it over as a file of its own.
+        found = layers.image_layers(path)
+        picks = [(lay, layer_filename(path.name, lay)) for lay in found] \
+            if len(found) > 1 else [(None, path.name)]
+        for lay, dest_name in picks:
+            prov = _provenance(path, lay.index if lay else None)
+            live = prov.get("integration_sec")
+            out.append(HandoffCandidate(
+                path=path, tier=tier, size_bytes=prov.get("size_bytes", 0),
+                frames=prov.get("frames"),
+                integration_min=round(float(live) / 60.0, 1) if live else None,
+                stacked_at=prov.get("stacked_at"), filter=prov.get("filter"),
+                already=dest_name in existing, stretched=prov.get("stretched"),
+                layer=lay.index if lay else None,
+                layer_name=lay.tag if lay else None,
+                dest_name=dest_name if lay else None,
+            ))
     # Newest first; undated stacks sort last rather than being dropped.
-    out.sort(key=lambda c: (c.stacked_at or "", c.size_bytes), reverse=True)
+    # A multi-layer stack's rows stay together, in file order (primary first).
+    out.sort(key=lambda c: (c.stacked_at or "", c.size_bytes, -(c.layer or 0)),
+             reverse=True)
     return out
 
 
-def apply_handoff(stack: Path, tool: str = "astrowizard") -> Path:
+def apply_handoff(stack: Path, tool: str = "astrowizard",
+                  layer: int | None = None) -> Path:
     """Hardlink a finished stack into its post-processing sandbox. **Writes.**
 
     This is the sanctioned writer for the handoff: it runs in the CLI the user
@@ -1840,7 +1880,17 @@ def apply_handoff(stack: Path, tool: str = "astrowizard") -> Path:
     The stack is hardlinked, so a handoff costs no disk; and the sandbox is a
     sibling of `siril/` rather than a subdir because the two artifacts have
     different lifetimes — see `config.SANDBOX_DIRNAMES`.
+
+    ``layer`` hands over one image of a multi-layer stack (a Draco "SHO" file):
+    it is written out as a standalone single-image FITS named
+    ``<stem>_<filter>`` (`layers.write_layer` — a real file, not a link, since it
+    is not the same bytes), and the device file itself is left as it is. A
+    multi-layer stack sent without a ``layer`` is refused rather than silently
+    handing over only its primary. Like the link, an existing file of that name is
+    left alone, so a re-send never clobbers the sandbox.
     """
+    from m110 import layers
+
     stack = Path(stack).resolve()
     dir_fn = _HANDOFF_DIRS.get(tool)
     if dir_fn is None:
@@ -1852,12 +1902,31 @@ def apply_handoff(stack: Path, tool: str = "astrowizard") -> Path:
             f"{stack.parent} is not inside the M110 store, so there is no capture "
             "target to hand off to. Stack inside Images/<target>/siril/ instead.")
 
+    found = layers.image_layers(stack)
+    if layer is None and len(found) > 1:
+        raise StackingError(
+            f"{stack.name} holds {len(found)} images "
+            f"({', '.join(lay.label for lay in found)}); hand over one layer at a "
+            "time.")
+    chosen = None
+    if layer is not None:
+        chosen = next((lay for lay in found if lay.index == layer), None)
+        if chosen is None:
+            raise StackingError(f"{stack.name} has no image layer {layer}.")
+        if len(found) == 1:
+            layer, chosen = None, None      # a one-image file: the plain link
+
     dest_dir = dir_fn(target)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / stack.name
-    siril_mod._link_or_copy(str(stack), str(dest))
-    (dest_dir / (stack.name + SIDECAR_SUFFIX)).write_text(
-        json.dumps(_provenance(stack), indent=2), encoding="utf-8")
+    if chosen is None:
+        dest = dest_dir / stack.name
+        siril_mod._link_or_copy(str(stack), str(dest))
+    else:
+        dest = dest_dir / layer_filename(stack.name, chosen)
+        if not dest.exists():
+            layers.write_layer(stack, chosen.index, dest)
+    (dest_dir / (dest.name + SIDECAR_SUFFIX)).write_text(
+        json.dumps(_provenance(stack, layer), indent=2), encoding="utf-8")
     return dest
 
 
