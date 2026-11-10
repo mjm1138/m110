@@ -45,7 +45,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import calibration, config, devices, launch, roundtrip, siril as siril_mod
+from . import calibration, capture_profiles, config, devices, launch, roundtrip, siril as siril_mod
 
 PRESET_NAME = siril_mod.PRESET_NAME
 
@@ -233,9 +233,12 @@ class Frame:
     ra: float | None = None
     dec: float | None = None
     binning: int | None = None      # XBINNING — calibration masters are per binning
+    # dark-subtracted before it was saved (the capture path decides —
+    # capture_profiles.darks_applied); None when the header was unreadable
+    darks_applied: bool | None = None
 
 
-def read_frames(lights: Path) -> tuple[list[Frame], dict]:
+def read_frames(lights: Path | list[Path]) -> tuple[list[Frame], dict]:
     """Every frame's metadata plus the shared geometry, read once.
 
     Separate from summarising so a subset can be re-summarised without touching
@@ -244,8 +247,11 @@ def read_frames(lights: Path) -> tuple[list[Frame], dict]:
     than the folder.
     """
     fits = _fits()
-    files = sorted(p for p in lights.iterdir()
-                   if p.is_file() and config.is_fits_file(p.name))
+    if isinstance(lights, list):              # a split filter's subsets, by name
+        files = sorted(lights, key=lambda p: p.name)
+    else:
+        files = sorted(p for p in lights.iterdir()
+                       if p.is_file() and config.is_fits_file(p.name))
     if not files:
         raise StackingError(f"No .fit/.fits frames in {lights}")
 
@@ -266,19 +272,21 @@ def read_frames(lights: Path) -> tuple[list[Frame], dict]:
         frames.append(Frame(
             name=p.name,
             exposure=float(exp) if exp is not None else None,
-            filter=(h.get("FILTER") or "").strip() or "UNKNOWN",
+            filter=capture_profiles.filter_name(h) or "UNKNOWN",
             gain=int(h["GAIN"]) if h.get("GAIN") is not None else None,
             temp=float(temp) if temp is not None else None,
             date=str(h.get("DATE-OBS") or "")[:10],
             ra=float(h["RA"]) if h.get("RA") is not None else None,
             dec=float(h["DEC"]) if h.get("DEC") is not None else None,
             binning=int(h["XBINNING"]) if h.get("XBINNING") is not None else None,
+            darks_applied=capture_profiles.darks_applied(h),
         ))
         if not geom:
             geom = {"naxis1": h.get("NAXIS1"), "naxis2": h.get("NAXIS2"),
                     "xpixsz": h.get("XPIXSZ"), "focal": h.get("FOCALLEN"),
                     "object": str(h.get("OBJECT", "")).strip(),
-                    "telescop": str(h.get("TELESCOP", "")).strip()}
+                    "telescop": str(h.get("TELESCOP", "")).strip(),
+                    **capture_profiles.facts(h)}
     return frames, geom
 
 
@@ -939,6 +947,81 @@ def clear_scratch(process_dir: Path) -> float:
     return gb
 
 
+def _siril_opt(name: str, path: str) -> str:
+    """``"-name=path"`` — the WHOLE token quoted, which is what Siril's tokenizer
+    honours. ``-name="path"`` passes the quotes on as part of the file name: Siril
+    1.4.5 answers ``"…".[any_allowed_extension] not found`` and the calibrate line
+    fails, absolute path or not (verified 2026-11-07, with a space in the path too)."""
+    return f'"-{name}={path}"'
+
+
+def _calibrate_flags(cal: dict, suffix: str = "") -> str:
+    """The calibrate options for one calibration (`` "-dark=…" -cc=dark … -cfa``,
+    with a leading space), or "" when there is nothing to apply. A raw set's tier
+    names the master the prelude builds (`_stage_names`)."""
+    ref = {t: (_stage_names(t, suffix)[1] if isinstance(v, list) else v)
+           for t, v in (cal or {}).items() if v}
+    flags: list[str] = []
+    if ref.get("darks"):
+        flags += [_siril_opt("dark", ref["darks"]), "-cc=dark"]
+    if ref.get("flats"):
+        flags += [_siril_opt("flat", ref["flats"]), "-equalize_cfa"]
+    if ref.get("biases"):
+        flags += [_siril_opt("bias", ref["biases"])]
+    if flags:
+        flags.append("-cfa")
+    return (" " + " ".join(flags)) if flags else ""
+
+
+def _cal_summary(cal: dict | None) -> str:
+    """'dark ✓ (20 raw) · flat — · biase —', or '' when there is no calibration."""
+    if not cal:
+        return ""
+    return " · ".join(f"{t[:-1]} " + _cal_mark(cal.get(t)) for t in calibration.TIERS)
+
+
+def _cal_mark(v) -> str:
+    """How the proposal table shows one tier: ✓ a master, ✓ (n raw) a set, — none."""
+    if isinstance(v, list):
+        return f"✓ ({len(v)} raw)"
+    return "✓" if v else "—"
+
+
+def build_master_prelude(cal: dict, suffix: str = "") -> list[str]:
+    """Siril lines (run in ``process/``) that turn each staged raw set
+    (`stage_calibration_sets`) into a master named ``master_<tier>``, the way
+    Siril's own OSC preprocessing script does: bias and dark by a plain sigma-
+    clipped average (no normalisation); flats calibrated with the bias master when
+    there is one, then stacked with multiplicative normalisation. Biases first, so
+    the flats can use theirs. Empty when every tier is already a master."""
+    L: list[str] = []
+    for tier in ("biases", "darks", "flats"):
+        frames = cal.get(tier)
+        if not isinstance(frames, list):
+            continue
+        if not L:
+            # Siril keeps `setcompress` as a preference across runs, so a previous
+            # run's rice setting would save `master_<tier>.fit.fz` — quantised, and
+            # not the name calibrate is given. Masters are written plain.
+            L += ["# Masters are written uncompressed (setcompress persists in Siril).",
+                  "setcompress 0", ""]
+        stage, master = _stage_names(tier, suffix)
+        L += [f"# Build the master {tier[:-1]} from {len(frames)} raw frames "
+              "(matched by exposure/gain/binning and sensor temperature).",
+              f"cd {stage}", f"link {stage} -out=..", "cd .."]
+        seq = f"{stage}_"
+        if tier == "flats":
+            bias = cal.get("biases")
+            if bias:
+                bref = _stage_names("biases", suffix)[1] if isinstance(bias, list) else bias
+                L.append(f"calibrate {seq} {_siril_opt('bias', bref)}")
+                seq = f"pp_{seq}"
+            L += [f"stack {seq} rej 3 3 -norm=mul -out={master}", ""]
+        else:
+            L += [f"stack {seq} rej 3 3 -nonorm -out={master}", ""]
+    return L
+
+
 def build_ssf_solve(lights_name: str, p: Proposal,
                     unselect: list[int] | None = None) -> str:
     """Phase 1: calibrate, background-extract, plate solve. Stops there.
@@ -972,13 +1055,26 @@ def build_ssf_solve(lights_name: str, p: Proposal,
         "# Phase 1 of 3: calibrate, background-extract, plate solve.",
         "requires 1.4.0",
         "",
-        f"cd {lights_name}",
-        "# link, not convert: leaves the CFA intact for the drizzle decision below.",
-        f"link {lights_name} -out=../process",
-        "cd ../process",
-        "",
     ]
-    if unselect:
+    if p.get("job_group"):
+        L += [f"# One filter's job folders ({', '.join(p.get('job_group'))}), staged "
+              f"together by m110-stack into process/{lights_name}/.",
+              f"cd process/{lights_name}",
+              "# link, not convert: leaves the CFA intact for the drizzle decision below.",
+              f"link {lights_name} -out=..", "cd ..", ""]
+    else:
+        L += [f"cd {lights_name}",
+              "# link, not convert: leaves the CFA intact for the drizzle decision below.",
+              f"link {lights_name} -out=../process", "cd ../process", ""]
+    subsets = p.get("calibration_subsets") or []
+    # Masters from raw calibration sets first — before `unselect` (which names the
+    # lights sequence) and before `setcompress`, so a master is never quantised.
+    if subsets:
+        for k, sub in enumerate(subsets, 1):
+            L += build_master_prelude(sub.get("calibration") or {}, f"_{k}")
+    else:
+        L += build_master_prelude(p.get("calibration") or {})
+    if unselect and not subsets:     # subsets select their own frames below
         L.append("# Frame selection: calibrate and everything after skip excluded "
                  "frames.")
         L += [f"unselect {seq} {a} {b}" for a, b in as_ranges(unselect)]
@@ -996,27 +1092,37 @@ def build_ssf_solve(lights_name: str, p: Proposal,
     # `calibration_for_stack`). Mirrors the Naztronomy script's calibrate line:
     # -cc=dark enables cosmetic correction from the dark, -equalize_cfa evens the
     # CFA channels of the flat, -cfa tells Siril the frames are colour-filter-array.
-    # Paths are absolute and double-quoted (Siril's tokenizer honours quotes; a
-    # target name can contain spaces).
-    cal = p.get("calibration") or {}
-    cal_flags: list[str] = []
-    if cal.get("darks"):
-        cal_flags += [f'-dark="{cal["darks"]}"', "-cc=dark"]
-    if cal.get("flats"):
-        cal_flags += [f'-flat="{cal["flats"]}"', "-equalize_cfa"]
-    if cal.get("biases"):
-        cal_flags += [f'-bias="{cal["biases"]}"']
-    if cal_flags:
-        cal_flags.append("-cfa")
-        L.append("# Calibrate against the master frames the plan matched "
-                 f"({', '.join(t[:-1] for t in calibration.TIERS if cal.get(t))}).")
-    tail = (" " + " ".join(cal_flags)) if cal_flags else ""
-    if p.get("debayer"):
-        L += ["# -debayer because drizzle is off; without it the stack is monochrome.",
-              f"calibrate {seq}{tail} -debayer", ""]
+    # Each option is quoted as a whole token (`_siril_opt`) — a target name can
+    # contain spaces.
+    debayer = " -debayer" if p.get("debayer") else ""
+    L.append("# -debayer because drizzle is off; without it the stack is monochrome."
+             if debayer else
+             "# No -debayer: drizzle needs raw CFA and demosaics as it resamples.")
+    if subsets:
+        # Per-subset calibration: frames that need different masters — a Seestar's
+        # app subs (dark-subtracted on the telescope) beside its N.I.N.A. subs (not),
+        # or two exposures — are each calibrated with their own match, then merged
+        # into the sequence everything after expects (`calibration_subsets`).
+        n = max(max(sub["positions"]) for sub in subsets)
+        n = max([n, *(unselect or [])])
+        for k, sub in enumerate(subsets, 1):
+            flags = _calibrate_flags(sub.get("calibration") or {}, f"_{k}")
+            L += [f"# Subset {k}: {sub['label']} — "
+                  + (_cal_summary(sub.get("calibration")) or "no calibration"),
+                  f"unselect {seq} 1 {n}"]
+            L += [f"select {seq} {a} {b}" for a, b in as_ranges(sub["positions"])]
+            L += [f"calibrate {seq}{flags} -prefix=pp{k}_{debayer}", ""]
+        L += ["# One sequence again, in subset order (m110-stack maps solve failures "
+              "back through it).",
+              "merge " + " ".join(f"pp{k}_{seq}" for k in range(1, len(subsets) + 1))
+              + f" pp_{seq}", ""]
     else:
-        L += ["# No -debayer: drizzle needs raw CFA and demosaics as it resamples.",
-              f"calibrate {seq}{tail}", ""]
+        cal = p.get("calibration") or {}
+        flags = _calibrate_flags(cal)
+        if flags:
+            L.append("# Calibrate against the master frames the plan matched "
+                     f"({', '.join(t[:-1] for t in calibration.TIERS if cal.get(t))}).")
+        L += [f"calibrate {seq}{flags}{debayer}", ""]
     seq = f"pp_{seq}"
 
     if p.get("bg_extract"):
@@ -1179,6 +1285,11 @@ def parse_solve_log(text: str) -> SolveOutcome:
     return o
 
 
+def _to_lights_positions(failed: list[int], order: list[int]) -> list[int]:
+    """Solve-failure indices of the calibrated sequence → lights-list positions."""
+    return [order[i - 1] for i in failed if 0 < i <= len(order)]
+
+
 def failures_by_night(failed: list[int], frames: list[Frame],
                       excluded: list[int] | None = None) -> dict[str, tuple[int, int]]:
     """night -> (frames that failed to solve, frames offered to the solver).
@@ -1320,10 +1431,10 @@ def format_report(s: Survey, p: Proposal, siril: str, working: Path,
         ("bg extraction", "on" if p.get("bg_extract") else "off"),
         ("quality filters", filters_label(p.get("filters"))),
         ("compression", f"rice q{p.get('compress_quant')}" if p.get("compress") else "off"),
-        ("calibration", " · ".join(
-            f"{t[:-1]} {'✓' if (p.get('calibration') or {}).get(t) else '—'}"
-            for t in ("darks", "flats", "biases"))
-            if p.get("calibration") else "off"),
+        ("calibration", _cal_summary(p.get("calibration"))
+            or ("; ".join(f"{sb['label']}: {_cal_summary(sb['calibration']) or 'none'}"
+                          for sb in p.get("calibration_subsets") or []))
+            or "off"),
     ]
     for k, v in rows:
         why = p.settings[{"overlap norm": "overlap_norm", "bg extraction": "bg_extract",
@@ -1534,6 +1645,7 @@ class StackPlan:
     frames_total: int
     dropped: list
     frames: list = field(default_factory=list)
+    group_files: list = field(default_factory=list)   # a split filter's lights, staged at run
 
     def as_json(self) -> dict:
         """The machine-readable proposal — `--json` and the assistant tool both
@@ -1565,10 +1677,10 @@ def device_dark_gaps(frames: list[Frame], geom: dict) -> dict:
     within the device's sticky window as the sensor drifts; a frame's gap is how far
     its own CCD-TEMP sits from the dark in use for it. Empty when the device
     doesn't, or its library holds no darks."""
-    tel = geom.get("telescop")
-    if not devices.darks_applied_on_device(tel):
+    if not geom.get("darks_applied"):
         return {}
-    masters = calibration.library(devices.folder_name(tel)).get("darks", [])
+    device = geom.get("device") or devices.folder_name(geom.get("telescop"))
+    masters = [m for m in calibration.library(device).get("darks", []) if not m.raw]
     if not masters:
         return {}
     by_name = {f.name: f for f in frames}
@@ -1601,15 +1713,170 @@ def _dark_gap_warning(kept: list[Frame], gaps: dict) -> str | None:
 
 
 def _darks_applied_on_device(working: Path, geom: dict) -> bool:
-    """Did the telescope behind these frames already subtract a dark on-device?"""
-    tel = geom.get("telescop")
-    if not tel:
-        target = target_for(working)
-        tel = calibration.device_for_target(target) if target else None
-    return devices.darks_applied_on_device(tel)
+    """Were these frames already dark-subtracted when saved? Per frame, by capture
+    path (capture_profiles): the Seestar app's subs yes, the same S50 under N.I.N.A.
+    no. Falls back to the target's sampled subs when the geometry has no header."""
+    if geom.get("darks_applied") is not None:
+        return bool(geom["darks_applied"])
+    target = target_for(working)
+    return bool(target and calibration.target_facts(target, sample=3).get("darks_applied"))
 
 
-def calibration_for_stack(working: Path, frames: list, geom: dict
+def _raw_set_problem(tier: str, files: list[Path], frames: list) -> str | None:
+    """Why a job folder's raw calibration frames can't be stacked into ONE master
+    for these lights, or None when they can: they must share exposure, gain and
+    binning (a dark also the lights' exposure — prep links only matching ones)."""
+    facts = [calibration.frame_facts(f) or {} for f in files]
+    keys = {(f.get("exptime"), f.get("gain"), f.get("binning")) for f in facts}
+    if len(keys) > 1:
+        return "mix exposure/gain/binning"
+    if tier == "darks" and frames:
+        exp = Counter(f.exposure for f in frames).most_common(1)[0][0]
+        (dexp, _g, _b), = keys
+        if exp is not None and dexp is not None and abs(exp - dexp) > 0.01:
+            return f"are {dexp:g} s darks for {exp:g} s lights"
+    return None
+
+
+# A split filter's subsets (siril.job_group) are stacked together from one staged
+# folder inside the primary job's scratch — `process/stack_lights/`, hardlinks of
+# every member's lights, made by the run step (`stage_group_lights`).
+GROUP_LIGHTS = "stack_lights"
+
+
+def group_files(members: list[Path]) -> list[Path]:
+    """Every light of every member job folder, by name (names are unique: they all
+    come from the target's one lights/)."""
+    out = []
+    for m in members:
+        out += [p for p in (m / "lights").iterdir()
+                if p.is_file() and config.is_fits_file(p.name)]
+    return sorted(out, key=lambda p: p.name)
+
+
+def stage_group_lights(working: Path, files: list[Path]) -> Path:
+    """Hardlink (copy across devices) `files` into ``process/stack_lights/`` for the
+    solve script. Its own scratch: replaced if a previous run left one."""
+    d = working / "process" / GROUP_LIGHTS
+    if d.is_dir():
+        shutil.rmtree(d)
+    d.mkdir(parents=True)
+    for f in files:
+        try:
+            os.link(f, d / f.name)
+        except OSError:
+            shutil.copyfile(f, d / f.name)
+    return d
+
+
+# Where m110-stack stages a raw calibration set inside process/ and what it calls
+# the master it builds from it (tier → (staging dir, master name)).
+# The master carries an explicit `.fit` (with `setcompress 0` in the prelude), so
+# the name calibrate is given is exactly the file the stack wrote.
+_CAL_STAGE = {t: (f"cal_{t}", f"master_{t}.fit") for t in calibration.TIERS}
+
+
+def _stage_names(tier: str, suffix: str = "") -> tuple[str, str]:
+    """(staging dir, master file) for one tier; `suffix` tells calibration subsets
+    apart (``cal_darks_2`` / ``master_darks_2.fit``)."""
+    return f"cal_{tier}{suffix}", f"master_{tier}{suffix}.fit"
+
+
+def stage_calibration_sets(working: Path, cal: dict | None, suffix: str = "") -> list[str]:
+    """Hardlink (copy across devices) every raw set the plan matched into
+    ``process/cal_<tier>/`` for the solve script's master prelude. The run half
+    only — `build_plan` still writes nothing. Returns the tiers staged. A stale
+    ``cal_<tier>/`` (a previous failed run) is replaced: it is this function's own
+    scratch, named so nothing else uses it."""
+    staged = []
+    for tier, val in (cal or {}).items():
+        if not isinstance(val, list):
+            continue
+        d = working / "process" / _stage_names(tier, suffix)[0]
+        if d.is_dir():
+            shutil.rmtree(d)
+        d.mkdir(parents=True)
+        for i, src in enumerate(val, 1):
+            dst = d / f"{i:05d}_{Path(src).name}"
+            try:
+                os.link(src, dst)
+            except OSError:
+                shutil.copyfile(src, dst)
+        staged.append(tier)
+    return staged
+
+
+def _subset_label(key: tuple, n: int) -> str:
+    applied, exp, gain, binning = key
+    bits = [f"{n} × {exp:g} s" if exp is not None else f"{n} frames"]
+    if applied:
+        bits.append("dark-subtracted on the telescope")
+    elif applied is None:
+        bits.append("capture path unknown")
+    return ", ".join(bits)
+
+
+def calibration_subsets(working: Path, all_frames: list, kept: list, geom: dict,
+                        job_dir_calibration: bool = True
+                        ) -> tuple[list[dict] | None, list[str]]:
+    """Split the selected frames into the sets that need DIFFERENT calibration, or
+    None when one calibration serves them all (the `calibration_for_stack` path).
+
+    A target can hold frames that no single master suits: a Seestar's app subs
+    (dark-subtracted on the telescope) beside the same scope's N.I.N.A. subs (not),
+    or two exposures. Frames are grouped by (dark-subtracted, exposure, gain,
+    binning); each group is matched on its own (`calibration_for_stack`), and groups
+    that came out with the same calibration are rejoined. Each subset is
+    ``{"label", "calibration", "frames": [names], "positions": [1-based indices in
+    the full lights list]}``, in first-frame order. The job folder's own darks/
+    flats/biases (processing prep's link, or the user's) are one set for the whole
+    folder, so their presence means no split."""
+    groups: dict[tuple, list] = {}
+    for f in kept:
+        key = (f.darks_applied, f.exposure, f.gain, f.binning)   # None = unknown
+        groups.setdefault(key, []).append(f)
+    if len(groups) <= 1:
+        return None, []
+    for tier in (calibration.TIERS if job_dir_calibration else ()):
+        d = working / tier
+        if d.is_dir() and any(x.is_file() and config.is_fits_file(x.name)
+                              for x in d.iterdir()):
+            return None, []
+    pos = {f.name: i for i, f in enumerate(all_frames, start=1)}
+    merged: dict[str, dict] = {}
+    notes: list[str] = []
+    for key, frs in groups.items():
+        cal, _why, sub_notes = calibration_for_stack(working, frs, geom,
+                                                     job_dir_calibration)
+        label = _subset_label(key, len(frs))
+        notes += [n.replace("calibration: ", f"calibration [{label}]: ", 1)
+                  for n in sub_notes]
+        sub = merged.setdefault(json.dumps(cal, sort_keys=True),
+                                {"calibration": cal, "frames": [], "labels": []})
+        sub["frames"] += [f.name for f in frs]
+        sub["labels"].append(label)
+    subs = []
+    for sub in merged.values():
+        names = sorted(sub["frames"], key=pos.__getitem__)
+        subs.append({"label": " + ".join(sub["labels"]),
+                     "calibration": sub["calibration"], "frames": names,
+                     "positions": [pos[n] for n in names]})
+    subs.sort(key=lambda sb: sb["positions"][0])
+    return subs, notes
+
+
+def seq_order(p: "Proposal", n_frames: int) -> list[int]:
+    """Lights-list position (1-based) of each frame of the calibrated sequence, in
+    its order: subset by subset after a per-subset `merge`, else the lights list
+    itself. Maps a solve failure's sequence index back to its frame."""
+    subsets = p.get("calibration_subsets") or []
+    if subsets:
+        return [i for sub in subsets for i in sub["positions"]]
+    return list(range(1, n_frames + 1))
+
+
+def calibration_for_stack(working: Path, frames: list, geom: dict,
+                          job_dir_calibration: bool = True
                           ) -> tuple[dict | None, str, list[str]]:
     """The master per tier `calibrate` should use, as ({tier: abs path} | None,
     why, notes). Two sources, in order:
@@ -1626,7 +1893,7 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
     """
     found: dict[str, str] = {}
     notes: list[str] = []
-    for tier in calibration.TIERS:
+    for tier in (calibration.TIERS if job_dir_calibration else ()):
         d = working / tier
         if not d.is_dir():
             continue
@@ -1635,10 +1902,15 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
         if len(fs) == 1:
             found[tier] = str(fs[0].resolve())
         elif len(fs) > 1:
-            notes.append(
-                f"{len(fs)} raw frames in {tier}/ — m110-stack calibrates with "
-                "masters only. Stack them into one master in Siril (the "
-                "Naztronomy script does this) or leave calibration off.")
+            why = _raw_set_problem(tier, fs, frames)
+            if why:
+                notes.append(f"{len(fs)} raw frames in {tier}/ {why}, so no master "
+                             "is built from them; stack one in Siril or leave "
+                             "calibration off.")
+            else:
+                found[tier] = [str(f.resolve()) for f in fs]
+                notes.append(f"calibration: {len(fs)} raw {tier[:-1]} frames in "
+                             f"{tier}/ — a master is built from them first")
     if "darks" in found and _darks_applied_on_device(working, geom):
         notes.append("calibration: a master dark sits beside lights/, but this "
                      "telescope already dark-subtracted the subs — it will be "
@@ -1650,21 +1922,20 @@ def calibration_for_stack(working: Path, frames: list, geom: dict
     facts = calibration.facts_from_frames([
         {"exptime": f.exposure, "gain": f.gain, "binning": f.binning,
          "temp_c": f.temp, "filter": None if f.filter == "UNKNOWN" else f.filter,
-         "telescop": geom.get("telescop") or None}
+         "telescop": geom.get("telescop") or None,
+         "device": geom.get("device"), "darks_applied": f.darks_applied}
         for f in frames])
-    tel = facts.get("telescop")
-    device = None
-    if tel:
-        device = devices.folder_name(tel)
-    else:
+    device = facts.get("device")
+    if not device:
         target = target_for(working)
         if target:
             device = calibration.device_for_target(target)
     match = calibration.match_for_facts(facts, device)
     notes.extend(f"calibration: {n}" for n in match.notes)
     if match:
-        got = match.as_dict()
-        return ({t: str(p.resolve()) for t, p in got.items()},
+        got = match.files()
+        return ({t: (str(ps[0].resolve()) if len(ps) == 1
+                     else [str(p.resolve()) for p in ps]) for t, ps in got.items()},
                 f"matched from Calibration/{match.device}/ on the selected frames' "
                 "exposure, gain and binning (darks: nearest sensor temperature)",
                 notes)
@@ -1688,8 +1959,17 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
         if value is not None and value < 0:
             raise StackingError(f"{flag} {value:g} is negative; use 0 to turn it off.")
     working, lights = resolve_layout(resolve_input(directory))
+    # A job folder of a filter Siril prep split by calibration (a Seestar's app
+    # subs beside its N.I.N.A. subs): stack every subset together, in the first
+    # member's folder, calibrating each from the library — not from any member's
+    # own darks/, which belong to that subset alone.
+    members = siril_mod.job_group(working)
+    gfiles: list[Path] = []
+    if members:
+        working, gfiles = members[0].resolve(), group_files(members)
+        lights = working / "process" / GROUP_LIGHTS
 
-    all_frames, geom = read_frames(lights)
+    all_frames, geom = read_frames(gfiles or lights)
     gaps = device_dark_gaps(all_frames, geom)
     kept, dropped = select_frames(all_frames, ov.only_exposure, ov.exclude_night,
                                   ov.only_night, max_dark_gap=ov.max_dark_gap,
@@ -1767,9 +2047,33 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
     if ov.no_calibration:
         p.set("calibration", None, "disabled on the command line")
     else:
-        cal, why, notes = calibration_for_stack(working, kept, geom)
-        p.set("calibration", cal, why)
-        p.warnings.extend(notes)
+        subsets, sub_notes = calibration_subsets(working, all_frames, kept, geom,
+                                                 job_dir_calibration=not members)
+        if subsets and len(subsets) > 1:
+            p.set("calibration", None, "per subset (calibration_subsets)")
+            p.set("calibration_subsets", subsets,
+                  f"{len(subsets)} sets of frames need different calibration "
+                  "(a dark-subtracted-on-device mix, or exposures): each is "
+                  "calibrated with its own match, then merged before registration")
+            p.warnings.extend(sub_notes)
+        elif subsets:                       # every group matched the same thing
+            p.set("calibration", subsets[0]["calibration"],
+                  "the same match for every exposure in the selection")
+            p.warnings.extend(sub_notes)
+        else:
+            cal, why, notes = calibration_for_stack(working, kept, geom,
+                                                    job_dir_calibration=not members)
+            p.set("calibration", cal, why)
+            p.warnings.extend(notes)
+    if members:
+        p.warnings.append(
+            f"Stacking {' + '.join(m.name for m in members)} together: one filter "
+            "that Siril prep split into job folders by the calibration each part "
+            "needs (for the Naztronomy script). Here each part is calibrated on its "
+            "own, then merged before registration.")
+        p.set("job_group", [m.name for m in members],
+              "one filter, split into job folders by the calibration each subset "
+              "needs (Siril prep, for the Naztronomy script); stacked here together")
 
     # After overrides, so a hand-picked combination is checked too.
     reconcile(p)
@@ -1785,6 +2089,7 @@ def build_plan(directory, ov: Overrides | None = None, *, siril: str | None = No
                                   find_degenerate(working / "process",
                                                   seq_names(lights.name, p)[1])),
         frames_total=len(all_frames), dropped=dropped, frames=all_frames,
+        group_files=gfiles,
     )
 
 
@@ -2197,6 +2502,20 @@ def _execute(a, plan, siril: str, mark) -> int:
                   "run's frame selection (--restack reuses them on purpose).\n",
                   flush=True)
 
+        if plan.group_files:
+            stage_group_lights(working, plan.group_files)
+            print(f"  Stacking {', '.join(p.get('job_group') or [])} together "
+                  f"({len(plan.group_files)} lights staged in process/{GROUP_LIGHTS}/).\n",
+                  flush=True)
+        # Raw calibration sets the plan matched are staged for the solve script,
+        # which builds their masters before calibrating (build_master_prelude).
+        staged = stage_calibration_sets(working, p.get("calibration"))
+        for k, sub in enumerate(p.get("calibration_subsets") or [], 1):
+            staged += stage_calibration_sets(working, sub.get("calibration"), f"_{k}")
+        if staged:
+            print("  Building master " + ", ".join(t[:-1] for t in staged)
+                  + " from raw frames before calibrating.\n", flush=True)
+
         # ---- phase 1: solve ----------------------------------------------
         mark("solve")
         rc, errors = run_siril(siril, working, ssf_solve, log_path, heartbeat,
@@ -2210,7 +2529,9 @@ def _execute(a, plan, siril: str, mark) -> int:
             carry_on = outcome.solved > 0 and outcome.fraction >= min_solved
             print(format_solve_report(
                 outcome,
-                failures_by_night(outcome.failed, plan.frames, dropped),
+                failures_by_night(_to_lights_positions(
+                    outcome.failed, seq_order(p, len(plan.frames))),
+                    plan.frames, dropped),
                 min_solved, carry_on), flush=True)
             if not carry_on:
                 print(f"Log: {log_path}\n")

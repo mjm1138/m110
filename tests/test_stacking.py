@@ -12,7 +12,7 @@ import json
 import numpy as np
 import pytest
 
-from m110 import config
+from m110 import config, stacking
 from m110.stacking import (
     Frame,
     Overrides,
@@ -487,8 +487,8 @@ def test_masters_beside_lights_go_onto_the_calibrate_line(tmp_path):
     cal = plan.proposal.get("calibration")
     assert cal == {"darks": str(dark.resolve()), "biases": str(bias.resolve())}
     line = _calibrate_line(plan.solve_ssf)
-    assert line == (f'calibrate lights_ -dark="{dark.resolve()}" -cc=dark '
-                    f'-bias="{bias.resolve()}" -cfa -debayer')
+    assert line == (f'calibrate lights_ "-dark={dark.resolve()}" -cc=dark '
+                    f'"-bias={bias.resolve()}" -cfa -debayer')
     assert "-flat=" not in line and "-equalize_cfa" not in line
     # drizzle on → no -debayer, the masters stay
     line = _calibrate_line(build_plan(d, Overrides(drizzle=2.0), deep_measure=False).solve_ssf)
@@ -503,7 +503,7 @@ def test_a_flat_adds_equalize_cfa(tmp_path):
     d = _draco_job(tmp_path)
     flat = _sub(d / "flats" / "f.fits", IMAGETYP="Master Flat")
     line = _calibrate_line(build_plan(d, Overrides(), deep_measure=False).solve_ssf)
-    assert f'-flat="{flat.resolve()}" -equalize_cfa -cfa' in line
+    assert f'"-flat={flat.resolve()}" -equalize_cfa -cfa' in line
 
 
 def test_no_calibration_override_stacks_raw(tmp_path):
@@ -515,16 +515,64 @@ def test_no_calibration_override_stacks_raw(tmp_path):
     assert "disabled on the command line" in plan.proposal.settings["calibration"].why
 
 
-def test_raw_calibration_subs_beside_lights_are_reported_not_stacked(tmp_path):
-    """m110-stack consumes masters; a folder of raw darks is the GUI script's job."""
+def test_raw_darks_beside_lights_are_built_into_a_master_first(tmp_path):
+    """A folder of raw darks at the lights' settings (what Siril prep links from a
+    target's own darks/, or a N.I.N.A. raw set from the library) is stacked into a
+    master by the solve script's prelude, then used on the calibrate line (#203)."""
+    d = _draco_job(tmp_path)
+    darks = [_sub(d / "darks" / f"Dark_{i}.fit", IMAGETYP="DARK", EXPTIME=300.0,
+                  GAIN=60, XBINNING=1) for i in range(3)]
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    assert plan.proposal.get("calibration") == {
+        "darks": [str(p.resolve()) for p in darks]}
+    assert any("3 raw dark frames in darks/" in w for w in plan.proposal.warnings)
+    lines = plan.solve_ssf.splitlines()
+    prelude = lines.index("cd cal_darks")
+    assert lines[prelude:prelude + 4] == [
+        "cd cal_darks", "link cal_darks -out=..", "cd ..",
+        "stack cal_darks_ rej 3 3 -nonorm -out=master_darks.fit"]
+    assert prelude < lines.index(_calibrate_line(plan.solve_ssf))
+    assert _calibrate_line(plan.solve_ssf) == (
+        'calibrate lights_ "-dark=master_darks.fit" -cc=dark -cfa -debayer')
+    # build_plan wrote nothing; the run step stages the set into process/
+    assert not (d / "process").exists()
+    assert stacking.stage_calibration_sets(d, plan.proposal.get("calibration")) == ["darks"]
+    staged = sorted((d / "process" / "cal_darks").iterdir())
+    assert [p.name for p in staged] == [f"0000{i + 1}_Dark_{i}.fit" for i in range(3)]
+    assert staged[0].stat().st_ino == darks[0].stat().st_ino        # a hardlink
+
+
+def test_raw_darks_at_the_wrong_exposure_are_reported_not_stacked(tmp_path):
     d = _draco_job(tmp_path)
     for i in range(3):
-        _sub(d / "darks" / f"Dark_{i}.fit")
+        _sub(d / "darks" / f"Dark_{i}.fit", IMAGETYP="DARK", EXPTIME=60.0)
     plan = build_plan(d, Overrides(), deep_measure=False)
     assert plan.proposal.get("calibration") is None
-    assert any("3 raw frames in darks/" in w and "masters only" in w
+    assert any("3 raw frames in darks/ are 60 s darks for 300 s lights" in w
                for w in plan.proposal.warnings)
     assert _calibrate_line(plan.solve_ssf) == "calibrate lights_ -debayer"
+
+
+def test_calibrate_options_quote_the_whole_token(tmp_path):
+    """Siril 1.4.5 keeps the quotes of `-dark="…"` as part of the file name and
+    fails the calibrate line ("[any_allowed_extension] not found"); only a quoted
+    whole token works, spaces included. Regression for every calibrated stack."""
+    d = _draco_job(tmp_path)
+    _sub(d / "darks" / "d 13.fits", IMAGETYP="Master Dark", EXPTIME=300.0)
+    line = _calibrate_line(build_plan(d, Overrides(), deep_measure=False).solve_ssf)
+    assert '="' not in line
+    assert f'"-dark={(d / "darks" / "d 13.fits").resolve()}"' in line
+
+
+def test_master_prelude_builds_bias_before_a_bias_calibrated_flat():
+    from m110.stacking import build_master_prelude
+    L = build_master_prelude({"biases": ["b1", "b2"], "flats": ["f1", "f2"],
+                              "darks": "/abs/master_dark.fit"})
+    assert L[1] == "setcompress 0"          # Siril persists setcompress across runs
+    assert [l for l in L if l.startswith(("stack", "calibrate"))] == [
+        "stack cal_biases_ rej 3 3 -nonorm -out=master_biases.fit",
+        'calibrate cal_flats_ "-bias=master_biases.fit"',
+        "stack pp_cal_flats_ rej 3 3 -norm=mul -out=master_flats.fit"]
 
 
 def test_the_library_is_matched_on_the_selected_frames(tmp_path, monkeypatch):
@@ -539,17 +587,25 @@ def test_the_library_is_matched_on_the_selected_frames(tmp_path, monkeypatch):
     assert plan.proposal.get("calibration") == {"darks": str(d13.resolve())}
     assert "Calibration/Draco/" in plan.proposal.settings["calibration"].why
     assert any("calibration: no master bias" in w for w in plan.proposal.warnings)
-    assert f'-dark="{d13.resolve()}"' in _calibrate_line(plan.solve_ssf)
+    assert f'"-dark={d13.resolve()}"' in _calibrate_line(plan.solve_ssf)
 
-    # A second exposure population → refused … until the selection removes it.
+    # A second exposure population → calibrated per subset (each exposure its own
+    # match, merged before registration) — and one calibration again once the
+    # selection removes it.
     for i in range(4):
         _sub(d / "lights" / f"Unknown_10s80_Duo-Band_20260919-23000{i}000_13C.fits",
              EXPTIME=10.0, GAIN=80, XBINNING=1, DET_TEMP=13, TELESCOP="Draco")
     plan = build_plan(d, Overrides(), deep_measure=False)
     assert plan.proposal.get("calibration") is None
-    assert any("mixed capture settings" in w for w in plan.proposal.warnings)
+    subs = plan.proposal.get("calibration_subsets")
+    assert [(sb["label"], sb["calibration"]) for sb in subs] == [
+        ("4 × 10 s", None),                       # its names sort first
+        ("3 × 300 s", {"darks": str(d13.resolve())})]
+    assert any(w.startswith("calibration [4 × 10 s]: no master dark for 10 s")
+               for w in plan.proposal.warnings)
     plan = build_plan(d, Overrides(only_exposure=[300.0]), deep_measure=False)
     assert plan.proposal.get("calibration") == {"darks": str(d13.resolve())}
+    assert plan.proposal.get("calibration_subsets") is None
 
 
 def test_frames_without_a_telescope_get_no_library_and_say_why(tmp_path, monkeypatch):
@@ -1424,3 +1480,91 @@ def test_drizzle_zero_means_no_drizzle_not_scale_zero(tmp_path):
 def test_negative_drizzle_or_feather_is_refused(tmp_path, ov):
     with pytest.raises(StackingError, match="negative"):
         build_plan(_mosaic_dir(tmp_path), ov, deep_measure=False)
+
+
+
+# ── per-subset calibration (#203): a Seestar's app subs + its N.I.N.A. subs ────
+
+S50 = "S50_abcd1234"
+
+
+def _app_sub(path, **cards):
+    """A Seestar-app sub: dark-subtracted on the telescope (per-unit TELESCOP)."""
+    return _sub(path, TELESCOP=S50, CREATOR="ZWO Seestar S50", GAIN=80, XBINNING=1,
+                CCD_TEMP=12.0, FILTER="IRCUT", OBJECT="M 74", **cards)
+
+
+def _nina_sub(path, **cards):
+    """The same S50 driven by N.I.N.A.: not dark-subtracted, FILTER 'IR'."""
+    return _sub(path, TELESCOP="S50 Prime", SWCREATE="PI N Stars (N.I.N.A. 3.3)",
+                INSTRUME=f"Seestar {S50} Telephoto Camera", IMAGETYP="LIGHT",
+                GAIN=80, XBINNING=1, CCD_TEMP=12.0, FILTER="IR", OBJECT="M 74",
+                **cards)
+
+
+def test_app_and_nina_subs_are_calibrated_per_subset_then_merged(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CALIBRATION_DIR", tmp_path / "Calibration")
+    d = tmp_path / "siril"
+    # names interleave the two populations: lights order a(app) b(nina) c(app) d(nina)
+    _app_sub(d / "lights" / "a.fits", EXPTIME=20.0)
+    _nina_sub(d / "lights" / "b.fits", EXPTIME=30.0)
+    _app_sub(d / "lights" / "c.fits", EXPTIME=20.0)
+    _nina_sub(d / "lights" / "d.fits", EXPTIME=30.0)
+    lib = config.calibration_dir(S50, "darks")
+    raws = [_sub(lib / f"r{i}.fits", IMAGETYP="DARK", EXPTIME=30.0, GAIN=80,
+                 XBINNING=1, CCD_TEMP=11.0, DATE_OBS="2026-11-07T12:00:00")
+            for i in range(3)]
+    plan = build_plan(d, Overrides(), deep_measure=False)
+    p = plan.proposal
+    assert p.get("calibration") is None
+    subs = p.get("calibration_subsets")
+    assert [(sb["label"], sb["positions"]) for sb in subs] == [
+        ("2 × 20 s, dark-subtracted on the telescope", [1, 3]),
+        ("2 × 30 s", [2, 4])]
+    assert subs[0]["calibration"] is None                 # never darked again
+    assert subs[1]["calibration"] == {"darks": [str(r.resolve()) for r in raws]}
+    lines = plan.solve_ssf.splitlines()
+    assert "stack cal_darks_2_ rej 3 3 -nonorm -out=master_darks_2.fit" in lines
+    assert [l for l in lines if l.startswith(("unselect", "select", "calibrate", "merge"))] == [
+        "unselect lights_ 1 4", "select lights_ 1 1", "select lights_ 3 3",
+        "calibrate lights_ -prefix=pp1_ -debayer",
+        "unselect lights_ 1 4", "select lights_ 2 2", "select lights_ 4 4",
+        'calibrate lights_ "-dark=master_darks_2.fit" -cc=dark -cfa -prefix=pp2_ -debayer',
+        "merge pp1_lights_ pp2_lights_ pp_lights_"]
+    # the merged sequence is subset-ordered: its 2nd frame is lights' 3rd (c.fits)
+    order = stacking.seq_order(p, 4)
+    assert order == [1, 3, 2, 4]
+    assert stacking._to_lights_positions([2, 4], order) == [3, 4]
+    # the run step stages the set under the subset's suffix
+    assert stacking.stage_calibration_sets(d, subs[1]["calibration"], "_2") == ["darks"]
+    assert len(list((d / "process" / "cal_darks_2").iterdir())) == 3
+
+
+def test_a_dropped_frame_is_left_out_of_its_subset(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "CALIBRATION_DIR", tmp_path / "Calibration")
+    d = tmp_path / "siril"
+    _app_sub(d / "lights" / "a.fits", EXPTIME=20.0, DATE_OBS="2026-10-18T03:00:00")
+    _app_sub(d / "lights" / "b.fits", EXPTIME=20.0, DATE_OBS="2026-10-19T03:00:00")
+    _nina_sub(d / "lights" / "c.fits", EXPTIME=30.0, DATE_OBS="2026-11-07T03:00:00")
+    plan = build_plan(d, Overrides(exclude_night=["2026-10-19"]), deep_measure=False)
+    # both subsets come out uncalibrated (no library) → one calibration, no split
+    assert plan.proposal.get("calibration_subsets") is None
+    lib = config.calibration_dir(S50, "darks")
+    for i in range(2):
+        _sub(lib / f"r{i}.fits", IMAGETYP="DARK", EXPTIME=30.0, GAIN=80, XBINNING=1,
+             CCD_TEMP=12.0, DATE_OBS="2026-11-07T12:00:00")
+    plan = build_plan(d, Overrides(exclude_night=["2026-10-19"]), deep_measure=False)
+    subs = plan.proposal.get("calibration_subsets")
+    assert [sb["positions"] for sb in subs] == [[1], [3]]
+    assert not any(l.startswith("unselect lights_ 2 2")
+                   for l in plan.solve_ssf.splitlines())   # selection via `select`
+
+
+def test_a_nina_seestar_ir_is_the_apps_ircut():
+    from m110 import capture_profiles
+    h = {"SWCREATE": "N.I.N.A. 3.3", "INSTRUME": f"Seestar {S50} Telephoto Camera",
+         "FILTER": "IR"}
+    assert capture_profiles.filter_name(h) == "IRCUT"
+    assert capture_profiles.filter_name(dict(h, FILTER="LP")) == "LP"
+    # another camera's IR filter is an IR filter
+    assert capture_profiles.filter_name(dict(h, INSTRUME="ZWO ASI2600MC")) == "IR"
