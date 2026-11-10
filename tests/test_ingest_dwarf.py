@@ -95,7 +95,7 @@ def test_dwarf_session_routes_lights_stack_and_skips_previews(tmp_path, monkeypa
     assert any(n.startswith("stacked-16_") and n.endswith(".fits") for n in stack_names)
     assert "stacked.jpg" in stack_names
     assert any(n.startswith("stacked-16_") and n.endswith(".png") for n in stack_names)
-    assert all("Images/M42/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+    assert all("Images/M42/device-stacks/" in o.dest_rel for o in by_kind["stack"])
 
     # per-sub Thumbnail/ + aux rasters (stacked_thumbnail, img_*) are NOT held
     assert "unassigned" not in by_kind

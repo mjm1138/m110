@@ -89,7 +89,18 @@ def load_images() -> dict:
     `name` is the actual filename. `thumb` is relative to `config.RENDERS_DIR`;
     `full` (viewable rasters only) is relative to `config.DATA_ROOT`.
     """
-    return _load("images.json") or {}
+    data = _load("images.json") or {}
+    # Written by a pre-v6 build until the next Sync: the device-stack tier was
+    # `seestar-stacks/` with its own label. Map both so the gallery opens the file
+    # where the store migration moved it.
+    for rows in data.values():
+        for row in rows if isinstance(rows, list) else ():
+            for k in ("src", "full"):
+                if isinstance(row.get(k), str):
+                    row[k] = config.upgrade_legacy_rel(row[k])
+            if row.get("label") == config.LEGACY_DEVICE_STACK_LABEL:
+                row["label"] = config.DEVICE_STACK_LABEL
+    return data
 
 
 def images_for(slug: str) -> list:

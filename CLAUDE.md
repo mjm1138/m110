@@ -88,7 +88,7 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
 <data_root>/                        (default ~/Documents/M110)
   Objects/<catalog id>/journal.md   catalog-object axis (a stub for every Library object)
   Images/<target>/                  capture-target axis
-    lights/ rejected/ stacks/ seestar-stacks/ finished/ previews/
+    lights/ rejected/ stacks/ device-stacks/ finished/ previews/
     siril/  astrowizard/            per-workflow sandboxes (config.SANDBOX_LINKED_INPUTS)
   Media/<Category>_photo|_video/    lunar/planetary/scenery media
   Calibration/<device>/             device-level master darks/flats/biases (device = TELESCOP)
@@ -96,7 +96,7 @@ and capture targets are many-to-many) plus one hidden machine-state dir:
   Inbox/                            ingest holding area
   Plans/                            saved field guides
   .m110_internal_data/              library.toml goals.toml pins.toml devices.toml integration_goals.toml
-                                    sessions.jsonl profiles/ derived/ renders/ .store_version (=5)
+                                    sessions.jsonl profiles/ derived/ renders/ .store_version (=6)
 ```
 
 - **Data-root resolution** (`config.py`): `M110_DATA_ROOT` env → saved preference

@@ -22,7 +22,7 @@ KEEP_ALWAYS = [
     f"{config.INTERNAL_DIRNAME}/profiles/default.toml",
     "Images/M51/finished/M51_final.tif",
     "Images/M51/stacks/M51_stacked.fit",
-    "Images/M51/seestar-stacks/M51_device.fit",
+    "Images/M51/device-stacks/M51_device.fit",
     "Images/M51/siril/presets/naztronomy.ssf",
     "Images/M51/siril/next-steps.md",
     "Media/Lunar_photo/moon.jpg",

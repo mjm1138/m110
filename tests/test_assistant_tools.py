@@ -374,7 +374,7 @@ def with_image(captured):
     """The captured object, plus a real rendered image on disk."""
     from m110 import build_images, catalog, config, derived
     root, slug, target = captured
-    stacks = config.seestar_stacks_dir(target)
+    stacks = config.device_stacks_dir(target)
     stacks.mkdir(parents=True, exist_ok=True)
     from PIL import Image
     Image.new("RGB", (2400, 1600), (30, 40, 70)).save(

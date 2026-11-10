@@ -174,7 +174,7 @@ def _lights(folder: str, obj: str, ra: float, dec: float, exp: int, filt: str,
 
 def _seestar_stack(folder: str, obj: str, ra: float, dec: float, n: int,
                    exp: int, filt: str, when: datetime, seed: int):
-    d = config.seestar_stacks_dir(folder)
+    d = config.device_stacks_dir(folder)
     base = f"Stacked_{n}_{obj}_{exp}s_{filt}_{when.strftime('%Y%m%d-%H%M%S')}"
     _fits(d / f"{base}.fit", obj, ra, dec, exp, filt, when, seed)
     _png(d / f"{base}.jpg", seed)   # the device preview render
@@ -220,7 +220,7 @@ def _dwarf_lights(folder: str, obj: str, ra: float, dec: float, exp: int,
 def _dwarf_stack(folder: str, obj: str, ra: float, dec: float, n: int, exp: int,
                  filt: str, when: datetime, seed: int, gain: int = 60):
     """The Dwarf in-app `stacked-16_*.fits` + `stacked.jpg` → the device-stack tier."""
-    d = config.seestar_stacks_dir(folder)
+    d = config.device_stacks_dir(folder)
     base = f"stacked-16_{obj}_{exp}s{gain}_{filt}_{when.strftime('%Y%m%d-%H%M%S')}"
     _dwarf_fits(d / f"{base}.fits", obj, ra, dec, exp * n, filt, when, seed, gain,
                 rgb=True)
@@ -600,7 +600,7 @@ def _nfs_sidecars(out: Path):
     the fix without an NFS mount; a tester *on* an NFS mount sees these anyway."""
     victims = [
         next(iter(sorted(config.lights_dir("M51").glob("Light_*.fit")))),
-        next(iter(sorted(config.seestar_stacks_dir("M51").iterdir()))),
+        next(iter(sorted(config.device_stacks_dir("M51").iterdir()))),
         config.finished_dir("M63") / "M63_119x30sec_processed.png",
         config.PROFILES_DIR / "default.toml",
         config.OBJECTS_DIR / "m51" / "journal.md",
@@ -815,7 +815,7 @@ def verify(out: Path):
     m42_lights = sorted(config.lights_dir("M42").glob("*.fits"))
     assert m42_lights, "M42 Dwarf `.fits` lights missing"
     assert "M42" in objs, "M42 (Dwarf) produced no session"
-    assert (config.seestar_stacks_dir("M42") / "stacked.jpg").exists(), \
+    assert (config.device_stacks_dir("M42") / "stacked.jpg").exists(), \
         "M42 Dwarf device-stack preview missing"
     assert "M13" in objs, "M13 cluster produced no session"
     print(f"  Dwarf M42: {len(m42_lights)} .fits lights + stacked-16 stack; "

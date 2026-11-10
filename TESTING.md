@@ -67,7 +67,7 @@ rm -rf /tmp/m110-test                     # reset between runs
   root's `Inbox/`.
 - To test capture status / rendering without a device, copy a few real objects'
   folders into the temp root's `Images/<target>/lights/` and
-  `Images/<target>/seestar-stacks/`, then Refresh.
+  `Images/<target>/device-stacks/`, then Refresh.
 
 > ⚠ **`M110_DATA_ROOT` is not the whole story.** Settings live at
 > **`~/.m110/settings.json`, outside the data root**, and the log lives beside
@@ -145,6 +145,16 @@ at the copy, and launch. The store should reshape into
 `Objects/ Images/ Media/ Inbox/ .m110_internal_data/`; verify
 `Objects/<id>/journal.md` populated, renders under `.m110_internal_data/renders/`,
 and the old `data/`/`site/`/`Images/FITS` gone. Relaunch → no further change.
+
+**v5 → v6 (`seestar-stacks/` → `device-stacks/`).** On a **copy** of a v5 store (or
+the unpacked test corpus): write `5` into `.m110_internal_data/.store_version`,
+rename one target's `device-stacks/` back to `seestar-stacks/`, and for the merge
+case also create `device-stacks/` beside it holding one byte-identical file and one
+*different* file under a shared name. Launch: the old folder is gone (or, in the
+merge case, holds only the identical file), the different one sits beside its
+namesake as `<name>-2`, `~/.m110/logs/m110.log` has a `store v6:` line for each,
+the gallery labels those images **Device stack**, and the hero did not change.
+Relaunch → no further change.
 
 ### 0.3 Synthetic test corpus (recommended starting point)
 

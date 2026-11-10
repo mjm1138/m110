@@ -1,7 +1,7 @@
 """Tests for the staging ingest planner + apply (temp fixtures, never live data).
 
 dest_rel is relative to the data root, so destinations read as
-``Images/<target>/lights``, ``Images/<target>/seestar-stacks``, ``Media/<cat>``.
+``Images/<target>/lights``, ``Images/<target>/device-stacks``, ``Media/<cat>``.
 """
 import json
 from pathlib import Path
@@ -253,7 +253,7 @@ def test_plan_classifies_subs_stacks_media(tmp_path, monkeypatch):
     assert all(op.new_object for op in by_kind["light"])  # M13 target doesn't exist
     assert "Images/M13/lights/" in by_kind["light"][0].dest_rel
     assert len(by_kind["stack"]) == 1                     # only the Stacked_ one
-    assert by_kind["stack"][0].dest_rel.startswith("Images/M13/seestar-stacks/")
+    assert by_kind["stack"][0].dest_rel.startswith("Images/M13/device-stacks/")
     assert len(by_kind["media"]) == 1
     assert by_kind["media"][0].dest_rel.startswith("Media/Lunar_photo/")
 
@@ -390,7 +390,7 @@ def test_scan_directory_plan_recurses_nested_tree(tmp_path, monkeypatch):
     assert all(op.action == "copy" for op in ops)     # never moves an external src
     assert len(by_kind["light"]) == 1
     assert "Images/M13/lights/" in by_kind["light"][0].dest_rel
-    assert any("Images/M51/seestar-stacks/" in o.dest_rel for o in by_kind["stack"])
+    assert any("Images/M51/device-stacks/" in o.dest_rel for o in by_kind["stack"])
 
 
 def test_seestar_plan_recurses_nested_subfolders(tmp_path, monkeypatch):
@@ -578,6 +578,22 @@ def test_m110_store_layout_routes_subdirs(tmp_path, monkeypatch):
     assert by_kind["finished"][0].dest_rel == "Images/M1/finished/M1-final.png"
     all_srcs = [op.src for ops_ in by_kind.values() for op in ops_]
     assert not any(s.endswith("process/lights.fit") for s in all_srcs)  # sandbox skipped
+
+
+@pytest.mark.parametrize("tier", ["device-stacks", "seestar-stacks"])
+def test_m110_store_source_device_stack_tier_routes_to_device_stacks(tmp_path, monkeypatch, tier):
+    """Importing from another M110 store (or a backup of one): its device-stack tier
+    lands in `device-stacks/` under either name — `seestar-stacks/` is how a store
+    older than v6 still has it."""
+    _make_staging(tmp_path, monkeypatch)
+    src = tmp_path / "Other" / "Images" / "M1"
+    _fits_hdr(src / "lights" / "Light_M1_a.fit", imagetyp="Light")
+    (src / tier).mkdir(parents=True)
+    (src / tier / "Stacked_10_M1.fit").write_text("s")
+
+    ops = ingest.scan_directory_plan(tmp_path / "Other")
+    stacks = [op for op in ops if op.kind == "stack"]
+    assert [op.dest_rel for op in stacks] == ["Images/M1/device-stacks/Stacked_10_M1.fit"]
 
 
 def test_siril_project_root_imports_lights_calibration_and_root_stack(tmp_path, monkeypatch):

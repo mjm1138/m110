@@ -1205,6 +1205,9 @@ remaining device-source gaps collect here:
   `by_device`. Still open: the
   `Images/<target>/<device>/` path level (+ migration), and telling two Dwarf 3s
   apart (their TELESCOP is the model string; needs `MACADDR`).
+- **Device-stack tier renamed — shipped 2026-11-10** (`feature/device-stacks`, store
+  v6): `Images/<target>/seestar-stacks/` → `device-stacks/`, since Dwarf 3 and
+  Draco stacks land there too; migrated in place, see [`DONE.md`](DONE.md).
 - **`Restacked/` (Mega Stack)** → the device-stack tier.
 - **TIFF subs** (a Dwarf 3 capture option; today only FITS subs are handled).
 - **`shotsInfo.json` sidecar** — RA/DEC + target + exposure/gain + IR-filter +

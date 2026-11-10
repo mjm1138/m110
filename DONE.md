@@ -718,6 +718,49 @@ cut of #93's "destinations become a list"; N destinations stays deferred.
 - The hourly due check for a cloud slot still LISTs the bucket (unchanged
   behaviour); `last_backup_at` could replace that if it ever matters.
 
+## Device-stack tier renamed to `device-stacks/` *(done 2026-11-10, `feature/device-stacks`, store v6)*
+
+`Images/<target>/seestar-stacks/` held every telescope's own in-app stacks once
+Dwarf 3 (`stacked-16_*`) and Draco stacks were routed there by header-truth stack
+detection, so the vendor name was wrong. Renamed to `device-stacks/`.
+
+- **One name, one place.** `config.DEVICE_STACKS_DIRNAME` / `device_stacks_dir`
+  (was `seestar_stacks_dir`, no alias kept — a stale caller should fail loudly);
+  the hero tier, handoff tier string (`HandoffCandidate.tier` = `"device-stacks"`,
+  shown verbatim in the handoff dialog), capture-target detection in
+  `catalog`/`build_derived`, and `roundtrip.ROOT_SKIP_DIRS` (which keeps the old
+  name too, so a leftover old folder is never walked as processing output).
+- **Labels.** Gallery `Source` = `config.DEVICE_STACK_LABEL` ("Device stack", was
+  "Seestar in-app stack"); the import preview's kind label "device stack".
+  `publish.images._image_tier` accepts both labels.
+- **Migration v5→v6** (`migrate._rename_device_stacks`). A plain rename per target.
+  If both folders exist (an older build — `feature/draco`, a downgrade — wrote the
+  old one after an upgrade), `_merge_keep_both` moves file by file, never
+  overwriting: a taken name with different bytes lands as `<stem>-N`
+  (`roundtrip.resolve_import_dest`, the import keep-both rule), a byte-identical
+  copy is *left in the old folder* and logged (no deletion, no duplicate in the
+  gallery), and the old folder is removed only once it holds nothing but OS junk
+  (`_drop_legacy`). The v0 reshape's step 5 now lands `Seestar_stacks/<t>` straight
+  in `device-stacks/`.
+- **Recorded paths.** Three places held `Images/<t>/seestar-stacks/…`: hero `.src`
+  sidecars (machine state → repointed by the migration, so heroes don't re-render;
+  `img_hash` is mtime+size and a rename keeps both), `derived/images.json`
+  (`src`/`full`/`label`, read at launch before Sync rewrites it → normalized on
+  read in `derived.load_images`), and a hand-written journal `hero_image:` (user
+  content → never rewritten; `config.upgrade_legacy_rel` maps it on read, and
+  `hero_source_path` uses it too). Handoff provenance sidecars record only the
+  file name, so they needed nothing.
+- **Ingest** still recognizes a `seestar-stacks/` subdir in a *source* store (an
+  older store or a backup), beside the new name.
+- **Tests:** `test_migrate.py` (rename + sidecar repoint, already-migrated no-op,
+  both-present merge with collision + duplicate, both-present clean merge, v0
+  reshape lands in the new name), `test_build_images.py` (legacy rel mapping, hero
+  `.src`/`hero_image:` fallback, pre-v6 manifest normalization),
+  `test_publish_images.py` (legacy label tiers as device).
+- **Follow-up for `feature/draco`:** its next merge of `main` must carry the rename
+  through its own ~20 new references (`config.seestar_stacks_dir` and
+  `Images/<t>/seestar-stacks/` assertions in its tests).
+
 ## Integration goals — engine + three-state status *(done 2026-10-27, `feature/integration-goals-engine`, #184 PR 1 of 3)*
 
 **What changed.** "Deep" stopped being one type-keyed number compared against an

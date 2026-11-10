@@ -20,7 +20,7 @@ from m110 import catalog, config, ingest
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
 
 KIND_LABEL = {
-    "light": "lights", "stack": "Seestar stack", "media": "media",
+    "light": "lights", "stack": "device stack", "media": "media",
     "dark": "darks", "flat": "flats", "bias": "biases",
     "siril-stack": "Siril stack", "finished": "finished",
     "preview": "sub previews", "unassigned": "→ holding area",

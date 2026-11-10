@@ -50,7 +50,7 @@ at the bottom so this list stays honest about what ships now.)
   for objects you already track.
 - **Auto-discovery** — shoot something new and it appears in your Library on the next sync,
   pulling full reference metadata for known catalog objects.
-- **First-class Seestar stacks & finished renders** — in-app Seestar stacks and your
+- **First-class device stacks & finished renders** — your telescope's in-app stacks and your
   hand-finished images sit alongside the raw subs, and any of them can be the object's
   hero.
 - **Backup & restore** — fast **hardlinked, dated snapshots** to an external drive

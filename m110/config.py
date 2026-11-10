@@ -237,9 +237,33 @@ def stacks_dir(name: str) -> Path:
     return IMAGES_DIR / name / "stacks"
 
 
-def seestar_stacks_dir(name: str) -> Path:
-    """Seestar in-app stacks for a capture target."""
-    return IMAGES_DIR / name / "seestar-stacks"
+# The per-target tier holding the telescope's own in-app stacks — Seestar, Dwarf 3,
+# Draco alike. Named `seestar-stacks/` before store v6 (`migrate._rename_device_stacks`
+# moves it); `upgrade_legacy_rel` maps a path recorded under the old name.
+DEVICE_STACKS_DIRNAME = "device-stacks"
+LEGACY_DEVICE_STACKS_DIRNAME = "seestar-stacks"
+# The gallery "Source" label for that tier (`derived/images.json`), and the label a
+# pre-v6 build wrote — readers accept both (`derived.load_images` normalizes).
+DEVICE_STACK_LABEL = "Device stack"
+LEGACY_DEVICE_STACK_LABEL = "Seestar in-app stack"
+
+
+def device_stacks_dir(name: str) -> Path:
+    """The telescope's own in-app stacks for a capture target (any vendor)."""
+    return IMAGES_DIR / name / DEVICE_STACKS_DIRNAME
+
+
+def upgrade_legacy_rel(rel: str) -> str:
+    """A root-relative path recorded before store v6 (`derived/images.json`, a hero
+    `.src` sidecar, a journal's `hero_image:`) → where that file lives now. Only the
+    tier segment directly under `Images/<target>/` is rewritten; anything else is
+    returned unchanged."""
+    parts = rel.replace("\\", "/").split("/")
+    if (len(parts) >= 4 and parts[0] == "Images"
+            and parts[2] == LEGACY_DEVICE_STACKS_DIRNAME):
+        parts[2] = DEVICE_STACKS_DIRNAME
+        return "/".join(parts)
+    return rel
 
 
 def finished_dir(name: str) -> Path:

@@ -323,7 +323,7 @@ def describe_runs(runs) -> str:
 
 # Managed content tiers whose *directory* classifies a file outright — a file the
 # user filed under stacks/ is a stack, under finished/ is a deliverable, whatever
-# its filename (#85). `seestar-stacks/` is a device tier (in-app stacks ingested
+# its filename (#85). `device-stacks/` is a device tier (in-app stacks ingested
 # from the scope), never user processing output, so it is never a source.
 _OUTPUT_TIERS = ("stacks", "finished")
 
@@ -400,7 +400,7 @@ def classify(path: Path, target: str, tier: str | None = None,
 # one is classified by the tier and, if already exactly in place, dropped by the
 # `p == dest` guard in `finished_outputs` so it can't flood the preview.
 ROOT_SKIP_DIRS = {
-    "lights", "seestar-stacks", "previews",
+    "lights", config.DEVICE_STACKS_DIRNAME, config.LEGACY_DEVICE_STACKS_DIRNAME, "previews",
     "darks", "flats", "biases", "process",
 } | set(config.SANDBOX_DIRNAMES)
 

@@ -30,7 +30,7 @@ def test_refresh_on_empty_library_does_not_fail(tmp_path, monkeypatch):
 
 def test_seestar_only_target_is_captured(tmp_path, monkeypatch):
     images = tmp_path / "Images"
-    (images / "M57" / "seestar-stacks").mkdir(parents=True)
+    (images / "M57" / "device-stacks").mkdir(parents=True)
     (images / "Empty").mkdir()                       # bare folder, not a capture
     monkeypatch.setattr(config, "IMAGES_DIR", images)
     totals = build_derived.build_totals({}, [])      # no sessions at all

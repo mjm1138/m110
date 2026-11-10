@@ -315,7 +315,7 @@ class DetailPane(QScrollArea):
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
             # Per-image state = the tier (finished/ folder → "finished", stacks /
-            # seestar-stacks → "working"), overridden by the user's curation (#17).
+            # device-stacks → "working"), overridden by the user's curation (#17).
             curation = objects.get_curation(slug)
             self._gallery_items = []
             self._galleries = []
