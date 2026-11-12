@@ -8,10 +8,10 @@ from PySide6.QtCore import (
     QUrl, Signal,
 )
 from PySide6.QtGui import (
-    QColor, QCursor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPalette, QPixmap,
+    QColor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPalette, QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMenu, QMessageBox,
+    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMessageBox,
     QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
 )
@@ -332,15 +332,30 @@ def _labelled_dirs(target: str) -> list[tuple[str, Path]]:
             for d in siril.working_dirs(target)]
 
 
-def process_in_siril(parent, slug: str) -> None:
-    """Launch Siril pointed at the object's working folder (across all its
-    capture targets)."""
-    _process_dirs(parent, working_dirs_for_slug(slug))
+def target_working_dirs(target: str) -> list[tuple[str, Path]]:
+    """(label, dir) for one capture target's Siril working dirs."""
+    return _labelled_dirs(target)
 
 
-def process_target_in_siril(parent, target: str) -> None:
-    """Launch Siril pointed at one capture target's working folder."""
-    _process_dirs(parent, _labelled_dirs(target))
+SIRIL_ACTION = "Process in Siril"
+
+
+def add_siril_actions(menu, dirs: list[tuple[str, Path]]) -> dict:
+    """Add "Process in Siril" to `menu` for `dirs` and return {action: dir}.
+
+    One working folder → one plain entry. Several (a sandbox split into job
+    folders, or an object fed by more than one capture target) → a "Process in
+    Siril" **submenu** with one entry per folder. Every choice lives in the one
+    menu the user already opened: a second popup at the cursor after the first
+    closes was easy to miss, and read as "nothing happened". No dirs → nothing
+    added. `QMenu.exec` returns a submenu's action like any other, so callers
+    dispatch with ``chosen in acts``."""
+    if not dirs:
+        return {}
+    if len(dirs) == 1:
+        return {menu.addAction(SIRIL_ACTION): dirs[0][1]}
+    sub = menu.addMenu(SIRIL_ACTION)
+    return {sub.addAction(lbl): d for lbl, d in dirs}
 
 
 def stack_in_stackingwizard(parent, slug: str) -> None:
@@ -372,26 +387,9 @@ def stack_in_stackingwizard(parent, slug: str) -> None:
             f"{exc}\n\nThe folder is open — point StackingWizard at it yourself.")
 
 
-def _process_dirs(parent, dirs: list[tuple[str, Path]]) -> None:
-    """Launch Siril for a set of candidate working dirs. Multiple job folders →
-    a chooser; not-found/launch-error → offer to reveal the folder instead."""
-    if not dirs:
-        QMessageBox.information(
-            parent, "Process in Siril",
-            "No processing working folder exists yet — it's created "
-            "automatically after you import captures.")
-        return
-    if len(dirs) == 1:
-        _launch_siril(parent, dirs[0][1])
-        return
-    menu = QMenu(parent)
-    acts = {menu.addAction(f"Open {lbl} in Siril"): d for lbl, d in dirs}
-    chosen = menu.exec(QCursor.pos())
-    if chosen is not None:
-        _launch_siril(parent, acts[chosen])
-
-
-def _launch_siril(parent, working_dir: Path) -> None:
+def launch_siril(parent, working_dir: Path) -> None:
+    """Launch Siril with `working_dir` as its working directory; on failure,
+    explain and offer to reveal the folder instead."""
     from m110 import launch
     try:
         launch.launch_processing("siril", working_dir)

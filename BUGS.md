@@ -27,6 +27,14 @@ Legend: `[ ]` open · `[~]` partially done
 
 ## Processing & curation UX  *(→ ROADMAP item 7)*
 
+- [x] **"Process in Siril" seemed to do nothing on a split target** (done —
+  `feature/siril-menu`). 2026-11-12, NGC 6543 (LP + IRCUT job folders), Processing
+  page right-click. Choosing the entry closed the menu and opened a *second* chooser
+  `QMenu` at the cursor; it was easy to miss, and dismissing it launched nothing.
+  Fix: `widgets.add_siril_actions` puts the job folders in a **Process in Siril ▸**
+  submenu of the same right-click menu (Library and Processing), and the detail-pane
+  button gets a `setMenu` drop-down; the follow-up chooser is gone.
+  `tests/test_ui_siril_menus.py` drives each entry point.
 - [x] **One undecodable image left an object with no hero** (done —
   `feature/hero-fallback`). 2026-10-27, TESTING.md walk-through: the Dwarf 3 `M1`
   from `M110-test-import-source` has a 3-byte placeholder `stacked-16_…png` beside a
@@ -648,8 +656,8 @@ Legend: `[ ]` open · `[~]` partially done
 - [~] **#19 — Open In… / Process in…** (cross-platform launch is the main risk.)
   **Core shipped** (`feature/reimport-object-root`). Right-click an **object** (Library,
   Processing page, or the detail-pane button) → **"Process in Siril"** launches Siril with
-  the object's working directory set (`siril -d <sandbox>`; a chooser when the sandbox is
-  split per-filter). Right-click a gallery **image** → **"Open in default app"** /
+  the object's working directory set (`siril -d <sandbox>`; a split sandbox lists its job
+  folders in a **Process in Siril ▸** submenu / the button's drop-down). Right-click a gallery **image** → **"Open in default app"** /
   **"Reveal in file manager"**. Pure **guide**, not control — M110 starts the tool and gets
   out of the way. Cross-platform launch lives in the Qt-free `m110/launch.py`: settings
   override (`external_app_paths`) → OS-standard locations (macOS `/Applications/Siril.app`,

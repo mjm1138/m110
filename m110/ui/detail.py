@@ -25,7 +25,7 @@ from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
-    process_in_siril, stack_in_stackingwizard, open_in_default,
+    working_dirs_for_slug, launch_siril, stack_in_stackingwizard, open_in_default,
     reveal_in_manager, reveal_label, defer, connect_context_menu, FlowLayout,
     dark_gap_item,
 )
@@ -168,6 +168,29 @@ class DetailPane(QScrollArea):
     @staticmethod
     def _has_working_folder(slug: str) -> bool:
         return any(config.siril_dir(t).is_dir() for t in targets_for_slug(slug))
+
+    def _siril_button(self, dirs) -> QPushButton:
+        """"Process in Siril": one working folder launches on click; a split
+        sandbox (per-filter / per-calibration job folders, or several capture
+        targets) gets a drop-down on the button itself, one entry per folder —
+        the choice is visible where the user clicked, never a second popup."""
+        btn = QPushButton("Process in Siril")
+        btn.setToolTip("Launch Siril with this object's working "
+                       "folder set as the working directory")
+        if len(dirs) == 1:
+            btn.clicked.connect(
+                lambda _=False, d=dirs[0][1]: launch_siril(self, d))
+            return btn
+        menu = QMenu(btn)
+        for label, d in dirs:
+            # Deferred: `triggered` fires inside the menu's own loop, and the
+            # launch can open a fallback dialog.
+            menu.addAction(label).triggered.connect(
+                lambda _=False, d=d: defer(self, lambda: launch_siril(self, d)))
+        btn.setMenu(menu)
+        btn.setToolTip("Launch Siril in one of this object's working folders "
+                       "(split by filter or calibration)")
+        return btn
 
     def _reveal_working_folder(self, slug: str):
         """Open the object's Siril sandbox(es) in the file manager, so the user
@@ -436,12 +459,7 @@ class DetailPane(QScrollArea):
             imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
             btn_row.addWidget(imp_btn)
         if self._has_working_folder(slug):
-            proc_btn = QPushButton("Process in Siril")
-            proc_btn.setToolTip("Launch Siril with this object's working "
-                                "folder set as the working directory")
-            proc_btn.clicked.connect(
-                lambda _=False, s=slug: process_in_siril(self, s))
-            btn_row.addWidget(proc_btn)
+            btn_row.addWidget(self._siril_button(working_dirs_for_slug(slug)))
             rev_btn = QPushButton("Reveal working folder")
             rev_btn.setToolTip("Open this object's Siril working folder "
                                "(Images/<target>/siril/). Point Siril's "
