@@ -28,7 +28,7 @@ from m110.ui.widgets import (
     NumItem, STATUS_RANK, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
-    can_process_slug, process_in_siril, make_segment, mono_font,
+    working_dirs_for_slug, add_siril_actions, launch_siril, make_segment, mono_font,
     connect_context_menu, SegmentStack,
 )
 
@@ -818,10 +818,10 @@ class CatalogPage(QWidget):
         fill_act.setEnabled(missing)
         online_act = menu.addAction("Enrich online")
         online_act.setEnabled(has_gaps and self._enrich_worker is None)
-        process_act = None
-        if can_process_slug(slug):
+        siril_dirs = working_dirs_for_slug(slug)
+        if siril_dirs:
             menu.addSeparator()
-            process_act = menu.addAction("Process in Siril")
+        process_acts = add_siril_actions(menu, siril_dirs)
         menu.addSeparator()
         published = entry.get("publish", True) is not False
         publish_act = menu.addAction(
@@ -834,7 +834,7 @@ class CatalogPage(QWidget):
                                    else "Deprioritize")
         menu.addSeparator()
         remove_act = menu.addAction("Remove from Library")
-        return menu, {"fill": fill_act, "online": online_act, "process": process_act,
+        return menu, {"fill": fill_act, "online": online_act, "process": process_acts,
                       "publish": publish_act, "pin": pin_act, "depri": depri_act,
                       "remove": remove_act, "published": published, "state": state}
 
@@ -853,8 +853,8 @@ class CatalogPage(QWidget):
             self._fill_one(slug)
         elif chosen is act["online"]:
             self._enrich_one_online(slug)
-        elif act["process"] is not None and chosen is act["process"]:
-            process_in_siril(self, slug)
+        elif chosen in act["process"]:
+            launch_siril(self, act["process"][chosen])
         elif chosen is act["publish"]:
             self._toggle_publish(slug, not act["published"])
         elif chosen is act["pin"]:

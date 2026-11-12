@@ -65,6 +65,11 @@ changes a **user** would notice, per release.
   the gallery these images are now labelled **Device stack**, and the import
   preview calls them **device stack**. If you point another program (or an older
   M110) at that folder, update it to the new name.
+- **Process in Siril shows its folders where you click.** When an object's working
+  folder is split (by filter, like LP and IRCUT, or by calibration), right-clicking
+  it now shows a **Process in Siril ▸** submenu listing each folder, and the detail
+  page's **Process in Siril** button drops down the same list. Before, a second menu
+  popped up only after the first one closed, and it was easy to miss.
 
 ### Fixed
 - **"Remember alias?" remembers the target name.** After you retarget a row, the

@@ -11,10 +11,11 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QTableWidgetItem, QMenu,
 )
 
-from m110 import derived, siril
+from m110 import derived
 from m110.ui.widgets import (
     make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails,
-    ROW_THUMB_SIZE, fit_table_height, process_target_in_siril,
+    ROW_THUMB_SIZE, fit_table_height, target_working_dirs, add_siril_actions,
+    launch_siril,
     connect_context_menu,
 )
 
@@ -71,12 +72,14 @@ class ProcessingPage(QScrollArea):
             if item is None:
                 return
             folder = table.item(item.row(), 0).text()
-            if not folder or not siril.working_dirs(folder):
+            dirs = target_working_dirs(folder) if folder else []
+            if not dirs:
                 return
             menu = QMenu(self)
-            act = menu.addAction("Process in Siril")
-            if menu.exec(table.viewport().mapToGlobal(pos)) is act:
-                process_target_in_siril(self, folder)
+            acts = add_siril_actions(menu, dirs)
+            chosen = menu.exec(table.viewport().mapToGlobal(pos))
+            if chosen in acts:
+                launch_siril(self, acts[chosen])
         connect_context_menu(table, show)
 
     def reload(self):

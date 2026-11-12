@@ -77,6 +77,11 @@ Library, on the Processing page, or use the **Process in Siril** button on its d
 page — and M110 launches Siril already pointed at that object's `siril/` sandbox as its
 **working directory**.
 
+When the sandbox is split into job folders (one per filter, such as `LP` and `IRCUT`,
+or one per calibration set), **Process in Siril** becomes a submenu listing each
+folder, and the detail page's button drops down the same list. Pick the one you want
+to stack.
+
 M110 finds Siril automatically in the usual place. If yours is installed somewhere
 unusual, set its location under **Preferences → Processing tools** (on macOS you can pick
 `Siril.app` directly; elsewhere, the Siril executable).

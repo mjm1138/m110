@@ -396,9 +396,11 @@ re-run when its area changes and you want eyes on the visuals).
       masters, and the heading says app subs are dark-subtracted on the telescope and
       N.I.N.A. frames are not. Sessions for the PINS targets show **no** inferred Dark.
 - [ ] **Mixed target, from the corpus:** after importing the PINS night, M 72 holds
-      its Seestar-app subs and 3 N.I.N.A. subs. Processing → **Process in Siril**
-      offers `IRCUT` (app subs, **no** `darks/`) and `IRCUT_20s` (N.I.N.A. subs + 4
-      raw darks); `next-steps.md` explains the split.
+      its Seestar-app subs and 3 N.I.N.A. subs. Processing → right-click → the
+      **Process in Siril ▸** submenu (in the same menu, not a second popup) offers
+      `IRCUT` (app subs, **no** `darks/`) and `IRCUT_20s` (N.I.N.A. subs + 4 raw
+      darks); the detail page's button drops down the same two; `next-steps.md`
+      explains the split.
 - [ ] Beside them, `siril/.m110_calibration.json` (the masters manifest for
       Stackhammer) lists both folders with `"group": ["IRCUT", "IRCUT_20s"]`: `IRCUT`
       has an empty `calibration` and a note that its subs were dark-subtracted on the
