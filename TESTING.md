@@ -805,6 +805,41 @@ the split.
 - [ ] `--restack` must NOT clear it: run it after a successful `--keep-process`
       run and confirm the registered frames are reused, not deleted.
 
+**Stackhammer engine** ⚙ *(discovery, settings, presets, run order automated against a stand-in binary — `test_stackhammer.py`; the real run below is manual)*
+
+Needs Stackhammer built (Apple silicon) and Siril. Work on a **copy** of a job
+folder, never the live store, and run it from a terminal of your own: a
+`siril-cli` started from inside a Claude Code session can wipe Siril's Python
+venv.
+
+```bash
+m110-stack "<copy>" --engine stackhammer
+m110-stack "<copy>" --engine stackhammer --set weight=noise --run
+```
+
+- [ ] The proposal names where Stackhammer was found (Preferences, or "named by
+      the Stackhammer script installed in Siril"), lists every setting with its
+      reason, the calibration matched for the lights, and the Siril steps. Nothing
+      is written: no `process/` appears.
+- [ ] `--weight noise` (the Siril engine's flag) with `--engine stackhammer` is
+      refused and points at `--set`; `--set weight=wfwhm` is refused with the valid
+      choices.
+- [ ] `--run`: three or four "Siril: <step>" stages, then Stackhammer's own stages
+      with a percentage; `.m110-stack.running` exists meanwhile. It ends with
+      `Stacked: …_og.fit` at the top of the folder, `stackhammer/<name>/` holding
+      `depth.fits`, `rej.fits`, `frames.json`, and `process/` cleaned.
+- [ ] Open the stack in Siril: linear, colour, plate-solved; header `PROGRAM =
+      'Stackhammer'`.
+- [ ] Run with `--keep-process`, then again with `--restack`: Siril is not run at
+      all and the stack is remade beside the first (nothing overwritten). A plain
+      re-run instead says "Cleared … of an earlier run's intermediates".
+- [ ] Ctrl-C during the stack: "Cancelled. Stackhammer wrote nothing", exit 130,
+      `process/` kept, the run marker gone.
+- [ ] In M110, the new stack is offered by **Send stack to AstroWizard**; nothing
+      under `stackhammer/` is offered there or by **Import finished work**.
+- [ ] Preferences → Processing tools has a **Stackhammer** row whose placeholder
+      shows the auto-detected binary; a path set there wins.
+
 **Handing on to AstroWizard**
 
 ```bash
@@ -1301,6 +1336,20 @@ python tools/smoke_mcp.py
       not fail with a traceback.
 - [ ] Point the client at a **data root that doesn't exist** → a clear
       "store unavailable" message rather than a bare `FileNotFoundError`.
+
+**Stackhammer** ⚙ *(`test_assistant_stackhammer.py`)* — with the test corpus (no
+binary needed for the first two):
+
+- [ ] The strip above the page counts one suggested change; Review shows
+      **Stackhammer preset for M106** with a Now / Proposed table.
+- [ ] Apply it: `Images/M106/siril/presets/stackhammer_presets.json` now holds the
+      proposed settings and the previous one is in `presets/archive/`.
+- [ ] *(Stackhammer installed)* Ask the assistant to plan a Stackhammer stack of a
+      target. It quotes Stackhammer's reasons, says depth is not known before the
+      plate solve on a fresh folder, and no path in its answer starts with `/Users`.
+- [ ] Ask "what if we weighted by noise only?" then "save that": it stages a preset
+      proposal rather than claiming to have saved anything.
+- [ ] Rename the binary away and ask again: it says where M110 looked.
 
 **The stacking command names the right install** (#192):
 

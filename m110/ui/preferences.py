@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
 )
 
-from m110 import config, hints, ingest, launch, processing, updates
+from m110 import config, hints, ingest, launch, processing, stackhammer, updates
 from m110.ui import theme
 
 
@@ -128,7 +128,8 @@ class PreferencesDialog(QDialog):
             "installed somewhere else. Siril opens with the object's working folder "
             "already set as its working directory; AstroWizard can't be pointed at a "
             "folder, so M110 opens the folder alongside it for you to pick the stack "
-            "from.")
+            "from. Stackhammer is a command-line stacker that m110-stack and the "
+            "assistant run: left empty, M110 uses the one its Siril script names.")
         tool_note.setWordWrap(True)
         tl.addWidget(tool_note)
         # One row per registered tool, so adding a workflow to `launch._TOOLS` gets
@@ -139,10 +140,11 @@ class PreferencesDialog(QDialog):
             row = QHBoxLayout()
             row.addWidget(QLabel(f"{label}:"))
             edit = QLineEdit(self._tool_override(tool_id))
-            detected = launch.find_app(tool_id)
+            detected = self._detect_tool(tool_id)
+            kind = "binary" if launch.is_cli(tool_id) else "application"
             edit.setPlaceholderText(
                 f"Auto-detected: {detected}" if detected
-                else f"Not found — Browse to your {label} application")
+                else f"Not found — Browse to your {label} {kind}")
             browse = QPushButton("Browse…")
             # Bind the id per row: a bare closure over the loop variable would give
             # every button the last tool.
@@ -399,6 +401,16 @@ class PreferencesDialog(QDialog):
         # tell "never asked" from "switched off" — see processing.enabled_workflow_ids.
         processing.set_enabled_workflows(chosen)
 
+    @staticmethod
+    def _detect_tool(tool_id: str) -> str | None:
+        """Where auto-detection finds a tool, for the row's placeholder. A CLI
+        tool has its own search (Stackhammer: the script installed in Siril,
+        the usual install places, PATH)."""
+        if tool_id == stackhammer.TOOL_ID:
+            found = stackhammer.find_binary()
+            return found[0] if found else None
+        return launch.find_app(tool_id)
+
     def _tool_override(self, tool_id: str) -> str:
         paths = config.get_setting(launch.APP_PATHS_SETTING, {}) or {}
         return str(paths.get(tool_id) or "")
@@ -408,10 +420,11 @@ class PreferencesDialog(QDialog):
         # dialog) and plain executables elsewhere.
         import sys
         label = launch.tool_label(tool_id)
+        cli = launch.is_cli(tool_id)
         start = self._tool_edits[tool_id].text() or (
-            "/Applications" if sys.platform == "darwin" else "")
+            "/Applications" if sys.platform == "darwin" and not cli else "")
         f, _ = QFileDialog.getOpenFileName(
-            self, f"Choose the {label} application", start)
+            self, f"Choose the {label} {'binary' if cli else 'application'}", start)
         if f:
             self._tool_edits[tool_id].setText(f)
             self._save_app_paths()

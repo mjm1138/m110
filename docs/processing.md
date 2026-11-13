@@ -232,6 +232,53 @@ reimplementing anything. If you've connected an [AI assistant](assistant.md), it
 talk the settings through with you and hand you the command; it can't start a stack
 itself.
 
+### Stacking with Stackhammer
+
+[Stackhammer](https://github.com/mjm1138/stackhammer) is a separate stacking
+engine for Siril on Macs with Apple silicon. Siril still calibrates and
+plate-solves your subs; Stackhammer then does the stack itself on the GPU, and
+adds **local normalization**, which lets nights taken under different skies (a
+moonlit one, a hazy one, the panels of a mosaic) stack without leaving
+gradients or steps. It is early software that you build from source, and M110
+works with it when it is there:
+
+```
+m110-stack "M101" --engine stackhammer
+m110-stack "M101" --engine stackhammer --run
+```
+
+The first line proposes and writes nothing: your lights, the calibration frames
+Stackhammer matched for them and why, the Siril steps it will run, and every
+Stackhammer setting with its reason. The second preprocesses in Siril, stacks,
+and removes the intermediates. The stack lands at the top of the target's
+`siril/` folder, named from its frames, with its depth and rejection maps in
+`siril/stackhammer/`. `--handoff`, `--restack`, `--keep-process` and `-v` work as
+they do for the Siril engine.
+
+Stackhammer's settings are its own, so they are set by its own names with
+`--set`, not with the Siril engine's flags:
+
+```
+m110-stack "M101" --engine stackhammer --set weight=noise --set drizzle=true
+```
+
+Settings you want to keep for a target live in a **preset**,
+`siril/presets/stackhammer_presets.json`. It is the same file the Stackhammer
+script inside Siril loads when its window opens, so the two ways of running
+agree. `m110-stack` applies it unless you pass `--no-preset`, and `--set` wins
+over it. An [AI assistant](assistant.md) can talk the settings through and
+propose a preset for you to accept in M110.
+
+**Finding Stackhammer.** M110 uses the path in **Preferences → Processing
+tools** if you set one. Otherwise it uses the binary named by the Stackhammer
+script installed in Siril, then `/opt/homebrew/bin`, `/usr/local/bin`,
+`~/.local/bin` and your `PATH`.
+
+Two limits for now. A target whose subs need different calibration, which M110
+splits into several folders per filter, is stacked one folder at a time by
+Stackhammer (the Siril engine stacks the group together). And there is no
+button for it in the app yet: it is `m110-stack` or the script in Siril.
+
 ### Handing a stack to AstroWizard
 
 `m110-stack "M101" --run --handoff` also drops the finished stack into

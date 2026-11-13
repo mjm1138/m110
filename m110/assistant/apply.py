@@ -23,7 +23,8 @@ from datetime import date, datetime
 from pathlib import Path
 
 from m110 import (build_derived, config, fieldguide, integration_goals,
-                  objects as journals, pins, prioritize)
+                  objects as journals, pins, prioritize, roundtrip, siril,
+                  stackhammer)
 from m110.assistant import outbox, proposals
 
 
@@ -56,6 +57,18 @@ def check_drift(envelope: dict) -> DriftReport:
     was = (envelope.get("basis") or {}).get("store_state") or {}
     now = proposals.store_fingerprint(
         journal_slug=(envelope.get("target") or {}).get("slug"))
+
+    if envelope.get("action") == "set_stackhammer_preset":
+        # A preset is one file in one job folder. A re-rank or a new import
+        # doesn't make it stale; only that file changing underneath it does.
+        try:
+            job = _preset_job_dir(envelope.get("payload") or {})
+        except ApplyError:
+            return DriftReport(drifted=False)       # applying it says why
+        current = proposals.file_sha256(stackhammer.preset_path(job))
+        changed = was.get("stackhammer_preset_sha256") != current
+        return DriftReport(drifted=changed, reasons=(
+            "this folder's Stackhammer preset was changed",) if changed else ())
 
     reasons = []
     if (was.get("contexts_generated") != now.get("contexts_generated")
@@ -208,11 +221,47 @@ def _apply_set_integration_goal(payload: dict) -> str:
     return done
 
 
+def _preset_job_dir(payload: dict) -> Path:
+    """The Siril job folder a preset proposal names. Built from the capture
+    folder's name and the filter, never from a path in the envelope: a proposal
+    is a file an assistant wrote, and it does not get to choose where M110
+    writes."""
+    target, filt = payload.get("target"), payload.get("filter")
+    if not target or Path(str(target)).name != str(target):
+        raise ApplyError("The proposal names no capture folder.")
+    if filt and Path(str(filt)).name != str(filt):
+        raise ApplyError("The proposal's filter is not a folder name.")
+    return config.siril_job_dir(str(target), str(filt) if filt else None)
+
+
+def _apply_set_stackhammer_preset(payload: dict) -> str:
+    job = _preset_job_dir(payload)
+    target = str(payload["target"])
+    values = payload.get("settings")
+    if (not isinstance(values, dict) or not values
+            or not all(isinstance(k, str) and isinstance(v, (bool, int, float, str))
+                       for k, v in values.items())):
+        raise ApplyError("The proposal holds no usable settings.")
+    if not job.is_dir():
+        raise ApplyError(f"{target} has no Siril working folder to keep a preset in.")
+    try:
+        roundtrip.require_idle(target, siril.SANDBOX)
+    except roundtrip.StackInProgress as exc:
+        raise ApplyError(str(exc)) from exc
+    done = stackhammer.write_preset(job, values)
+    where = f"{target}/{payload['filter']}" if payload.get("filter") else target
+    if not done["changed"]:
+        return f"{where}'s Stackhammer preset already said that."
+    return (f"Stackhammer preset saved for {where} ({len(values)} settings)."
+            + (" The previous one is in presets/archive/." if done["archived"] else ""))
+
+
 _HANDLERS = {
     "set_weights": _apply_set_weights,
     "set_pins": _apply_set_pins,
     "append_journal": _apply_append_journal,
     "set_integration_goal": _apply_set_integration_goal,
+    "set_stackhammer_preset": _apply_set_stackhammer_preset,
 }
 
 

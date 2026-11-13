@@ -117,7 +117,7 @@ proposals rather than rubber-stamping them, the same as with any AI suggestion.
 
 ## Skills — the procedures it follows
 
-M110 ships four **skills**: written procedures the assistant reads before working,
+M110 ships five **skills**: written procedures the assistant reads before working,
 so it uses the engine properly instead of improvising. Most MCP clients surface
 these as slash-commands or prompts; an assistant can also fetch one itself.
 
@@ -126,6 +126,7 @@ these as slash-commands or prompts; an assistant can also fetch one itself.
 | **Plan a night** | Build an imaging plan for a night (or a multi-night trip) from M110's own ranking, site profile and astronomy engine. Use when you ask what to shoot tonight, on a given date, or from a different site. Takes an optional date and site. |
 | **Critique an image** | Look at one of your astrophotos and give grounded, actionable feedback — anchored to what you actually captured, and careful not to blame you for M110's preview rendering. Takes the object. |
 | **Stack with Siril** | Measure a target's light frames and propose Siril stacking settings — coverage depth, drizzle, rejection, weighting, feathering — with the reason for each, plus the disk cost and the command to run. Also covers the awkward cases: mosaics, mixed exposures, and targets shot through more than one filter (which stack separately and are combined afterwards). It measures; **you** run the stack. Takes the object. |
+| **Stack with Stackhammer** | The same conversation for [Stackhammer](processing.md#stacking-with-stackhammer), the faster stacking engine for Siril on Apple silicon. Stackhammer reports every one of its settings with its reason; the assistant relays them, tries alternatives, and either hands you the command or stages a preset so the Stackhammer window in Siril opens on what you agreed. Takes the object. |
 | **Explain the numbers** | How to talk about M110's figures without inventing any. This one applies to *every* answer about your library, not just when you invoke it — the others build on it. |
 
 The most useful thing these do is stop the assistant from doing astronomy in its
@@ -138,7 +139,7 @@ reports the answer.
 
 ## Tools — what it can look at
 
-Sixteen operations, grouped by what you'd ask for. **Every one is read-only except
+Nineteen operations, grouped by what you'd ask for. **Every one is read-only except
 *Save field guide***, which can only create a new file.
 
 ### Getting oriented
@@ -150,6 +151,7 @@ Sixteen operations, grouped by what you'd ask for. **Every one is read-only exce
 | `get_object` | Everything M110 knows about one object: designations, catalogs, coordinates, capture totals and per-session history, images on disk, your journal notes, pin state, and how its integration compares to the deep-stack threshold for its type. |
 | `get_processing_state` | Siril state per capture folder: integration, frame counts, the latest stack, frames arrived since it was made, and whether finished output is waiting to be imported. |
 | `plan_stack` | Measures a capture folder's light frames and proposes Siril stacking settings, each with its reason, plus the projected disk cost and the exact command to run. Ask it "what if we skipped drizzle?" and it recomputes the whole proposal, disk included, so the answer is a real number. It reads headers only — it does not stack. |
+| `plan_stackhammer` | Asks Stackhammer what it would do with a capture folder: the lights, the darks, flats and biases it matched and why, the Siril steps that preprocess them, and every Stackhammer setting with its value, choices and reason. Once the folder holds a plate-solved sequence it also reports the frames the quality filters keep, the canvas and the coverage depth. It runs only Stackhammer's read-only commands — it does not stack. Needs Stackhammer installed. |
 | `get_skill` | Fetches one of the procedures above. |
 
 ### Planning a night
@@ -179,6 +181,7 @@ you for it.
 | `propose_weights` | Proposes a change to the prioritizer's strategy, factor weights or per-type multipliers, and returns the **engine-computed before/after ranking** it would produce. You apply it in M110, or don't. |
 | `propose_pins` | Proposes pinning targets to the top, deprioritizing them, or clearing overrides — with the resulting ranking. |
 | `propose_integration_goal` | Proposes how many minutes an object needs on one telescope (or clearing it back to the default) — with the object's progress before and after, and the ranking change when it's the telescope you're planning with. |
+| `propose_stackhammer_preset` | Proposes the Stackhammer settings one capture folder should be stacked with, as that folder's preset, with a table of what changes. Applying it writes one small file in the folder's Siril working directory (the preset it replaces is kept); nothing is stacked. |
 | `propose_journal_entry` | Proposes text for an object's journal (a critique, a session note, a processing decision). Returns markdown for you to paste — it does not write. |
 | `list_pending` | What's been handed to you and not yet accepted. |
 
@@ -201,7 +204,11 @@ When an assistant stages something, a quiet strip appears above the page —
 stays until the queue is empty, and is hidden entirely when there's nothing
 waiting.
 
-For a proposal, M110 re-runs the preview **against your library as it is now**, not
+A Stackhammer preset proposal is checked differently: it is about one file, so
+M110 warns only if that folder's preset changed after the suggestion was made
+(you saved your own from the Stackhammer window, say).
+
+For a ranking proposal, M110 re-runs the preview **against your library as it is now**, not
 as it was when the assistant made the suggestion. If your data changed in between —
 you imported a session, or retuned the weights yourself — you see the current
 consequence, not a stale one.

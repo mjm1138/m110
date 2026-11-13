@@ -164,6 +164,41 @@ def mount_dwarf(tmp_path, obj="M 1", *, count=3, exp=15, gain=60,
     return tmp_path / "Volumes" / volume / "Astronomy", names
 
 
+def install_fake_stackhammer(tmp_path, monkeypatch):
+    """Put the stand-in Stackhammer (`tests/fake_stackhammer.py`) where discovery
+    finds it — on PATH, the last place looked — and return `(binary, log)`: `log`
+    collects one JSON argv per invocation."""
+    import json
+    import sys
+
+    from m110 import stackhammer
+
+    binary = tmp_path / "fakebin" / "stackhammer"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    body = (Path(__file__).parent / "fake_stackhammer.py").read_text(encoding="utf-8")
+    binary.write_text(f"#!{sys.executable}\n{body}", encoding="utf-8")
+    binary.chmod(0o755)
+    log = tmp_path / "fakebin" / "calls.jsonl"
+    monkeypatch.setenv("FAKE_STACKHAMMER_LOG", str(log))
+    monkeypatch.setattr(stackhammer, "_on_path", lambda: str(binary))
+
+    def calls():
+        if not log.exists():
+            return []
+        return [json.loads(ln) for ln in log.read_text().splitlines() if ln]
+    return binary, calls
+
+
+def stackhammer_job(target="M51", n=4, filt=None):
+    """A Siril job folder with `n` lights (names only: the stand-in binary counts
+    files, it does not read them). Returns the job dir."""
+    job = config.siril_job_dir(target, filt)
+    (job / "lights").mkdir(parents=True, exist_ok=True)
+    for i in range(n):
+        (job / "lights" / f"Light_{target}_{i:04d}.fit").write_text("fit")
+    return job
+
+
 def seed_sandbox(target="M51"):
     """A siril sandbox with two unimported deliverables (render + stack)."""
     sb = config.siril_dir(target)

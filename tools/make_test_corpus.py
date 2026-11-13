@@ -37,6 +37,10 @@ small rendered PNGs) that exercises the whole app:
         already excluding the pair; its preset is the pre-#174 kind (98% × 4,
         broadband label on LP), so importing the device mount's new M101 subs
         raises the "Update Siril presets?" dialog
+  * **M106 with a Stackhammer preset** (`siril/presets/stackhammer_presets.json`)
+        and a **pending assistant proposal** to replace it → the Review banner and
+        dialog show "Stackhammer preset for M106"; applying it archives the old
+        preset. Needs no Stackhammer binary
   * a **fake mounted telescope** shipped beside the store (Seestar `MyWorks/` +
         Dwarf `Astronomy/DWARF_RAW_*`) holding M101/M42's frames *including the
         rejected ones* plus a couple of genuinely new subs → re-import must offer
@@ -242,7 +246,10 @@ SEESTAR_DARKS = Path(__file__).resolve().parent.parent / "tests" / "data" / "see
 S50_TELESCOP = "S50_c0ffee00"          # a fake unit serial (the real masters carry none)
 S30_TELESCOP = "S30_deadbeef"          # a second scope — M13 + one M51 night (Devices page)
 S30_NICKNAME = "Travel S30"            # shipped in devices.toml → the registry demo
-S50_STORE_DARKS = ("24.9C", "13.9C", "10.5C", "23.2C")   # the mount adds the 7.7C one
+# M106's Stackhammer preset as shipped, and the one the staged proposal offers.
+STACKHAMMER_PRESET = {"weight": "fwhm", "feather": 30}
+STACKHAMMER_PROPOSED = {"weight": "noise", "feather": 30, "max-frame-residual": 0}
+S50_STORE_DARKS =("24.9C", "13.9C", "10.5C", "23.2C")   # the mount adds the 7.7C one
 
 
 def _seestar_master(name: str, dest_dir: Path):
@@ -488,6 +495,33 @@ def build(out: Path):
           base + timedelta(days=7, hours=2), 1101)  # deliverable stack
     _fits(sb / f"{stem}_og.fit", "M106", ra, dec, 20, "LP", base, 1102)      # intermediate
     _fits(sb / f"{stem}.fit", "M106", ra, dec, 20, "LP", base, 1103)         # intermediate
+
+    # Stackhammer (the second stacking engine): M106 already has a preset for it,
+    # and the assistant has proposed a different one — so Review shows a pending
+    # "Stackhammer preset for M106" with a Now / Proposed table, and applying it
+    # moves this file into presets/archive/. Neither needs the binary installed.
+    from m110 import stackhammer
+    from m110.assistant import proposals
+    stackhammer.write_preset(sb, STACKHAMMER_PRESET)
+    proposals.emit(
+        action="set_stackhammer_preset", title="Stackhammer preset for M106",
+        rationale="A faint outer disc: weigh by noise alone, and keep every frame "
+                  "the quality filters pass.",
+        payload={"target": "M106", "filter": None, "settings": STACKHAMMER_PROPOSED},
+        summary="\n".join([
+            "**Proposed Stackhammer preset for M106 — not applied.**", "",
+            "A faint outer disc: weigh by noise alone, and keep every frame the "
+            "quality filters pass.", "",
+            "| Setting | Now | Proposed | Stackhammer's default |", "|---|---|---|---|",
+            "| weight | fwhm | noise | noise-fwhm |",
+            "| max-frame-residual | 1.0 | 0 | 1.0 |", "",
+            f"Applying writes `presets/{stackhammer.PRESET_NAME}` in the folder's "
+            "Siril working directory; a different preset already there is kept in "
+            "`presets/archive/`. Nothing is stacked."]),
+        target={"slug": "M106"}, tools=("plan_stackhammer",),
+        functions=("m110.stackhammer.validate",),
+        extra_state={"stackhammer_preset_sha256": proposals.file_sha256(
+            stackhammer.preset_path(sb))})
 
     # ---- Phase 5: catalogs / goals / fill-missing -------------------------------
     from m110 import goals
@@ -1046,6 +1080,14 @@ def verify(out: Path):
     assert len([c for c in s50["captures"] if c["dark_ref"]]) == 2     # M 72 + M 76
     print(f"  Seestar darks: {len(s50['masters'])} in the library, 1 new on the device; "
           f"M 72 Δ{m72['dark_gap_c']} °C ({m72['dark_link']}), never linked into prep")
+
+    # Stackhammer: M106 ships a preset and one pending proposal to replace it.
+    from m110 import stackhammer
+    from m110.assistant import apply as assistant_apply, outbox
+    assert stackhammer.read_preset(config.siril_dir("M106")) == STACKHAMMER_PRESET
+    (pending,) = [i for i in outbox.items() if i.action == "set_stackhammer_preset"]
+    assert not assistant_apply.check_drift(json.loads(outbox.read(pending.name))).drifted
+    print(f"  Stackhammer: M106 has a preset, and '{pending.title}' waits in Review")
 
     # Devices as first-class: two scopes shot M51 on the same night with the same
     # exposure + filter → two sessions; totals split by device; the S30's nickname

@@ -11,7 +11,7 @@ from m110.assistant import registry, skills, tools  # noqa: F401
 
 ALL = skills.all_skills()
 EXPECTED = {"plan-a-night", "explain-the-numbers", "critique-an-image",
-            "siril-stacking"}
+            "siril-stacking", "stackhammer-stacking"}
 
 
 # ── loader ───────────────────────────────────────────────────────────────────
