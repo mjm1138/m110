@@ -16,8 +16,8 @@ time an apply path exists this sequence *will* happen: the user gets a proposal,
 goes and shoots for four hours, imports, refreshes, then clicks Apply. The apply
 path compares the fingerprint and either re-previews or refuses.
 
-`apply.safe_write` is the growth seam named in the plan. Only the five
-allowlisted actions carry True; anything else can never be dispatched even if
+`apply.safe_write` is the growth seam named in the plan. Only the
+allowlisted actions (`SAFE_WRITE_ACTIONS`) carry True; anything else can never be dispatched even if
 the envelope is otherwise well formed.
 """
 from __future__ import annotations
@@ -39,7 +39,17 @@ SAFE_WRITE_ACTIONS = {
     "append_journal": "objects.write_journal",
     "save_field_guide": "fieldguide.save",
     "set_integration_goal": "integration_goals.set_goal",
+    "set_stackhammer_preset": "stackhammer.write_preset",
 }
+
+
+def file_sha256(path) -> str | None:
+    """A file's digest, or None when it isn't there — the drift signal for a
+    proposal that replaces one file (a Stackhammer preset)."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
 
 
 def store_fingerprint(*, journal_slug: str | None = None) -> dict:
@@ -83,8 +93,12 @@ def store_fingerprint(*, journal_slug: str | None = None) -> dict:
 def build(*, action: str, title: str, rationale: str, payload: dict,
           summary: str, preview: dict | None = None, target: dict | None = None,
           tools: tuple[str, ...] = (), functions: tuple[str, ...] = (),
-          reversible: bool = True, journal_slug: str | None = None) -> dict:
-    """Assemble an envelope. Does not write anything, by design."""
+          reversible: bool = True, journal_slug: str | None = None,
+          extra_state: dict | None = None) -> dict:
+    """Assemble an envelope. Does not write anything, by design.
+
+    `extra_state` adds a proposal's own drift signals to the store fingerprint
+    (e.g. the digest of the one file it would replace)."""
     return {
         "schema": SCHEMA,
         "id": str(uuid.uuid4()),
@@ -98,7 +112,8 @@ def build(*, action: str, title: str, rationale: str, payload: dict,
         "basis": {
             "tools": list(tools),
             "functions": list(functions),
-            "store_state": store_fingerprint(journal_slug=journal_slug),
+            "store_state": {**store_fingerprint(journal_slug=journal_slug),
+                            **(extra_state or {})},
         },
         "reversible": reversible,
         "apply": {

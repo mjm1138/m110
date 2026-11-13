@@ -993,7 +993,10 @@ _ARCHIVE_KEEP = ({"lights", "darks", "flats", "biases",
 
 # Sandbox subdirs that never hold fresh, importable output: the hardlinked
 # inputs, Siril's scratch, the preset, and prior archived runs.
-_SKIP_DIRS = {"lights", "process", "presets", "archive"}
+# `stackhammer/` (`m110.stackhammer.MAPS_DIR`) is a Stackhammer stack's
+# companions — its depth and rejection maps, FITS files that are not images to
+# import. The stack itself sits at the top of the job folder like any other.
+_SKIP_DIRS = {"lights", "process", "presets", "archive", "stackhammer"}
 
 SANDBOX = roundtrip.Sandbox(
     id="siril",

@@ -48,6 +48,20 @@ def _reset_to_seal(_seal_live_store):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_stackhammer(monkeypatch):
+    """No test finds the developer's own Stackhammer. Its discovery reads outside
+    the data root by design (the script installed in Siril, /opt/homebrew, PATH),
+    so on a Mac that has it every assistant test would otherwise run a real
+    binary against fixture folders. A test that wants one installs the stand-in
+    (`_helpers.install_fake_stackhammer`), which patches over this."""
+    from m110 import stackhammer
+    monkeypatch.setattr(stackhammer, "siril_support_dirs", lambda: [])
+    monkeypatch.setattr(stackhammer, "CANDIDATES", ())
+    monkeypatch.setattr(stackhammer, "_on_path", lambda: None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _drain_qt_threadpool():
     """After each test, wait for background QThreadPool work (async thumbnail
     decodes — `ThumbnailLoader`) to finish before pytest-qt tears the widgets and,

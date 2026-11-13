@@ -129,7 +129,9 @@ guidance all land in 1.x. None is a promise 1.0 makes.
   is stock Siril 1.4, so only the *choice* of settings is ours. The guide posture
   survives where it matters: measuring and proposing is read-only and separate,
   and nothing runs until a human has agreed to the settings. Post-processing
-  stays firmly prepare-and-guide (see item 14).
+  stays firmly prepare-and-guide (see item 14). Stackhammer
+  (`--engine stackhammer`) sits under the same exception and the same posture:
+  the Siril commands it runs are the ones Stackhammer's `prepare` proposes.
 - **Data:** the app **owns its own data store** (default `~/Documents/M110`),
   decoupled from any other project; it seeds a starter catalog and generates its
   own derived data and image renders. The data model is documented and canonical
@@ -208,6 +210,18 @@ the client they already have. Revised phasing:
   the same PyInstaller Analysis, like `m110-mcp`). The assistant gets the pure
   half only: `plan_stack` measures headers and proposes settings, and cannot
   stack. See the amended processing-model decision above, and [`DONE.md`](DONE.md).
+- **Stackhammer, the second stacking engine** *(landed 2026-11-12,
+  `feature/stackhammer`)*: `m110-stack --engine stackhammer` runs Stackhammer's
+  own `prepare` recipe through `siril-cli`, then `stackhammer run`; the assistant
+  gets `plan_stackhammer` (read-only), `propose_stackhammer_preset` (the folder's
+  preset, applied app-side) and the `stackhammer-stacking` skill. M110 mirrors
+  none of Stackhammer's options: it relays `settings --json` and validates
+  against the installed binary. **Open:** a job group (one filter split into
+  folders by calibration) is run per folder — the group route is Stackhammer's
+  own per-subset calibration once its manifest reader and header matching
+  converge upstream; no GUI affordance yet (a "Stack with Stackhammer" action
+  beside Process in Siril is the natural next step, on a `QThread` worker); and
+  the real end-to-end run is a manual check ([`TESTING.md`](TESTING.md)).
 - **Processing coach**, deferred: the bundled guidance corpus was withdrawn (see
   [`BUGS.md`](BUGS.md) #45) and replacements need authoring against citable
   sources before the *coaching* leg can ship.

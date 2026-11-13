@@ -128,7 +128,13 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
       `config.SANDBOX_SCRATCH`) · presets/ (the Naztronomy preset; presets/archive/
       <name>.<YYYYmmdd-HHMMSS>.json = presets the user chose to replace;
       .m110_declined_preset.json = the proposal they last kept theirs against,
-      #174) · next-steps.md · archive/<ts>/ (past runs)
+      #174; presets/stackhammer_presets.json = the Stackhammer preset, in the
+      Stackhammer script's own format `{stackhammer_preset: 1, script, settings}`,
+      written by `stackhammer.write_preset` only, the one it replaces archived the
+      same way) · stackhammer/<stack name>/ (a Stackhammer stack's depth and
+      rejection maps + frames.json; never importable output) · stackhammer_run.log,
+      stackhammer_siril_<n>_<step>.log (a Stackhammer run's logs, beside
+      siril_stack.log) · next-steps.md · archive/<ts>/ (past runs)
     astrowizard/                    contained AstroWizard sandbox (ROADMAP item 14):
       the handed-off stack + its `<stack>.src.json` provenance sidecar
       ({source, size_bytes, stacked_at, frames, integration_sec, object, filter,

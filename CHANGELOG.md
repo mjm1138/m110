@@ -11,6 +11,20 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Stackhammer, a second stacking engine.** If you have
+  [Stackhammer](https://github.com/mjm1138/stackhammer) (a faster stacker for
+  Siril on Macs with Apple silicon, with local normalization for nights that
+  differ), `m110-stack "M101" --engine stackhammer` proposes a stack with it and
+  `--run` makes one: Siril calibrates and plate-solves, Stackhammer stacks. Set
+  its options by its own names with `--set weight=noise`. M110 finds Stackhammer
+  from Preferences → Processing tools, or from the Stackhammer script installed
+  in Siril.
+- **The assistant knows Stackhammer.** A new *Stack with Stackhammer* skill and
+  a `plan_stackhammer` tool report every Stackhammer setting with its reason and
+  the calibration it matched for your subs, and try alternatives. The assistant
+  can propose a **Stackhammer preset** for a target; once you accept it in M110,
+  the Stackhammer window in Siril opens on those settings and `m110-stack` uses
+  them. As before, the assistant cannot start a stack.
 - **N.I.N.A. and PINS imports.** Frames captured with N.I.N.A. (or PINS, its
   Raspberry Pi edition) now import cleanly, whatever file pattern you set in N.I.N.A.:
   M110 routes them by their FITS headers, not by folder names. The Import page

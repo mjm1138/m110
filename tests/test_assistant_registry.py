@@ -53,6 +53,9 @@ ARGS = {
     "propose_journal_entry": {"slug": "m101", "markdown": "note", "rationale": "test"},
     "save_field_guide": {"title": "test plan", "markdown": "# Plan\n"},
     "plan_stack": {"target": "M51"},
+    "plan_stackhammer": {"target": "M51"},
+    "propose_stackhammer_preset": {"target": "M51", "settings": {"weight": "noise"},
+                                   "rationale": "test"},
 }
 
 
@@ -251,6 +254,11 @@ ENGINE_WRITERS = {
     # invoked. `build_plan`/`resolve_layout`/`format_report` are pure and stay off
     # this list on purpose — that pure half is exactly what `plan_stack` exposes.
     "run_siril", "apply_handoff",
+    # m110.stackhammer: the same split. `execute` drives Siril and the stack,
+    # `run_stack` is the stack alone, `clean` deletes scratch, `write_preset`
+    # writes the folder's preset (reached only from apply.py, after a
+    # confirmation). `build_plan`/`settings`/`prepare`/`plan`/`validate` only read.
+    "execute", "run_stack", "clean", "write_preset",
     # integration goals + goal scope (#184): the user's prefs; only apply.py writes
     "set_goal", "clear_goal", "set_goal_scope",
     # m110.running_app: the GUI's own record of itself in ~/.m110; a tool only

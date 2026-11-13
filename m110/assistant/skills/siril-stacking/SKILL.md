@@ -15,6 +15,12 @@ starting one unasked is the failure mode to avoid.
 Follow `explain-the-numbers` throughout: every figure below comes from the
 engine, and none of it may be estimated.
 
+**Another engine exists.** On a Mac with Apple silicon the same folder can be
+stacked with Stackhammer, which is faster and adds local normalization for
+nights that differ. If they ask for it, or the set mixes moonlit and dark
+nights, switch to the `stackhammer-stacking` skill and `plan_stackhammer`; the
+settings below are the Siril stacker's and do not carry over.
+
 ## The division of labour
 
 **The engine already decides the settings.** `plan_stack` runs a deterministic

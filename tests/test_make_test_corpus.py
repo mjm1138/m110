@@ -88,6 +88,8 @@ def test_harness_script_points_at_the_generator():
     "siril.plan_prep", "siril.default_preset", "siril.PRESET_NAME",
     "config.calibration_dir", "calibration.DARKS_ON_DEVICE_NOTE",
     "derived.load_devices",
+    "stackhammer.write_preset", "stackhammer.read_preset", "stackhammer.preset_path",
+    "stackhammer.PRESET_NAME",
 ])
 def test_engine_api_the_generator_depends_on(call):
     import importlib

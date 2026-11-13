@@ -2382,7 +2382,40 @@ def main() -> int:
                    help="ignore master darks/flats/biases (the job folder's or the "
                         "telescope's Calibration/ library) and stack raw frames")
 
+    e = ap.add_argument_group(
+        "engine", "Siril's own stacker (default), or Stackhammer: Siril calibrates "
+        "and plate-solves, Stackhammer stacks. Stackhammer's settings are its own "
+        "and are set with --set, not with the overrides above.")
+    e.add_argument("--engine", choices=["siril", "stackhammer"], default="siril")
+    e.add_argument("--set", action="append", metavar="KEY=VALUE",
+                   help="(stackhammer) one Stackhammer setting in its own name, "
+                        "e.g. --set weight=noise --set drizzle=true (repeatable). "
+                        "The proposal lists every setting with its reason")
+    e.add_argument("--no-preset", action="store_true",
+                   help="(stackhammer) ignore presets/stackhammer_presets.json in "
+                        "the working directory; by default it is applied, as the "
+                        "Stackhammer script in Siril applies it")
+
     a = ap.parse_args()
+
+    if a.engine == "stackhammer":
+        from m110 import stackhammer
+        # The Siril recipe's overrides share names with Stackhammer's settings
+        # (--weight, --rejection, --drizzle) but not meanings, so one quietly
+        # ignored would be a run other than the one asked for.
+        used = [f"--{f.name.replace('_', '-')}" for f in fields(Overrides)
+                if getattr(a, f.name) not in (None, False)]
+        used += [flag for flag, on in (("--ssf", a.ssf), ("--plain-name", a.plain_name))
+                 if on]
+        if used:
+            print(f"{', '.join(used)} belong(s) to the Siril engine. With --engine "
+                  "stackhammer, set Stackhammer's own options with --set KEY=VALUE.",
+                  file=sys.stderr)
+            return 2
+        return stackhammer.cli(a)
+    if a.set or a.no_preset:
+        print("--set and --no-preset need --engine stackhammer.", file=sys.stderr)
+        return 2
 
     ov = Overrides(**{f.name: getattr(a, f.name) for f in fields(Overrides)})
     try:

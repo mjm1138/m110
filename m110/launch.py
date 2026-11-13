@@ -74,7 +74,21 @@ _TOOLS: dict[str, dict] = {
         # master back into that root by itself.
         "workdir_args": [],
     },
+    "stackhammer": {
+        "label": "Stackhammer",
+        # A command-line binary, not an app M110 opens: it is here for the
+        # Preferences path override alone. `m110.stackhammer.find_binary` does
+        # the rest of the looking (the script installed in Siril, the usual
+        # install places, PATH), which no other tool needs.
+        "cli": True,
+        "workdir_args": [],
+    },
 }
+
+
+def is_cli(tool_id: str) -> bool:
+    """True for a tool M110 runs as a command rather than opens as an app."""
+    return bool(_TOOLS.get(tool_id, {}).get("cli"))
 
 
 def tool_label(tool_id: str) -> str:

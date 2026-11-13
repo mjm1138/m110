@@ -313,17 +313,7 @@ def plan_stack(target: str, filter: str | None = None,
     # Without it an overridden run reads identically to one the engine chose.
     payload["overrides_applied"] = applied
 
-    siril = launch.find_app("siril")
-    payload["siril"] = {
-        "found": bool(siril),
-        # Never the absolute path: whether Siril exists is the useful fact, where
-        # it lives is the user's filesystem.
-        "note": ("Siril is installed, so the command below will work."
-                 if siril else
-                 "Siril was not found on this machine. Stacking needs it — "
-                 "https://siril.org — or its location can be set in M110 → "
-                 "Preferences → Processing tools."),
-    }
+    payload["siril"] = siril_block()
 
     # By capture-folder name, never by path: an absolute path here would put the
     # user's home directory into the model's context, and `serialize` can only
@@ -345,7 +335,26 @@ def plan_stack(target: str, filter: str | None = None,
         + "   # add --handoff to send the finished stack to AstroWizard"
     )
     payload["how_to_measure"] = running_app.shell_command(stk["argv"], name)
-    payload["stacker"] = {
+    payload["stacker"] = stacker_block(stk)
+    return ToolResult(payload, drop_keys=_BULK_KEYS)
+
+
+def siril_block() -> dict:
+    """Whether Siril is installed — never where: that is the user's filesystem."""
+    siril = launch.find_app("siril")
+    return {
+        "found": bool(siril),
+        "note": ("Siril is installed, so the command below will work."
+                 if siril else
+                 "Siril was not found on this machine. Stacking needs it — "
+                 "https://siril.org — or its location can be set in M110 → "
+                 "Preferences → Processing tools."),
+    }
+
+
+def stacker_block(stk: dict) -> dict:
+    """Which M110 install a `how_to_run` command belongs to, for the user."""
+    return {
         "install": stk["install"],
         "version": stk["version"],
         "matches_running_app": stk["matches_running_app"],
@@ -357,4 +366,3 @@ def plan_stack(target: str, filter: str | None = None,
                  f"{stk['version']}). If you run M110 from somewhere else, that "
                  "app's m110-stack may be a different build."),
     }
-    return ToolResult(payload, drop_keys=_BULK_KEYS)
