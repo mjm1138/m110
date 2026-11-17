@@ -270,6 +270,55 @@ Four small corrections to the shell itself, once the pages had settled.
   hoisting, so there's no `sys.platform` branch to drift. A **View** menu (Ctrl+1–6)
   came with it, giving the rail keyboard access it never had.
 
+### 1.0 redesign — decisions (interview 2026-11-17)
+
+Before the project leaves beta, a full look-and-feel pass. Inputs:
+[`docs-archive/UI_CRITIQUE_2026-11.md`](docs-archive/UI_CRITIQUE_2026-11.md) (HIG and
+aesthetic critiques, measured on cocoa renders) and the identity mocks in
+[`docs-archive/ui-1.0/`](docs-archive/ui-1.0/) (**A** was chosen). These decisions
+**supersede** the Typography, Branding/accent and Density rows above.
+
+| Dimension | Decision |
+|---|---|
+| Identity | **A · notebook-tinged pro.** Lightroom/Capture One structure with the astronomer's-notebook brand layered on. |
+| Dark palette | **Warm graphite, mid-gray panels, a darker image well.** A longer luminance ladder (≥ 5 L\* between levels), far fewer 1 px borders, no GitHub-Primer hues. Images are the brightest thing on screen. |
+| Light palette | **Warm paper chrome**, matching the parchment icon. Grids, heroes and the viewer **keep a dark image well**. |
+| Night vision | **Third theme, ships in 1.0:** red on black with dimmed images. Toggled from View and Settings. |
+| Accent | **Brass/ink amber** (≈ `#d9a648` on dark). Text on the accent must meet AA (today's white-on-blue is 3.1:1). |
+| Status hues + names | **Deep** (sage) · **n%** (slate; no longer collides with the accent) · **Initial** (terracotta). The same three words everywhere, with "Deep" explained once in tooltips/help. |
+| Typography | **Newsreader** (OFL, bundled) for object names, page/inspector titles and notes, with lining numerals forced for designations. **System font** for chrome. Tracked small-caps section labels. Tabular numerals in every number column. JetBrains Mono only for genuinely technical strings. Wider scale: 11 · 13 · 15 · 17 · 22 · 30. |
+| Icons | **Lucide** (ISC, bundled SVG, recolored from tokens) in the sidebar, toolbar, buttons and viewer. Replaces unicode stand-ins. |
+| Platform | **Mac-first, others adapt.** HIG structure on every OS, with platform-correct labels via `MenuRole`s. |
+| Sidebar | **Grouped, with icons and live counts.** Overview · *Library:* Deep Sky, Media, Journal · *Workflow:* Import, Processing · *Observing:* Planning, Devices. Media and Journal leave the Library segments. Resizable and collapsible (View › Hide Sidebar). |
+| Landing | **Overview**, with the catalog board. |
+| Overview | Hero = the **"Complete the catalog" board**: one cell per goal-list object (110 for Messier) showing a thumbnail when captured, tinted by status, empty when missing. The tables underneath become compact progress bars and lists. |
+| Toolbar | **Unified toolbar.** Place title + subtitle (e.g. "Deep Sky · 65 objects · 316.8 h"), view switcher, catalog picker and a real search field (⌘F). Replaces the stacked control rows. |
+| Status bar | **Kept, transient only:** empty except during sync, backup and import. The data-root path moves to Settings › General and About. |
+| Menus | **Edit** (Undo/Redo with real Undo for Remove from Library and pin changes, Copy, Select All, Find ⌘F) · **Window** (Minimize, Zoom, Full Screen, window list) · **Object** (every per-object verb, enabled on selection) · **View** gains view modes, Hide Sidebar and Hide Inspector · Back Up/Restore move to **File** · the **Tools menu is dropped**. Context menus become shortcuts to menu commands, never their only home. Title-case labels and consistent ellipses. |
+| Settings | A **Mac Settings window**: toolbar tabs General · Processing · Tools · Backup · Assistant · Appearance. Changes apply instantly and there is no Close button. **The Backup dialog becomes the Backup tab**, plus File › Back Up Now. Prose shrinks to one line plus help text. |
+| Grid tiles | **Overlay captions:** designation bottom-left (serif) and status dot + label bottom-right on a gradient. **Justified** grid, never truncated. Details on hover and in the inspector. |
+| Density | **Compact** rows (~24–28 px, vs ~45 today) with no toggle. |
+| Delivery | **Phased betas**, below. |
+
+#### Phase 7 — Foundation  *(first beta)*
+- Re-cut `tokens.py`: warm dark, warm-paper light, night-vision red; an image-well role; AA on-accent text; new status hues.
+- Bundle Newsreader and Lucide (`NOTICE`, PyInstaller specs: **validate against a real frozen build**); type scale; tabular numerals.
+- Menus: Edit/Window/Object/View; File takes Back Up/Restore; drop Tools; Undo stack.
+- Unified toolbar with search (⌘F); status bar transient-only.
+- Grouped sidebar (icons, counts, collapsible); Media/Journal promoted; Overview lands.
+- Compact density; one page-header rule; status names everywhere.
+
+#### Phase 8 — Pages  *(follow-up betas, before 1.0)*
+- Overview catalog board.
+- Grid tiles: overlay captions and a justified layout.
+- Inspector: full-width hero on the well, key/value details, notes without the duplicate H1.
+- Settings window, with Backup folded in.
+- Import empty state (one primary action; tables appear with data).
+- Tables: aligned headers, right-aligned tabular numbers, no identity-losing truncation; Planning "#" → Rank.
+- Night-vision theme wired to View and Settings.
+
+**1.0 exit:** every P1 in the critique closed, AA contrast in all three themes, goldens refreshed.
+
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
   across the whole collection (not grouped by object) — a bigger feature + data work;
@@ -279,11 +328,12 @@ Four small corrections to the shell itself, once the pages had settled.
 
 ## Open decisions (resolve as phases start)
 
-- **Accent color:** stays the **neutral desaturated blue** token for now (a warm
-  ink/sepia brand accent was tried in Phase 4 to match the logo but reverted — read
-  poorly). Open: revisit a brand accent, or follow the macOS system accent.
-- **Bundled mono typeface** + its license (JetBrains Mono / IBM Plex Mono / Iosevka).
-- **Density default:** comfortable vs. compact rows (and whether to expose a density
-  toggle) — Capture One/Lightroom lean compact.
+- ~~**Accent color**~~ — *resolved 2026-11-17:* brass/ink amber (1.0 redesign above).
+  The Phase 4 sepia read poorly because it was desaturated, so tune for saturation and AA.
+- ~~**Bundled mono typeface**~~ — JetBrains Mono shipped (Phase 0).
+- ~~**Density default**~~ — *resolved 2026-11-17:* compact, no toggle.
+- **Unified toolbar fidelity in Qt:** how close `setUnifiedTitleAndToolBarOnMac` +
+  `QToolBar` gets to a native toolbar (title/subtitle, search field) — prototype first.
+- **Undo scope:** which actions join the Undo stack beyond Remove from Library and pins.
 - **Qt floor:** confirm `QStyleHints.colorScheme` behavior on the PySide6 6.6 baseline
   (and whether to require 6.8 for `setColorScheme` to *force* a theme cleanly).
