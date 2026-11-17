@@ -1,6 +1,6 @@
 """Shared per-object detail pane (used by the Catalog page; opened from anywhere).
 
-Header + status + hero (scales to the pane) + **Object Notes** (view/edit the raw
+Header + status + hero (scales to the pane) + **Notes** (view/edit the raw
 `journal.md` — the object's entry in the Journal) + gallery (double-click → image
 viewer) + an Import-finished-work entry when a processing sandbox has output to
 bring back.
@@ -27,7 +27,7 @@ from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
     working_dirs_for_slug, launch_siril, stack_in_stackingwizard, open_in_default,
     reveal_in_manager, reveal_label, defer, connect_context_menu, FlowLayout,
-    dark_gap_item,
+    dark_gap_item, section_label, object_title, serif_font,
 )
 
 
@@ -47,9 +47,8 @@ def _status_pill(status, progress=None) -> QLabel:
 
 
 def _section_label(text: str) -> QLabel:
-    lbl = QLabel(f"<b>{text}</b>")
-    lbl.setTextFormat(Qt.RichText)
-    lbl.setStyleSheet("margin-top:8px")
+    lbl = section_label(text)
+    lbl.setContentsMargins(0, theme.tokens.SPACE["md"], 0, 0)
     return lbl
 
 
@@ -257,8 +256,7 @@ class DetailPane(QScrollArea):
 
         from m110 import catalog
         ids = catalog.object_identifiers(slug, e)
-        title = QLabel(f"<h2>{' · '.join(ids)} &mdash; {e.get('name') or ''}</h2>")
-        title.setTextFormat(Qt.RichText)
+        title = object_title(" · ".join(ids), e.get("name") or "")
         self._close_btn = QToolButton()
         self._close_btn.setText("✕")
         self._close_btn.setAutoRaise(True)
@@ -314,7 +312,7 @@ class DetailPane(QScrollArea):
             self._lay.addWidget(cap)
 
         header = QHBoxLayout()
-        header.addWidget(QLabel("<b>Object Notes</b>"))
+        header.addWidget(section_label("Notes"))
         header.addStretch(1)
         edit_btn = QPushButton("Edit")
         edit_btn.setToolTip("Edit this object's notes (Objects/<id>/journal.md)")
@@ -323,6 +321,8 @@ class DetailPane(QScrollArea):
         self._lay.addLayout(header)
         if body.strip():
             tb = QTextBrowser()
+            tb.setProperty("type", "notes")              # the notebook voice: serif
+            tb.setFont(serif_font(theme.tokens.FONT_SIZE["section"]))
             tb.setMarkdown(objects.journal_to_markdown(body))
             tb.setOpenExternalLinks(True)
             tb.setMinimumHeight(220)
@@ -806,7 +806,7 @@ class DetailPane(QScrollArea):
         self._clear()
 
         self._lay.addWidget(QLabel(
-            f"<b>Editing Object Notes</b> &mdash; {e.get('id', '')} "
+            f"<b>Editing Notes</b> &mdash; {e.get('id', '')} "
             f"&middot; <code>Objects/{objects.object_folder_name(slug)}/journal.md</code>"))
 
         self._editor = QPlainTextEdit()

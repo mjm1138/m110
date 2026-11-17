@@ -8,16 +8,18 @@ from PySide6.QtCore import (
     QUrl, Signal,
 )
 from PySide6.QtGui import (
-    QColor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPalette, QPixmap,
+    QColor, QDesktopServices, QFont, QIcon, QImage, QImageReader, QPainter, QPalette,
+    QPixmap,
 )
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMessageBox,
     QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
-    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
+    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton, QLabel,
 )
 
 from m110 import derived, objects, siril
 from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
+from m110.ui.theme.fonts import section_font, serif_font, tabular
 from m110.ui.theme.tokens import SPACE
 
 
@@ -201,6 +203,7 @@ class NumItem(QTableWidgetItem):
     def __init__(self, text: str, sort_key):
         super().__init__(text)
         self._key = sort_key
+        self.setFont(tabular())        # numbers stack in a column: tabular figures
 
     def __lt__(self, other):
         if isinstance(other, NumItem):
@@ -293,12 +296,12 @@ def dark_gap_item(row: dict) -> QTableWidgetItem:
     return it
 
 
-def make_numeric(item: QTableWidgetItem, mono: bool = True) -> QTableWidgetItem:
-    """Right-align a numeric/data cell and (default) give it the bundled tabular
-    monospace, so columns of numbers line up. Returns the item for chaining."""
+def make_numeric(item: QTableWidgetItem, mono: bool = False) -> QTableWidgetItem:
+    """Right-align a numeric cell and give it **tabular figures** in the system font,
+    so columns of numbers line up. `mono=True` is for genuinely technical strings
+    only (a FITS value, a filename). Returns the item for chaining."""
     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    if mono:
-        item.setFont(mono_font())
+    item.setFont(mono_font() if mono else tabular())
     return item
 
 
@@ -569,6 +572,41 @@ def fit_cell_widgets(tbl: QTableWidget, *cols: int) -> None:
                                     tallest + CELL_WIDGET_PAD_V + grid))
 
 
+def section_label(text: str) -> QLabel:
+    """A panel section label: tracked small capitals, muted (``DETAILS``)."""
+    lbl = QLabel(text)
+    lbl.setProperty("type", "section")
+    lbl.setFont(section_font())
+    return lbl
+
+
+def serif_label(text: str, kind: str = "title", *, bold: bool = False,
+                italic: bool = False) -> QLabel:
+    """A Newsreader label at a type-scale role ('display' 30 · 'title' 22 ·
+    'heading' 17), lining numerals forced — object names and titles."""
+    from m110.ui.theme.tokens import FONT_SIZE
+    lbl = QLabel(text)
+    lbl.setProperty("type", kind)
+    lbl.setFont(serif_font(FONT_SIZE[kind],
+                           weight=QFont.Weight.DemiBold if bold else QFont.Weight.Normal,
+                           italic=italic))
+    return lbl
+
+
+def object_title(designation: str, name: str = "", kind: str = "title") -> QLabel:
+    """An object's name as a star atlas sets it: the designation in a strong serif,
+    the common name in italic beside it (``M81 *Bode's Galaxy*``)."""
+    import html
+    lbl = serif_label("", kind)
+    lbl.setTextFormat(Qt.TextFormat.RichText)
+    text = f"<span style='font-weight:600'>{html.escape(designation)}</span>"
+    if name:
+        text += f"&nbsp; <i>{html.escape(name)}</i>"
+    lbl.setText(text)
+    lbl.setWordWrap(True)
+    return lbl
+
+
 class CollapsibleSection(QWidget):
     """A titled group whose body toggles open/closed via its header — the
     macOS-native disclosure-triangle pattern (a rotating arrow beside a bold
@@ -589,7 +627,8 @@ class CollapsibleSection(QWidget):
         self._btn.setChecked(expanded)
         self._btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
-        self._btn.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
+        self._btn.setObjectName("sectionHeader")     # tracked small caps (QSS)
+        self._btn.setFont(section_font())
         self._btn.toggled.connect(self._on_toggled)
         lay.addWidget(self._btn)
         self._body = QWidget()

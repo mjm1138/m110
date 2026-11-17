@@ -11,14 +11,15 @@ import time
 from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QFont, QPixmap
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QScrollArea,
     QFrame, QPushButton, QTextBrowser,
 )
 
 from m110 import config, derived, objects, catalog
-from m110.ui.widgets import status_label
+from m110.ui.theme.tokens import FONT_SIZE
+from m110.ui.widgets import serif_font, status_label
 
 _HEADING_LINE_RE = re.compile(r"(?m)^\s{0,3}#.*$")   # a whole ATX heading line
 _THUMB_W = 220
@@ -116,7 +117,9 @@ class JournalPage(QWidget):
         cl = QVBoxLayout(card)
 
         head = QPushButton(f"{oid} — {name}" if name else oid)
-        head.setStyleSheet("text-align:left; font-weight:bold; border:none;")
+        head.setProperty("type", "heading")              # serif object name
+        head.setFont(serif_font(FONT_SIZE["heading"], weight=QFont.Weight.DemiBold))
+        head.setStyleSheet("text-align:left; border:none; background:transparent;")
         head.setCursor(Qt.PointingHandCursor)
         head.clicked.connect(lambda _=False, s=slug: self.open_object.emit(s))
         cl.addWidget(head)

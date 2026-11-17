@@ -50,20 +50,23 @@ def test_make_table_has_alternating_rows(qapp):
     assert t.alternatingRowColors() is True
 
 
-def test_make_numeric_right_aligns_and_mono(qapp):
+def test_make_numeric_right_aligns_with_tabular_figures(qapp):
+    """Number columns use the system font's tabular figures, not a monospace —
+    mono is reserved for technical strings (critique §2.2)."""
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QTableWidgetItem
     from m110.ui.theme import fonts
-    from m110.ui.widgets import make_numeric
+    from m110.ui.widgets import make_numeric, NumItem
     theme.install(qapp)
+    mono = fonts.load_fonts()
     it = make_numeric(QTableWidgetItem("42"))
     assert it.textAlignment() & Qt.AlignmentFlag.AlignRight
-    fam = fonts.load_fonts()
-    if fam:
-        assert it.font().family() == fam
-    # mono=False → right-aligned but no font override
-    plain = make_numeric(QTableWidgetItem("7"), mono=False)
-    assert plain.textAlignment() & Qt.AlignmentFlag.AlignRight
+    assert it.font().isFeatureSet(QFont.Tag("tnum"))
+    if mono:
+        assert it.font().family() != mono
+        assert make_numeric(QTableWidgetItem("x.fit"), mono=True).font().family() == mono
+    assert NumItem("3:04", 184).font().isFeatureSet(QFont.Tag("tnum"))
 
 
 def test_thumbnail_loader_decodes_async_and_caches(tmp_path, qapp, qtbot):

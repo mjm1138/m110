@@ -47,6 +47,21 @@ QToolTip {{
 QLabel[muted="true"] {{ color: {t.text_secondary}; }}
 QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}
 
+/* ── type roles (fonts.py sets the face + OpenType features; the size has to live
+   here, because the blanket QWidget font-size above overrides a widget's setFont) ── */
+*[type="display"] {{ font-size: {FONT_SIZE['display']}px; }}
+*[type="title"] {{ font-size: {FONT_SIZE['title']}px; }}
+*[type="heading"] {{ font-size: {FONT_SIZE['heading']}px; }}
+*[type="notes"] {{ font-size: {FONT_SIZE['section']}px; }}
+/* Tracked small capitals for panel section labels (Lightroom's "DETAILS"). */
+QLabel[type="section"], QToolButton#sectionHeader {{
+    font-size: {FONT_SIZE['caption']}px;
+    font-weight: 600;
+    color: {t.text_secondary};
+    background-color: transparent;
+    border: none;
+}}
+
 /* ── Overview "Manage goals" bounding box (the one non-table section) ── */
 #manageGoalsBox {{
     background-color: {t.surface};

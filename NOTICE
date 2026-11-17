@@ -31,3 +31,16 @@ ships the reference data those charts are made of:
     stars to magnitude 6, constellation lines and names.
   - The Marcellus and IBM Plex Mono fonts, licensed under the SIL Open Font
     License, embedded as data URIs.
+
+---
+
+This product bundles the Newsreader typeface
+(https://github.com/productiontype/Newsreader), Copyright 2020 The Newsreader
+Project Authors, licensed under the SIL Open Font License, Version 1.1. The font
+files and their license are at m110/ui/theme/fonts/Newsreader*.ttf and
+m110/ui/theme/fonts/Newsreader-OFL.txt.
+
+This product bundles the JetBrains Mono typeface
+(https://github.com/JetBrains/JetBrainsMono), Copyright 2020 The JetBrains Mono
+Project Authors, licensed under the SIL Open Font License, Version 1.1
+(m110/ui/theme/fonts/OFL.txt).
