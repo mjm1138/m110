@@ -153,6 +153,7 @@ class MediaPage(QWidget):
 
         self._grid_model = TileModel(self)
         self.grid_view = QListView()
+        self.grid_view.setProperty("well", True)      # images sit on the dark well
         self.grid_view.setViewMode(QListView.IconMode)
         self.grid_view.setResizeMode(QListView.Adjust)
         self.grid_view.setMovement(QListView.Static)

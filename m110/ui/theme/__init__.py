@@ -13,11 +13,12 @@ from .brand import app_icon, logo_icon, logo_pixmap
 from .manager import MODES, SETTING_KEY, ThemeManager, resolve, system_scheme
 from .qss import build_qss
 from . import tokens
-from .tokens import DARK, LIGHT, Tokens, active
+from .tokens import DARK, LIGHT, NIGHT, Tokens, active, on_well
 
 __all__ = [
     "install", "manager", "set_mode", "active_tokens", "mono_font",
-    "status_color", "muted_color", "ink_color", "Tokens", "LIGHT", "DARK", "MODES",
+    "status_color", "muted_color", "ink_color", "Tokens", "LIGHT", "DARK", "NIGHT",
+    "MODES", "on_well", "well_text_color", "well_muted_color",
     "SETTING_KEY", "build_qss", "resolve", "system_scheme",
     "app_icon", "logo_icon", "logo_pixmap",
 ]
@@ -46,10 +47,11 @@ def active_tokens() -> Tokens:
     return active()
 
 
-def status_color(status: str | None) -> QColor:
+def status_color(status: str | None, *, well: bool = False) -> QColor:
     """Theme color for a capture status ('deep_stack'/'in_progress'/'initial');
-    muted otherwise."""
-    t = active()
+    muted otherwise. `well=True` gives the hue for drawing on the image well, which
+    is dark in every theme."""
+    t = on_well() if well else active()
     return QColor({"deep_stack": t.status_deep,
                    "in_progress": t.status_progress,
                    "initial": t.status_initial}.get(status, t.text_secondary))
@@ -57,6 +59,14 @@ def status_color(status: str | None) -> QColor:
 
 def muted_color() -> QColor:
     return QColor(active().text_secondary)
+
+
+def well_text_color() -> QColor:
+    return QColor(active().well_text)
+
+
+def well_muted_color() -> QColor:
+    return QColor(active().well_muted)
 
 
 def ink_color() -> QColor:

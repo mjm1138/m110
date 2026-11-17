@@ -48,6 +48,7 @@ class ScalableImage(QLabel):
     def __init__(self, pixmap: QPixmap, max_height: int | None = None,
                  fit: str = "width", parent=None):
         super().__init__(parent)
+        self.setProperty("well", True)           # images sit on the dark well
         self._src = pixmap
         self._max_h = max_height
         self._fit = fit
@@ -115,6 +116,8 @@ class ZoomableImage(QScrollArea):
         self._zoom: float | None = None   # None = Fit
         self._label = QLabel()
         self._label.setAlignment(Qt.AlignCenter)
+        for w in (self, self._label):            # the viewer is all well
+            w.setProperty("well", True)
         self.setWidget(self._label)
         self.setWidgetResizable(False)
         self.setAlignment(Qt.AlignCenter)

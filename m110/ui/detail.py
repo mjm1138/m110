@@ -618,6 +618,7 @@ class DetailPane(QScrollArea):
             lbl.setProperty("caption", True)
             self._lay.addWidget(lbl)
         gallery = QListWidget()
+        gallery.setProperty("well", True)
         gallery.setViewMode(QListWidget.IconMode)
         gallery.setIconSize(QSize(_GALLERY_TILE, _GALLERY_TILE))
         gallery.setResizeMode(QListWidget.Adjust)

@@ -19,8 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110.ui import theme
-from m110.ui.theme import active_tokens, muted_color
-from m110.ui.widgets import ThumbnailLoader, chip_color, paint_status_chip, status_label
+from m110.ui.widgets import ThumbnailLoader, paint_status_chip, status_label
 
 # Tile (zoom) size bounds, shared by every consumer of this grid.
 GRID_ZOOM_MIN = 80
@@ -170,7 +169,7 @@ class TileDelegate(QStyledItemDelegate):
             y = thumb_rect.top() + (thumb_rect.height() - scaled.height()) / 2
             painter.drawPixmap(int(x), int(y), scaled)
         else:
-            painter.setBrush(QColor(active_tokens().surface_alt))
+            painter.setBrush(QColor(theme.on_well().surface))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(thumb_rect, 4, 4)
         if badge:
@@ -181,7 +180,7 @@ class TileDelegate(QStyledItemDelegate):
         title_rect = QRectF(rect.left() + pad, thumb_rect.bottom() + s["xs"],
                              rect.width() - pad * 2, fm.height())
         painter.save()
-        painter.setPen(muted_color() if muted else QColor(active_tokens().text_primary))
+        painter.setPen(theme.well_muted_color() if muted else theme.well_text_color())
         elided = fm.elidedText(title, Qt.TextElideMode.ElideMiddle, int(title_rect.width()))
         painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
         painter.restore()
@@ -195,13 +194,14 @@ class TileDelegate(QStyledItemDelegate):
             chip_h = fm.height()
             chip_rect = QRectF(x, caption_rect.top() + (caption_rect.height() - chip_h) / 2,
                                chip_w, chip_h)
-            paint_status_chip(painter, chip_rect, text, chip_color(status, option))
+            # Selection on the well is an outline, so the chip keeps its own hue.
+            paint_status_chip(painter, chip_rect, text, theme.status_color(status, well=True))
             x = chip_rect.right() + s["xs"]
         remaining = caption_rect.right() - x
         if subtitle and remaining > 12:
             sub_rect = QRectF(x, caption_rect.top(), remaining, caption_rect.height())
             painter.save()
-            painter.setPen(muted_color())
+            painter.setPen(theme.well_muted_color())
             elided_sub = fm.elidedText(subtitle, Qt.TextElideMode.ElideRight, int(remaining))
             painter.drawText(sub_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                              elided_sub)
