@@ -44,3 +44,11 @@ This product bundles the JetBrains Mono typeface
 (https://github.com/JetBrains/JetBrainsMono), Copyright 2020 The JetBrains Mono
 Project Authors, licensed under the SIL Open Font License, Version 1.1
 (m110/ui/theme/fonts/OFL.txt).
+
+---
+
+This product bundles icons from Lucide (https://lucide.dev), Copyright (c) 2026
+Lucide Icons and Contributors, licensed under the ISC License; some Lucide icons
+are derived from Feather (https://feathericons.com), Copyright (c) 2013-present Cole
+Bemis, licensed under the MIT License. The SVG files and the full license text are
+at m110/ui/theme/icons/lucide/.
