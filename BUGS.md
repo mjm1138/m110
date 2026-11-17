@@ -1402,6 +1402,12 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
 ## Packaging & release
 
+- [ ] **`tools/release.py` macos phase dies if the Mac sleeps during notarization.**
+  v0.2.0-beta.8: the .app notarized, but the DMG's `notarytool submit --wait` was cut
+  off by sleep and the DMG was never submitted. Fix: run the phase (at least the
+  notarize step) under `caffeinate -i`. Recovery today: submit/staple/upload the DMG by
+  hand, then `--resume-from verify` — **not** `--resume-from macos`, which rebuilds.
+
 - [x] **The macOS .app launched as a background app — no menu bar, no Dock icon, absent
   from Force Quit** (done — `fix/macos-background-only`). `BUNDLE` inherits `console`
   from the `COLLECT`, which inherits it from its EXE args **last-one-wins** — and ours is
@@ -1492,6 +1498,11 @@ is a release blocker for 0.3.0-beta.1 except F8, which is one line.
   "newest of that event".
 
 ## UI niceties (backlog)
+
+- [ ] **Media lists a stacked result twice when it is saved as `.jpg` and `.fit`.**
+  E.g. `Video_Stacked_Lunar_*` — both files are real, so this is correct but noisy;
+  collapse a same-stem image/FITS pair into one entry (FITS as the detail, JPEG as the
+  tile). Low priority.
 
 - [x] **Media-view polish: a detached segment and no clearance at the splitter**
   *(done — `fix/media-ui-polish`)*. Three cosmetic reports off the new Media view,

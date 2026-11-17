@@ -187,7 +187,9 @@ DONE.md's archived reference — grep the module name there.
   (what landed), `DATA_MODEL.md`/`TESTING.md` when the data model or manual-test
   surface changed, a user-facing **`CHANGELOG.md` `[Unreleased]`** entry (written for
   a user; engineering detail goes in `DONE.md`). `tools/release.py` only *moves*
-  `[Unreleased]` and hard-fails when it is empty.
+  `[Unreleased]` and hard-fails when it is empty. If a release was cut while your
+  branch was open, merging `main` back silently lands your entries *inside* the
+  released section (no conflict) — move them back under `[Unreleased]` by hand.
 - **Full disclosure on user-facing security bugs** in `CHANGELOG.md` `### Security`:
   name the vector and real impact, calibrated in both directions, linking
   `docs-archive/SECURITY_ASSESSMENT.md`.
