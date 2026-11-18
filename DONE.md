@@ -676,7 +676,15 @@ Identity **A · notebook-tinged pro** (UI_ROADMAP → 1.0 redesign; critique in
   window:** AppKit draws the window title beside the traffic lights in that band
   (title is "" when expanded; `_window_label` keeps "M110" for the Window menu);
   Qt titles the hoisted PreferencesRole item with its own "Preferences..." string
-  (`AppMenuTranslator`, context `MAC_APPLICATION_MENU`, renames it "Settings…");
+  (`AppMenuTranslator`, context `MAC_APPLICATION_MENU`, renames it "Settings…").
+  Its fall-through must be `None`, not `""`: `QCoreApplication::translate` stops at
+  the first non-*null* result, and PySide passes `""` as an empty non-null
+  QString. As first shipped to main (#210) it returned `""`, which blanked every
+  string Qt supplies — QMessageBox/QDialogButtonBox standard buttons (Import
+  Finished Work's confirm showed two empty buttons), line-edit context menus, and
+  the app menu's "Hide %1" (→ `QString::arg: Argument missing` spam). The unit
+  test called `translate()` directly and asserted `""`, so it enshrined the bug;
+  the regression test now installs the translator on the app.
   AppKit appends its own "Enter Full Screen" to a View menu (ours hidden on macOS).
   `ExpandedClientAreaHint` shares its value with the deprecated
   `MaximizeUsingFullscreenGeometryHint`, so PySide warns on lookup (suppressed).

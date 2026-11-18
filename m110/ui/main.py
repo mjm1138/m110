@@ -1353,14 +1353,18 @@ class AppMenuTranslator(QTranslator):
 
     Qt builds the macOS application menu itself and titles that item with its own
     translatable string ("Preferences...", context MAC_APPLICATION_MENU), whatever
-    the action's text — so the rename has to happen in translation. Every other
-    string falls through (an empty result means "no translation here"). Off macOS
-    the context is never asked for, so this is inert there."""
+    the action's text — so the rename has to happen in translation. Off macOS the
+    context is never asked for, so this is inert there.
+
+    Every other string must fall through as **None** (a null QString), never "":
+    `QCoreApplication.translate` stops at the first non-*null* answer, so "" is taken
+    as the translation and blanks every string Qt supplies itself — the standard
+    dialog buttons (Yes/Cancel/OK…), text-field context menus, Hide/Quit M110."""
 
     def translate(self, context, source, disambiguation=None, n=-1):
         if context == "MAC_APPLICATION_MENU" and source == "Preferences...":
             return "Settings…"
-        return ""
+        return None
 
 
 def _set_macos_app_name(name: str) -> None:

@@ -645,8 +645,34 @@ def test_app_menu_names_the_settings_item_settings(qapp):
     from m110.ui.main import AppMenuTranslator
     tr = AppMenuTranslator()
     assert tr.translate("MAC_APPLICATION_MENU", "Preferences...") == "Settings…"
-    assert tr.translate("MAC_APPLICATION_MENU", "Services") == ""
-    assert tr.translate("QFileDialog", "Preferences...") == ""
+    assert tr.translate("MAC_APPLICATION_MENU", "Services") is None
+    assert tr.translate("QFileDialog", "Preferences...") is None
+
+
+def test_app_menu_translator_leaves_qts_own_strings_alone(qapp):
+    """Installed on the app, as `main()` does, the translator must not blank the
+    strings Qt supplies: returning "" (not None) for 'no translation' emptied every
+    standard dialog button — Import Finished Work's Yes/Cancel confirm showed two
+    blank buttons."""
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QDialogButtonBox, QMessageBox
+    from m110.ui.main import AppMenuTranslator
+    tr = AppMenuTranslator(qapp)
+    qapp.installTranslator(tr)
+    try:
+        tx = QCoreApplication.translate
+        assert tx("MAC_APPLICATION_MENU", "Preferences...") == "Settings…"
+        assert tx("MAC_APPLICATION_MENU", "Hide %1") == "Hide %1"
+        assert tx("QPlatformTheme", "Cancel") == "Cancel"
+        box = QMessageBox(QMessageBox.Icon.Question, "Confirm import", "Import?",
+                          QMessageBox.Yes | QMessageBox.Cancel)
+        assert all(b.text() for b in box.buttons())
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+                              | QDialogButtonBox.Save | QDialogButtonBox.Close)
+        assert all(b.text() for b in bb.buttons())
+        box.deleteLater(); bb.deleteLater()
+    finally:
+        qapp.removeTranslator(tr)
 
 
 def test_appkit_owns_full_screen_on_macos(tmp_path, monkeypatch, qapp):
