@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QTranslator
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QUndoStack
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QMenu, QWidget, QVBoxLayout, QLabel, QSplitter,
@@ -38,6 +38,7 @@ from m110.ui.toolbar import HEIGHT as HEADER_HEIGHT, TRAFFIC_LIGHT_INSET, DragAr
 from m110.ui.widgets import modal_loop_active, defer
 from m110.ui import theme
 
+APP_NAME = "M110"
 SIDEBAR_WIDTH_KEY = "sidebar_width"
 SIDEBAR_HIDDEN_KEY = "sidebar_hidden"
 SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_DEFAULT = 170, 300, 210
@@ -154,8 +155,12 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("M110")
         self._expanded = _expanded_chrome()
+        # In the expanded title-bar band AppKit would draw the title beside the
+        # traffic lights, over the sidebar; the header bar names the place instead.
+        # The Window menu and accessibility still call the window "M110".
+        self.setWindowTitle("" if self._expanded else APP_NAME)
+        self.setAccessibleName(APP_NAME)
         if self._expanded:
             # ExpandedClientAreaHint shares its value with the deprecated
             # MaximizeUsingFullscreenGeometryHint, so PySide warns on the lookup.
@@ -465,6 +470,9 @@ class MainWindow(QMainWindow):
                                            "Ctrl+Alt+I")
         self.full_screen_action = act("Enter Full Screen", self._toggle_full_screen,
                                       QKeySequence.StandardKey.FullScreen)
+        # AppKit appends its own "Enter Full Screen" to a menu titled View, so on
+        # macOS ours would be the second one; elsewhere ours is the only one.
+        self.full_screen_action.setVisible(not hoists_roles)
         fill(self.view_menu, (self.toggle_sidebar_action, self.toggle_inspector_action,
                               None, self.full_screen_action))
         self.view_menu.aboutToShow.connect(self._update_view_menu)
@@ -728,10 +736,14 @@ class MainWindow(QMainWindow):
             w.raise_()
 
     @staticmethod
-    def _app_windows() -> list:
+    def _window_label(w) -> str:
+        return w.windowTitle() or (APP_NAME if isinstance(w, QMainWindow) else "")
+
+    @classmethod
+    def _app_windows(cls) -> list:
         """The app's own visible windows (main window, image viewers, dialogs)."""
         return [w for w in QApplication.topLevelWidgets()
-                if w.isWindow() and w.isVisible() and w.windowTitle()
+                if w.isWindow() and w.isVisible() and cls._window_label(w)
                 and not isinstance(w, QMenu)]
 
     def _rebuild_window_menu(self) -> None:
@@ -747,7 +759,7 @@ class MainWindow(QMainWindow):
             m.addSeparator()
         active = QApplication.activeWindow()
         for w in wins:
-            a = m.addAction(w.windowTitle())
+            a = m.addAction(self._window_label(w))
             a.setCheckable(True)
             a.setChecked(w is active)
             a.triggered.connect(lambda _=False, w=w: self._raise_window(w))
@@ -1336,6 +1348,21 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+class AppMenuTranslator(QTranslator):
+    """Names the hoisted PreferencesRole item **Settings…**, as macOS 13+ does.
+
+    Qt builds the macOS application menu itself and titles that item with its own
+    translatable string ("Preferences...", context MAC_APPLICATION_MENU), whatever
+    the action's text — so the rename has to happen in translation. Every other
+    string falls through (an empty result means "no translation here"). Off macOS
+    the context is never asked for, so this is inert there."""
+
+    def translate(self, context, source, disambiguation=None, n=-1):
+        if context == "MAC_APPLICATION_MENU" and source == "Preferences...":
+            return "Settings…"
+        return ""
+
+
 def _set_macos_app_name(name: str) -> None:
     """Make the macOS app menu + dock tooltip show `name` instead of "Python" when
     running unbundled from source. The app-menu title comes from the bundle's
@@ -1370,6 +1397,7 @@ def main() -> None:
     app.setApplicationName("M110")
     app.setApplicationDisplayName("M110")
     app.setOrganizationName("M110")
+    app.installTranslator(AppMenuTranslator(app))   # "Settings…" in the app menu
     theme.install(app)                  # design-system: tokens → QSS, follow system
     app.setWindowIcon(theme.app_icon())  # dock / taskbar icon (parchment tile)
     from m110.ui.first_run_dialog import run_first_run_if_needed

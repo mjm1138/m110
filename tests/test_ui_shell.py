@@ -637,3 +637,24 @@ def test_window_menu_lists_the_apps_windows(tmp_path, monkeypatch, qapp):
         win.zoom_action.trigger()
     finally:
         win.close(); win.deleteLater(); qapp.processEvents()
+
+
+def test_app_menu_names_the_settings_item_settings(qapp):
+    """Qt titles the hoisted PreferencesRole item from its own string; the
+    translator renames it as macOS 13+ does, and leaves everything else alone."""
+    from m110.ui.main import AppMenuTranslator
+    tr = AppMenuTranslator()
+    assert tr.translate("MAC_APPLICATION_MENU", "Preferences...") == "Settings…"
+    assert tr.translate("MAC_APPLICATION_MENU", "Services") == ""
+    assert tr.translate("QFileDialog", "Preferences...") == ""
+
+
+def test_appkit_owns_full_screen_on_macos(tmp_path, monkeypatch, qapp):
+    import sys
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        assert win.full_screen_action.isVisible() is (sys.platform != "darwin")
+        assert win.accessibleName() == "M110"
+    finally:
+        win.deleteLater(); qapp.processEvents()
