@@ -344,6 +344,9 @@ wrong) is under the same heading in DONE.md's archived reference.
 - macOS title-bar band (`ExpandedClientAreaHint`): the window title must stay empty
   (AppKit draws it over the sidebar), the PreferencesRole label comes from Qt's
   translation (`AppMenuTranslator`), and AppKit adds View › Enter Full Screen itself.
+- A `QTranslator.translate` override returns **None** for "no translation", never
+  `""`: Qt takes the first non-null answer, so `""` blanks every Qt-supplied string
+  (dialog Yes/Cancel/OK buttons, Hide/Quit M110). Test it installed on the app.
 - `&` in a widget label is a mnemonic — write `&&` (source-scanned).
 - A dialog's reject button says "Cancel" only while there are unsaved edits (track
   dirty from `textChanged`, not `textEdited`); otherwise "Close".
