@@ -74,7 +74,7 @@ def test_goals_page_catalog_table_marks_captured_and_deep(tmp_path, monkeypatch,
         row = None
         for tbl in page._content.findChildren(QTableWidget):
             hdr = [tbl.horizontalHeaderItem(c).text() for c in range(tbl.columnCount())]
-            if hdr[:4] != ["Object", "Name", "Captured", "Deep stack"]:
+            if hdr[:4] != ["Object", "Name", "Captured", "Deep"]:
                 continue
             for r in range(tbl.rowCount()):
                 it = tbl.item(r, 0)
@@ -1530,7 +1530,7 @@ def test_overview_category_drops_total_column_keeps_total_row(tmp_path, monkeypa
         def hdr(t):
             return [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
         cat = next(t for t in page._content.findChildren(QTableWidget)
-                   if hdr(t) == ["Category", "Captured", "Deep stack", "Captured objects"])
+                   if hdr(t) == ["Category", "Captured", "Deep", "Captured objects"])
         assert "Total" not in hdr(cat)                       # no Total column
         col0 = [cat.item(r, 0).text() for r in range(cat.rowCount()) if cat.item(r, 0)]
         assert "Total" in col0                               # Total row remains

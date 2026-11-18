@@ -195,6 +195,6 @@ def test_progress_lines_and_the_assistant_report(store, monkeypatch):
 
 def test_publish_badge_matches_the_pill():
     from m110.publish.site import _status_label
-    assert _status_label("in_progress", 0.62) == "62% of goal"
-    assert _status_label("deep_stack") == "Deep Stack"
+    assert _status_label("in_progress", 0.62) == "62%"
+    assert _status_label("deep_stack") == "Deep"
     assert _status_label(None) == "—"

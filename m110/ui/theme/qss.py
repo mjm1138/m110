@@ -263,6 +263,11 @@ QHeaderView::section {{
     border-bottom: 1px solid {t.divider};
 }}
 QTableCornerButton::section {{ background-color: {t.surface}; border: none; }}
+/* The vertical header is hidden on every table, but `resizeRowsToContents` still
+   takes max(content, header section hint) — and the padded horizontal-header rule
+   above made that hint 29px, so every "fitted" table grew past the compact row.
+   Unpadded, the hint is 24px and the content decides (1.0 compact density). */
+QHeaderView::section:vertical {{ padding: 0px; border: none; }}
 
 /* ── calendar popup (QDateEdit's picker) ──
    The calendar's day grid is a QTableView SUBCLASS, so the generic table rules
@@ -499,6 +504,16 @@ QScrollBar::handle:horizontal {{
 }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+
+/* ── sliders (tile size) — brass fill, like every other "on" state ── */
+QSlider::groove:horizontal {{
+    height: 4px; background: {t.control}; border-radius: 2px;
+}}
+QSlider::sub-page:horizontal {{ background: {t.accent}; border-radius: 2px; }}
+QSlider::handle:horizontal {{
+    background: {t.text_primary}; width: 12px; height: 12px;
+    margin: -4px 0; border-radius: 6px;
+}}
 
 /* ── misc ── */
 QStatusBar {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}

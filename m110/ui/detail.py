@@ -27,7 +27,7 @@ from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, fit_table_height,
     working_dirs_for_slug, launch_siril, stack_in_stackingwizard, open_in_default,
     reveal_in_manager, reveal_label, defer, connect_context_menu, FlowLayout,
-    dark_gap_item, section_label, object_title, serif_font,
+    dark_gap_item, section_label, object_title, serif_font, STATUS_TOOLTIP,
 )
 
 
@@ -38,6 +38,7 @@ def _status_pill(status, progress=None) -> QLabel:
     """A small tinted rounded status chip (matches the Library table pill), colored
     from the active theme. Built per render, so it re-themes on reload."""
     lbl = QLabel(status_label(status, True, progress))
+    lbl.setToolTip(STATUS_TOOLTIP.get(status, ""))
     c = theme.status_color(status)
     lbl.setStyleSheet(
         f"color:{c.name()}; "

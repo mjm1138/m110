@@ -114,8 +114,15 @@ class FlowLayout(QLayout):
             line_height = max(line_height, hint.height())
         return y + line_height - rect.y() + m.bottom()
 
-STATUS_LABEL = {"deep_stack": "Deep Stack", "in_progress": "In progress",
+# The three status words, the same everywhere (UI_ROADMAP 1.0 → Status hues +
+# names): Deep · n% · Initial. "Deep" is explained once, in STATUS_TOOLTIP.
+STATUS_LABEL = {"deep_stack": "Deep", "in_progress": "In progress",
                 "initial": "Initial"}
+STATUS_TOOLTIP = {
+    "deep_stack": "Deep — reached its integration goal for this telescope",
+    "in_progress": "Part-way to its integration goal",
+    "initial": "Captured, but under a quarter of its integration goal",
+}
 # Per-cell role carrying the raw status key (e.g. "deep_stack") so the pill delegate
 # can pick a theme color while the cell still sorts by its visible text.
 STATUS_ROLE = Qt.ItemDataRole.UserRole + 7
@@ -124,11 +131,11 @@ STATUS_ROLE = Qt.ItemDataRole.UserRole + 7
 def status_label(status: str | None, captured: bool,
                  progress: float | None = None) -> str:
     """A capture status's pill text. ``in_progress`` reads as its share of the
-    integration goal ("62% of goal") when `progress` (0..1) is known."""
+    integration goal ("62%") when `progress` (0..1) is known."""
     if not captured:
         return "—"
     if status == "in_progress" and progress is not None:
-        return f"{int(progress * 100)}% of goal"
+        return f"{int(progress * 100)}%"
     return STATUS_LABEL.get(status, status or "—")
 
 
@@ -446,9 +453,23 @@ def reveal_in_manager(path) -> None:
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
 
+TABLE_ROW_HEIGHT = 26     # compact density (1.0): ~24–28 px rows, no toggle
+
+
+def compact_table(t: QTableWidget) -> QTableWidget:
+    """The 1.0 table look: compact rows, no cell grid (alternating rows separate
+    them), headers aligned with their columns rather than centered."""
+    t.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
+    t.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT - 4)
+    t.setShowGrid(False)
+    t.horizontalHeader().setDefaultAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    return t
+
+
 def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
-    """A read-only, row-selectable, sortable table (vertical header hidden)."""
-    t = QTableWidget(0, len(headers))
+    """A read-only, row-selectable, sortable, compact table (vertical header hidden)."""
+    t = compact_table(QTableWidget(0, len(headers)))
     t.setHorizontalHeaderLabels(headers)
     t.setEditTriggers(QTableWidget.NoEditTriggers)
     t.setSelectionBehavior(QTableWidget.SelectRows)

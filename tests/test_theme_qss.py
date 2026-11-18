@@ -231,3 +231,18 @@ def test_default_button_is_accent_filled():
         qss = build_qss(t)
         rule = re.search(r"QPushButton:default \{(.*?)\}", qss, re.S).group(1)
         assert t.accent in rule and t.accent_text in rule
+
+
+def test_hidden_vertical_header_does_not_inflate_fitted_rows(qapp):
+    """Compact density: a fitted table's rows are ~24 px, not the 29 px the padded
+    header-section rule used to impose through the (hidden) vertical header."""
+    from PySide6.QtWidgets import QTableWidgetItem
+    from m110.ui import theme
+    from m110.ui.widgets import TABLE_ROW_HEIGHT, make_table
+    theme.install(qapp)
+    t = make_table(["A"])
+    t.setRowCount(1)
+    t.setItem(0, 0, QTableWidgetItem("M81"))
+    t.resizeRowsToContents()
+    assert t.rowHeight(0) <= TABLE_ROW_HEIGHT + 2
+    assert not t.showGrid()

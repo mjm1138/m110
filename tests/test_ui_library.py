@@ -22,7 +22,7 @@ def _png(path, color=(40, 80, 160)):
 def test_status_label_and_colours():
     from m110.ui import widgets
     from m110.ui.theme import tokens
-    assert widgets.status_label("deep_stack", True) == "Deep Stack"
+    assert widgets.status_label("deep_stack", True) == "Deep"
     assert widgets.status_label("initial", True) == "Initial"
     assert widgets.status_label("deep_stack", False) == "—"      # uncaptured → muted dash
     assert widgets.status_label(None, True) == "—"
@@ -37,7 +37,7 @@ def test_status_label_and_colours():
 def test_in_progress_reads_as_its_share_of_the_goal():
     from m110.ui import widgets
     from m110.ui.theme import tokens
-    assert widgets.status_label("in_progress", True, 0.625) == "62% of goal"
+    assert widgets.status_label("in_progress", True, 0.625) == "62%"
     assert widgets.status_label("in_progress", True) == "In progress"
     assert widgets.status_label("in_progress", False, 0.5) == "—"
     # the share only changes the in-progress text
@@ -47,7 +47,7 @@ def test_in_progress_reads_as_its_share_of_the_goal():
     tokens.set_active(tokens.DARK)
     assert widgets.status_color("in_progress").name() == tokens.DARK.status_progress
     tokens.set_active(tokens.LIGHT)
-    # a status column sorts by state, not label text ("62% of goal" < "Deep Stack")
+    # a status column sorts by state, not label text ("62%" < "Deep")
     rank = widgets.STATUS_RANK
     assert rank["initial"] < rank["in_progress"] < rank["deep_stack"]
 

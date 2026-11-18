@@ -26,8 +26,9 @@ from m110.ui.image_grid import (
 from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
 from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
+    compact_table,
     NumItem, STATUS_RANK, status_label, status_color, muted_color, targets_for_slug,
-    StatusPillDelegate, STATUS_ROLE, make_numeric,
+    StatusPillDelegate, STATUS_ROLE, STATUS_TOOLTIP, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
     working_dirs_for_slug, add_siril_actions, launch_siril, mono_font,
     connect_context_menu, make_search_field, make_view_switcher, restyle_view_switcher, header_group,
@@ -409,7 +410,7 @@ class CatalogPage(QWidget):
         totals = self._totals
         items, ids = self._current_items()
 
-        table = QTableWidget(len(items), len(self.HEADERS))
+        table = compact_table(QTableWidget(len(items), len(self.HEADERS)))
         table.setHorizontalHeaderLabels(self.HEADERS)
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -451,9 +452,11 @@ class CatalogPage(QWidget):
                 (STATUS_RANK.get(status, -1), float(t.get("progress") or 0.0)))
             status_item.setForeground(status_color(status) if captured else muted_color())
             status_item.setData(STATUS_ROLE, status)
+            tip = [STATUS_TOOLTIP[status]] if status in STATUS_TOOLTIP else []
             if t.get("by_model"):
-                status_item.setToolTip("\n".join(
-                    integration_goals.progress_lines(t["by_model"], registry)))
+                tip += integration_goals.progress_lines(t["by_model"], registry)
+            if tip:
+                status_item.setToolTip("\n".join(tip))
             table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)
