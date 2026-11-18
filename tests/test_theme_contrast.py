@@ -66,9 +66,14 @@ def test_status_hues_are_readable_as_text(t):
 
 @pytest.mark.parametrize("t", THEMES, ids=lambda t: t.name)
 def test_the_image_well_is_dark_with_readable_captions(t):
-    """Astro images never sit on paper: the well is dark in every theme, and what's
-    drawn on it (captions, status chips) uses the well palette."""
-    assert contrast.lightness(t.well) <= 10
+    """Astro images never sit on paper: the well is near-black on dark/night and a
+    medium gray on light (well below the paper), and what's drawn on it (captions,
+    status chips) uses the well palette."""
+    if t.name == "light":
+        assert 30 <= contrast.lightness(t.well) <= 45
+        assert contrast.lightness(t.window) - contrast.lightness(t.well) >= 40
+    else:
+        assert contrast.lightness(t.well) <= 10
     for fg in (t.well_text, t.well_muted):
         assert contrast.ratio(fg, t.well) >= AA
     w = tokens.on_well(t)
@@ -92,7 +97,7 @@ def test_luminance_ladder_has_real_steps(t):
     if t.name == "dark":
         ladder = [t.well, t.window, t.surface, t.control, t.control_hover]
     else:
-        ladder = [t.well, t.sidebar, t.window, t.surface]
+        ladder = [t.sidebar, t.window, t.surface]
     steps = [L(b) - L(a) for a, b in zip(ladder, ladder[1:])]
     assert all(s >= 5 for s in steps), [round(s, 1) for s in steps]
     # The surface tier (chrome/sidebar/surface) reads as one level.

@@ -8,8 +8,8 @@ The 1.0 palette ("notebook-tinged pro", UI_ROADMAP → 1.0 redesign) is warm gra
 on dark, warm paper on light, and red-on-black for night vision. Surfaces climb a
 **luminance ladder** — well < window < surface tier < control < hover — with at
 least 5 L* between levels, so panels separate by tone rather than by 1px borders.
-The **image well** sits behind grids, heroes and the viewer and is dark in every
-theme: astro images never sit on paper. `tests/test_theme_contrast.py` checks the
+The **image well** sits behind grids, heroes and the viewer: near-black on dark,
+a medium warm gray on light — astro images never sit on paper. The contrast test checks the
 ladder and the WCAG contrast of every text/background pair numerically.
 
 The currently-applied palette is a module global (`active()` / `set_active`) so
@@ -18,7 +18,7 @@ same source the stylesheet does.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 
 # ── scales (plain constants; px) ──────────────────────────────────────────────
 SPACE = {"xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32}
@@ -97,16 +97,20 @@ DARK = Tokens(
     ok="#9cbf7e", warn="#d9a648", danger="#e07a6a", neutral="#ada495",
 )
 
-# Warm paper chrome, ink text, brass-ink accent; the image well stays dark.
-# Ladder L*: well 9 · sidebar/chrome 86 · window 92 · surface 97 · control 99.
+# Warm paper chrome, ink text, brass-ink accent. The image well is a medium warm
+# gray (L* 38) rather than near-black: a black well read as a hole punched in the
+# paper, and white would wash the photographs out. L* 38 is the lightest gray that
+# still carries light captions and status chips at AA (a true middle gray, L* 50,
+# would need dark captions). Ladder L*: well 38 · sidebar/chrome 86 · window 92 ·
+# surface 97 · control 99.
 LIGHT = Tokens(
     name="light",
-    well="#1b1a17", window="#ece6da", chrome="#ded6c6", sidebar="#ddd5c4",
+    well="#5c5852", window="#ece6da", chrome="#ded6c6", sidebar="#ddd5c4",
     surface="#f8f5ee", surface_alt="#f0ebe0", control="#fffdf8",
     control_hover="#f3eee4", raised="#fffdf8",
     border="#d3cbbb", divider="#e0d9ca",
     text_primary="#25221d", text_secondary="#5c5447", text_disabled="#a39a8a",
-    well_text="#ece6da", well_muted="#ada495",
+    well_text="#f4efe6", well_muted="#ddd6c9",
     accent="#8f6314", accent_text="#fffdf8", accent_hover="#7d560f",
     selection_bg="#ead9b4", selection_text="#25221d", focus_ring="#8f6314",
     status_deep="#386223", status_progress="#33598a", status_initial="#934020",
@@ -150,9 +154,19 @@ def set_active(tokens: Tokens) -> None:
     _active = tokens
 
 
+# What is drawn *on* the light theme's gray well: the dark palette, with captions
+# and status hues lifted to stay AA on the lighter gray.
+LIGHT_WELL = replace(
+    DARK, well=LIGHT.well, surface="#67635c",
+    text_primary=LIGHT.well_text, text_secondary=LIGHT.well_muted,
+    well_text=LIGHT.well_text, well_muted=LIGHT.well_muted,
+    status_deep="#c9e6ae", status_progress="#c6dbf5", status_initial="#fccfb9",
+)
+
+
 def on_well(t: Tokens | None = None) -> Tokens:
-    """The palette to draw *on the image well* with. The well is dark in every theme,
-    so status chips and captions on it take the dark palette's hues (night keeps its
-    own red)."""
+    """The palette to draw *on the image well* with — status chips, tile captions,
+    the empty-thumbnail placeholder. The well is dark (dark/night) or a medium gray
+    (light) whatever the panels around it are, so it gets its own hues."""
     t = t or _active
-    return NIGHT if t.name == "night" else DARK
+    return {"night": NIGHT, "light": LIGHT_WELL}.get(t.name, DARK)
