@@ -359,8 +359,8 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
         flow = next(lay.itemAt(i).layout() for i in range(lay.count())
                     if isinstance(lay.itemAt(i).layout(), FlowLayout))
         labels = [flow.itemAt(i).widget().text() for i in range(flow.count())]
-        assert labels == ["Import finished work…", "Process in Siril",
-                          "Reveal working folder", "Stack in StackingWizard…",
+        assert labels == ["Import Finished Work…", "Process in Siril",
+                          "Reveal Working Folder", "Stack in StackingWizard…",
                           "Send to AstroWizard…"]
         assert all(isinstance(flow.itemAt(i).widget(), QPushButton)
                    for i in range(flow.count()))
@@ -397,7 +397,7 @@ def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatc
         d.goals_changed.connect(lambda: fired.append(True))
         d.show_object(slug, e, derived.totals_by_slug()[slug])
         btn = next(b for b in d._content.findChildren(QPushButton)
-                   if b.text() == "Set goal…")
+                   if b.text() == "Set Goal…")
         btn.click()
         qapp.processEvents()
         assert integration_goals.load()[slug][model] == {"min": 420.0,
@@ -411,7 +411,7 @@ def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatc
         assert _count(d._content, "Use default") == 0
         monkeypatch.setattr(goal_dialog.GoalDialog, "use_default", lambda self: True)
         btn = next(b for b in d._content.findChildren(QPushButton)
-                   if b.text() == "Set goal…")
+                   if b.text() == "Set Goal…")
         btn.click()
         qapp.processEvents()
         assert integration_goals.load() == {}

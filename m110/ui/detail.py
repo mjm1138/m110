@@ -147,6 +147,7 @@ class DetailPane(QScrollArea):
         self._lay.setSpacing(s["sm"])
         self.setWidget(self._content)
         self._current = None        # (slug, e, t) of the shown object
+        self._goal_models: list[str] = []
         self._editing = False
         self._gallery = None
         self._galleries = []        # one QListWidget per finished/working group
@@ -250,6 +251,7 @@ class DetailPane(QScrollArea):
 
     def show_object(self, slug: str, e: dict, t: dict):
         self._current = (slug, e, t)
+        self._goal_models = []
         self._editing = False
         self._clear()
         captured = bool(t)
@@ -378,6 +380,7 @@ class DetailPane(QScrollArea):
         if active not in models:
             models.append(active)
         self._lay.addWidget(_section_label("Integration goals"))
+        self._goal_models = list(models)          # Object › Set Goal… uses the first
         for model in models:
             have = (by_model.get(model) or {}).get("integration_min", 0.0)
             goal, source = integration_goals.resolve(slug, e.get("type"), model, goals, reg)
@@ -397,7 +400,7 @@ class DetailPane(QScrollArea):
             if reason:
                 text.setToolTip(reason)
             row.addWidget(text, 1)
-            set_btn = QPushButton("Set goal…")
+            set_btn = QPushButton("Set Goal…")
             set_btn.clicked.connect(
                 lambda _=False, m=model: self._set_goal(slug, e, m))
             row.addWidget(set_btn, 0, Qt.AlignTop)
@@ -453,14 +456,14 @@ class DetailPane(QScrollArea):
         btn_row = FlowLayout(hspacing=theme.tokens.SPACE["sm"],
                              vspacing=theme.tokens.SPACE["sm"])
         if self._has_finished_work(slug):
-            imp_btn = QPushButton("Import finished work…")
+            imp_btn = QPushButton("Import Finished Work…")
             imp_btn.setToolTip("Bring your processed renders/stack into the "
                                "Library and tidy the working folder")
             imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
             btn_row.addWidget(imp_btn)
         if self._has_working_folder(slug):
             btn_row.addWidget(self._siril_button(working_dirs_for_slug(slug)))
-            rev_btn = QPushButton("Reveal working folder")
+            rev_btn = QPushButton("Reveal Working Folder")
             rev_btn.setToolTip("Open this object's Siril working folder "
                                "(Images/<target>/siril/). Point Siril's "
                                "working directory here — not the folder above it.")
@@ -751,18 +754,18 @@ class DetailPane(QScrollArea):
         """Shared right-click menu for a single image (gallery tile or hero)."""
         name, state = gi["name"], gi.get("_state")
         menu = QMenu(self)
-        hero_act = menu.addAction("Set as hero")
+        hero_act = menu.addAction("Set as Hero")
         menu.addSeparator()
         if state == "finished":
-            mark_act = menu.addAction("Mark as working")
+            mark_act = menu.addAction("Mark as Working")
             target = "working"
         else:
-            mark_act = menu.addAction("Mark as finished")
+            mark_act = menu.addAction("Mark as Finished")
             target = "finished"
         menu.addSeparator()
-        export_act = menu.addAction("Export for sharing…")
+        export_act = menu.addAction("Export for Sharing…")
         menu.addSeparator()
-        open_act = menu.addAction("Open in default app")
+        open_act = menu.addAction("Open in Default App")
         reveal_act = menu.addAction(reveal_label())
         chosen = menu.exec(global_pos)
         # These three act on the real file (`src`), never the render: revealing a
@@ -779,6 +782,60 @@ class DetailPane(QScrollArea):
             open_in_default(src)
         elif chosen is reveal_act:
             reveal_in_manager(src)
+
+    # ---- the Object menu's verbs (main window › Object) ----
+    # Every per-object action the pane's buttons and context menus offer is also a
+    # menu command (HIG: a context menu is a shortcut, never a command's only home).
+    # These answer "is it available for the shown object?" and perform it, using
+    # the same handlers the buttons use.
+    def current_slug(self) -> str | None:
+        return self._current[0] if self._current else None
+
+    def available_commands(self) -> set[str]:
+        slug = self.current_slug()
+        if not slug:
+            return set()
+        have = {"set_goal"} if self._goal_models else set()
+        if self._has_finished_work(slug):
+            have.add("import_finished")
+        if self._has_working_folder(slug):
+            have |= {"siril", "reveal"}
+        if can_hand_off(slug):
+            have |= {"astrowizard", "stackingwizard"}
+        if self._hero_gallery_item(slug) is not None:
+            have.add("export")
+        return have
+
+    def siril_dirs(self) -> list:
+        slug = self.current_slug()
+        return working_dirs_for_slug(slug) if slug else []
+
+    def cmd_set_goal(self):
+        if self._current and self._goal_models:
+            slug, e, _t = self._current
+            self._set_goal(slug, e, self._goal_models[0])
+
+    def cmd_import_finished(self):
+        if self.current_slug():
+            self.import_requested.emit(self.current_slug())
+
+    def cmd_reveal_working_folder(self):
+        if self.current_slug():
+            self._reveal_working_folder(self.current_slug())
+
+    def cmd_send_to_astrowizard(self):
+        if self.current_slug():
+            self._send_to_astrowizard(self.current_slug())
+
+    def cmd_stack_in_stackingwizard(self):
+        if self.current_slug():
+            stack_in_stackingwizard(self, self.current_slug())
+
+    def cmd_export_for_sharing(self):
+        """Export the hero's source image (the gallery's own action, on the hero)."""
+        gi = self._hero_gallery_item(self.current_slug()) if self.current_slug() else None
+        if gi is not None:
+            self._export_for_sharing(gi.get("src", gi["path"]))
 
     def _export_for_sharing(self, path):
         from m110.ui.export_dialog import ExportShareDialog   # lazy: avoid cycle

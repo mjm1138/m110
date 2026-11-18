@@ -17,6 +17,7 @@ from m110.catalog import (
     load_library, catalog_sort_key, season_sort_key, object_identifiers,
     object_label, list_bundled_catalogs,
 )
+from m110.ui import undo
 from m110.ui.detail import DetailPane
 from m110.ui.image_grid import (
     TileItem, TileModel, TileDelegate, KEY_ROLE,
@@ -730,9 +731,9 @@ class CatalogPage(QWidget):
         # catalog objects carry full reference metadata, so on those both are disabled.
         # Disabled entries now render greyed via the `QMenu::item:disabled` QSS rule; a
         # disabled item can't be `chosen`, so the dispatch below needs no re-guarding.
-        fill_act = menu.addAction("Fill in missing metadata")
+        fill_act = menu.addAction("Fill In Missing Metadata")
         fill_act.setEnabled(missing)
-        online_act = menu.addAction("Enrich online")
+        online_act = menu.addAction("Enrich Online")
         online_act.setEnabled(has_gaps and self._enrich_worker is None)
         siril_dirs = working_dirs_for_slug(slug)
         if siril_dirs:
@@ -741,11 +742,11 @@ class CatalogPage(QWidget):
         menu.addSeparator()
         published = entry.get("publish", True) is not False
         publish_act = menu.addAction(
-            "Exclude from publishing" if published else "Include in publishing")
+            "Exclude from Publishing" if published else "Include in Publishing")
         menu.addSeparator()
         state = pins.get_state(slug)
-        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
-                                 else "Pin as priority")
+        pin_act = menu.addAction("Unpin" if state == pins.PIN
+                                 else "Pin as Priority")
         depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
                                    else "Deprioritize")
         menu.addSeparator()
@@ -781,11 +782,17 @@ class CatalogPage(QWidget):
             self._remove_one(slug)
 
     def _set_pin(self, slug: str, state):
-        """Apply a Pin/Deprioritize/clear override, refresh the marker, keep selection (#3)."""
-        pins.set_state(slug, state)
-        self._rebuild_views()
-        self._select_slug(slug)
-        self.pins_changed.emit()
+        """Apply a Pin/Deprioritize/clear override (undoable), refresh the marker,
+        keep selection (#3)."""
+        def changed():
+            self._rebuild_views()
+            self._select_slug(slug)
+            self.pins_changed.emit()
+        undo.run(undo.SetPinCommand(slug, state, changed))
+
+    def toggle_pin(self, slug: str, state: str) -> None:
+        """Object menu: toggle `state` ('pin' / 'deprioritize') on `slug`."""
+        self._set_pin(slug, None if pins.get_state(slug) == state else state)
 
     def _toggle_publish(self, slug: str, publish: bool):
         if catalog_mod.set_publish_flag(slug, publish):
@@ -822,15 +829,16 @@ class CatalogPage(QWidget):
                 "reappear on the next refresh.\n\nTo drop it, remove its capture "
                 "folders under Images/ first.")
             return
-        if QMessageBox.question(
-                self, "Remove from Library",
-                f"Remove {oid} from your Library? Its journal/notes are kept.") \
-                != QMessageBox.Yes:
+        # No confirmation: Edit › Undo puts it back (HIG — undo beats a "are you
+        # sure?"). The journal under Objects/ is never touched.
+        if slug not in self._cat:
             return
-        if catalog_mod.remove_library_entry(slug):
+        def changed():
             self._cat = load_library()
             self._rebuild_views()
             self._update_stat()
+            self.pins_changed.emit()        # other pages list Library objects too
+        undo.run(undo.RemoveFromLibraryCommand(slug, changed))
 
     def _enrich_one_online(self, slug: str):
         if self._enrich_worker is not None:

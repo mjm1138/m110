@@ -25,7 +25,7 @@ def test_report_action_opens_dialog(tmp_path, monkeypatch, qapp):
                         lambda *a, **k: type("D", (), {"exec": lambda self: built.append(k)})())
     win = _window(qapp)
     try:
-        assert win.report_action.text() == "Report a problem…"
+        assert win.report_action.text() == "Report a Problem…"
         win._open_report()
         assert built and built[0].get("is_crash") is False
     finally:
@@ -224,14 +224,19 @@ def test_launch_update_check_skipped_when_not_ready(tmp_path, monkeypatch, qapp)
 
 def test_menubar_structure(tmp_path, monkeypatch, qapp):
     """One structure on every platform — the macOS MenuRoles do the hoisting, so
-    there is no per-platform branch to drift."""
+    there is no per-platform branch to drift. The Tools menu is gone (1.0)."""
     seed_root(tmp_path, monkeypatch)
     win = _window(qapp)
     try:
         titles = [a.menu().title() for a in win.menuBar().actions() if a.menu()]
-        assert titles == ["File", "View", "Library", "Tools", "Help"]
+        assert titles == ["File", "Edit", "View", "Object", "Library", "Window", "Help"]
     finally:
         win.deleteLater(); qapp.processEvents()
+
+
+def _menus(win):
+    return [win.file_menu, win.edit_menu, win.view_menu, win.object_menu,
+            win.lib_menu, win.window_menu, win.help_menu]
 
 
 def test_every_action_is_reachable_from_exactly_one_menu(tmp_path, monkeypatch, qapp):
@@ -239,29 +244,60 @@ def test_every_action_is_reachable_from_exactly_one_menu(tmp_path, monkeypatch, 
     seed_root(tmp_path, monkeypatch)
     win = _window(qapp)
     try:
-        menus = [win.file_menu, win.view_menu, win.lib_menu,
-                 win.tools_menu, win.help_menu]
         homes = {}
-        for m in menus:
+        for m in _menus(win):
             for a in m.actions():
                 if not a.isSeparator():
                     homes.setdefault(a, []).append(m.title())
-        assert all(len(v) == 1 for v in homes.values())
-
-        expected = [win.ingest_action, win.publish_action, win.quit_action,
+        assert all(len(v) == 1 for v in homes.values()), homes
+        expected = [win.ingest_action, win.publish_action, win.backup_action,
+                    win.restore_action, win.close_window_action, win.prefs_action,
+                    win.quit_action, win.undo_action, win.redo_action,
+                    win.copy_action, win.select_all_action, win.find_action,
+                    *win.view_actions, *win.view_mode_actions.values(),
+                    win.toggle_sidebar_action, win.toggle_inspector_action,
+                    win.full_screen_action, *win.object_actions,
                     win.refresh_action, win.add_object_action, win.fill_meta_action,
                     win.enrich_online_action, win.prep_action,
-                    win.backup_action,
-                    win.restore_action, win.prefs_action, win.user_guide_action,
-                    win.check_updates_action, win.report_action, win.about_action]
-        assert all(a in homes for a in expected)
+                    win.media_cleanup_action, win.minimize_action, win.zoom_action,
+                    win.bring_all_action, win.user_guide_action, win.report_action,
+                    win.check_updates_action, win.about_action]
+        missing = [a.text() for a in expected if a not in homes]
+        assert not missing, missing
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_menu_labels_are_title_case_with_consistent_ellipses(tmp_path, monkeypatch, qapp):
+    """Mac menus use title case; an ellipsis means "a dialog follows" and never
+    trails a verb that acts at once."""
+    import re
+    small = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on",
+             "or", "the", "to", "with"}
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        for m in _menus(win):
+            for a in m.actions():
+                text = a.text().replace("&", "")
+                if a.isSeparator() or not text or a.menu() is None and \
+                        a in win.window_menu.actions()[5:]:
+                    continue                       # window-list entries are titles
+                words = re.findall(r"[A-Za-z][\w'-]*", text)
+                for i, w in enumerate(words):
+                    if w == "as" and i == 0:
+                        continue                   # Finder's "as List" convention
+                    if i and w.lower() in small:
+                        continue
+                    assert w[0].isupper() or w[0].isdigit(), f"{text!r} in {m.title()}"
+                assert not text.endswith("...") and "  " not in text
     finally:
         win.deleteLater(); qapp.processEvents()
 
 
 def test_menu_roles_fold_into_the_macos_app_menu(tmp_path, monkeypatch, qapp):
-    """Preferences / About / Quit must carry their roles — that hoisting is the whole
-    reason one structure can read native on macOS as well as Windows and Linux."""
+    """Settings / About / Check for Updates / Quit carry their roles — that hoisting
+    is why one structure reads native on macOS as well as Windows and Linux."""
     from PySide6.QtGui import QAction
     seed_root(tmp_path, monkeypatch)
     win = _window(qapp)
@@ -269,6 +305,8 @@ def test_menu_roles_fold_into_the_macos_app_menu(tmp_path, monkeypatch, qapp):
         assert win.prefs_action.menuRole() == QAction.MenuRole.PreferencesRole
         assert win.about_action.menuRole() == QAction.MenuRole.AboutRole
         assert win.quit_action.menuRole() == QAction.MenuRole.QuitRole
+        assert (win.check_updates_action.menuRole()
+                == QAction.MenuRole.ApplicationSpecificRole)
     finally:
         win.deleteLater(); qapp.processEvents()
 
@@ -281,11 +319,10 @@ def test_no_separator_is_stranded_by_a_hoisted_action(tmp_path, monkeypatch, qap
     seed_root(tmp_path, monkeypatch)
     win = _window(qapp)
     try:
-        for menu, role_action in ((win.file_menu, win.quit_action),
-                                  (win.tools_menu, win.prefs_action)):
-            acts = menu.actions()
-            before = acts[acts.index(role_action) - 1]
-            assert before.isSeparator() is not (sys.platform == "darwin")
+        acts = win.file_menu.actions()
+        before = acts[acts.index(win.prefs_action) - 1]
+        assert before.isSeparator() is not (sys.platform == "darwin")
+        assert acts[-1] is win.quit_action
     finally:
         win.deleteLater(); qapp.processEvents()
 
@@ -364,6 +401,7 @@ def test_edit_lock_disables_the_view_menu(tmp_path, monkeypatch, qapp):
         win._on_editing_changed(True)
         assert not win.nav.isEnabled()
         assert all(not a.isEnabled() for a in win.view_actions)
+        assert not win.undo_action.isEnabled()
         win._on_editing_changed(False)
         assert all(a.isEnabled() for a in win.view_actions)
     finally:
@@ -413,3 +451,176 @@ def test_status_bar_shows_the_data_root_without_a_capture_count(tmp_path,
         assert win.statusBar().currentMessage().endswith("Syncing…")
     finally:
         win.deleteLater(); qapp.processEvents()
+
+
+# ---- Edit › Undo, Object menu, Find, Window ----
+
+def _select(win, qapp, slug):
+    win.open_object(slug)
+    qapp.processEvents()
+    assert win.catalog.selected_slug() == slug
+
+
+def test_object_menu_follows_the_selection(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    from tests._helpers import seed_capture
+    slug, _tid = seed_capture(root)
+    win = _window(qapp)
+    try:
+        win._update_object_menu()
+        assert not win.remove_action.isEnabled() and not win.pin_action.isEnabled()
+        _select(win, qapp, slug)
+        assert win.remove_action.isEnabled() and win.pin_action.isEnabled()
+        assert win.set_goal_action.isEnabled()          # captured → has goal rows
+        assert win.publish_flag_action.isChecked()      # published by default
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_pin_from_the_object_menu_is_undoable(tmp_path, monkeypatch, qapp):
+    from m110 import pins
+    root = seed_root(tmp_path, monkeypatch)
+    from tests._helpers import seed_capture
+    slug, _tid = seed_capture(root)
+    win = _window(qapp)
+    try:
+        _select(win, qapp, slug)
+        win.pin_action.trigger()
+        assert pins.get_state(slug) == pins.PIN
+        assert win.undo_action.isEnabled() and "Pin" in win.undo_action.text()
+        win.undo_action.trigger()
+        assert pins.get_state(slug) is None
+        win.redo_action.trigger()
+        assert pins.get_state(slug) == pins.PIN
+        win._update_object_menu()
+        assert win.pin_action.isChecked()
+        win.depri_action.trigger()                      # pin → deprioritize
+        assert pins.get_state(slug) == pins.DEPRIORITIZE
+        win.undo_action.trigger()
+        assert pins.get_state(slug) == pins.PIN
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_remove_from_library_is_undoable_without_a_confirm(tmp_path, monkeypatch, qapp):
+    """HIG: Undo replaces the "are you sure?". The same entry comes back."""
+    from PySide6.QtWidgets import QMessageBox
+    from m110 import catalog
+    from tests._helpers import add_library
+    root = seed_root(tmp_path, monkeypatch)
+    add_library(root, {"m57": {"id": "M57", "name": "Ring Nebula",
+                               "type": "planetary_nebula"}})
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: asked.append(1) or QMessageBox.Yes)
+    win = _window(qapp)
+    try:
+        win.catalog.reload()
+        before = dict(catalog.load_library()["m57"])
+        _select(win, qapp, "m57")
+        win.remove_action.trigger()
+        assert "m57" not in catalog.load_library()
+        assert "m57" not in win.catalog._cat
+        assert asked == []
+        win.undo_action.trigger()
+        assert catalog.load_library()["m57"] == before
+        assert "m57" in win.catalog._cat
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_find_focuses_the_places_search_field(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        win.show()
+        win.go_to(win._journal_index)
+        win.find_action.trigger()
+        qapp.processEvents()
+        assert QApplication_focus() is win.journal._search
+        win.go_to(win._planning_index)                 # no search here → Deep Sky's
+        win.find_action.trigger()
+        qapp.processEvents()
+        assert win.current_page() == win._catalog_index
+        assert QApplication_focus() is win.catalog._search
+    finally:
+        win.close(); win.deleteLater(); qapp.processEvents()
+
+
+def QApplication_focus():
+    from PySide6.QtWidgets import QApplication
+    return QApplication.focusWidget()
+
+
+def test_view_modes_and_chrome_actions(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    from tests._helpers import seed_capture
+    slug, _tid = seed_capture(root)
+    win = _window(qapp)
+    try:
+        win.go_to(win._catalog_index)
+        win.view_mode_actions["list"].trigger()
+        assert win.catalog.view_mode() == "list"
+        win.view_mode_actions["map"].trigger()
+        assert win.catalog.view_mode() == "map"
+        win.go_to(win._media_index)
+        win._update_view_menu()
+        assert not win.view_mode_actions["map"].isEnabled()
+        win.view_mode_actions["list"].trigger()
+        assert win.media_page.view_mode() == "list"
+        win.go_to(win._overview_index)
+        win._update_view_menu()
+        assert not any(a.isEnabled() for a in win.view_mode_actions.values())
+
+        win.toggle_sidebar_action.trigger()
+        assert not win.sidebar_visible()
+        assert win.toggle_sidebar_action.text() == "Show Sidebar"
+        win.toggle_sidebar_action.trigger()
+        assert win.sidebar_visible()
+
+        win.go_to(win._catalog_index)
+        win.view_mode_actions["grid"].trigger()
+        _select(win, qapp, slug)
+        win.toggle_inspector_action.trigger()
+        assert win.catalog.detail.isHidden()
+        win.toggle_inspector_action.trigger()
+        assert not win.catalog.detail.isHidden()
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_copy_puts_the_selected_designation_on_the_clipboard(tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QApplication
+    root = seed_root(tmp_path, monkeypatch)
+    from tests._helpers import seed_capture
+    slug, _tid = seed_capture(root)
+    win = _window(qapp)
+    try:
+        _select(win, qapp, slug)
+        win.catalog.grid_view.setFocus()
+        win.copy_action.trigger()
+        assert QApplication.clipboard().text() == (win.catalog._cat[slug].get("id")
+                                                   or slug)
+        win.select_all_action.trigger()                 # no crash without a target
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_window_menu_lists_the_apps_windows(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        win.show()
+        qapp.processEvents()
+        win._rebuild_window_menu()
+        titles = [a.text() for a in win.window_menu.actions() if not a.isSeparator()]
+        assert titles[:3] == ["Minimize", "Zoom", "Bring All to Front"]
+        assert "M110" in titles
+        listed = next(a for a in win.window_menu.actions() if a.text() == "M110")
+        listed.trigger()                                # raise: no crash
+        win.bring_all_action.trigger()
+        win.zoom_action.trigger()
+        qapp.processEvents()
+        win.zoom_action.trigger()
+    finally:
+        win.close(); win.deleteLater(); qapp.processEvents()

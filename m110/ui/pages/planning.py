@@ -842,17 +842,21 @@ class PlanningPage(QScrollArea):
             return
         state = pins.get_state(slug)
         menu = QMenu(self)
-        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
-                                 else "Pin as priority")
+        pin_act = menu.addAction("Unpin" if state == pins.PIN
+                                 else "Pin as Priority")
         depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
                                    else "Deprioritize")
         chosen = menu.exec(tbl.viewport().mapToGlobal(pos))
         if chosen is pin_act:
-            pins.set_state(slug, None if state == pins.PIN else pins.PIN)
+            new = None if state == pins.PIN else pins.PIN
         elif chosen is depri_act:
-            pins.set_state(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
+            new = None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE
         else:
             return
+        from m110.ui import undo
+        undo.run(undo.SetPinCommand(slug, new, self._after_pin_change))
+
+    def _after_pin_change(self):
         self._render_ranking()          # instant re-rank
         self.pins_changed.emit()
 

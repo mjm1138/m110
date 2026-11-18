@@ -841,24 +841,20 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
     w._ready = False    # neuter the deferred launch-refresh worker (else it can run
                         # after monkeypatch unwinds → writes the LIVE store)
     try:
-        # Library menu = operations on the collection itself. (Back up / Restore /
-        # Prepare / Preferences moved to Tools; Import / Publish to File.)
+        # Library menu = operations on the collection itself. Back Up / Restore /
+        # Settings moved to File (the Tools menu is gone — 1.0 redesign).
         labels = [a.text() for a in w.lib_menu.actions()]
         assert "Refresh" in labels
-        assert any("Add object" in t for t in labels)
-        assert any("Fill missing metadata" in t for t in labels)
-        assert any("Enrich online" in t for t in labels)
-
-        tools = [a.text() for a in w.tools_menu.actions()]
-        assert any("Prepare working folders" in t for t in tools)
-        assert any("Back up" in t for t in tools)
-        assert any("Restore" in t for t in tools)
-        assert any("Preferences" in t for t in tools)
+        assert "Add Object…" in labels
+        assert "Fill All Missing Metadata…" in labels
+        assert "Enrich All Online…" in labels
+        assert "Rebuild Working Folders" in labels
+        assert "Clean Up Imported Sidecars…" in labels
 
         files = [a.text() for a in w.file_menu.actions()]
-        assert any("Import" in t for t in files)
-        assert any("Publish" in t for t in files)
-        assert any("Exit" in t for t in files)
+        for label in ("Import…", "Publish…", "Back Up…", "Restore…", "Settings…"):
+            assert label in files
+        assert "Quit M110" in files
     finally:
         w.close()
         qapp.processEvents()
