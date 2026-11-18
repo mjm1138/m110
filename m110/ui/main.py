@@ -1,11 +1,11 @@
 """M110 — PySide6 desktop shell.
 
-A left nav rail switches between the pages (Library · Overview · Planning ·
-Import · Processing · Devices) in a stacked content area. The **Library** (thumbnail grid) is
-the landing "home"; a fresh empty store lands on **Overview** (welcome/CTA).
-Overview merges the former Summary dashboard and Goals management into one pane
-of collapsible sections. The Library page hosts the shared per-object detail;
-object links on the other pages route there via `open_object`. The shell keeps
+A grouped source-list sidebar (`sidebar.PLACES`: Overview · Library: Deep Sky,
+Media, Journal · Workflow: Import, Processing · Observing: Planning, Devices)
+switches the page stack; a header bar (`toolbar.HeaderBar`) names the place and
+carries that page's controls. **Overview** is the landing page. The Deep Sky page
+hosts the shared per-object detail; object links on the other pages route there
+via `open_object`. The shell keeps
 everything in sync with disk: it refreshes on launch, on window-focus, and after
 ingest (threaded), and backfills any missing processing working folders.
 """
@@ -19,8 +19,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
-    QListWidget, QStackedWidget, QMessageBox,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QSplitter,
+    QStackedWidget, QMessageBox,
 )
 
 from m110 import config, derived, updates
@@ -31,8 +31,23 @@ from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui.pages.planning import PlanningPage
 from m110.ui.pages.devices import DevicesPage
+from m110.ui.pages.media import MediaPage
+from m110.ui.pages.journal import JournalPage
+from m110.ui.sidebar import PLACES, Sidebar
+from m110.ui.toolbar import HEIGHT as HEADER_HEIGHT, TRAFFIC_LIGHT_INSET, DragArea, HeaderBar
 from m110.ui.widgets import modal_loop_active, defer
 from m110.ui import theme
+
+SIDEBAR_WIDTH_KEY = "sidebar_width"
+SIDEBAR_HIDDEN_KEY = "sidebar_hidden"
+SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_DEFAULT = 170, 300, 210
+
+
+def _expanded_chrome() -> bool:
+    """Draw our own title-bar band (sidebar under the traffic lights, header bar in
+    the title row) — macOS with Qt ≥ 6.9 only; elsewhere the platform title bar
+    stays. See `toolbar.py` for the prototype that chose this."""
+    return sys.platform == "darwin" and hasattr(Qt.WindowType, "ExpandedClientAreaHint")
 
 
 class RefreshWorker(QThread):
@@ -135,11 +150,17 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
+    NAV = [p.label for p in PLACES]
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("M110")
+        self._expanded = _expanded_chrome()
+        if self._expanded:
+            self.setWindowFlag(Qt.WindowType.ExpandedClientAreaHint, True)
+            self.setWindowFlag(Qt.WindowType.NoTitleBarBackgroundHint, True)
+            # Our widgets fill the title-bar band; don't let the layout pad it out.
+            self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
         self.setWindowIcon(theme.app_icon())
         self._worker = None
         self._enrich_worker = None
@@ -170,58 +191,79 @@ class MainWindow(QMainWindow):
             self.resize(560, 160)
             return
 
-        # Pages (order matches the nav rail + stack).
-        self.catalog = CatalogPage()
+        # Pages, in `sidebar.PLACES` order (the stack, the sidebar and the View
+        # menu are all built from that one list).
         self.overview = OverviewPage()
-        self.planning = PlanningPage()
+        self.catalog = CatalogPage()
+        self.media_page = MediaPage()
+        self.journal = JournalPage()
         self.import_page = ImportPage()
         self.processing = ProcessingPage()
+        self.planning = PlanningPage()
         self.devices = DevicesPage()
-        self.pages = [self.catalog, self.overview, self.planning,
-                      self.import_page, self.processing, self.devices]
-        self._catalog_index = self.pages.index(self.catalog)
+        self.pages = [self.overview, self.catalog, self.media_page, self.journal,
+                      self.import_page, self.processing, self.planning, self.devices]
+        assert len(self.pages) == len(PLACES)
         self._overview_index = self.pages.index(self.overview)
-        self._planning_index = self.pages.index(self.planning)
+        self._catalog_index = self.pages.index(self.catalog)
+        self._media_index = self.pages.index(self.media_page)
+        self._journal_index = self.pages.index(self.journal)
         self._import_index = self.pages.index(self.import_page)
+        self._processing_index = self.pages.index(self.processing)
+        self._planning_index = self.pages.index(self.planning)
         self._devices_index = self.pages.index(self.devices)
 
         self.stack = QStackedWidget()
         # Uniform breathing room around every page (token-driven), so content isn't
-        # flush against the nav rail / window edges.
+        # flush against the sidebar / window edges.
         s = theme.tokens.SPACE
         self.stack.setContentsMargins(s["lg"], s["md"], s["lg"], s["lg"])
         for p in self.pages:
             self.stack.addWidget(p)
 
-        self.nav = QListWidget()
-        self.nav.setObjectName("navRail")
-        self.nav.addItems(self.NAV)
-        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.nav.currentRowChanged.connect(self._on_nav_changed)
+        # The header bar: place title + subtitle + the page's own controls.
+        self.header = HeaderBar()
+        self.header.toggle_sidebar.connect(self.toggle_sidebar)
+        for p in self.pages:
+            ctl = getattr(p, "header_controls", None)
+            if ctl is not None:
+                self.header.adopt(ctl)
+            sig = getattr(p, "subtitle_changed", None)
+            if sig is not None:
+                sig.connect(lambda text, page=p: self._on_subtitle(page, text))
 
-        # Left column: the rail, with the brand mark anchored at its foot just above
-        # the status bar (a persistent, quiet mark on every screen — and the way in
-        # to About). The column paints the surface + divider, so the mark shares the
-        # rail's panel; WA_StyledBackground is what lets a plain QWidget honor that.
+        self.nav = Sidebar(PLACES)
+        self.nav.page_selected.connect(self.stack.setCurrentIndex)
+        self.nav.page_selected.connect(self._on_nav_changed)
+
+        # Left column: the sidebar, with the brand mark anchored at its foot (a
+        # quiet mark on every screen, and the way in to About). On macOS the column
+        # runs the full window height, under the traffic lights, so its top band is
+        # window chrome: a drag area the height of the header bar.
         self.logo = _LogoLabel()
         self.logo.clicked.connect(lambda: defer(self, self._open_about))
         left = QWidget()
         left.setObjectName("navColumn")
         left.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        left.setMaximumWidth(160)
-        left.setMinimumWidth(130)
+        left.setMinimumWidth(SIDEBAR_MIN)
+        left.setMaximumWidth(SIDEBAR_MAX)
         col = QVBoxLayout(left)
         col.setContentsMargins(0, 0, 0, s["md"])
         col.setSpacing(s["sm"])
+        self._sidebar_top = DragArea()
+        self._sidebar_top.setFixedHeight(HEADER_HEIGHT if self._expanded else s["xs"])
+        col.addWidget(self._sidebar_top)
         col.addWidget(self.nav, 1)
         col.addWidget(self.logo)
+        self.sidebar_column = left
 
-        # Content column: a slot for the (usually hidden) update banner above the
-        # page stack, so the nudge spans the content area but not the nav rail.
+        # Content column: header bar, the (usually hidden) update + assistant
+        # banners, then the page stack.
         content = QWidget()
         self._content_layout = QVBoxLayout(content)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
-        self._content_layout.setSpacing(s["sm"])
+        self._content_layout.setSpacing(0)
+        self._content_layout.addWidget(self.header)
         # The assistant queue indicator. Persistent while the outbox is
         # non-empty — deliberately not a launch/foreground modal: the app
         # auto-syncs on every window focus, so that would fire constantly.
@@ -231,13 +273,24 @@ class MainWindow(QMainWindow):
         self._content_layout.addWidget(self._assistant_banner)
         self._content_layout.addWidget(self.stack, 1)
 
-        central = QWidget()
-        row = QHBoxLayout(central)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
-        row.addWidget(left)
-        row.addWidget(content, 1)
-        self.setCentralWidget(central)
+        # Sidebar | content, in a splitter: the sidebar is resizable (width
+        # remembered) and collapsible (View › Hide Sidebar, the header's button).
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setObjectName("shellSplitter")
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.addWidget(left)
+        self.splitter.addWidget(content)
+        self.splitter.setStretchFactor(1, 1)
+        width = config.get_setting(SIDEBAR_WIDTH_KEY, SIDEBAR_DEFAULT)
+        try:
+            width = max(SIDEBAR_MIN, min(SIDEBAR_MAX, int(width)))
+        except (TypeError, ValueError):
+            width = SIDEBAR_DEFAULT
+        self.splitter.setSizes([width, 1180 - width])
+        self.splitter.splitterMoved.connect(self._on_sidebar_resized)
+        self.setCentralWidget(self.splitter)
+        if config.get_setting(SIDEBAR_HIDDEN_KEY, False):
+            self.set_sidebar_visible(False)
 
         # Routing + locking.
         self.catalog.editing_changed.connect(self._on_editing_changed)
@@ -247,6 +300,7 @@ class MainWindow(QMainWindow):
         self.catalog.goals_changed.connect(self._on_goals_changed)
         self.overview.open_object.connect(self.open_object)
         self.overview.go_to_import.connect(self._open_ingest)   # empty-state CTA
+        self.journal.open_object.connect(self.open_object)
         self.overview.pins_changed.connect(self._on_pins_changed)
         self.overview.dirty.connect(self._do_refresh)           # goal set changed
         self.overview.goals_changed.connect(self._on_goals_changed)
@@ -286,10 +340,10 @@ class MainWindow(QMainWindow):
             lambda: self._maybe_auto_backup(scheduled=True))
         self._backup_timer.start()
 
-        # Land on the Library (grid) — the "home" view; but on a fresh, empty store
-        # land on Overview, whose welcome/CTA guides the first import.
-        empty = not derived.totals_by_slug()
-        self.nav.setCurrentRow(self._overview_index if empty else self._catalog_index)
+        # Land on Overview — the collection at a glance (and, on a fresh store, the
+        # welcome/CTA that guides the first import).
+        self.go_to(self._overview_index)
+        self._update_counts()
         self._update_status()
         self.resize(1180, 740)
         self._ready = True
@@ -344,13 +398,12 @@ class MainWindow(QMainWindow):
             act = QAction(name, self)
             act.setCheckable(True)
             act.setShortcut(f"Ctrl+{i + 1}")
-            act.triggered.connect(lambda _checked=False, row=i:
-                                  self.nav.setCurrentRow(row))
+            act.triggered.connect(lambda _checked=False, page=i: self.go_to(page))
             self.view_group.addAction(act)
             self.view_menu.addAction(act)
             self.view_actions.append(act)
-        self.nav.currentRowChanged.connect(self._sync_view_menu)
-        self._sync_view_menu(self.nav.currentRow())
+        self.nav.page_selected.connect(self._sync_view_menu)
+        self._sync_view_menu(self.nav.current_page())
 
         # ── Library ── operations on the collection itself.
         self.refresh_action = QAction("Refresh", self)
@@ -420,16 +473,73 @@ class MainWindow(QMainWindow):
         if app is not None:      # aboutToQuit drains the refresh worker + thumb pool
             app.quit()
 
-    def _on_nav_changed(self, row: int):
+    def _on_nav_changed(self, page: int):
+        self._show_header_for(page)
         # Opening Planning kicks off the (lazy, once/day) prioritizer recompute —
         # only in a live, ready window, never during construction/tests.
-        if self._ready and row == self._planning_index:
+        if self._ready and page == self._planning_index:
             self.planning.ensure_ranking()
 
     # ---- routing ----
+    def go_to(self, page: int) -> None:
+        """Show page `page` (an index into `self.pages` / `sidebar.PLACES`)."""
+        self.nav.select_page(page)
+
+    def current_page(self) -> int:
+        return self.stack.currentIndex()
+
     def open_object(self, slug: str):
-        self.nav.setCurrentRow(self._catalog_index)
+        self.go_to(self._catalog_index)
         self.catalog.select_object(slug)
+
+    # ---- header bar + sidebar ----
+    def _show_header_for(self, page: int) -> None:
+        p = self.pages[page]
+        sub = p.subtitle() if hasattr(p, "subtitle") else ""
+        self.header.set_place(PLACES[page].label, sub,
+                              getattr(p, "header_controls", None))
+
+    def _on_subtitle(self, page_widget, text: str) -> None:
+        if self.stack.currentWidget() is page_widget:
+            self.header.set_subtitle(text)
+        self._update_counts()
+
+    def _update_counts(self) -> None:
+        """The sidebar's live counts — read from what the pages already loaded and
+        the derived rollups; nothing here touches disk beyond those reads."""
+        nav = getattr(self, "nav", None)
+        if nav is None:
+            return
+        nav.set_count("deepsky", len(getattr(self.catalog, "_cat", {}) or {}))
+        nav.set_count("media", self.media_page.item_count())
+        counts = derived.load_processing().get("counts", {})
+        queue = derived.load_processing().get("queue", [])
+        ready = sum(1 for f in queue if f.get("ready_for_import"))
+        nav.set_count("processing", ready + counts.get("out_of_date", 0)
+                      + counts.get("not_processed", 0))
+        nav.set_count("devices", sum(1 for d in derived.load_devices()
+                                     if not d.get("retired")))
+
+    def sidebar_visible(self) -> bool:
+        return not self.sidebar_column.isHidden()
+
+    def set_sidebar_visible(self, visible: bool) -> None:
+        self.sidebar_column.setVisible(visible)
+        # With the sidebar gone, the header bar is what sits under the traffic lights.
+        self.header.set_leading_inset(0 if visible or not self._expanded
+                                      else TRAFFIC_LIGHT_INSET)
+        if getattr(self, "toggle_sidebar_action", None) is not None:
+            self.toggle_sidebar_action.setText(
+                "Hide Sidebar" if visible else "Show Sidebar")
+        if self._ready:
+            config.save_setting(SIDEBAR_HIDDEN_KEY, not visible)
+
+    def toggle_sidebar(self) -> None:
+        self.set_sidebar_visible(not self.sidebar_visible())
+
+    def _on_sidebar_resized(self, *_):
+        if self._ready and self.sidebar_visible():
+            config.save_setting(SIDEBAR_WIDTH_KEY, self.splitter.sizes()[0])
 
     # ---- status ----
     def _update_status(self, extra: str = ""):
@@ -443,7 +553,7 @@ class MainWindow(QMainWindow):
     def _open_ingest(self):
         # Import is now a top-level page (was a modal dialog) — navigate to it and
         # let the user refresh the source list (a device may have just mounted).
-        self.nav.setCurrentRow(self._import_index)
+        self.go_to(self._import_index)
         self.import_page.reload()
 
     def _open_prefs(self):
@@ -663,7 +773,7 @@ class MainWindow(QMainWindow):
         dlg = MediaCleanupDialog(self)
         dlg.exec()
         if dlg.removed_count():
-            self.catalog.media_view.reload()
+            self.media_page.reload()
 
     def _fill_missing_metadata(self):
         """Backfill every Library entry's missing fields from the bundled reference
@@ -759,6 +869,8 @@ class MainWindow(QMainWindow):
         """Theme changed — re-apply programmatic colors QSS can't reach (table-item
         status/muted foregrounds, the ink logo). QSS-styled widgets repaint themselves."""
         self.logo.refresh()
+        self.nav.restyle()
+        self.header.restyle()
         for p in self.pages:
             if hasattr(p, "restyle"):
                 p.restyle()

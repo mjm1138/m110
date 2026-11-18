@@ -82,10 +82,15 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win = MainWindow()
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
+        # The grouped sidebar: Overview, then Library / Workflow / Observing.
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
-        # A store with captures lands on the Library (home); Library is index 0.
-        assert win.stack.currentIndex() == win._catalog_index == 0
+            ["Overview", "Library", "Deep Sky", "Media", "Journal",
+             "Workflow", "Import", "Processing", "Observing", "Planning", "Devices"]
+        assert win.NAV == ["Overview", "Deep Sky", "Media", "Journal", "Import",
+                           "Processing", "Planning", "Devices"]
+        # Overview is the landing page, even with captures in the store.
+        assert win.stack.currentIndex() == win._overview_index == 0
+        assert win.header.title.text() == "Overview"
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index
         assert win.catalog._selected_slug() == slug

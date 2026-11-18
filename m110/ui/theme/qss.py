@@ -115,7 +115,7 @@ QListWidget::item:selected {{ background-color: {t.accent}; color: {t.accent_tex
 QListWidget::item:hover:!selected {{ background-color: {t.surface_alt}; }}
 
 /* ── the image well: grids, galleries, heroes, the viewer ──
-   Dark in every theme (astro images never sit on paper). Text drawn on it uses the
+   Near-black on dark, medium gray on light (astro images never sit on paper). Text uses the
    well roles; a selected tile gets a brass outline, not a fill, so the image stays
    the brightest thing in the cell. */
 QListView[well="true"], QListWidget[well="true"], QLabel[well="true"],
@@ -177,6 +177,32 @@ QListWidget#navRail::item:selected {{
     color: {t.selection_text};
 }}
 QListWidget#navRail::item:hover:!selected {{ background-color: {t.surface_alt}; }}
+
+/* ── header bar (the window toolbar; m110/ui/toolbar.py) ──
+   On macOS it sits in the title-bar band, so it takes the chrome tone; everything
+   inside it is transparent (the base QWidget rule would otherwise give every label
+   and container its own window-colored box — the prototype's "two bars" look). */
+QWidget#headerBar {{
+    background-color: {t.chrome};
+    border-bottom: 1px solid {t.border};
+}}
+QWidget#headerBar QLabel, QWidget#headerBar QWidget#headerControls,
+QWidget#headerBar QFrame#segControl {{ background-color: transparent; }}
+QToolButton#headerButton {{
+    background-color: transparent;
+    border: none;
+    border-radius: {r['sm']}px;
+    padding: {SPACE['xs']}px;
+}}
+QToolButton#headerButton:hover {{ background-color: {t.control}; }}
+/* Icon segments (view switchers) are square-ish, like a toolbar NSSegmentedControl. */
+QFrame#segControl[iconSegments="true"] QToolButton#segButton {{
+    padding: 3px {SPACE['sm']}px;
+}}
+QLineEdit#searchField {{ padding-left: {SPACE['xs']}px; }}
+QSplitter#shellSplitter::handle {{ background-color: {t.border}; }}
+/* Scroll areas are page furniture, not boxes: tone separates them. */
+QScrollArea {{ border: none; }}
 
 /* ── tables ── */
 QTableView, QTableWidget {{

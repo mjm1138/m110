@@ -290,18 +290,68 @@ def test_no_separator_is_stranded_by_a_hoisted_action(tmp_path, monkeypatch, qap
         win.deleteLater(); qapp.processEvents()
 
 
-def test_view_menu_drives_and_follows_the_nav_rail(tmp_path, monkeypatch, qapp):
+def test_view_menu_drives_and_follows_the_sidebar(tmp_path, monkeypatch, qapp):
+    """Ctrl+1…8 are built from the same place list as the sidebar, in page indices —
+    the section headers in the list must not shift which page a shortcut opens."""
     seed_root(tmp_path, monkeypatch)
     win = _window(qapp)
     try:
         assert [a.text() for a in win.view_actions] == win.NAV
-        win.view_actions[2].trigger()                   # menu → rail
-        assert win.nav.currentRow() == 2
+        win.view_actions[2].trigger()                   # menu → sidebar
+        assert win.current_page() == 2 == win._media_index
+        assert win.nav.current_page() == 2
         assert win.view_actions[2].isChecked()
+        assert win.header.title.text() == "Media"
 
-        win.nav.setCurrentRow(4)                        # rail → menu
-        assert win.view_actions[4].isChecked()
+        win.go_to(win._processing_index)                # sidebar → menu
+        assert win.view_actions[win._processing_index].isChecked()
         assert not win.view_actions[2].isChecked()      # exclusive group
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_header_bar_shows_each_pages_own_controls(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        win.go_to(win._catalog_index)
+        assert win.header.current_controls() is win.catalog.header_controls
+        assert win.header.title.text() == "Deep Sky"
+        win.go_to(win._journal_index)
+        assert win.header.current_controls() is win.journal.header_controls
+        win.go_to(win._planning_index)
+        assert win.header.current_controls() is None
+        assert win.catalog.header_controls.isHidden()
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_sidebar_toggles_from_the_header_button(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        assert win.sidebar_visible()
+        win.header.sidebar_btn.click()
+        assert not win.sidebar_visible()
+        win.header.sidebar_btn.click()
+        assert win.sidebar_visible()
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_sidebar_counts_and_section_headers(tmp_path, monkeypatch, qapp):
+    from PySide6.QtCore import Qt
+    from m110.ui.sidebar import HEADER_ROLE
+    root = seed_root(tmp_path, monkeypatch)
+    from tests._helpers import seed_capture
+    seed_capture(root)
+    win = _window(qapp)
+    try:
+        headers = [win.nav.item(r) for r in range(win.nav.count())
+                   if win.nav.item(r).data(HEADER_ROLE)]
+        assert [h.text() for h in headers] == ["Library", "Workflow", "Observing"]
+        assert all(h.flags() == Qt.ItemFlag.NoItemFlags for h in headers)
+        assert win.nav.count_text("deepsky") == str(len(win.catalog._cat))
     finally:
         win.deleteLater(); qapp.processEvents()
 

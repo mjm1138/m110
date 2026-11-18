@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QTableWidget,
     QTableWidgetItem, QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
-    QMenu, QListView, QSlider, QToolButton, QSizePolicy,
+    QMenu, QListView, QSlider,
 )
 
 from m110 import (config, derived, devices, goals, integration_goals, objects, pins,
@@ -28,11 +28,12 @@ from m110.ui.widgets import (
     NumItem, STATUS_RANK, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
-    working_dirs_for_slug, add_siril_actions, launch_siril, make_segment, mono_font,
-    connect_context_menu, SegmentStack,
+    working_dirs_for_slug, add_siril_actions, launch_siril, mono_font,
+    connect_context_menu, make_search_field, make_view_switcher, restyle_view_switcher, header_group,
 )
 
-LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "feed" | "map"
+LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "map"
+VIEW_MODES = ("list", "grid", "map")      # the Feed is its own page now (Journal)
 LIBRARY_ZOOM_KEY = "library_grid_zoom"   # int px
 
 
@@ -63,6 +64,9 @@ class CatalogPage(QWidget):
     notes_saved = Signal(str)        # Object Notes saved → shell reloads other views
     pins_changed = Signal()          # Pin/Deprioritize override toggled → lightweight reload (#3)
     goals_changed = Signal()         # integration goal / goal scope changed; derived rebuilt
+    subtitle_changed = Signal(str)   # the toolbar subtitle (object count · hours)
+    view_mode_changed = Signal(str)  # List / Grid / Map (keeps the View menu in step)
+    selection_changed = Signal(object)   # selected slug or None (Object menu enablement)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -78,10 +82,10 @@ class CatalogPage(QWidget):
         self._all_tile_items: list[TileItem] = []
 
         # Grid (thumbnail) is the default "home" view — the Lightroom-style wall of
-        # objects. A user's explicit list/grid/feed choice persists and overrides this.
+        # objects. A user's explicit list/grid/map choice persists and overrides this.
+        # (A saved "feed" predates the Journal page and falls back to the grid.)
         view_mode = config.get_setting(LIBRARY_VIEW_KEY, "grid")
-        self._view_mode = (view_mode if view_mode in ("list", "grid", "feed", "map")
-                           else "grid")
+        self._view_mode = view_mode if view_mode in VIEW_MODES else "grid"
         zoom = config.get_setting(LIBRARY_ZOOM_KEY, GRID_ZOOM_DEFAULT)
         self._zoom = max(GRID_ZOOM_MIN, min(GRID_ZOOM_MAX, int(zoom)))
 
@@ -101,11 +105,6 @@ class CatalogPage(QWidget):
         self.grid_view.selectionModel().selectionChanged.connect(self._on_grid_select)
         connect_context_menu(self.grid_view, self._show_context_menu)
 
-        # Feed view = the reverse-chron object-card feed (absorbs the Journal pane).
-        from m110.ui.pages.journal import JournalPage
-        self.feed_view = JournalPage()
-        self.feed_view.open_object.connect(self.select_object)   # card → detail
-
         # Map view = the sky chart (ROADMAP item 12). Rendering costs ~0.1s, so
         # it is built lazily and only re-rendered while it is the visible view —
         # `_map_dirty` records that the filtered set moved underneath it.
@@ -123,8 +122,7 @@ class CatalogPage(QWidget):
         self._view_stack = QStackedWidget()
         self._view_stack.addWidget(self.table)          # 0
         self._view_stack.addWidget(self.grid_view)      # 1
-        self._view_stack.addWidget(self.feed_view)      # 2
-        self._view_stack.addWidget(self.map_view)       # 3
+        self._view_stack.addWidget(self.map_view)       # 2
         self._view_stack.setCurrentWidget(self._view_widget(self._view_mode))
 
         self.detail = DetailPane()
@@ -135,26 +133,19 @@ class CatalogPage(QWidget):
         self.detail.closed.connect(self._on_detail_closed)
         self.detail.hide()                                # nothing selected yet
 
-        # Left side: catalog selector + view segment + zoom + search + stat row.
-        cat_row = QHBoxLayout()
-        # The catalog filter (label + combo) only applies to the object views, so
-        # it's wrapped for hide/show — the Feed view has its own search and no
-        # catalog scoping.
-        self._filter_bar = QWidget()
-        fb = QHBoxLayout(self._filter_bar)
-        fb.setContentsMargins(0, 0, 0, 0)
-        fb.addWidget(QLabel("Catalog:"))
+        # The page's toolbar controls — view switcher, catalog picker, search. The
+        # shell's header bar adopts `header_controls` (UI_ROADMAP → 1.0 redesign →
+        # Toolbar), replacing the four stacked rows that sat above the grid. Built
+        # here so a standalone page (tests) still owns them; hidden until adopted.
         self._catalog_combo = QComboBox()
+        self._catalog_combo.setToolTip("Show one catalog's objects")
+        self._catalog_combo.setAccessibleName("Catalog")
+        self._catalog_combo.setMaximumWidth(220)
         self._fill_catalog_combo()
         self._catalog_combo.currentIndexChanged.connect(self._on_catalog_changed)
-        fb.addWidget(self._catalog_combo, 1)
-        cat_row.addWidget(self._filter_bar, 1)
 
-        # Its own bottom row (not cat_row) — a fixed-width slider appearing/
-        # disappearing inline next to the stretchy catalog combo shifted every
-        # widget after it (the toggle button included) each time grid mode
-        # switched on/off. A status-bar-style row below the views is immune
-        # to that: nothing else lives in it, so nothing else can move.
+        # Its own bottom row — a thin status-bar strip below the views, so the
+        # slider appearing/disappearing with grid mode can't move anything else.
         self._zoom_slider = QSlider(Qt.Horizontal)
         self._zoom_slider.setMinimum(GRID_ZOOM_MIN)
         self._zoom_slider.setMaximum(GRID_ZOOM_MAX)
@@ -164,7 +155,7 @@ class CatalogPage(QWidget):
         self._zoom_slider.valueChanged.connect(self._on_zoom_changing)
         self._zoom_slider.sliderReleased.connect(self._on_zoom_released)
         zoom_row = QHBoxLayout()
-        zoom_row.setContentsMargins(0, 2, 0, 2)   # a thin status-bar strip
+        zoom_row.setContentsMargins(0, 2, 0, 2)
         zoom_row.addStretch(1)
         zoom_row.addWidget(QLabel("Tile size:"))
         zoom_row.addWidget(self._zoom_slider)
@@ -172,97 +163,37 @@ class CatalogPage(QWidget):
         self._zoom_row_widget.setLayout(zoom_row)
         self._zoom_row_widget.setVisible(self._view_mode == "grid")
 
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("Search…")
-        self._search.setClearButtonEnabled(True)
+        self._search = make_search_field("Search objects")
         self._search.textChanged.connect(self._apply_filter)
-        self._stat = QLabel()
-        self._stat.setProperty("muted", True)
-        self._stat.setWordWrap(True)   # long stat/empty-state text must wrap, not force
-                                       # the window minimum width (#63-style)
+        # The stat line is now the toolbar subtitle; the label keeps the text (and
+        # stays the page's own record of it) but is never laid out.
+        self._stat = QLabel(self)
+        self._stat.hide()
+
+        self._view_seg, self._view_group, self._view_btns = make_view_switcher(
+            [("list", "list", "List"), ("grid", "layout-grid", "Grid"),
+             ("map", "globe", "Map")], self._view_mode)
+        for mode, b in self._view_btns.items():
+            b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
+
+        self.header_controls = header_group(
+            [self._view_seg, self._catalog_combo, self._search], self)
 
         left = QWidget()
         self._left_lay = QVBoxLayout(left)
-        # Right margin only: breathing room against the splitter handle, so the
-        # table/grid doesn't butt straight into the divider (the detail pane on
-        # the far side carries its own `SPACE["md"]` content margin).
-        self._left_lay.setContentsMargins(0, 0, SPACE["sm"], 0)
-        self._left_lay.addLayout(cat_row)
-        self._left_lay.addWidget(self._search)
-        self._left_lay.addWidget(self._stat)
-        self._left_lay.addWidget(self._view_stack)
+        self._left_lay.setContentsMargins(0, 0, 0, 0)
+        self._left_lay.setSpacing(0)
+        self._left_lay.addWidget(self._view_stack, 1)
         self._left_lay.addWidget(self._zoom_row_widget)
-
-        # Initial Feed-mode chrome (the button-sync guard short-circuits _set_view_mode
-        # for the already-current mode, so set the Feed's control visibility here).
-        if self._view_mode == "feed":
-            self._filter_bar.hide()
-            self._search.hide()
-            self._stat.hide()
-            self.detail.hide()
 
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(left)
         self.splitter.addWidget(self.detail)
         self.splitter.setSizes([560, 460])
 
-        # Segmented scope: Deep sky (catalog objects) vs Media (lunar/planetary/
-        # scenery/startrails) — the same page, two content stacks. Absorbs the
-        # former Media pane; the deep-sky controls live inside the deep-sky stack
-        # page, so switching to Media hides them without extra bookkeeping.
-        from m110.ui.pages.media import MediaPage
-        self.media_view = MediaPage(show_title=False)
-        self._scope_stack = QStackedWidget()
-        self._scope_stack.addWidget(self.splitter)      # 0 = deep sky
-        self._scope_stack.addWidget(self.media_view)    # 1 = media
-
-        # One control row: Deep sky · Media (left) + List · Grid · Feed · Map (right), each
-        # a joined segmented control. Fixed positions — the view segment no longer
-        # rides on the (hideable) catalog filter, so it can't shift in Feed mode.
-        self._scope_seg, self._scope_group, scope_btns = self._make_segment(
-            [("deep", "Deep sky"), ("media", "Media")], "deep")
-        self._deepsky_btn, self._media_btn = scope_btns["deep"], scope_btns["media"]
-        self._deepsky_btn.toggled.connect(lambda on: on and self._set_scope(0))
-        self._media_btn.toggled.connect(lambda on: on and self._set_scope(1))
-        self._view_seg, self._view_group, self._view_btns = self._make_segment(
-            [("list", "List"), ("grid", "Grid"), ("feed", "Feed"), ("map", "Map")],
-            self._view_mode)
-        for mode, b in self._view_btns.items():
-            b.toggled.connect(lambda on, m=mode: on and self._set_view_mode(m))
-
-        # Media has its own List|Grid. The two segments are **stacked**, not
-        # rebuilt, so the control keeps the identical top-right position across a
-        # scope switch — a Media view segment parked somewhere else on screen is
-        # exactly the second-class feel this scope was fixing.
-        self._media_view_seg, self._media_view_group, self._media_view_btns = \
-            self._make_segment([("list", "List"), ("grid", "Grid")],
-                               self.media_view.view_mode())
-        for mode, b in self._media_view_btns.items():
-            b.toggled.connect(
-                lambda on, m=mode: on and self.media_view.set_view_mode(m))
-        # …and back the other way, so a mode changed anywhere but the segment
-        # (restored setting, a future keyboard shortcut) can't leave it stale.
-        self.media_view.view_mode_changed.connect(self._sync_media_view_seg)
-
-        # `SegmentStack`, not a plain QStackedWidget: the segments differ in width,
-        # and a stack sized to its widest page stretches the 2-button Media segment
-        # until its buttons drift apart (see the class docstring).
-        self._view_seg_stack = SegmentStack()
-        self._view_seg_stack.addWidget(self._view_seg)        # 0 = deep sky
-        self._view_seg_stack.addWidget(self._media_view_seg)  # 1 = media
-        self._view_seg_stack.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        for seg in (self._view_seg, self._media_view_seg):
-            seg.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-
-        controls = QHBoxLayout()
-        controls.addWidget(self._scope_seg)
-        controls.addStretch(1)
-        controls.addWidget(self._view_seg_stack)
-
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addLayout(controls)
-        lay.addWidget(self._scope_stack, 1)
+        lay.addWidget(self.splitter, 1)
 
         self._all_tile_items = self._build_tile_items()
         self._apply_filter()               # first grid population
@@ -279,17 +210,10 @@ class CatalogPage(QWidget):
     def set_locked(self, locked: bool):
         self.table.setEnabled(not locked)
         self.grid_view.setEnabled(not locked)
-        # The Media scope is reachable while an edit lock is up (the scope segment
-        # stays live), so its views lock too — otherwise the lock is a hole.
-        self.media_view.setEnabled(not locked)
 
     def select_object(self, slug: str):
-        # Route from another page (or a Feed card) → show the Deep-sky scope (not
-        # Media), switch out of the Feed to a selectable view, and ensure the target
-        # row isn't filtered out (clear search + catalog filter).
-        self._deepsky_btn.setChecked(True)
-        if self._view_mode == "feed":
-            self._set_view_mode("grid")
+        # Route from another page (or a Journal card) → ensure the target row isn't
+        # filtered out (clear search + catalog filter), then select it.
         self._search.clear()
         if self._catalog_filter is not None:
             self._catalog_combo.setCurrentIndex(0)   # "All objects" → triggers rebuild
@@ -301,6 +225,7 @@ class CatalogPage(QWidget):
         self._update_stat()
 
     def restyle(self):
+        restyle_view_switcher(self._view_btns)
         """Theme changed — repaint views (status/muted colors) from new tokens.
 
         The chart bakes its colors into the SVG, so the map is re-rendered rather
@@ -309,30 +234,12 @@ class CatalogPage(QWidget):
         self._map_dirty = True
         self._rebuild_views()
 
-    # ---- segmented controls (Deep sky|Media, List|Grid|Feed|Map) ----
-    def _make_segment(self, items, active_key):
-        """This page's segmented controls. See `widgets.make_segment` — shared so
-        the sky map's hemisphere toggle is the same control, not a lookalike."""
-        return make_segment(items, active_key)
-
-    def _sync_media_view_seg(self, mode: str):
-        btn = self._media_view_btns.get(mode)
-        if btn is not None and not btn.isChecked():
-            btn.setChecked(True)
-
-    def _set_scope(self, idx: int):
-        self._scope_stack.setCurrentIndex(idx)
-        # Both scopes have object views now, so the segment swaps rather than
-        # hiding: Deep sky gets List|Grid|Feed|Map, Media gets List|Grid.
-        self._view_seg_stack.setCurrentIndex(idx)
-        if idx == 1:                          # entering Media → refresh its contents
-            self.media_view.reload()
+    # ---- header bar (the shell's toolbar) ----
+    def subtitle(self) -> str:
+        """The toolbar subtitle for this place ("65 objects · 34 deep · 316.8 h")."""
+        return self._stat.text()
 
     def reload(self):
-        if self._scope_stack.currentIndex() == 1:   # keep the Media scope fresh
-            self.media_view.reload()
-        if self._view_mode == "feed":                # keep the Feed fresh when active
-            self.feed_view.reload()
         new_cat = load_library()
         new_totals = derived.totals_by_slug()
         changed = (new_cat != self._cat) or (new_totals != self._totals)
@@ -358,8 +265,8 @@ class CatalogPage(QWidget):
         # Fresh, unfiltered Library with nothing in it → an orienting hint instead
         # of a bare "0 total" (#onboarding).
         if not self._cat and self._catalog_filter is None and not self._search.text().strip():
-            self._stat.setText("Your Library is empty — Import from your telescope "
-                               "(Ctrl+I) or add an object from the Library menu.")
+            self._stat.setText("Empty — import from your telescope to begin")
+            self.subtitle_changed.emit(self._stat.text())
             return
         prefix = ""
         if self._catalog_filter:
@@ -368,9 +275,11 @@ class CatalogPage(QWidget):
             prefix = f"{name} — "
         integ_min = sum(self._totals.get(s, {}).get("integration_min", 0)
                         for s in slugs if s in self._totals)
-        integ = f" · {integ_min / 60:.1f}h integration" if integ_min else ""
-        self._stat.setText(
-            f"{prefix}{captured} captured · {deep} deep · {len(slugs)} total{integ}")
+        integ = f" · {integ_min / 60:.1f} h" if integ_min else ""
+        n = len(slugs)
+        self._stat.setText(f"{prefix}{n} object{'s' if n != 1 else ''} · "
+                           f"{captured} captured · {deep} deep{integ}")
+        self.subtitle_changed.emit(self._stat.text())
 
     def _apply_filter(self, *_):
         q = self._search.text().strip().lower()
@@ -687,6 +596,7 @@ class CatalogPage(QWidget):
                 self.detail.show_object(slug, self._cat[slug],
                                         self._totals.get(slug, {}))
                 self.detail.show()
+                self.selection_changed.emit(slug)
             return True
         if self._view_mode == "list":
             for r in range(self.table.rowCount()):
@@ -717,9 +627,15 @@ class CatalogPage(QWidget):
     def _show_selection(self, slug):
         if not slug:
             self.detail.hide()
+            self.selection_changed.emit(None)
             return
         self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
         self.detail.show()
+        self.selection_changed.emit(slug)
+
+    def selected_slug(self) -> str | None:
+        """The selected object in whichever view is showing (Object menu)."""
+        return self._selected_slug()
 
     def _on_detail_closed(self):
         # Every view clears its own selection — the map's is `_map_slug`, not a
@@ -743,31 +659,30 @@ class CatalogPage(QWidget):
 
     # ---- view toggle + zoom ----
     def _view_widget(self, mode: str) -> QWidget:
-        return {"list": self.table, "grid": self.grid_view,
-                "feed": self.feed_view, "map": self.map_view}[mode]
+        return {"list": self.table, "grid": self.grid_view, "map": self.map_view}[mode]
+
+    def view_mode(self) -> str:
+        return self._view_mode
+
+    def set_view_mode(self, mode: str) -> None:
+        """Public entry (View menu): switch to List / Grid / Map."""
+        if mode in VIEW_MODES:
+            self._set_view_mode(mode)
 
     def _set_view_mode(self, mode: str):
-        if mode == self._view_mode:
+        if mode == self._view_mode or mode not in VIEW_MODES:
             return
         prev_slug = self._selected_slug()
         self._view_mode = mode
-        feed = mode == "feed"
         self._view_stack.setCurrentWidget(self._view_widget(mode))
         self._zoom_row_widget.setVisible(mode == "grid")
-        # Feed has its own search + no catalog scoping — hide the object-view chrome.
-        self._filter_bar.setVisible(not feed)
-        self._search.setVisible(not feed)
-        self._stat.setVisible(not feed)
         config.save_setting(LIBRARY_VIEW_KEY, mode)
         # Keep the segment buttons in sync when the mode is set programmatically
         # (e.g. select_object switching Feed → Grid); setChecked only re-enters
         # _set_view_mode with the same mode, which the guard above no-ops.
         if not self._view_btns[mode].isChecked():
             self._view_btns[mode].setChecked(True)
-        if feed:
-            self.feed_view.reload()
-            self.detail.hide()                 # no per-object detail in the feed
-            return
+        self.view_mode_changed.emit(mode)
         if mode == "map":
             self._render_map()
         if prev_slug:

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from m110 import config, derived, objects, catalog
 from m110.ui.theme.tokens import FONT_SIZE
-from m110.ui.widgets import serif_font, status_label
+from m110.ui.widgets import header_group, make_search_field, serif_font, status_label
 
 _HEADING_LINE_RE = re.compile(r"(?m)^\s{0,3}#.*$")   # a whole ATX heading line
 _THUMB_W = 220
@@ -42,22 +42,20 @@ def _date_epoch(d: str) -> float:
 
 
 class JournalPage(QWidget):
+    """The Journal place: a reverse-chronological feed of object cards (formerly
+    the Library's Feed view). Its search lives in the shell's header bar."""
     open_object = Signal(str)
+    subtitle_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setAlignment(Qt.AlignTop)
 
-        title = QLabel("<h2>Journal</h2>")
-        title.setTextFormat(Qt.RichText)
-        outer.addWidget(title)
-
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("Search…")
-        self._search.setClearButtonEnabled(True)
+        self._search = make_search_field("Search journal")
         self._search.textChanged.connect(self._apply_filter)
-        outer.addWidget(self._search)
+        self.header_controls = header_group([self._search], self)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -167,5 +165,14 @@ class JournalPage(QWidget):
 
     def _apply_filter(self):
         q = self._search.text().strip().lower()
+        shown = 0
         for card, hay in self._cards:
-            card.setVisible(q in hay if q else True)
+            vis = q in hay if q else True
+            card.setVisible(vis)
+            shown += vis
+        self._subtitle = (f"{shown} of {len(self._cards)} entries" if q
+                          else f"{len(self._cards)} entries")
+        self.subtitle_changed.emit(self._subtitle)
+
+    def subtitle(self) -> str:
+        return getattr(self, "_subtitle", "")

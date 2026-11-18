@@ -872,3 +872,64 @@ def make_segment(items, active_key):
         row.addWidget(b)
     btns[active_key].setChecked(True)
     return frame, group, btns
+
+
+# ── header-bar controls (the shell toolbar; UI_ROADMAP → 1.0 redesign) ────────
+
+def make_view_switcher(items, active_key):
+    """An icon segmented control for view modes (List · Grid · Map) — the same
+    `#segControl` as `make_segment`, with Lucide icons and the label as tooltip.
+    `items` = [(key, icon_name, label)]. Returns (frame, group, {key: button})."""
+    from m110.ui.theme import icons
+    frame, group, btns = make_segment([(k, "") for k, _i, _l in items], active_key)
+    frame.setProperty("iconSegments", True)
+    for key, icon_name, label in items:
+        b = btns[key]
+        b.setIcon(icons.icon(icon_name, "text_secondary", selected_role="text_primary"))
+        b.setProperty("iconName", icon_name)
+        b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        b.setToolTip(f"View as {label}")
+        b.setAccessibleName(label)
+    return frame, group, btns
+
+
+def restyle_view_switcher(btns: dict) -> None:
+    """Re-tint a view switcher's icons after a theme change."""
+    from m110.ui.theme import icons
+    for b in btns.values():
+        name = b.property("iconName")
+        if name:
+            b.setIcon(icons.icon(name, "text_secondary", selected_role="text_primary"))
+
+
+def make_search_field(placeholder: str = "Search"):
+    """A real search field: leading magnifier, clear button, `search` role so the
+    shell's Edit › Find (⌘F) can focus it."""
+    from PySide6.QtWidgets import QLineEdit
+    from m110.ui.theme import icons
+    f = QLineEdit()
+    f.setObjectName("searchField")
+    f.setPlaceholderText(placeholder)
+    f.setClearButtonEnabled(True)
+    f.setAccessibleName(placeholder)
+    f.addAction(icons.icon("search", "text_secondary"),
+                QLineEdit.ActionPosition.LeadingPosition)
+    f.setMinimumWidth(160)
+    f.setMaximumWidth(240)
+    return f
+
+
+def header_group(widgets, parent=None) -> QWidget:
+    """Pack a page's toolbar controls into one row the shell's header bar can adopt.
+    Created hidden under the page, so a standalone page keeps ownership."""
+    w = QWidget(parent)
+    w.setObjectName("headerControls")
+    row = QHBoxLayout(w)
+    row.setContentsMargins(0, 0, 0, 0)
+    from m110.ui.theme.tokens import SPACE
+    row.setSpacing(SPACE["sm"])
+    for x in widgets:
+        row.addWidget(x)
+    w.hide()
+    return w
+
