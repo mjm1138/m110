@@ -633,6 +633,74 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 7, Foundation *(done 2026-11-17, `claude/ui-foundation-a5685c`)*
+
+Identity **A · notebook-tinged pro** (UI_ROADMAP → 1.0 redesign; critique in
+`docs-archive/UI_CRITIQUE_2026-11.md`). One commit per area.
+
+- **Tokens** (`theme/tokens.py`). New roles `well`/`well_text`/`well_muted`, `chrome`,
+  `sidebar`, `control`/`control_hover`; the old role names stay and map onto the new
+  ladder, so ~40 call sites didn't move. `NIGHT` is complete but not in `THEMES`
+  (Phase 8 adds it to View/Settings); `ALL_THEMES` holds all three. `on_well(t)` is
+  the palette for drawing *on* the well — DARK on dark, NIGHT on night, and
+  `LIGHT_WELL` (DARK with lifted hues) on light, whose well is a medium warm gray
+  (`#5c5852`, L\* 38) after review: near-black read as a hole in the paper, and L\* 38
+  is the lightest gray that still holds light captions + chips at AA. Grids, the
+  detail gallery/hero and the viewer opt in with the `well=true` dynamic property.
+  `theme/contrast.py` (pure) + `tests/test_theme_contrast.py`: AA for every
+  text/background pair, ≥ 3:1 for focus/accent marks, ≥ 5 L\* ladder steps.
+- **Type** (`theme/fonts.py`). Newsreader variable roman + italic from google/fonts
+  (`ofl/newsreader`). Its default figures are old-style ("M1" → "Mı"), so
+  `serif_font` sets `lnum` on / `onum` off through `QFont.setFeature` (Qt ≥ 6.7;
+  guarded). `tabular()` adds `tnum` — `NumItem` and `make_numeric` use it, so number
+  columns align in the system font; mono is for technical strings only. **Gotcha:**
+  the blanket `QWidget { font-size }` rule beats `setFont`'s size, so role sizes live
+  in QSS (`*[type="title"]` …) and helpers set both (`widgets.serif_label`,
+  `section_label`, `object_title`).
+- **Icons** (`theme/icons.py`). Unmodified Lucide SVGs; `currentColor` is swapped for a
+  token hex and rasterized by `QSvgRenderer` at 1×/2× per QIcon mode; cached per
+  (name, theme, role). Call sites re-request in `restyle()` on theme change.
+- **Sidebar** (`ui/sidebar.py`). `PLACES` is the one list behind the page stack, the
+  sidebar and View ⌘1–8. A QListWidget with non-selectable header rows; the shell
+  speaks **page indices** (`go_to`, `page_selected`), never list rows, so headers can't
+  shift a shortcut. Counts come from what pages loaded + derived rollups.
+- **Header bar / toolbar** (`ui/toolbar.py`). Prototyped first (see UI_ROADMAP's
+  resolved decision): `QToolBar` + `setUnifiedTitleAndToolBarOnMac` leaves a separate
+  native title strip in Qt 6. Instead `Qt.ExpandedClientAreaHint` +
+  `NoTitleBarBackgroundHint` (macOS, Qt ≥ 6.9; `WA_ContentsMarginsRespectsSafeArea`
+  off on the main window) put the content under the title bar; the sidebar column
+  starts with a header-height `DragArea`, and the header bar is one too
+  (`startSystemMove`, double-click zooms). Pages expose `header_controls` (built as a
+  hidden child so a standalone page still owns `_search` etc.), `subtitle()` and
+  `subtitle_changed`; the bar adopts and swaps them. **Gotchas found on the live
+  window:** AppKit draws the window title beside the traffic lights in that band
+  (title is "" when expanded; `_window_label` keeps "M110" for the Window menu);
+  Qt titles the hoisted PreferencesRole item with its own "Preferences..." string
+  (`AppMenuTranslator`, context `MAC_APPLICATION_MENU`, renames it "Settings…");
+  AppKit appends its own "Enter Full Screen" to a View menu (ours hidden on macOS).
+  `ExpandedClientAreaHint` shares its value with the deprecated
+  `MaximizeUsingFullscreenGeometryHint`, so PySide warns on lookup (suppressed).
+  Background `app_screenshot` captures of a Qt window go stale; trust AX/menus there.
+- **Menus + Undo** (`main._build_menus`, `ui/undo.py`). File · Edit · View · Object ·
+  Library · Window · Help. `undo.run(cmd)` pushes onto the window's `QUndoStack` when
+  one is installed, else just runs it (standalone pages in tests). Commands snapshot
+  what they replace and call the same engine writers both ways
+  (`remove_library_entry`/`add_library_entry`, `pins.set_state`); no new writer.
+  The Object menu calls `DetailPane.available_commands()` / `cmd_*` — the same
+  handlers the pane's buttons use.
+- **Library → places.** Feed left `CatalogPage` (it's the Journal place); Media left
+  the scope segment (its own place). `CatalogPage.VIEW_MODES` = list/grid/map; a saved
+  "feed" falls back to grid.
+- **Density.** `widgets.compact_table` (26 px rows, no grid, left-aligned headers) on
+  every table. **Gotcha:** `resizeRowsToContents` takes max(content, *vertical header*
+  section hint) even with the header hidden, and the padded `QHeaderView::section`
+  rule made that 29 px — `QHeaderView::section:vertical { padding: 0 }` fixes it.
+- **Status bar** transient (`_update_status`: "…" stays, results linger 8 s); the data
+  folder moved to About. **Status names** Deep · n% · Initial (app + published site).
+- **Frozen build validated:** `build_app.sh` from a clean `git archive` of HEAD in an
+  isolated uv env → `M110.app` collects `fonts/Newsreader*`, `icons/lucide/*` and
+  QtSvg; the launched frozen app showed the serif titles and sidebar icons.
+
 ## UI design system — Phase 0 + Phase 1 *(done 2026-06-29/30)*
 
 Design-system-first UI refresh (full plan in [`UI_ROADMAP.md`](UI_ROADMAP.md)).

@@ -82,10 +82,15 @@ def test_shell_nav_default_and_open_object(tmp_path, monkeypatch, qapp):
     win = MainWindow()
     win._ready = False    # neuter the deferred launch-refresh worker
     try:
+        # The grouped sidebar: Overview, then Library / Workflow / Observing.
         assert [win.nav.item(i).text() for i in range(win.nav.count())] == \
-            ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
-        # A store with captures lands on the Library (home); Library is index 0.
-        assert win.stack.currentIndex() == win._catalog_index == 0
+            ["Overview", "Library", "Deep Sky", "Media", "Journal",
+             "Workflow", "Import", "Processing", "Observing", "Planning", "Devices"]
+        assert win.NAV == ["Overview", "Deep Sky", "Media", "Journal", "Import",
+                           "Processing", "Planning", "Devices"]
+        # Overview is the landing page, even with captures in the store.
+        assert win.stack.currentIndex() == win._overview_index == 0
+        assert win.header.title.text() == "Overview"
         win.open_object(slug)                         # link from another page
         assert win.stack.currentIndex() == win._catalog_index
         assert win.catalog._selected_slug() == slug
@@ -354,8 +359,8 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
         flow = next(lay.itemAt(i).layout() for i in range(lay.count())
                     if isinstance(lay.itemAt(i).layout(), FlowLayout))
         labels = [flow.itemAt(i).widget().text() for i in range(flow.count())]
-        assert labels == ["Import finished work…", "Process in Siril",
-                          "Reveal working folder", "Stack in StackingWizard…",
+        assert labels == ["Import Finished Work…", "Process in Siril",
+                          "Reveal Working Folder", "Stack in StackingWizard…",
                           "Send to AstroWizard…"]
         assert all(isinstance(flow.itemAt(i).widget(), QPushButton)
                    for i in range(flow.count()))
@@ -392,7 +397,7 @@ def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatc
         d.goals_changed.connect(lambda: fired.append(True))
         d.show_object(slug, e, derived.totals_by_slug()[slug])
         btn = next(b for b in d._content.findChildren(QPushButton)
-                   if b.text() == "Set goal…")
+                   if b.text() == "Set Goal…")
         btn.click()
         qapp.processEvents()
         assert integration_goals.load()[slug][model] == {"min": 420.0,
@@ -406,7 +411,7 @@ def test_the_goal_buttons_set_and_clear_an_integration_goal(tmp_path, monkeypatc
         assert _count(d._content, "Use default") == 0
         monkeypatch.setattr(goal_dialog.GoalDialog, "use_default", lambda self: True)
         btn = next(b for b in d._content.findChildren(QPushButton)
-                   if b.text() == "Set goal…")
+                   if b.text() == "Set Goal…")
         btn.click()
         qapp.processEvents()
         assert integration_goals.load() == {}

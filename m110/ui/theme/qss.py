@@ -20,6 +20,9 @@ def _icon_url(name: str) -> str:
 
 def build_qss(t: Tokens) -> str:
     r = RADIUS
+    # Controls separate from the panel by tone on the dark themes; warm paper is
+    # too close to its own controls, so light mode keeps a hairline around them.
+    ctl_border = t.border if not t.is_dark else t.control
     check_url = _icon_url("check.svg")
     dash_url = _icon_url("dash.svg")
     radio_dot_url = _icon_url("radio-dot.svg")
@@ -36,7 +39,7 @@ QMainWindow, QDialog {{ background-color: {t.window}; }}
 QToolTip {{
     background-color: {t.raised};
     color: {t.text_primary};
-    border: 1px solid {t.border};
+    border: 1px solid {ctl_border};
     padding: {SPACE['xs']}px {SPACE['sm']}px;
 }}
 
@@ -44,9 +47,25 @@ QToolTip {{
 QLabel[muted="true"] {{ color: {t.text_secondary}; }}
 QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}
 
+/* ── type roles (fonts.py sets the face + OpenType features; the size has to live
+   here, because the blanket QWidget font-size above overrides a widget's setFont) ── */
+*[type="display"] {{ font-size: {FONT_SIZE['display']}px; }}
+*[type="title"] {{ font-size: {FONT_SIZE['title']}px; }}
+*[type="heading"] {{ font-size: {FONT_SIZE['heading']}px; }}
+*[type="notes"] {{ font-size: {FONT_SIZE['section']}px; }}
+/* Tracked small capitals for panel section labels (Lightroom's "DETAILS"). */
+QLabel[type="section"], QToolButton#sectionHeader {{
+    font-size: {FONT_SIZE['caption']}px;
+    font-weight: 600;
+    color: {t.text_secondary};
+    background-color: transparent;
+    border: none;
+}}
+
 /* ── Overview "Manage goals" bounding box (the one non-table section) ── */
 #manageGoalsBox {{
-    border: 1px solid {t.border};
+    background-color: {t.surface};
+    border: none;
     border-radius: {r['md']}px;
     padding: {SPACE['xs']}px;
 }}
@@ -58,13 +77,13 @@ QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['capt
 /* Sized like an NSSegmentedControl: macOS draws tool-button text at 11pt, and the
    blanket 13px + 12px padding made each segment 63x27 against a native 37x22. */
 #segControl QToolButton#segButton {{
-    border: 1px solid {t.border};
+    border: 1px solid {ctl_border};
     border-left-width: 0px;             /* shared edges collapse to one line */
     border-radius: 0px;
     font-size: {FONT_SIZE['caption']}px;
     padding: 2px {SPACE['sm']}px;
-    color: {t.text_primary};
-    background-color: {t.surface};
+    color: {t.text_secondary};
+    background-color: {t.control};
 }}
 #segControl QToolButton#segButton[segpos="first"],
 #segControl QToolButton#segButton[segpos="solo"] {{ border-left-width: 1px; }}
@@ -78,10 +97,12 @@ QLabel[caption="true"] {{ color: {t.text_secondary}; font-size: {FONT_SIZE['capt
     border-top-right-radius: {r['sm']}px;
     border-bottom-right-radius: {r['sm']}px;
 }}
-#segControl QToolButton#segButton:hover:!checked {{ background-color: {t.surface_alt}; }}
+#segControl QToolButton#segButton:hover:!checked {{ background-color: {t.control_hover}; }}
+/* Selected segment = a lifted fill, as in an NSSegmentedControl in a toolbar. The
+   accent is kept for *selection of content* (sidebar row, tile, default button). */
 #segControl QToolButton#segButton:checked {{
-    background-color: {t.accent};
-    color: {t.accent_text};
+    background-color: {t.control_hover};
+    color: {t.text_primary};
 }}
 
 /* ── lists (galleries, pickers) ── */
@@ -92,6 +113,27 @@ QListWidget {{
 }}
 QListWidget::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
 QListWidget::item:hover:!selected {{ background-color: {t.surface_alt}; }}
+
+/* ── the image well: grids, galleries, heroes, the viewer ──
+   Near-black on dark, medium gray on light (astro images never sit on paper). Text uses the
+   well roles; a selected tile gets a brass outline, not a fill, so the image stays
+   the brightest thing in the cell. */
+QListView[well="true"], QListWidget[well="true"], QLabel[well="true"],
+QScrollArea[well="true"], QWidget[well="true"] {{
+    background-color: {t.well};
+    color: {t.well_text};
+}}
+QListView[well="true"]::item:selected, QListWidget[well="true"]::item:selected {{
+    background-color: transparent;
+    color: {t.well_text};
+    border: 2px solid {t.accent};
+    border-radius: {r['sm']}px;
+}}
+QListView[well="true"]::item:hover:!selected,
+QListWidget[well="true"]::item:hover:!selected {{
+    background-color: rgba(255, 255, 255, 14);
+    border-radius: {r['sm']}px;
+}}
 
 /* ── grid views (the Library grid, m110/ui/image_grid.py) ── */
 QListView {{
@@ -108,8 +150,8 @@ QListView::item:hover:!selected {{ background-color: {t.surface_alt}; }}
    the logo on the window background. (Needs WA_StyledBackground on the plain
    QWidget; see MainWindow.__init__.) */
 QWidget#navColumn {{
-    background-color: {t.surface};
-    border-right: 1px solid {t.border};
+    background-color: {t.sidebar};
+    border: none;                   /* tone separates it from the content panel */
 }}
 QListWidget#navRail {{
     background-color: transparent;
@@ -128,13 +170,46 @@ QListWidget#navRail::item {{
     margin: 1px {SPACE['xs']}px;
     border-radius: {r['sm']}px;
 }}
+/* The selected row is a brass-tinted fill with primary text (AA), not white on a
+   saturated accent — that pairing measured 3.1:1 (critique §1.3). */
+QListWidget#navRail::item:selected {{
+    background-color: {t.selection_bg};
+    color: {t.selection_text};
+}}
+QListWidget#navRail::item:hover:!selected {{ background-color: {t.surface_alt}; }}
+
+/* ── header bar (the window toolbar; m110/ui/toolbar.py) ──
+   On macOS it sits in the title-bar band, so it takes the chrome tone; everything
+   inside it is transparent (the base QWidget rule would otherwise give every label
+   and container its own window-colored box — the prototype's "two bars" look). */
+QWidget#headerBar {{
+    background-color: {t.chrome};
+    border-bottom: 1px solid {t.border};
+}}
+QWidget#headerBar QLabel, QWidget#headerBar QWidget#headerControls,
+QWidget#headerBar QFrame#segControl {{ background-color: transparent; }}
+QToolButton#headerButton {{
+    background-color: transparent;
+    border: none;
+    border-radius: {r['sm']}px;
+    padding: {SPACE['xs']}px;
+}}
+QToolButton#headerButton:hover {{ background-color: {t.control}; }}
+/* Icon segments (view switchers) are square-ish, like a toolbar NSSegmentedControl. */
+QFrame#segControl[iconSegments="true"] QToolButton#segButton {{
+    padding: 3px {SPACE['sm']}px;
+}}
+QLineEdit#searchField {{ padding-left: {SPACE['xs']}px; }}
+QSplitter#shellSplitter::handle {{ background-color: {t.border}; }}
+/* Scroll areas are page furniture, not boxes: tone separates them. */
+QScrollArea {{ border: none; }}
 
 /* ── tables ── */
 QTableView, QTableWidget {{
     background-color: {t.surface};
     alternate-background-color: {t.surface_alt};
     gridline-color: {t.divider};
-    border: 1px solid {t.border};
+    border: none;
     border-radius: {r['md']}px;
     selection-background-color: {t.selection_bg};
     selection-color: {t.selection_text};
@@ -156,9 +231,9 @@ QTableView::item, QTableWidget::item {{ padding: {SPACE['xs'] // 2}px {SPACE['sm
 QTableView::indicator, QTableWidget::indicator {{
     width: 14px;
     height: 14px;
-    border: 1px solid {t.border};
+    border: 1px solid {t.text_disabled};
     border-radius: {r['sm']}px;
-    background-color: {t.surface};
+    background-color: {t.control};
 }}
 QTableView::indicator:hover, QTableWidget::indicator:hover {{ border-color: {t.accent}; }}
 QTableView::indicator:disabled, QTableWidget::indicator:disabled {{
@@ -180,15 +255,19 @@ QTableView::indicator:indeterminate, QTableWidget::indicator:indeterminate {{
    from 21px to 33px. Restating the smaller size here is additive and can't affect
    body text anywhere else. */
 QHeaderView::section {{
-    background-color: {t.surface_alt};
+    background-color: {t.surface};
     color: {t.text_secondary};
     font-size: {FONT_SIZE['caption']}px;
     padding: {SPACE['xs'] // 2}px {SPACE['sm']}px;
     border: none;
-    border-bottom: 1px solid {t.border};
-    border-right: 1px solid {t.divider};
+    border-bottom: 1px solid {t.divider};
 }}
-QTableCornerButton::section {{ background-color: {t.surface_alt}; border: none; }}
+QTableCornerButton::section {{ background-color: {t.surface}; border: none; }}
+/* The vertical header is hidden on every table, but `resizeRowsToContents` still
+   takes max(content, header section hint) — and the padded horizontal-header rule
+   above made that hint 29px, so every "fitted" table grew past the compact row.
+   Unpadded, the hint is 24px and the content decides (1.0 compact density). */
+QHeaderView::section:vertical {{ padding: 0px; border: none; }}
 
 /* ── calendar popup (QDateEdit's picker) ──
    The calendar's day grid is a QTableView SUBCLASS, so the generic table rules
@@ -222,9 +301,9 @@ QCalendarWidget QToolButton::menu-indicator {{ image: none; }}
 
 /* ── buttons ── */
 QPushButton {{
-    background-color: {t.surface};
+    background-color: {t.control};
     color: {t.text_primary};
-    border: 1px solid {t.border};
+    border: 1px solid {ctl_border};
     border-radius: {r['sm']}px;
     padding: {SPACE['xs']}px {SPACE['md']}px;
     /* Guarantee vertical room for the label — a styled QPushButton in a tight
@@ -235,10 +314,17 @@ QPushButton {{
        source of the "clunky" feel and shrinking them would undershoot the platform. */
     min-height: 20px;
 }}
-QPushButton:hover {{ background-color: {t.surface_alt}; }}
+QPushButton:hover {{ background-color: {t.control_hover}; }}
 QPushButton:pressed {{ background-color: {t.selection_bg}; }}
-QPushButton:default {{ border-color: {t.accent}; }}
-QPushButton:disabled {{ color: {t.text_disabled}; border-color: {t.divider}; }}
+/* The default button is filled with the accent (Return activates it) — the
+   critique's "no default button is visibly marked". On-accent text is AA. */
+QPushButton:default {{
+    background-color: {t.accent};
+    color: {t.accent_text};
+    border-color: {t.accent};
+}}
+QPushButton:default:hover {{ background-color: {t.accent_hover}; border-color: {t.accent_hover}; }}
+QPushButton:disabled {{ color: {t.text_disabled}; border-color: {ctl_border}; }}
 
 /* ── inputs ── */
 /* QDateEdit/QDateTimeEdit are QAbstractSpinBox kin but NOT covered by the
@@ -246,9 +332,9 @@ QPushButton:disabled {{ color: {t.text_disabled}; border-color: {t.divider}; }}
    palette colors, near-unreadable in dark mode (the #43 follow-up nit). */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit, QDateTimeEdit,
 QPlainTextEdit, QTextEdit {{
-    background-color: {t.surface};
+    background-color: {t.control};
     color: {t.text_primary};
-    border: 1px solid {t.border};
+    border: 1px solid {ctl_border};
     border-radius: {r['sm']}px;
     /* macOS draws a text field MUCH shorter than a button — 21px against 32 — and
        flattening both to one height is what made the app read as clunky. Measured
@@ -282,7 +368,7 @@ QDateEdit::up-button, QDateTimeEdit::up-button {{
     subcontrol-position: top right;
     width: {SPACE['md']}px;
     margin: 1px 1px 0 0;
-    border-left: 1px solid {t.border};
+    border-left: 1px solid {t.window};
     border-top-right-radius: {r['sm']}px;
 }}
 QSpinBox::down-button, QDoubleSpinBox::down-button,
@@ -291,12 +377,12 @@ QDateEdit::down-button, QDateTimeEdit::down-button {{
     subcontrol-position: bottom right;
     width: {SPACE['md']}px;
     margin: 0 1px 1px 0;
-    border-left: 1px solid {t.border};
+    border-left: 1px solid {t.window};
     border-bottom-right-radius: {r['sm']}px;
 }}
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
 QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
-    background-color: {t.surface_alt};
+    background-color: {t.control_hover};
 }}
 /* Styling the buttons means Qt stops drawing their arrows and waits for these —
    without them the stepper is an empty compartment, which looks more broken than
@@ -329,7 +415,7 @@ QDateEdit:focus, QDateTimeEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {{
 }}
 QComboBox QAbstractItemView {{
     background-color: {t.raised};
-    border: 1px solid {t.border};
+    border: 1px solid {ctl_border};
     selection-background-color: {t.accent};
     selection-color: {t.accent_text};
 }}
@@ -348,8 +434,8 @@ QCheckBox, QRadioButton {{ spacing: {SPACE['sm']}px; min-height: 20px; }}
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 14px;
     height: 14px;
-    border: 1px solid {t.border};
-    background-color: {t.surface};
+    border: 1px solid {t.text_disabled};
+    background-color: {t.control};
 }}
 QCheckBox::indicator {{ border-radius: {r['sm']}px; }}
 QRadioButton::indicator {{ border-radius: 7px; }}
@@ -373,11 +459,14 @@ QRadioButton::indicator:checked {{
     border-color: {t.accent};
     image: url({radio_dot_url});
 }}
+/* A group is a tonal card, not a framed box (critique §2.1: "boxes within boxes"). */
 QGroupBox {{
-    border: 1px solid {t.border};
+    background-color: {t.surface};
+    border: none;
     border-radius: {r['md']}px;
-    margin-top: {SPACE['md']}px;
+    margin-top: {SPACE['lg']}px;
     padding: {SPACE['sm']}px;
+    padding-top: {SPACE['md']}px;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
@@ -389,7 +478,7 @@ QGroupBox::title {{
 /* ── menus ── */
 QMenuBar {{ background-color: {t.window}; }}
 QMenuBar::item:selected {{ background-color: {t.surface_alt}; }}
-QMenu {{ background-color: {t.raised}; border: 1px solid {t.border}; }}
+QMenu {{ background-color: {t.raised}; border: 1px solid {ctl_border}; }}
 QMenu::item {{ padding: {SPACE['xs']}px {SPACE['lg']}px; }}
 QMenu::item:selected {{ background-color: {t.accent}; color: {t.accent_text}; }}
 /* Styling QMenu::item stops Qt auto-greying disabled entries, so a disabled item
@@ -400,22 +489,38 @@ QMenu::separator {{ height: 1px; background: {t.divider}; margin: {SPACE['xs']}p
 
 /* ── splitter / scrollbars ── */
 QSplitter::handle {{ background-color: {t.divider}; }}
-QScrollBar:vertical {{ background: {t.window}; width: 12px; margin: 0; }}
+QSplitter::handle:horizontal {{ width: 1px; }}
+QSplitter::handle:vertical {{ height: 1px; }}
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 0; }}
 QScrollBar::handle:vertical {{
-    background: {t.border}; border-radius: {r['sm']}px; min-height: 28px;
+    background: {t.control_hover}; border-radius: {r['sm']}px; min-height: 28px;
+    margin: 2px;
 }}
 QScrollBar::handle:vertical:hover {{ background: {t.text_disabled}; }}
-QScrollBar:horizontal {{ background: {t.window}; height: 12px; margin: 0; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 0; }}
 QScrollBar::handle:horizontal {{
-    background: {t.border}; border-radius: {r['sm']}px; min-width: 28px;
+    background: {t.control_hover}; border-radius: {r['sm']}px; min-width: 28px;
+    margin: 2px;
 }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 
+/* ── sliders (tile size) — brass fill, like every other "on" state ── */
+QSlider::groove:horizontal {{
+    height: 4px; background: {t.control}; border-radius: 2px;
+}}
+QSlider::sub-page:horizontal {{ background: {t.accent}; border-radius: 2px; }}
+QSlider::handle:horizontal {{
+    background: {t.text_primary}; width: 12px; height: 12px;
+    margin: -4px 0; border-radius: 6px;
+}}
+
 /* ── misc ── */
-QStatusBar {{ color: {t.text_secondary}; }}
+QStatusBar {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}
+QStatusBar::item {{ border: none; }}
 QProgressBar {{
-    border: 1px solid {t.border}; border-radius: {r['sm']}px; text-align: center;
+    background-color: {t.control};
+    border: none; border-radius: {r['sm']}px; text-align: center;
 }}
 QProgressBar::chunk {{ background-color: {t.accent}; }}
 """

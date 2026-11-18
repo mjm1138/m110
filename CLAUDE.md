@@ -161,13 +161,14 @@ DONE.md's archived reference — grep the module name there.
 
 | Module | Role |
 |---|---|
-| `main.py` | shell: nav rail → 6 pages **Library · Overview · Planning · Import · Processing · Devices**; `_build_menus()` (File/View/Library/Tools/Help, `MenuRole` hoisting); `RefreshWorker`; auto-sync on launch/focus/ingest; `open_object(slug)`; `_ready` gates launch workers |
+| `main.py` | shell: grouped sidebar → 8 places (`sidebar.PLACES`: **Overview · Deep Sky · Media · Journal · Import · Processing · Planning · Devices**, routed by page index via `go_to`), header bar, Overview lands; `_build_menus()` (File/Edit/View/Object/Library/Window/Help, `MenuRole` hoisting, `AppMenuTranslator` → "Settings…"); expanded title-bar band on macOS; `RefreshWorker`; auto-sync on launch/focus/ingest; transient status bar; `open_object(slug)`; `_ready` gates launch workers |
+| `sidebar.py` · `toolbar.py` · `undo.py` | the source list (`PLACES`, headers, icons, live counts) · the header bar (place title/subtitle + each page's `header_controls`; window drag area) · the Undo stack (`run(cmd)`; `SetPinCommand`, `RemoveFromLibraryCommand`) |
 | `widgets.py` | shared table/thumbnail helpers (`ThumbnailLoader`, `fit_table_height`, `fit_cell_widgets`), launch helpers, **`drain_worker`**, **`modal_loop_active`/`defer`/`connect_context_menu`** |
 | `image_grid.py` | reusable tile grid (model + delegate), app-data-agnostic |
 | `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, integration goals (per model, Set goal… → `goal_dialog`), processing/sessions tables, handoff/import buttons |
-| `pages/catalog.py` | the Library: List/Grid/Feed views + Deep-sky/Media scope, filters, right-click actions |
+| `pages/catalog.py` | Deep Sky: List/Grid/Map views, `header_controls` (view switcher, catalog picker, search), right-click actions (shortcuts to the Object menu) |
 | `pages/overview.py` | landing dashboard of collapsible sections (goals, pins, integration, checklists, manage goals) |
-| `pages/processing.py` · `pages/sessions.py` · `pages/journal.py` · `pages/media.py` | Siril queue · session log (dialog) · feed view · media browser |
+| `pages/processing.py` · `pages/sessions.py` · `pages/journal.py` · `pages/media.py` | Siril queue · session log (dialog) · the Journal place (object-card feed) · the Media place |
 | `pages/planning.py` + `night_timeline.py` + `field_guide_dialog.py` + `site_profile_editor.py` | planning pane: ranking, night plan/sequencer, saved guides, site profiles; astropy workers fire only on explicit actions |
 | `pages/import_page.py` · `ingest_dialog.py` · `holding_inspect_dialog.py` · `preset_conflict_dialog.py` | import flow: preview-then-confirm, holding area, bulk assign; ask before replacing a differing Siril preset |
 | `import_dialog.py` · `handoff_dialog.py` · `export_dialog.py` · `add_object_dialog.py` · `image_viewer.py` | import finished work · send stack to a workflow · export for sharing · add object · gallery viewer |
@@ -175,7 +176,7 @@ DONE.md's archived reference — grep the module name there.
 | `preferences.py` · `publish_dialog.py` · `backup_dialog.py` · `restore_dialog.py` · `mcp_details_dialog.py` | settings (scrolling, wrapping) · publish · backup (summary + Local drive / Cloud tabs, one `_SlotPanel` each) · restore (From: picker across slots) · MCP connection details |
 | `about_dialog.py` · `update_notice.py` · `error_report.py` · `first_run_dialog.py` | about + update status · update banner/worker · crash dialog + excepthook · first-launch prompt |
 | `pages/devices.py` | the **Devices** rail page: device list + detail (identity → `devices.toml`, objects, dark library, captures, `SensorChart`), dark ↔ capture cross-selection, Reveal menus — from `derived/devices.json`; `widgets.dark_gap_item`/`dark_labels` are the shared **Dark** cell, `reveal_in_manager` selects the file |
-| `theme/` | design system: `tokens` (light/dark), `qss.build_qss`, `manager.ThemeManager` (follows OS), bundled JetBrains Mono, `brand` (recolored logo, fixed app icon). **Pull colors/spacing from tokens, never hardcode hex** |
+| `theme/` | design system: `tokens` (light/dark/night; image-well role, `on_well`), `contrast` (WCAG/L\* checks), `qss.build_qss`, `manager.ThemeManager` (follows OS), `fonts` (bundled Newsreader serif w/ lining figures, JetBrains Mono, `tabular()`), `icons` (bundled Lucide, recolored from tokens), `brand` (recolored logo, fixed app icon). **Pull colors/spacing from tokens, never hardcode hex** |
 
 ---
 
@@ -226,7 +227,7 @@ DONE.md's archived reference — grep the module name there.
 ## Testing
 
 ```bash
-pytest -q                 # all (~2100 tests, fixture-based)
+pytest -q                 # all (~2200 tests, fixture-based)
 pytest -q tests/test_ingest.py
 QT_QPA_PLATFORM=offscreen python -m m110.ui.main
 ```
@@ -336,6 +337,13 @@ wrong) is under the same heading in DONE.md's archived reference.
   render a real window to a QPixmap when touching a delegate.
 - A callback body isn't evaluated until clicked: click buttons in tests and keep the
   unbound-name AST scan (`tests/test_ui_button_wiring.py`).
+- The blanket `QWidget { font-size }` rule beats `setFont`'s size: give a label a
+  type role (`*[type="title"]` …) and set the face/features with `fonts.serif_font`.
+- `resizeRowsToContents` honours the **hidden** vertical header's section hint —
+  keep `QHeaderView::section:vertical { padding: 0 }` or fitted rows grow to 29 px.
+- macOS title-bar band (`ExpandedClientAreaHint`): the window title must stay empty
+  (AppKit draws it over the sidebar), the PreferencesRole label comes from Qt's
+  translation (`AppMenuTranslator`), and AppKit adds View › Enter Full Screen itself.
 - `&` in a widget label is a mnemonic — write `&&` (source-scanned).
 - A dialog's reject button says "Cancel" only while there are unsaved edits (track
   dirty from `textChanged`, not `textEdited`); otherwise "Close".

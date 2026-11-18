@@ -13,7 +13,7 @@ each page links to the next.
 1. [Getting started](#getting-started) — install, first launch, your data folder
 2. [Getting around](#getting-around) — the navigation rail, menus, and updates
 3. **[Ingest & the library layout](ingest.md)** — how captures come in, and where they land on disk
-4. **[The library & object metadata](library.md)** — the List/Grid/Feed views, adding objects, filling in details, and per-image curation
+4. **[The library & object metadata](library.md)** — the List/Grid/Map views, adding objects, filling in details, and per-image curation
 5. **[Your telescopes — the Devices page](devices.md)** — nicknames, planning limits, optics, what each telescope captured, and the Seestar's dark library
 6. **[Processing prep & hardlinks](processing.md)** — the Siril sandbox, **Process in Siril** (one-click launch — and why to quit Siril between objects), the **AstroWizard** round-trip, **keeping working files under control** (how many past runs M110 keeps), and *what hardlinks mean for your files* (important)
 7. **[Backing up your library](backup.md)** — local and cloud snapshots, retention, and how hardlinked backups behave
@@ -50,30 +50,34 @@ later (Library → Preferences) takes effect on restart.
 
 ## Getting around
 
-M110 has a **navigation rail** down the left side with six pages. The **Library** is
-home — it opens there once you have a collection. (A brand-new, empty library opens on
-**Overview** instead, with a welcome card and an *Import images…* button to get you
-started.)
+M110 has a **sidebar** down the left side, grouped like a Mac source list:
+**Overview**, then *Library* (**Deep Sky**, **Media**, **Journal**), *Workflow*
+(**Import**, **Processing**) and *Observing* (**Planning**, **Devices**). ⌘1–⌘8 jump
+to them in that order. M110 opens on **Overview** (a brand-new, empty library shows a
+welcome card and an *Import images…* button there). Drag the sidebar's edge to resize
+it, or hide it with **View › Hide Sidebar** (⌃⌘S) or the button at the top left.
 
-| Page | What it's for |
+The bar across the top names the place you're in, with a one-line summary
+("65 objects · 34 deep · 316.8 h"). On the right it holds that place's controls:
+the view switcher, the catalog picker and a **search** field (**⌘F**).
+
+| Place | What it's for |
 |---|---|
-| **Library** | Your collection — every object you've shot (and any you're tracking). This is the hub. |
 | **Overview** | A dashboard of collapsible sections: goal progress, priority targets, integration time & recent sessions, progress by category, and goal setup. |
+| **Deep Sky** | Your collection — every object you've shot (and any you're tracking). This is the hub. |
+| **Media** | Lunar, planetary, scenery and startrail photos and videos. |
+| **Journal** | A reverse-chronological stream of object cards (hero + notes), a photo-blog of your imaging. |
 | **Planning** | What to shoot next, and tonight's plan — site profiles, the automatic target ranking, the night scheduler, and saved field guides. See **[Session planning](planning.md)**. |
 | **Import** | Bring in new captures from your telescope, a mounted card, or any folder. |
 | **Processing** | The Siril processing-prep queue — what needs a first stack, what's out of date, and what has finished work ready to import. |
 | **Devices** | Your telescopes — nicknames, planning limits, optics, what each one captured, and the Seestar's dark library. See **[the Devices page](devices.md)**. |
 
-### The Library
+### Deep Sky
 
-The Library opens as a **thumbnail grid** (a wall of your objects). A control row at the
-top gives you two segmented toggles:
-
-- **Deep sky · Media** — switch the whole page between your catalog objects and your
-  non-catalog **Media** (lunar, planetary, scenery, startrails).
-- **List · Grid · Feed** — view your deep-sky objects as a sortable **table**, the
-  **grid**, or a reverse-chronological **Feed** of object cards (a photo-blog of your
-  imaging). Plus a search box and a catalog filter (Messier, Caldwell, …).
+Deep Sky opens as a **thumbnail grid** (a wall of your objects). The view switcher in
+the top bar shows them as a sortable **List**, the **Grid**, or a sky **Map**
+(also **View › as List / as Grid / as Map**). Beside it are a catalog filter
+(Messier, Caldwell, …) and a search field.
 
 Click any object to open its **detail pane** — where most per-object work happens:
 hero image, notes, the gallery (split into *Finished* and *Working files*), the
@@ -86,7 +90,7 @@ Everything that isn't your object collection lives here as **collapsible section
 (click a heading's triangle to open/close it; your choices are remembered):
 
 - **Goals** — progress toward each catalog you're tracking.
-- **Priority targets** — objects you've pinned (right-click → *Pin as priority* in the
+- **Priority targets** — objects you've pinned (**Object › Pin as Priority**, or right-click in the
   Library). The **Planning** page adds the automatic ranking on top; pins always win.
 - **Integration Time and Sessions** — hours per object, your last few sessions, and a
   **View all sessions…** button for the full log.
@@ -96,15 +100,26 @@ Everything that isn't your object collection lives here as **collapsible section
 
 ### Menus, preferences & updates
 
-- **File menu** — **Import…**, **Publish / share…**, Exit.
-- **Library menu** — Refresh (Ctrl+R), **Add object…**, **Fill missing metadata…** /
-  **Enrich online…** (see **[the library page](library.md)**).
-- **Tools menu** — Prepare working folders, Clean up imported sidecars, **Back up…** /
-  **Restore…** (to a local drive, the cloud, or both — see
-  **[Backing up your library](backup.md)**), and **Preferences** (Cmd+, — on macOS it
-  lives under the app menu).
-- **Help menu** — **User guide** (opens this guide), **Check for updates…**, **Report a
-  problem…** (a pre-filled bug report), and **About M110**.
+- **File** — **Import…** (⌘I), **Publish…**, **Back Up…** / **Restore…** (to a local
+  drive, the cloud, or both — see **[Backing up your library](backup.md)**), and
+  **Settings…** (⌘, — on macOS it's in the M110 menu).
+- **Edit** — **Undo / Redo** (Remove from Library and pin changes can be undone),
+  Copy, Select All, and **Find** (⌘F).
+- **View** — the places (⌘1–⌘8), **as List / Grid / Map**, Hide Sidebar, Hide
+  Inspector (the detail pane), Enter Full Screen.
+- **Object** — everything you can do to the selected object: Set Goal…, Pin as
+  Priority, Deprioritize, Process in Siril, Send to AstroWizard…, Stack in
+  StackingWizard…, Import Finished Work…, Export for Sharing… (⇧⌘E), Reveal Working
+  Folder (⇧⌘R), Include in Publishing, Fill In Missing Metadata, Enrich Online, and
+  Remove from Library (⌘⌫). Right-click menus are shortcuts to the same commands.
+- **Library** — Refresh (⌘R), **Add Object…**, **Fill All Missing Metadata…** /
+  **Enrich All Online…** (see **[the library page](library.md)**), Rebuild Working
+  Folders, Clean Up Imported Sidecars….
+- **Window** — Minimize (⌘M), Zoom, and the list of open windows (the image viewer
+  is its own window).
+- **Help** — **M110 Help** (opens this guide), **Report a Problem…** (a pre-filled
+  bug report). **Check for Updates…** and **About M110** are in the M110 menu on macOS
+  and in Help elsewhere.
 - **Appearance / theme.** M110 follows your system light/dark appearance automatically;
   Preferences → Appearance lets you force **Light** or **Dark** instead. The choice
   applies live and is remembered.

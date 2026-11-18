@@ -62,10 +62,10 @@ def _require_deps():
 
 
 def _status_label(status, progress=None) -> str:
-    """The capture-status badge text, matching the app's pill ("62% of goal")."""
+    """The capture-status badge text, matching the app's pill: Deep · 62% · Initial."""
     if status == "in_progress" and progress is not None:
-        return f"{int(progress * 100)}% of goal"
-    return {"deep_stack": "Deep Stack", "in_progress": "In progress",
+        return f"{int(progress * 100)}%"
+    return {"deep_stack": "Deep", "in_progress": "In progress",
             "initial": "Initial"}.get(status, status or "—")
 
 

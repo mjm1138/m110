@@ -3,7 +3,7 @@
 ← [Back to the guide](README.md)
 
 M110 has a built-in backup system that makes **dated snapshots** of your library.
-Open it from **Tools → Back up…**.
+Open it from **File › Back Up…**.
 
 It has two backups you can set up side by side, each on its own tab:
 
@@ -206,7 +206,7 @@ different schedules and keep different numbers of backups.
 
 ## Restoring
 
-**Tools → Restore…** (or **Restore…** in the Back up window) lets you pick a backup
+**File › Restore…** (or **Restore…** in the Back up window) lets you pick a backup
 by date — from either your local drive or the cloud, if you use both — choose
 specific files or the whole tree, and either **extract to a folder** (safe default)
 or restore **into your library** (with a conflict preview and confirmation first).

@@ -41,7 +41,8 @@ from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
     NumItem, ROW_THUMB_SIZE, ThumbnailLoader, connect_context_menu, defer,
     drain_worker, make_numeric, make_segment, make_table, open_in_default,
-    reveal_in_manager, reveal_label,
+    reveal_in_manager, reveal_label, make_search_field, make_view_switcher, restyle_view_switcher,
+    header_group,
 )
 
 MEDIA_VIEW_KEY = "media_view_mode"      # "list" | "grid"
@@ -83,11 +84,10 @@ class _PosterWorker(QThread):
 class MediaPage(QWidget):
     """The Media scope. `set_view_mode` is driven by the Library's view segment."""
 
-    # The segment lives on the host (it shares a slot with the Deep-sky one), so a
-    # mode change made any other way has to travel back or the buttons go stale.
     view_mode_changed = Signal(str)
+    subtitle_changed = Signal(str)   # the toolbar subtitle (photos · videos · size)
 
-    def __init__(self, parent=None, show_title=True):
+    def __init__(self, parent=None, show_title=False):
         super().__init__(parent)
         self._items: list[media.MediaItem] = []
         self._visible: list[media.MediaItem] = []
@@ -107,10 +107,9 @@ class MediaPage(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        if show_title:      # suppressed when embedded under the Library's Media scope
-            title = QLabel("<h2>Media</h2>")
-            title.setTextFormat(Qt.RichText)
-            outer.addWidget(title)
+        # `show_title` is accepted for compatibility; the place's name is the
+        # toolbar title now (one page-header rule — UI_ROADMAP 1.0 redesign).
+        del show_title
 
         # ---- filters -------------------------------------------------------
         filt = QHBoxLayout()
@@ -129,14 +128,12 @@ class MediaPage(QWidget):
             b.toggled.connect(lambda on, k=key: on and self._apply_filter())
         filt.addWidget(self._kind_seg)
 
-        self._search = QLineEdit()
-        self._search.setPlaceholderText("Search…")
-        self._search.setClearButtonEnabled(True)
+        self._search = make_search_field("Search media")
         self._search.textChanged.connect(self._apply_filter)
 
-        self._stat = QLabel()
-        self._stat.setProperty("muted", True)
-        self._stat.setWordWrap(True)
+        # The stat line is the toolbar subtitle; the label keeps the text only.
+        self._stat = QLabel(self)
+        self._stat.hide()
 
         # ---- views ---------------------------------------------------------
         self.table = make_table(HEADERS)
@@ -153,6 +150,7 @@ class MediaPage(QWidget):
 
         self._grid_model = TileModel(self)
         self.grid_view = QListView()
+        self.grid_view.setProperty("well", True)      # images sit on the dark well
         self.grid_view.setViewMode(QListView.IconMode)
         self.grid_view.setResizeMode(QListView.Adjust)
         self.grid_view.setMovement(QListView.Static)
@@ -193,8 +191,6 @@ class MediaPage(QWidget):
         ll = QVBoxLayout(left)
         ll.setContentsMargins(0, 0, SPACE["sm"], 0)   # clear of the splitter handle
         ll.addLayout(filt)
-        ll.addWidget(self._search)
-        ll.addWidget(self._stat)
         ll.addWidget(self._view_stack, 1)
         ll.addWidget(self._zoom_row_widget)
 
@@ -208,6 +204,14 @@ class MediaPage(QWidget):
         self.splitter.addWidget(self.detail)
         self.splitter.setSizes([620, 400])
         outer.addWidget(self.splitter, 1)
+
+        # Toolbar controls (adopted by the shell's header bar): List · Grid + search.
+        self._view_seg, self._view_group, self._view_btns = make_view_switcher(
+            [("list", "list", "List"), ("grid", "layout-grid", "Grid")],
+            self._view_mode)
+        for mode, b in self._view_btns.items():
+            b.toggled.connect(lambda on, m=mode: on and self.set_view_mode(m))
+        self.header_controls = header_group([self._view_seg, self._search], self)
 
         # A QThread still running when Qt tears down aborts the process, and a
         # page is not reliably closed on quit — so drain at aboutToQuit too, the
@@ -234,6 +238,8 @@ class MediaPage(QWidget):
         self._view_stack.setCurrentIndex(1 if mode == "grid" else 0)
         self._zoom_row_widget.setVisible(mode == "grid")
         config.save_setting(MEDIA_VIEW_KEY, mode)
+        if not self._view_btns[mode].isChecked():
+            self._view_btns[mode].setChecked(True)
         self.view_mode_changed.emit(mode)
         if self._selected_key:
             self._select_key(self._selected_key)
@@ -287,6 +293,7 @@ class MediaPage(QWidget):
         super().closeEvent(event)
 
     def restyle(self):
+        restyle_view_switcher(self._view_btns)
         self._rebuild_views()
 
     # ---- filtering ------------------------------------------------------
@@ -312,13 +319,17 @@ class MediaPage(QWidget):
 
     def _update_stat(self):
         if not self._items:
-            self._stat.setText("<i>No media yet — import lunar/planetary/scenery "
-                               "photos or videos.</i>")
+            self._stat.setText("No media yet")
+            self.subtitle_changed.emit(self._stat.text())
             return
         photos = sum(1 for i in self._visible if i.kind == "photo")
         videos = len(self._visible) - photos
         total = sum(i.size_bytes for i in self._visible)
         self._stat.setText(f"{photos} photos · {videos} videos · {fmt_size(total)}")
+        self.subtitle_changed.emit(self._stat.text())
+
+    def subtitle(self) -> str:
+        return self._stat.text()
 
     # ---- views ----------------------------------------------------------
     def _rebuild_views(self):

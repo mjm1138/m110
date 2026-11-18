@@ -23,16 +23,17 @@ def test_qss_contains_key_selectors_and_palette():
     assert tokens.DARK.accent in qss
 
 
-def test_nav_column_owns_the_surface_and_divider():
-    """The brand mark sits *below* the rail, so a rail-owned border would stop short
-    of it and leave the logo on the window background. (Asserted on the QSS, not by
-    painting — QMacStyle-only gaps can't be caught offscreen.)"""
+def test_nav_column_owns_the_sidebar_surface():
+    """The brand mark sits *below* the rail, so the column (not the rail) paints the
+    sidebar tone, or the logo would sit on the window background. The 1.0 palette
+    separates the sidebar by tone, so neither carries a border. (Asserted on the
+    QSS, not by painting — QMacStyle-only gaps can't be caught offscreen.)"""
     for t in (tokens.LIGHT, tokens.DARK):
         qss = build_qss(t)
         col = re.search(r"QWidget#navColumn \{(.*?)\}", qss, re.S)
         assert col, "missing QWidget#navColumn rule"
-        assert t.surface in col.group(1)
-        assert f"border-right: 1px solid {t.border}" in col.group(1)
+        assert t.sidebar in col.group(1)
+        assert "border-right" not in col.group(1)
 
         rail = re.search(r"QListWidget#navRail \{(.*?)\}", qss, re.S)
         assert rail and "border-right" not in rail.group(1)
@@ -75,7 +76,7 @@ def test_checkbox_and_radio_indicators_are_stylesheet_drawn():
         # unchecked base must carry a visible border (the invisible-in-dark bug)
         base = qss.split("QCheckBox::indicator, QRadioButton::indicator {", 1)[1] \
                   .split("}", 1)[0]
-        assert t.border in base and "border:" in base
+        assert t.text_disabled in base and "border:" in base
         # checked states need a glyph, else they're ambiguous filled shapes
         for sel in ("QCheckBox::indicator:checked {", "QRadioButton::indicator:checked {"):
             checked = qss.split(sel, 1)[1].split("}", 1)[0]
@@ -205,3 +206,43 @@ def test_inputs_are_shorter_than_buttons():
     assert vpad(inp) < vpad(btn), "inputs must be tighter than buttons"
     assert "min-height: 20px" in btn      # the anti-clipping floors stay literal
     assert "min-height: 20px" in inp
+
+
+def test_image_well_rule_is_dark_in_both_themes():
+    """Grids, galleries, heroes and the viewer opt in with `well=true`; the rule
+    paints the well role, and a selected tile is outlined in the accent, not filled."""
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        base = re.search(r'QListView\[well="true"\], .*?\{(.*?)\}', qss, re.S)
+        assert base and t.well in base.group(1) and t.well_text in base.group(1)
+        sel = re.search(r'QListView\[well="true"\]::item:selected.*?\{(.*?)\}', qss, re.S)
+        assert sel and "transparent" in sel.group(1) and t.accent in sel.group(1)
+
+
+def test_selected_sidebar_row_uses_the_aa_selection_pair():
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        sel = re.search(r"QListWidget#navRail::item:selected \{(.*?)\}", qss, re.S)
+        assert sel and t.selection_bg in sel.group(1) and t.selection_text in sel.group(1)
+
+
+def test_default_button_is_accent_filled():
+    for t in (tokens.LIGHT, tokens.DARK):
+        qss = build_qss(t)
+        rule = re.search(r"QPushButton:default \{(.*?)\}", qss, re.S).group(1)
+        assert t.accent in rule and t.accent_text in rule
+
+
+def test_hidden_vertical_header_does_not_inflate_fitted_rows(qapp):
+    """Compact density: a fitted table's rows are ~24 px, not the 29 px the padded
+    header-section rule used to impose through the (hidden) vertical header."""
+    from PySide6.QtWidgets import QTableWidgetItem
+    from m110.ui import theme
+    from m110.ui.widgets import TABLE_ROW_HEIGHT, make_table
+    theme.install(qapp)
+    t = make_table(["A"])
+    t.setRowCount(1)
+    t.setItem(0, 0, QTableWidgetItem("M81"))
+    t.resizeRowsToContents()
+    assert t.rowHeight(0) <= TABLE_ROW_HEIGHT + 2
+    assert not t.showGrid()

@@ -21,7 +21,7 @@ from m110 import (catalog, config, derived, devices, integration_goals, pins, re
                   goals as goals_mod)
 from m110.ui.widgets import (
     NumItem, status_label, make_table, CollapsibleSection, fit_table_height,
-    connect_context_menu, defer,
+    connect_context_menu, defer, STATUS_TOOLTIP,
 )
 from m110.ui.theme import status_color
 
@@ -111,9 +111,7 @@ class OverviewPage(QScrollArea):
         self._building = True
         self.__dict__.pop("_models_cache", None)     # telescopes may have changed
         self._clear()
-        title = QLabel("<h2>Overview</h2>")
-        title.setTextFormat(Qt.RichText)
-        self._lay.addWidget(title)
+        # The place's name is the header bar's title (one page-header rule).
 
         goals = derived.load_goals()
 
@@ -180,7 +178,7 @@ class OverviewPage(QScrollArea):
         # "Total" column dropped (item 21) — it read as confusing next to the Total
         # *row*; the per-category totals live in the Goal checklists instead.
         cats = summary.get("by_category", {})
-        cat_tbl = make_table(["Category", "Captured", "Deep stack",
+        cat_tbl = make_table(["Category", "Captured", "Deep",
                               "Captured objects"], stretch_last=True)
         cat_tbl.setSortingEnabled(False)
         for cat, v in sorted(cats.items()):
@@ -230,7 +228,10 @@ class OverviewPage(QScrollArea):
             ci.setItem(r, 2, NumItem(str(t.get("frames", 0)), t.get("frames", 0)))
             ci.setItem(r, 3, NumItem(t.get("integration_hms", ""), t.get("integration_min", 0)))
             ci.setItem(r, 4, QTableWidgetItem("/".join(t.get("filters", []))))
-            ci.setItem(r, 5, QTableWidgetItem(status_label(t.get("status"), True, t.get("progress"))))
+            st = QTableWidgetItem(status_label(t.get("status"), True, t.get("progress")))
+            st.setForeground(status_color(t.get("status")))
+            st.setToolTip(STATUS_TOOLTIP.get(t.get("status"), ""))
+            ci.setItem(r, 5, st)
         ci.resizeColumnsToContents()
         fit_table_height(ci, max_rows=10)
         self._wire_open(ci)
@@ -266,7 +267,7 @@ class OverviewPage(QScrollArea):
         body.addWidget(ls)
 
     def _fill_priority(self, body):
-        cap = QLabel("Targets you've pinned (right-click an object → Pin as priority). "
+        cap = QLabel("Targets you've pinned (Object › Pin as Priority). "
                      "For an automatic ranking of what to shoot next, see the Planning page.")
         cap.setProperty("caption", True)
         cap.setWordWrap(True)
@@ -428,7 +429,7 @@ class OverviewPage(QScrollArea):
             lib = {}
         ref = catalog.load_reference()
         pin_state = pins.load()
-        tbl = make_table(["Object", "Name", "Captured", "Deep stack"])
+        tbl = make_table(["Object", "Name", "Captured", "Deep"])
         tbl.setSortingEnabled(False)
         green = QBrush(status_color("deep_stack"))
         slugs = sorted(members, key=lambda s: catalog.catalog_sort_key(members[s]))
@@ -482,17 +483,21 @@ class OverviewPage(QScrollArea):
             return
         state = pins.get_state(slug)
         menu = QMenu(self)
-        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
-                                 else "Pin as priority")
+        pin_act = menu.addAction("Unpin" if state == pins.PIN
+                                 else "Pin as Priority")
         depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
                                    else "Deprioritize")
         chosen = menu.exec(tbl.viewport().mapToGlobal(pos))
         if chosen is pin_act:
-            pins.set_state(slug, None if state == pins.PIN else pins.PIN)
+            new = None if state == pins.PIN else pins.PIN
         elif chosen is depri_act:
-            pins.set_state(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
+            new = None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE
         else:
             return
+        from m110.ui import undo
+        undo.run(undo.SetPinCommand(slug, new, self._after_pin_change))
+
+    def _after_pin_change(self):
         self.pins_changed.emit()
 
     # ---- goal setup actions ----

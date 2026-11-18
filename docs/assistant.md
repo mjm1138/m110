@@ -28,7 +28,7 @@ on your machine and reads your files directly.
 
 ## Connecting an assistant
 
-Open **Preferences → AI assistant** (Library → Preferences, or Cmd+, on macOS).
+Open **Preferences → AI assistant** (**Settings…**, ⌘,).
 
 ### Claude Desktop — one click
 

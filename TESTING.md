@@ -180,7 +180,7 @@ What it contains (and what each fixture exercises):
 | `M106` (+ `siril/` sandbox with **unimported** `…_spcc_processed.png/.fit`) | **Import finished work** round-trip (detection fix) | §2.4 |
 | `NGC 7000` (captured, **not** in seed catalog) | **auto-cataloging** on Refresh (becomes clickable, gets a journal) | §2.3 |
 | `M81 M82` (multi-object folder) | many-to-many target→object rollups | §2.3 |
-| `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Tools → Clean up imported sidecars** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster | §2.3 |
+| `Media/…_photo` stills + **`Lunar_video/`** (an `.mp4` and an `.avi`, each with its device `_thn.jpg` preview frame; a photo's own `_thn.jpg` duplicate; `.avi.idx`/`.avi.txt`; a nested `ASIVideoStack_Output/` holding a `.jpg` + `.fit`) | the Media scope end-to-end: **video posters** (the grid shows the Moon, not a filename), **recursive** discovery of processed output, **kind decided per file** (a `.jpg` in a `_video/` folder is a photo), Open → OS player, and **Library › Clean Up Imported Sidecars…** — which must offer the photo's duplicate and the `.avi` sidecars while **never** offering a video's poster | §2.3 |
 | `Inbox/` holding area: `unsorted_dump/` (headerless FITS + a stray render), loose `orphan.fit` + `NGC 281.fit` | **Import → Holding area panel** (6c): per-folder **manual assign** (object + kind → move into the store); `notes.txt`/`*_thn.` alongside are **not** surfaced | §2.2 |
 | **AppleDouble `._` sidecars** beside one M51 light, the M51 Seestar stack, the M63 finished render, `profiles/default.toml` and the M51 journal (the real 48-byte header) | **#161 — a data root on NFS/SMB from a Mac**: the app must start (the `._default.toml` is not a profile), sessions count M51's real subs only, Siril prep links no `._` file, the gallery shows no `._` render, and a backup copies none of them. A tester on a real NFS mount gets these for free; a local-disk tester gets them from the corpus | §2.1, §2.4 |
 | **`M110-test-import-source/`** (a sibling folder, also unpacked from the tar): Seestar export `M27_sub`/`m13_sub`/`M65_sub`/`M 31_mosaic_sub`/`M57/`/`Nightscape_photo/` + a `mixed_dump/` + **Dwarf 3 sessions** (`DWARF_RAW_TELE_M 1_…`, a `STARTRAILS_…` folder, a `DWARF_RAW_WIDE_Unknown_…`) | **Import → Browse…**: grouped+selectable preview; **canonicalisation** (`m13`→`M13`; the spaced Seestar mosaic `M 31_mosaic_sub`→`M31_mosaic`, one M31 in the Library afterwards); a **mis-pointed** group (`M65`→M66 ⚠ remap, #12); in-app stack + media; the dump's strays **sweep into the holding area** (6c); the **Dwarf** sessions classify `.fits` subs → lights, `stacked-16`→stack tier, startrails → Media, `Unknown` → holding (identify-by-pointing) | §2.2 |
@@ -307,6 +307,45 @@ re-run when its area changes and you want eyes on the visuals).
       theme (global stylesheet).
 - [ ] The journal editor (object **Notes → Edit**) uses the bundled **JetBrains Mono**.
 - [ ] Chosen theme **persists** across relaunch (`ui_theme` in `~/.m110/settings.json`).
+
+#### 1.0 foundation — chrome, menus, Undo (UI Phase 7)  ⚙ *(contrast/ladder, fonts, icons, menus, Undo automated — `test_theme_contrast.py`, `test_theme_fonts.py`, `test_theme_icons.py`, `test_ui_shell.py`)*
+Run this on the **cocoa** platform (a real window): offscreen falls back to Fusion,
+and the title-bar band only exists on macOS with Qt ≥ 6.9.
+- [ ] **Title-bar band (macOS):** the sidebar runs full height under the traffic
+      lights; the header bar sits in the title row. No "M110" title text is drawn
+      next to the traffic lights. Drag the empty header bar (or the sidebar's top
+      band) → the window moves; double-click it → zoom.
+- [ ] **Sidebar:** Overview, then *Library* (Deep Sky, Media, Journal), *Workflow*
+      (Import, Processing), *Observing* (Planning, Devices), each with an icon;
+      Deep Sky / Media / Processing / Devices show counts. ↑/↓ skip the group
+      titles. Drag the divider → width persists across relaunch. View › Hide Sidebar
+      (⌃⌘S) and the header's sidebar button hide/show it; hidden, the header title
+      clears the traffic lights.
+- [ ] **Launch lands on Overview.** ⌘1–⌘8 follow the sidebar order.
+- [ ] **Header bar:** each place's title (serif) + subtitle; Deep Sky shows
+      List/Grid/Map icons, the catalog picker and a search field with a magnifier
+      and clear button; Media shows List/Grid + search; Journal shows search;
+      the other places show only the title. No page repeats its title in the content.
+- [ ] **Edit › Find (⌘F)** focuses the current place's search field (Deep Sky's on
+      a place without one).
+- [ ] **Object menu:** disabled with nothing selected; select an object → its verbs
+      enable as they apply (Process in Siril ▸ lists working folders; Send to
+      AstroWizard… only with a stack; Export for Sharing… only with a hero).
+- [ ] **Undo:** Object › Pin as Priority → Edit › Undo Pin as Priority restores the
+      previous state, Redo re-applies; the pin marker updates in Deep Sky, Overview
+      and Planning. Remove an *uncaptured* object from the Library (no confirm
+      dialog) → Edit › Undo brings back the same entry. Undo is disabled while the
+      notes editor is open.
+- [ ] **App menu (macOS):** About M110 · **Settings…** (not "Preferences...") ·
+      Check for Updates…. **View** has exactly one "Enter Full Screen". **Window**
+      lists the main window and any open image viewer.
+- [ ] **Palette:** dark is warm graphite, light is warm paper; grids, the detail
+      hero/gallery and the viewer sit on the image well (near-black in dark, medium
+      gray in light). The selected sidebar row and default buttons are brass with
+      readable text. Statuses read **Deep · n% · Initial** everywhere (hover a status
+      for what "Deep" means).
+- [ ] **Status bar:** empty at rest; "Syncing…" during a sync; a backup/import
+      result lingers a few seconds, then clears. The data folder is in About.
 
 #### Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
@@ -522,7 +561,7 @@ re-run when its area changes and you want eyes on the visuals).
       colour (a blue chip must not vanish into a blue highlight).
 
 #### Integration goals (#184)  ⚙ *(engine, buttons + scope picker automated — `test_integration_goals.py`, `test_goal_scope.py`, `test_ui_detail.py`, `test_ui_devices.py`)*
-- [ ] Corpus **M51**: Library pill **Deep Stack** (its S30 reached 2 min); hover the
+- [ ] Corpus **M51**: Library pill **Deep** (its S30 reached 2 min); hover the
       status → one line per telescope ("ZWO Seestar S50: 11 of 18 min (61%, your goal)").
 - [ ] M51 detail → **Integration goals**: an S50 row and a Travel S30 row. **Set goal…**
       on the S50 → 10 min → the S50 row and the Library pill update at once (no Sync);
@@ -622,7 +661,7 @@ re-run when its area changes and you want eyes on the visuals).
 - [ ] **Self-heal on refresh:** delete an object's `siril/` folder, then Refresh
       (Ctrl+R) or refocus the window → the sandbox is recreated automatically;
       objects that already have one are untouched (edited presets preserved). The
-      **Tools → Prepare working folders** menu action does the same on demand and
+      **Library › Rebuild Working Folders** menu action does the same on demand and
       reports how many were created.
 - [ ] **Per-filter tiers + labels (#174):** an LP job's preset says
       `"filter": "LP (Narrowband)"`, an IRCUT job `"No Filter (Broadband)"`; the
@@ -934,7 +973,7 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
 
 (Linux: `mkfs.vfat` a loop file. Windows: format a small VHD as exFAT.)
 
-- [ ] **Capability line, before the first backup.** Tools → Back up…, Local drive tab, choose a normal
+- [ ] **Capability line, before the first backup.** File › Back Up…, Local drive tab, choose a normal
       folder: "Unchanged files are shared between backups", plus free space. Choose
       `/Volumes/M110TEST`: it says the destination can't share files. Neither needs an
       existing backup to report this.
@@ -1018,7 +1057,7 @@ a matching Xcode — that is how it failed here on macOS 27.
 credentials, and create a bucket named `m110test`. (Or, with the `mc` client:
 `mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb local/m110test`.)
 
-**Point M110 at it** — Tools → Back up…, **Cloud** tab:
+**Point M110 at it** — File › Back Up…, **Cloud** tab:
 
 | Field | Value |
 |---|---|
@@ -1160,7 +1199,7 @@ A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
 
 - [ ] **Upgrading keeps the old destination.** With a pre-slot `~/.m110/settings.json`
       holding `backup_destination` (a folder), `backup_auto_on_launch: true` and a
-      `backup_retention_keep`, open Tools → Back up… → the summary shows that folder
+      `backup_retention_keep`, open File › Back Up… → the summary shows that folder
       on the **Local** line, "automatic", and the Local drive tab has the same
       interval and keep count. The Cloud line reads "Not set up — back up your
       essentials offsite to Amazon S3, Backblaze B2, …". Repeat with an `s3://`
@@ -1179,7 +1218,7 @@ A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
       Local result, and the Local backup still happened.
 - [ ] **Last backup times.** After each run, reopen the dialog → each summary line
       says "last backup just now". The Cloud line shows it without a Test connection.
-- [ ] **Restore offers both.** Tools → Restore… → a **From:** picker lists Local and
+- [ ] **Restore offers both.** File › Restore… → a **From:** picker lists Local and
       Cloud; switching lists that destination's snapshots. With only one configured,
       there's no picker.
 

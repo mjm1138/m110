@@ -1,11 +1,11 @@
 """M110 — PySide6 desktop shell.
 
-A left nav rail switches between the pages (Library · Overview · Planning ·
-Import · Processing · Devices) in a stacked content area. The **Library** (thumbnail grid) is
-the landing "home"; a fresh empty store lands on **Overview** (welcome/CTA).
-Overview merges the former Summary dashboard and Goals management into one pane
-of collapsible sections. The Library page hosts the shared per-object detail;
-object links on the other pages route there via `open_object`. The shell keeps
+A grouped source-list sidebar (`sidebar.PLACES`: Overview · Library: Deep Sky,
+Media, Journal · Workflow: Import, Processing · Observing: Planning, Devices)
+switches the page stack; a header bar (`toolbar.HeaderBar`) names the place and
+carries that page's controls. **Overview** is the landing page. The Deep Sky page
+hosts the shared per-object detail; object links on the other pages route there
+via `open_object`. The shell keeps
 everything in sync with disk: it refreshes on launch, on window-focus, and after
 ingest (threaded), and backfills any missing processing working folders.
 """
@@ -16,11 +16,11 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent
-from PySide6.QtGui import QAction, QActionGroup, QKeySequence
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEvent, QTranslator
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QUndoStack
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
-    QListWidget, QStackedWidget, QMessageBox,
+    QApplication, QMainWindow, QMenu, QWidget, QVBoxLayout, QLabel, QSplitter,
+    QStackedWidget, QMessageBox,
 )
 
 from m110 import config, derived, updates
@@ -31,8 +31,24 @@ from m110.ui.pages.processing import ProcessingPage
 from m110.ui.pages.import_page import ImportPage
 from m110.ui.pages.planning import PlanningPage
 from m110.ui.pages.devices import DevicesPage
+from m110.ui.pages.media import MediaPage
+from m110.ui.pages.journal import JournalPage
+from m110.ui.sidebar import PLACES, Sidebar
+from m110.ui.toolbar import HEIGHT as HEADER_HEIGHT, TRAFFIC_LIGHT_INSET, DragArea, HeaderBar
 from m110.ui.widgets import modal_loop_active, defer
 from m110.ui import theme
+
+APP_NAME = "M110"
+SIDEBAR_WIDTH_KEY = "sidebar_width"
+SIDEBAR_HIDDEN_KEY = "sidebar_hidden"
+SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_DEFAULT = 170, 300, 210
+
+
+def _expanded_chrome() -> bool:
+    """Draw our own title-bar band (sidebar under the traffic lights, header bar in
+    the title row) — macOS with Qt ≥ 6.9 only; elsewhere the platform title bar
+    stays. See `toolbar.py` for the prototype that chose this."""
+    return sys.platform == "darwin" and hasattr(Qt.WindowType, "ExpandedClientAreaHint")
 
 
 class RefreshWorker(QThread):
@@ -135,11 +151,26 @@ class _LogoLabel(QLabel):
 
 
 class MainWindow(QMainWindow):
-    NAV = ["Library", "Overview", "Planning", "Import", "Processing", "Devices"]
+    NAV = [p.label for p in PLACES]
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("M110")
+        self._expanded = _expanded_chrome()
+        # In the expanded title-bar band AppKit would draw the title beside the
+        # traffic lights, over the sidebar; the header bar names the place instead.
+        # The Window menu and accessibility still call the window "M110".
+        self.setWindowTitle("" if self._expanded else APP_NAME)
+        self.setAccessibleName(APP_NAME)
+        if self._expanded:
+            # ExpandedClientAreaHint shares its value with the deprecated
+            # MaximizeUsingFullscreenGeometryHint, so PySide warns on the lookup.
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                self.setWindowFlag(Qt.WindowType.ExpandedClientAreaHint, True)
+            self.setWindowFlag(Qt.WindowType.NoTitleBarBackgroundHint, True)
+            # Our widgets fill the title-bar band; don't let the layout pad it out.
+            self.setAttribute(Qt.WidgetAttribute.WA_ContentsMarginsRespectsSafeArea, False)
         self.setWindowIcon(theme.app_icon())
         self._worker = None
         self._enrich_worker = None
@@ -170,58 +201,79 @@ class MainWindow(QMainWindow):
             self.resize(560, 160)
             return
 
-        # Pages (order matches the nav rail + stack).
-        self.catalog = CatalogPage()
+        # Pages, in `sidebar.PLACES` order (the stack, the sidebar and the View
+        # menu are all built from that one list).
         self.overview = OverviewPage()
-        self.planning = PlanningPage()
+        self.catalog = CatalogPage()
+        self.media_page = MediaPage()
+        self.journal = JournalPage()
         self.import_page = ImportPage()
         self.processing = ProcessingPage()
+        self.planning = PlanningPage()
         self.devices = DevicesPage()
-        self.pages = [self.catalog, self.overview, self.planning,
-                      self.import_page, self.processing, self.devices]
-        self._catalog_index = self.pages.index(self.catalog)
+        self.pages = [self.overview, self.catalog, self.media_page, self.journal,
+                      self.import_page, self.processing, self.planning, self.devices]
+        assert len(self.pages) == len(PLACES)
         self._overview_index = self.pages.index(self.overview)
-        self._planning_index = self.pages.index(self.planning)
+        self._catalog_index = self.pages.index(self.catalog)
+        self._media_index = self.pages.index(self.media_page)
+        self._journal_index = self.pages.index(self.journal)
         self._import_index = self.pages.index(self.import_page)
+        self._processing_index = self.pages.index(self.processing)
+        self._planning_index = self.pages.index(self.planning)
         self._devices_index = self.pages.index(self.devices)
 
         self.stack = QStackedWidget()
         # Uniform breathing room around every page (token-driven), so content isn't
-        # flush against the nav rail / window edges.
+        # flush against the sidebar / window edges.
         s = theme.tokens.SPACE
         self.stack.setContentsMargins(s["lg"], s["md"], s["lg"], s["lg"])
         for p in self.pages:
             self.stack.addWidget(p)
 
-        self.nav = QListWidget()
-        self.nav.setObjectName("navRail")
-        self.nav.addItems(self.NAV)
-        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.nav.currentRowChanged.connect(self._on_nav_changed)
+        # The header bar: place title + subtitle + the page's own controls.
+        self.header = HeaderBar()
+        self.header.toggle_sidebar.connect(self.toggle_sidebar)
+        for p in self.pages:
+            ctl = getattr(p, "header_controls", None)
+            if ctl is not None:
+                self.header.adopt(ctl)
+            sig = getattr(p, "subtitle_changed", None)
+            if sig is not None:
+                sig.connect(lambda text, page=p: self._on_subtitle(page, text))
 
-        # Left column: the rail, with the brand mark anchored at its foot just above
-        # the status bar (a persistent, quiet mark on every screen — and the way in
-        # to About). The column paints the surface + divider, so the mark shares the
-        # rail's panel; WA_StyledBackground is what lets a plain QWidget honor that.
+        self.nav = Sidebar(PLACES)
+        self.nav.page_selected.connect(self.stack.setCurrentIndex)
+        self.nav.page_selected.connect(self._on_nav_changed)
+
+        # Left column: the sidebar, with the brand mark anchored at its foot (a
+        # quiet mark on every screen, and the way in to About). On macOS the column
+        # runs the full window height, under the traffic lights, so its top band is
+        # window chrome: a drag area the height of the header bar.
         self.logo = _LogoLabel()
         self.logo.clicked.connect(lambda: defer(self, self._open_about))
         left = QWidget()
         left.setObjectName("navColumn")
         left.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        left.setMaximumWidth(160)
-        left.setMinimumWidth(130)
+        left.setMinimumWidth(SIDEBAR_MIN)
+        left.setMaximumWidth(SIDEBAR_MAX)
         col = QVBoxLayout(left)
         col.setContentsMargins(0, 0, 0, s["md"])
         col.setSpacing(s["sm"])
+        self._sidebar_top = DragArea()
+        self._sidebar_top.setFixedHeight(HEADER_HEIGHT if self._expanded else s["xs"])
+        col.addWidget(self._sidebar_top)
         col.addWidget(self.nav, 1)
         col.addWidget(self.logo)
+        self.sidebar_column = left
 
-        # Content column: a slot for the (usually hidden) update banner above the
-        # page stack, so the nudge spans the content area but not the nav rail.
+        # Content column: header bar, the (usually hidden) update + assistant
+        # banners, then the page stack.
         content = QWidget()
         self._content_layout = QVBoxLayout(content)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
-        self._content_layout.setSpacing(s["sm"])
+        self._content_layout.setSpacing(0)
+        self._content_layout.addWidget(self.header)
         # The assistant queue indicator. Persistent while the outbox is
         # non-empty — deliberately not a launch/foreground modal: the app
         # auto-syncs on every window focus, so that would fire constantly.
@@ -231,13 +283,24 @@ class MainWindow(QMainWindow):
         self._content_layout.addWidget(self._assistant_banner)
         self._content_layout.addWidget(self.stack, 1)
 
-        central = QWidget()
-        row = QHBoxLayout(central)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(0)
-        row.addWidget(left)
-        row.addWidget(content, 1)
-        self.setCentralWidget(central)
+        # Sidebar | content, in a splitter: the sidebar is resizable (width
+        # remembered) and collapsible (View › Hide Sidebar, the header's button).
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setObjectName("shellSplitter")
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.addWidget(left)
+        self.splitter.addWidget(content)
+        self.splitter.setStretchFactor(1, 1)
+        width = config.get_setting(SIDEBAR_WIDTH_KEY, SIDEBAR_DEFAULT)
+        try:
+            width = max(SIDEBAR_MIN, min(SIDEBAR_MAX, int(width)))
+        except (TypeError, ValueError):
+            width = SIDEBAR_DEFAULT
+        self.splitter.setSizes([width, 1180 - width])
+        self.splitter.splitterMoved.connect(self._on_sidebar_resized)
+        self.setCentralWidget(self.splitter)
+        if config.get_setting(SIDEBAR_HIDDEN_KEY, False):
+            self.set_sidebar_visible(False)
 
         # Routing + locking.
         self.catalog.editing_changed.connect(self._on_editing_changed)
@@ -247,6 +310,7 @@ class MainWindow(QMainWindow):
         self.catalog.goals_changed.connect(self._on_goals_changed)
         self.overview.open_object.connect(self.open_object)
         self.overview.go_to_import.connect(self._open_ingest)   # empty-state CTA
+        self.journal.open_object.connect(self.open_object)
         self.overview.pins_changed.connect(self._on_pins_changed)
         self.overview.dirty.connect(self._do_refresh)           # goal set changed
         self.overview.goals_changed.connect(self._on_goals_changed)
@@ -286,10 +350,10 @@ class MainWindow(QMainWindow):
             lambda: self._maybe_auto_backup(scheduled=True))
         self._backup_timer.start()
 
-        # Land on the Library (grid) — the "home" view; but on a fresh, empty store
-        # land on Overview, whose welcome/CTA guides the first import.
-        empty = not derived.totals_by_slug()
-        self.nav.setCurrentRow(self._overview_index if empty else self._catalog_index)
+        # Land on Overview — the collection at a glance (and, on a fresh store, the
+        # welcome/CTA that guides the first import).
+        self.go_to(self._overview_index)
+        self._update_counts()
         self._update_status()
         self.resize(1180, 740)
         self._ready = True
@@ -298,13 +362,13 @@ class MainWindow(QMainWindow):
 
     # ---- menus ----
     def _build_menus(self):
-        """File · View · Library · Tools · Help — one structure on every platform.
+        """File · Edit · View · Object · Library · Window · Help — one structure on
+        every platform (UI_ROADMAP → 1.0 redesign → Menus).
 
-        The conventional ordering (app-specific menus after View, before Tools) reads
-        native on Windows and Linux, and macOS needs no branch: the `MenuRole`s hoist
-        About / Preferences / Quit into the application menu by themselves. The old
-        two-menu shape (Library + Help) only worked because of that hoisting — off
-        macOS it left Preferences filed under "Library" and offered no way to quit.
+        macOS needs no branch: the `MenuRole`s hoist About / Settings / Check for
+        Updates / Quit into the application menu by themselves, and Windows/Linux
+        get them in File and Help. Every per-object verb lives in **Object**; the
+        context menus are shortcuts to the same handlers, never their only home.
         """
         bar = self.menuBar()
         # macOS hoists the role actions out of these menus, which would strand the
@@ -313,137 +377,505 @@ class MainWindow(QMainWindow):
         # every platform — only this rule is conditional.
         hoists_roles = sys.platform == "darwin"
 
-        # ── File ── the things that move data in and out of the store.
-        self.ingest_action = QAction("Import…", self)
-        self.ingest_action.setShortcut("Ctrl+I")
-        self.ingest_action.triggered.connect(self._open_ingest)
-        self.publish_action = QAction("Publish / share…", self)
-        self.publish_action.triggered.connect(self._open_publish)
-        # There was no quit action at all — harmless on macOS (the app menu has one),
-        # but off it the menubar offered no way out. QuitRole merges with the macOS
-        # entry rather than duplicating it.
-        self.quit_action = QAction("Exit", self)
-        self.quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        def act(text, slot=None, shortcut=None, *, checkable=False, tip=None):
+            a = QAction(text, self)
+            if shortcut is not None:
+                if isinstance(shortcut, (list, tuple)):
+                    a.setShortcuts([QKeySequence(k) for k in shortcut])
+                else:
+                    a.setShortcut(QKeySequence(shortcut))
+            a.setCheckable(checkable)
+            if tip:
+                a.setToolTip(tip)
+                a.setStatusTip(tip)
+            if slot is not None:
+                a.triggered.connect(slot)
+            return a
+
+        def fill(menu, actions):
+            for a in actions:
+                if a is None:
+                    menu.addSeparator()
+                else:
+                    menu.addAction(a)
+
+        # ── File ── moving data in and out of the store, and the window itself.
+        self.ingest_action = act("Import…", self._open_ingest, "Ctrl+I")
+        self.publish_action = act("Publish…", self._open_publish)
+        self.backup_action = act("Back Up…", self._open_backup)
+        self.restore_action = act("Restore…", self._open_restore)
+        self.close_window_action = act("Close Window", self._close_active_window,
+                                       QKeySequence.StandardKey.Close)
+        self.prefs_action = act("Settings…", self._open_prefs,
+                                QKeySequence.StandardKey.Preferences)
+        self.prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
+        # QuitRole merges with the macOS app-menu entry rather than duplicating it.
+        self.quit_action = act("Quit M110", self._quit, QKeySequence.StandardKey.Quit)
         self.quit_action.setMenuRole(QAction.MenuRole.QuitRole)
-        self.quit_action.triggered.connect(self._quit)
         self.file_menu = bar.addMenu("File")
-        self.file_menu.addAction(self.ingest_action)
-        self.file_menu.addAction(self.publish_action)
+        fill(self.file_menu, (self.ingest_action, self.publish_action, None,
+                              self.backup_action, self.restore_action, None,
+                              self.close_window_action))
         if not hoists_roles:
             self.file_menu.addSeparator()
-        self.file_menu.addAction(self.quit_action)
+        fill(self.file_menu, (self.prefs_action, self.quit_action))
 
-        # ── View ── the nav rail, keyboard-reachable. Built from NAV so the two can't
-        # drift apart, and kept checked in step with the rail (which `open_object`
-        # drives too, from any page).
+        # ── Edit ── a real Undo stack (Remove from Library, pin overrides), the
+        # clipboard, and Find → the header bar's search field.
+        from m110.ui import undo
+        self.undo_stack = QUndoStack(self)
+        undo.install(self.undo_stack)
+        self.destroyed.connect(lambda *_: undo.install(None))
+        self.undo_action = self.undo_stack.createUndoAction(self, "Undo")
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.redo_action = self.undo_stack.createRedoAction(self, "Redo")
+        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        self.copy_action = act("Copy", self._edit_copy, QKeySequence.StandardKey.Copy)
+        self.select_all_action = act("Select All", self._edit_select_all,
+                                     QKeySequence.StandardKey.SelectAll)
+        self.find_action = act("Find…", self.focus_search, QKeySequence.StandardKey.Find)
+        self.edit_menu = bar.addMenu("Edit")
+        fill(self.edit_menu, (self.undo_action, self.redo_action, None,
+                              self.copy_action, self.select_all_action, None,
+                              self.find_action))
+
+        # ── View ── the places (built from sidebar.PLACES, so the menu and the
+        # sidebar can't drift), view modes, and window chrome.
         self.view_menu = bar.addMenu("View")
         self.view_group = QActionGroup(self)
         self.view_group.setExclusive(True)
         self.view_actions = []
-        for i, name in enumerate(self.NAV):
-            act = QAction(name, self)
-            act.setCheckable(True)
-            act.setShortcut(f"Ctrl+{i + 1}")
-            act.triggered.connect(lambda _checked=False, row=i:
-                                  self.nav.setCurrentRow(row))
-            self.view_group.addAction(act)
-            self.view_menu.addAction(act)
-            self.view_actions.append(act)
-        self.nav.currentRowChanged.connect(self._sync_view_menu)
-        self._sync_view_menu(self.nav.currentRow())
+        for i, place in enumerate(PLACES):
+            a = act(place.label, lambda _c=False, page=i: self.go_to(page),
+                    f"Ctrl+{i + 1}", checkable=True)
+            self.view_group.addAction(a)
+            self.view_menu.addAction(a)
+            self.view_actions.append(a)
+        self.view_menu.addSeparator()
+        self.view_mode_group = QActionGroup(self)
+        self.view_mode_group.setExclusive(True)
+        self.view_mode_actions = {}
+        for n, (mode, label) in enumerate((("list", "as List"), ("grid", "as Grid"),
+                                           ("map", "as Map")), start=1):
+            a = act(label, lambda _c=False, m=mode: self._set_view_mode(m),
+                    f"Ctrl+Alt+{n}", checkable=True)
+            self.view_mode_group.addAction(a)
+            self.view_menu.addAction(a)
+            self.view_mode_actions[mode] = a
+        self.view_menu.addSeparator()
+        self.toggle_sidebar_action = act(
+            "Hide Sidebar" if self.sidebar_visible() else "Show Sidebar",
+            self.toggle_sidebar, "Meta+Ctrl+S")
+        self.toggle_inspector_action = act("Hide Inspector", self.toggle_inspector,
+                                           "Ctrl+Alt+I")
+        self.full_screen_action = act("Enter Full Screen", self._toggle_full_screen,
+                                      QKeySequence.StandardKey.FullScreen)
+        # AppKit appends its own "Enter Full Screen" to a menu titled View, so on
+        # macOS ours would be the second one; elsewhere ours is the only one.
+        self.full_screen_action.setVisible(not hoists_roles)
+        fill(self.view_menu, (self.toggle_sidebar_action, self.toggle_inspector_action,
+                              None, self.full_screen_action))
+        self.view_menu.aboutToShow.connect(self._update_view_menu)
+        self.catalog.view_mode_changed.connect(lambda _m: self._update_view_menu())
+        self.media_page.view_mode_changed.connect(lambda _m: self._update_view_menu())
+        self.nav.page_selected.connect(self._sync_view_menu)
+
+        # ── Object ── every per-object verb, enabled on a Deep Sky selection.
+        self._build_object_menu(bar, act, fill)
 
         # ── Library ── operations on the collection itself.
-        self.refresh_action = QAction("Refresh", self)
-        self.refresh_action.setShortcuts([QKeySequence("Ctrl+R"), QKeySequence("F5")])
-        self.refresh_action.triggered.connect(self._do_refresh)
-        self.add_object_action = QAction("Add object…", self)
-        self.add_object_action.triggered.connect(self._add_object)
-        self.fill_meta_action = QAction("Fill missing metadata…", self)
-        self.fill_meta_action.triggered.connect(self._fill_missing_metadata)
-        self.enrich_online_action = QAction("Enrich online…", self)
-        self.enrich_online_action.triggered.connect(self._enrich_online_all)
+        self.refresh_action = act("Refresh", self._do_refresh, ["Ctrl+R", "F5"])
+        self.add_object_action = act("Add Object…", self._add_object)
+        self.fill_meta_action = act("Fill All Missing Metadata…",
+                                    self._fill_missing_metadata)
+        self.enrich_online_action = act("Enrich All Online…", self._enrich_online_all)
+        # Processing-prep is automatic; this is the repair action for a working
+        # folder deleted or damaged by hand (critique §1.2 — not a "Prepare" step).
+        self.prep_action = act("Rebuild Working Folders", self._prepare_working_folders,
+                               tip="Recreate any missing processing working folders")
+        self.media_cleanup_action = act(
+            "Clean Up Imported Sidecars…", self._open_media_cleanup,
+            tip="Remove leftover device thumbnails and index files from your Media folder")
         self.lib_menu = bar.addMenu("Library")
-        self.lib_menu.addAction(self.refresh_action)
-        self.lib_menu.addSeparator()
-        self.lib_menu.addAction(self.add_object_action)
-        self.lib_menu.addAction(self.fill_meta_action)
-        self.lib_menu.addAction(self.enrich_online_action)
+        fill(self.lib_menu, (self.refresh_action, None, self.add_object_action,
+                             self.fill_meta_action, self.enrich_online_action, None,
+                             self.prep_action, self.media_cleanup_action))
 
-        # ── Tools ── maintenance + settings (Preferences hops to the macOS app menu).
-        self.prep_action = QAction("Prepare working folders", self)
-        self.prep_action.triggered.connect(self._prepare_working_folders)
-        self.media_cleanup_action = QAction("Clean up imported sidecars…", self)
-        self.media_cleanup_action.setToolTip(
-            "Remove leftover device thumbnails and index files from your Media folder")
-        self.media_cleanup_action.triggered.connect(self._open_media_cleanup)
-        self.backup_action = QAction("Back up…", self)
-        self.backup_action.triggered.connect(self._open_backup)
-        self.restore_action = QAction("Restore…", self)
-        self.restore_action.triggered.connect(self._open_restore)
-        self.prefs_action = QAction("Preferences…", self)
-        self.prefs_action.setShortcut(QKeySequence.StandardKey.Preferences)
-        self.prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
-        self.prefs_action.triggered.connect(self._open_prefs)
-        self.tools_menu = bar.addMenu("Tools")
-        self.tools_menu.addAction(self.prep_action)
-        self.tools_menu.addAction(self.media_cleanup_action)
-        self.tools_menu.addSeparator()
-        self.tools_menu.addAction(self.backup_action)
-        self.tools_menu.addAction(self.restore_action)
-        if not hoists_roles:
-            self.tools_menu.addSeparator()
-        self.tools_menu.addAction(self.prefs_action)
+        # ── Window ── Qt adds none; the image viewer is its own window, so the
+        # list matters.
+        self.minimize_action = act("Minimize", self._minimize_active_window, "Ctrl+M")
+        self.zoom_action = act("Zoom", self._zoom_active_window)
+        self.bring_all_action = act("Bring All to Front", self._bring_all_to_front)
+        self.window_menu = bar.addMenu("Window")
+        self.window_menu.aboutToShow.connect(self._rebuild_window_menu)
+        self._rebuild_window_menu()
 
-        # ── Help ── About folds into the application menu on macOS (AboutRole).
-        self.user_guide_action = QAction("User guide", self)
-        self.user_guide_action.triggered.connect(self._open_user_guide)
-        self.check_updates_action = QAction("Check for updates…", self)
-        self.check_updates_action.triggered.connect(self._check_updates)
-        self.report_action = QAction("Report a problem…", self)
-        self.report_action.triggered.connect(self._open_report)
-        self.about_action = QAction("About M110", self)
+        # ── Help ── About and Check for Updates fold into the macOS app menu.
+        self.user_guide_action = act("M110 Help", self._open_user_guide)
+        self.report_action = act("Report a Problem…", self._open_report)
+        self.check_updates_action = act("Check for Updates…", self._check_updates)
+        self.check_updates_action.setMenuRole(QAction.MenuRole.ApplicationSpecificRole)
+        self.about_action = act("About M110", self._open_about)
         self.about_action.setMenuRole(QAction.MenuRole.AboutRole)
-        self.about_action.triggered.connect(self._open_about)
         self.help_menu = bar.addMenu("Help")
-        self.help_menu.addAction(self.user_guide_action)
-        self.help_menu.addSeparator()
-        self.help_menu.addAction(self.check_updates_action)
-        self.help_menu.addAction(self.report_action)
-        self.help_menu.addAction(self.about_action)
+        fill(self.help_menu, (self.user_guide_action, None, self.report_action,
+                              self.check_updates_action, self.about_action))
 
-    def _sync_view_menu(self, row: int):
-        if 0 <= row < len(self.view_actions):
-            self.view_actions[row].setChecked(True)
+        self._sync_view_menu(self.nav.current_page())
+
+    def _build_object_menu(self, bar, act, fill):
+        cat = self.catalog
+        self.show_object_action = act("Show in Library", self._show_selected_object)
+        self.set_goal_action = act("Set Goal…", lambda: cat.detail.cmd_set_goal(),
+                                   "Ctrl+Shift+G")
+        self.pin_action = act("Pin as Priority",
+                              lambda: self._with_selection(
+                                  lambda s: cat.toggle_pin(s, "pin")),
+                              "Ctrl+Shift+P", checkable=True)
+        self.depri_action = act("Deprioritize",
+                                lambda: self._with_selection(
+                                    lambda s: cat.toggle_pin(s, "deprioritize")),
+                                checkable=True)
+        self.siril_menu = QMenu("Process in Siril", self)
+        self.siril_menu.aboutToShow.connect(self._rebuild_siril_menu)
+        self.astrowizard_action = act("Send to AstroWizard…",
+                                      lambda: cat.detail.cmd_send_to_astrowizard())
+        self.stackingwizard_action = act("Stack in StackingWizard…",
+                                         lambda: cat.detail.cmd_stack_in_stackingwizard())
+        self.import_finished_action = act("Import Finished Work…",
+                                          lambda: cat.detail.cmd_import_finished())
+        self.export_action = act("Export for Sharing…",
+                                 lambda: cat.detail.cmd_export_for_sharing(),
+                                 "Ctrl+Shift+E")
+        self.reveal_action = act("Reveal Working Folder",
+                                 lambda: cat.detail.cmd_reveal_working_folder(),
+                                 "Ctrl+Shift+R")
+        self.publish_flag_action = act(
+            "Include in Publishing",
+            lambda checked: self._with_selection(
+                lambda s: cat._toggle_publish(s, checked)),
+            checkable=True)
+        self.fill_one_action = act("Fill In Missing Metadata",
+                                   lambda: self._with_selection(cat._fill_one))
+        self.enrich_one_action = act("Enrich Online",
+                                     lambda: self._with_selection(cat._enrich_one_online))
+        self.remove_action = act("Remove from Library",
+                                 lambda: self._with_selection(cat._remove_one),
+                                 "Ctrl+Backspace")
+        self.object_menu = bar.addMenu("Object")
+        m = self.object_menu
+        fill(m, (self.show_object_action, self.set_goal_action, None,
+                 self.pin_action, self.depri_action, None))
+        m.addMenu(self.siril_menu)
+        fill(m, (self.astrowizard_action, self.stackingwizard_action,
+                 self.import_finished_action, None, self.export_action,
+                 self.reveal_action, self.publish_flag_action, None,
+                 self.fill_one_action, self.enrich_one_action, None,
+                 self.remove_action))
+        self.object_actions = [
+            self.show_object_action, self.set_goal_action, self.pin_action,
+            self.depri_action, self.siril_menu.menuAction(), self.astrowizard_action,
+            self.stackingwizard_action, self.import_finished_action,
+            self.export_action, self.reveal_action, self.publish_flag_action,
+            self.fill_one_action, self.enrich_one_action, self.remove_action]
+        m.aboutToShow.connect(self._update_object_menu)
+        cat.selection_changed.connect(lambda _s: self._update_object_menu())
+        cat.selection_changed.connect(lambda _s: self._update_view_menu())
+        self._update_object_menu()
+
+    # ---- menu state + handlers ----
+    def _selected_slug(self) -> str | None:
+        return self.catalog.selected_slug()
+
+    def _with_selection(self, fn) -> None:
+        slug = self._selected_slug()
+        if slug and not self.catalog.is_editing():
+            fn(slug)
+
+    def _update_object_menu(self) -> None:
+        """Enable the Object menu for the Deep Sky selection, verb by verb."""
+        from m110 import catalog as catalog_mod, pins
+        slug = self._selected_slug()
+        if not slug or self.catalog.is_editing() or slug not in self.catalog._cat:
+            for a in self.object_actions:
+                a.setEnabled(False)
+            for a in (self.pin_action, self.depri_action, self.publish_flag_action):
+                a.setChecked(False)
+            return
+        have = self.catalog.detail.available_commands()
+        entry = self.catalog._cat.get(slug, {})
+        state = pins.get_state(slug)
+        for a in (self.show_object_action, self.pin_action, self.depri_action,
+                  self.publish_flag_action, self.remove_action):
+            a.setEnabled(True)
+        self.pin_action.setChecked(state == pins.PIN)
+        self.depri_action.setChecked(state == pins.DEPRIORITIZE)
+        self.publish_flag_action.setChecked(entry.get("publish", True) is not False)
+        self.set_goal_action.setEnabled("set_goal" in have)
+        self.siril_menu.menuAction().setEnabled("siril" in have)
+        self.astrowizard_action.setEnabled("astrowizard" in have)
+        self.stackingwizard_action.setEnabled("stackingwizard" in have)
+        self.import_finished_action.setEnabled("import_finished" in have)
+        self.export_action.setEnabled("export" in have)
+        self.reveal_action.setEnabled("reveal" in have)
+        ref = catalog_mod.load_reference().get(slug, {})
+        filled = catalog_mod._compute_fill(entry, ref)
+        self.fill_one_action.setEnabled(bool(filled))
+        self.enrich_one_action.setEnabled(
+            catalog_mod._has_gaps({**entry, **filled})
+            and self.catalog._enrich_worker is None)
+
+    def _rebuild_siril_menu(self) -> None:
+        from m110.ui.widgets import add_siril_actions, launch_siril
+        self.siril_menu.clear()
+        dirs = self.catalog.detail.siril_dirs()
+        acts = add_siril_actions(self.siril_menu, dirs) if dirs else {}
+        for a, d in acts.items():
+            # Deferred: `triggered` fires inside the menu's own loop, and the launch
+            # can open a fallback dialog.
+            a.triggered.connect(
+                lambda _=False, d=d: defer(self, lambda: launch_siril(self, d)))
+        if not acts:
+            self.siril_menu.addAction("No Working Folder").setEnabled(False)
+
+    def _show_selected_object(self) -> None:
+        if self._selected_slug():
+            self.go_to(self._catalog_index)
+
+    def _view_mode_host(self):
+        page = self.stack.currentWidget()
+        return page if page in (self.catalog, self.media_page) else None
+
+    def _set_view_mode(self, mode: str) -> None:
+        host = self._view_mode_host()
+        if host is not None:
+            host.set_view_mode(mode)
+        self._update_view_menu()
+
+    def _update_view_menu(self) -> None:
+        host = self._view_mode_host()
+        modes = (("list", "grid", "map") if host is self.catalog
+                 else ("list", "grid") if host is self.media_page else ())
+        current = host.view_mode() if host is not None else None
+        for mode, a in self.view_mode_actions.items():
+            a.setEnabled(mode in modes)
+            a.setChecked(mode == current)
+        self.toggle_inspector_action.setEnabled(host is self.catalog
+                                                and self._selected_slug() is not None)
+        self.toggle_inspector_action.setText(
+            "Show Inspector" if self.catalog.detail.isHidden() else "Hide Inspector")
+        self.full_screen_action.setText(
+            "Exit Full Screen" if self.isFullScreen() else "Enter Full Screen")
+
+    def toggle_inspector(self) -> None:
+        """The Deep Sky detail pane (the inspector) — hide it, or bring it back."""
+        d = self.catalog.detail
+        if d.isHidden() and self._selected_slug():
+            d.show()
+        else:
+            d.hide()
+        self._update_view_menu()
+
+    def focus_search(self) -> None:
+        """Edit › Find: focus this place's search field (Deep Sky's, if it has none)."""
+        from PySide6.QtWidgets import QLineEdit
+        ctl = getattr(self.stack.currentWidget(), "header_controls", None)
+        field = ctl.findChild(QLineEdit, "searchField") if ctl is not None else None
+        if field is None:
+            self.go_to(self._catalog_index)
+            field = self.catalog._search
+        field.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        field.selectAll()
+
+    def _edit_copy(self) -> None:
+        """Copy: the focused text, else the focused table's selected cells, else the
+        selected object's designation."""
+        from PySide6.QtWidgets import QAbstractItemView, QTableWidget
+        w = QApplication.focusWidget()
+        if w is not None and hasattr(w, "copy") and not isinstance(w, QAbstractItemView):
+            w.copy()
+            return
+        text = ""
+        if isinstance(w, QTableWidget) and w.selectedItems():
+            rows: dict[int, list[str]] = {}
+            for it in sorted(w.selectedItems(), key=lambda i: (i.row(), i.column())):
+                rows.setdefault(it.row(), []).append(it.text())
+            text = "\n".join("\t".join(r) for r in rows.values())
+        elif self._selected_slug():
+            slug = self._selected_slug()
+            text = self.catalog._cat.get(slug, {}).get("id") or slug
+        if text:
+            QApplication.clipboard().setText(text)
+
+    def _edit_select_all(self) -> None:
+        w = QApplication.focusWidget()
+        if w is not None and hasattr(w, "selectAll"):
+            w.selectAll()
+
+    def _close_active_window(self) -> None:
+        (QApplication.activeWindow() or self).close()
+
+    def _minimize_active_window(self) -> None:
+        (QApplication.activeWindow() or self).showMinimized()
+
+    def _zoom_active_window(self) -> None:
+        w = QApplication.activeWindow() or self
+        if w.isMaximized():
+            w.showNormal()
+        else:
+            w.showMaximized()
+
+    def _toggle_full_screen(self) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+
+    def _bring_all_to_front(self) -> None:
+        for w in self._app_windows():
+            w.raise_()
+
+    @staticmethod
+    def _window_label(w) -> str:
+        return w.windowTitle() or (APP_NAME if isinstance(w, QMainWindow) else "")
+
+    @classmethod
+    def _app_windows(cls) -> list:
+        """The app's own visible windows (main window, image viewers, dialogs)."""
+        return [w for w in QApplication.topLevelWidgets()
+                if w.isWindow() and w.isVisible() and cls._window_label(w)
+                and not isinstance(w, QMenu)]
+
+    def _rebuild_window_menu(self) -> None:
+        m = self.window_menu
+        m.clear()
+        for a in (self.minimize_action, self.zoom_action, None, self.bring_all_action):
+            if a is None:
+                m.addSeparator()
+            else:
+                m.addAction(a)
+        wins = self._app_windows()
+        if wins:
+            m.addSeparator()
+        active = QApplication.activeWindow()
+        for w in wins:
+            a = m.addAction(self._window_label(w))
+            a.setCheckable(True)
+            a.setChecked(w is active)
+            a.triggered.connect(lambda _=False, w=w: self._raise_window(w))
+
+    @staticmethod
+    def _raise_window(w) -> None:
+        if w.isMinimized():
+            w.showNormal()
+        w.raise_()
+        w.activateWindow()
+
+    def _sync_view_menu(self, page: int):
+        if 0 <= page < len(self.view_actions):
+            self.view_actions[page].setChecked(True)
+        self._update_view_menu()
 
     def _quit(self):
         app = QApplication.instance()
         if app is not None:      # aboutToQuit drains the refresh worker + thumb pool
             app.quit()
 
-    def _on_nav_changed(self, row: int):
+    def _on_nav_changed(self, page: int):
+        self._show_header_for(page)
         # Opening Planning kicks off the (lazy, once/day) prioritizer recompute —
         # only in a live, ready window, never during construction/tests.
-        if self._ready and row == self._planning_index:
+        if self._ready and page == self._planning_index:
             self.planning.ensure_ranking()
 
     # ---- routing ----
+    def go_to(self, page: int) -> None:
+        """Show page `page` (an index into `self.pages` / `sidebar.PLACES`)."""
+        self.nav.select_page(page)
+
+    def current_page(self) -> int:
+        return self.stack.currentIndex()
+
     def open_object(self, slug: str):
-        self.nav.setCurrentRow(self._catalog_index)
+        self.go_to(self._catalog_index)
         self.catalog.select_object(slug)
 
+    # ---- header bar + sidebar ----
+    def _show_header_for(self, page: int) -> None:
+        p = self.pages[page]
+        sub = p.subtitle() if hasattr(p, "subtitle") else ""
+        self.header.set_place(PLACES[page].label, sub,
+                              getattr(p, "header_controls", None))
+
+    def _on_subtitle(self, page_widget, text: str) -> None:
+        if self.stack.currentWidget() is page_widget:
+            self.header.set_subtitle(text)
+        self._update_counts()
+
+    def _update_counts(self) -> None:
+        """The sidebar's live counts — read from what the pages already loaded and
+        the derived rollups; nothing here touches disk beyond those reads."""
+        nav = getattr(self, "nav", None)
+        if nav is None:
+            return
+        nav.set_count("deepsky", len(getattr(self.catalog, "_cat", {}) or {}))
+        nav.set_count("media", self.media_page.item_count())
+        counts = derived.load_processing().get("counts", {})
+        queue = derived.load_processing().get("queue", [])
+        ready = sum(1 for f in queue if f.get("ready_for_import"))
+        nav.set_count("processing", ready + counts.get("out_of_date", 0)
+                      + counts.get("not_processed", 0))
+        nav.set_count("devices", sum(1 for d in derived.load_devices()
+                                     if not d.get("retired")))
+
+    def sidebar_visible(self) -> bool:
+        return not self.sidebar_column.isHidden()
+
+    def set_sidebar_visible(self, visible: bool) -> None:
+        self.sidebar_column.setVisible(visible)
+        # With the sidebar gone, the header bar is what sits under the traffic lights.
+        self.header.set_leading_inset(0 if visible or not self._expanded
+                                      else TRAFFIC_LIGHT_INSET)
+        if getattr(self, "toggle_sidebar_action", None) is not None:
+            self.toggle_sidebar_action.setText(
+                "Hide Sidebar" if visible else "Show Sidebar")
+        if self._ready:
+            config.save_setting(SIDEBAR_HIDDEN_KEY, not visible)
+
+    def toggle_sidebar(self) -> None:
+        self.set_sidebar_visible(not self.sidebar_visible())
+
+    def _on_sidebar_resized(self, *_):
+        if self._ready and self.sidebar_visible():
+            config.save_setting(SIDEBAR_WIDTH_KEY, self.splitter.sizes()[0])
+
     # ---- status ----
+    STATUS_LINGER_MS = 8000     # how long a finished operation's result stays up
+
     def _update_status(self, extra: str = ""):
-        # Where the data lives, plus whatever a running operation wants to say. The
-        # captured/total count used to lead this line; it duplicated the Library's own
-        # stat row and read as noise in persistent chrome.
-        note = "" if derived.derived_available() else " · derived rollups not found"
-        self.statusBar().showMessage(f"{config.DATA_ROOT}{note}{extra}")
+        """The status bar is **transient only** (1.0 redesign): empty unless a sync,
+        backup, import or lookup has something to say. The data-root path that used
+        to sit here permanently is in Settings and About.
+
+        `extra` is what's running or just finished (callers prefix it with " · ",
+        from when it trailed the path). A message ending in "…" is in progress and
+        stays until replaced; a result lingers briefly, then clears."""
+        # (The old "derived rollups not found" note is gone too: launch syncs, and
+        # the sync rebuilds them, so it only ever flashed on a fresh store.)
+        msg = "  ·  ".join(p.strip() for p in extra.split("·") if p.strip())
+        bar = self.statusBar()
+        if not msg:
+            bar.clearMessage()
+        elif msg.endswith("…"):
+            bar.showMessage(msg)
+        else:
+            bar.showMessage(msg, self.STATUS_LINGER_MS)
 
     # ---- import / prefs ----
     def _open_ingest(self):
         # Import is now a top-level page (was a modal dialog) — navigate to it and
         # let the user refresh the source list (a device may have just mounted).
-        self.nav.setCurrentRow(self._import_index)
+        self.go_to(self._import_index)
         self.import_page.reload()
 
     def _open_prefs(self):
@@ -607,8 +1039,12 @@ class MainWindow(QMainWindow):
         self.ingest_action.setEnabled(not editing)
         self.refresh_action.setEnabled(not editing)
         self.prep_action.setEnabled(not editing)
-        for act in self.view_actions:      # else Ctrl+1..6 walks around the lock
+        # Undo must not rewrite the store under the open editor.
+        self.undo_action.setEnabled(not editing and self.undo_stack.canUndo())
+        self.redo_action.setEnabled(not editing and self.undo_stack.canRedo())
+        for act in self.view_actions:      # else Ctrl+1..8 walks around the lock
             act.setEnabled(not editing)
+        self._update_object_menu()
 
     def _on_notes_saved(self, _slug: str):
         # Object Notes were edited in the detail pane — reload the other views (the
@@ -655,7 +1091,7 @@ class MainWindow(QMainWindow):
         self._do_refresh()
 
     def _open_media_cleanup(self):
-        """Tools → Clean up imported sidecars. Preview-then-confirm; the Media
+        """Library › Clean Up Imported Sidecars. Preview-then-confirm; the Media
         scope reloads afterwards only if something was actually removed."""
         if self.catalog.is_editing() or self._refreshing:
             return
@@ -663,7 +1099,7 @@ class MainWindow(QMainWindow):
         dlg = MediaCleanupDialog(self)
         dlg.exec()
         if dlg.removed_count():
-            self.catalog.media_view.reload()
+            self.media_page.reload()
 
     def _fill_missing_metadata(self):
         """Backfill every Library entry's missing fields from the bundled reference
@@ -759,6 +1195,8 @@ class MainWindow(QMainWindow):
         """Theme changed — re-apply programmatic colors QSS can't reach (table-item
         status/muted foregrounds, the ink logo). QSS-styled widgets repaint themselves."""
         self.logo.refresh()
+        self.nav.restyle()
+        self.header.restyle()
         for p in self.pages:
             if hasattr(p, "restyle"):
                 p.restyle()
@@ -866,7 +1304,7 @@ class MainWindow(QMainWindow):
             self, "Back up your library",
             "M110 is beta software, and your captures are irreplaceable.\n\n"
             "Set up a backup of your library now? (You can also do this any time "
-            "from Tools → Back up….)",
+            "from File › Back Up….)",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if resp == QMessageBox.Yes:
             self._open_backup()
@@ -910,6 +1348,21 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+class AppMenuTranslator(QTranslator):
+    """Names the hoisted PreferencesRole item **Settings…**, as macOS 13+ does.
+
+    Qt builds the macOS application menu itself and titles that item with its own
+    translatable string ("Preferences...", context MAC_APPLICATION_MENU), whatever
+    the action's text — so the rename has to happen in translation. Every other
+    string falls through (an empty result means "no translation here"). Off macOS
+    the context is never asked for, so this is inert there."""
+
+    def translate(self, context, source, disambiguation=None, n=-1):
+        if context == "MAC_APPLICATION_MENU" and source == "Preferences...":
+            return "Settings…"
+        return ""
+
+
 def _set_macos_app_name(name: str) -> None:
     """Make the macOS app menu + dock tooltip show `name` instead of "Python" when
     running unbundled from source. The app-menu title comes from the bundle's
@@ -944,6 +1397,7 @@ def main() -> None:
     app.setApplicationName("M110")
     app.setApplicationDisplayName("M110")
     app.setOrganizationName("M110")
+    app.installTranslator(AppMenuTranslator(app))   # "Settings…" in the app menu
     theme.install(app)                  # design-system: tokens → QSS, follow system
     app.setWindowIcon(theme.app_icon())  # dock / taskbar icon (parchment tile)
     from m110.ui.first_run_dialog import run_first_run_if_needed

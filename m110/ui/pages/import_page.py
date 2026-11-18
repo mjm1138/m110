@@ -28,7 +28,7 @@ from m110.ui.ingest_dialog import (
     NO_POINTING_KINDS,
 )
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
-from m110.ui.widgets import fit_cell_widgets
+from m110.ui.widgets import compact_table, fit_cell_widgets
 
 RECENTS_KEY = "import_recents"
 MAX_RECENTS = 8
@@ -52,9 +52,8 @@ class ImportPage(QWidget):
 
         outer = QVBoxLayout(self)
 
-        title = QLabel("<h2>Import</h2>")
-        title.setTextFormat(Qt.RichText)
-        outer.addWidget(title)
+        # The place's name is the header bar's title (one page-header rule).
+        outer.setContentsMargins(0, 0, 0, 0)
 
         # Top block (source picker + scan preview) and the holding-area panel share
         # a vertical splitter so the panel is always visible (6c).
@@ -87,7 +86,7 @@ class ImportPage(QWidget):
         self._scan_note.setWordWrap(True)
         tv.addWidget(self._scan_note)
 
-        self.table = QTableWidget(0, 7)
+        self.table = compact_table(QTableWidget(0, 7))
         self.table.setHorizontalHeaderLabels(
             ["", "Object", "Kind", "Files", "Size", "Pointing", "→ Destination"])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -320,7 +319,7 @@ class ImportPage(QWidget):
         self._holding_header.setWordWrap(True)   # don't let the (now longer) header
                                                  # force the window minimum width
         v.addWidget(self._holding_header)
-        self.holding_table = QTableWidget(0, 6)
+        self.holding_table = compact_table(QTableWidget(0, 6))
         self.holding_table.setHorizontalHeaderLabels(
             ["Source folder", "Files", "Size", "Object", "Kind", "Actions"])
         self.holding_table.setEditTriggers(QTableWidget.NoEditTriggers)

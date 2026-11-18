@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110 import objects, processing, roundtrip
+from m110.ui.widgets import compact_table
 
 
 def _fmt_size(n: int) -> str:
@@ -116,7 +117,7 @@ class ImportDialog(QDialog):
         self._info.setWordWrap(True)
         lay.addWidget(self._info)
 
-        self.table = QTableWidget(0, 4)
+        self.table = compact_table(QTableWidget(0, 4))
         self.table.setHorizontalHeaderLabels(["Import", "Output", "Goes to", "Size"])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)

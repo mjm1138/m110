@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from m110 import catalog, devices, integration_goals, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
+    compact_table,
     make_table, fit_table_height, CollapsibleSection, connect_context_menu,
     reveal_in_manager, reveal_label,
 )
@@ -94,9 +95,7 @@ class PlanningPage(QScrollArea):
         lay.setAlignment(Qt.AlignTop)
         self.setWidget(content)
 
-        title = QLabel("<b>Session Planning</b>")
-        title.setTextFormat(Qt.RichText)
-        lay.addWidget(title)
+        # The place's name is the header bar's title (one page-header rule).
         cap = QLabel("Pick where you're observing from, then work your ranked "
                      "priority targets. Tune the ranking with the strategy + weights.")
         cap.setProperty("caption", True)
@@ -273,7 +272,7 @@ class PlanningPage(QScrollArea):
         ctl.addWidget(self._save_btn)
         body.addLayout(ctl)
 
-        self._plan_table = QTableWidget(0, 6)
+        self._plan_table = compact_table(QTableWidget(0, 6))
         self._plan_table.setHorizontalHeaderLabels(
             ["Include", "Object", "Start", "Duration", "Alt", "Moon"])
         self._plan_table.verticalHeader().setVisible(False)
@@ -567,7 +566,7 @@ class PlanningPage(QScrollArea):
     # its Assign/Reveal/Discard, because Assign is the *primary* action performed on
     # row after row in a triage pass and a menu would make that flow slower.
     def _build_guides(self, body):
-        self._guides_table = QTableWidget(0, 2)
+        self._guides_table = compact_table(QTableWidget(0, 2))
         self._guides_table.setHorizontalHeaderLabels(["Date", "Title"])
         self._guides_table.verticalHeader().setVisible(False)
         self._guides_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -842,17 +841,21 @@ class PlanningPage(QScrollArea):
             return
         state = pins.get_state(slug)
         menu = QMenu(self)
-        pin_act = menu.addAction("Unpin from priorities" if state == pins.PIN
-                                 else "Pin as priority")
+        pin_act = menu.addAction("Unpin" if state == pins.PIN
+                                 else "Pin as Priority")
         depri_act = menu.addAction("Un-deprioritize" if state == pins.DEPRIORITIZE
                                    else "Deprioritize")
         chosen = menu.exec(tbl.viewport().mapToGlobal(pos))
         if chosen is pin_act:
-            pins.set_state(slug, None if state == pins.PIN else pins.PIN)
+            new = None if state == pins.PIN else pins.PIN
         elif chosen is depri_act:
-            pins.set_state(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
+            new = None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE
         else:
             return
+        from m110.ui import undo
+        undo.run(undo.SetPinCommand(slug, new, self._after_pin_change))
+
+    def _after_pin_change(self):
         self._render_ranking()          # instant re-rank
         self.pins_changed.emit()
 

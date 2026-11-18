@@ -8,16 +8,18 @@ from PySide6.QtCore import (
     QUrl, Signal,
 )
 from PySide6.QtGui import (
-    QColor, QDesktopServices, QIcon, QImage, QImageReader, QPainter, QPalette, QPixmap,
+    QColor, QDesktopServices, QFont, QIcon, QImage, QImageReader, QPainter, QPalette,
+    QPixmap,
 )
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMessageBox,
     QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
-    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton,
+    QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton, QLabel,
 )
 
 from m110 import derived, objects, siril
 from m110.ui.theme import muted_color, status_color, mono_font  # theme-driven (re-exported)
+from m110.ui.theme.fonts import section_font, serif_font, tabular
 from m110.ui.theme.tokens import SPACE
 
 
@@ -112,8 +114,15 @@ class FlowLayout(QLayout):
             line_height = max(line_height, hint.height())
         return y + line_height - rect.y() + m.bottom()
 
-STATUS_LABEL = {"deep_stack": "Deep Stack", "in_progress": "In progress",
+# The three status words, the same everywhere (UI_ROADMAP 1.0 → Status hues +
+# names): Deep · n% · Initial. "Deep" is explained once, in STATUS_TOOLTIP.
+STATUS_LABEL = {"deep_stack": "Deep", "in_progress": "In progress",
                 "initial": "Initial"}
+STATUS_TOOLTIP = {
+    "deep_stack": "Deep — reached its integration goal for this telescope",
+    "in_progress": "Part-way to its integration goal",
+    "initial": "Captured, but under a quarter of its integration goal",
+}
 # Per-cell role carrying the raw status key (e.g. "deep_stack") so the pill delegate
 # can pick a theme color while the cell still sorts by its visible text.
 STATUS_ROLE = Qt.ItemDataRole.UserRole + 7
@@ -122,11 +131,11 @@ STATUS_ROLE = Qt.ItemDataRole.UserRole + 7
 def status_label(status: str | None, captured: bool,
                  progress: float | None = None) -> str:
     """A capture status's pill text. ``in_progress`` reads as its share of the
-    integration goal ("62% of goal") when `progress` (0..1) is known."""
+    integration goal ("62%") when `progress` (0..1) is known."""
     if not captured:
         return "—"
     if status == "in_progress" and progress is not None:
-        return f"{int(progress * 100)}% of goal"
+        return f"{int(progress * 100)}%"
     return STATUS_LABEL.get(status, status or "—")
 
 
@@ -201,6 +210,7 @@ class NumItem(QTableWidgetItem):
     def __init__(self, text: str, sort_key):
         super().__init__(text)
         self._key = sort_key
+        self.setFont(tabular())        # numbers stack in a column: tabular figures
 
     def __lt__(self, other):
         if isinstance(other, NumItem):
@@ -293,12 +303,12 @@ def dark_gap_item(row: dict) -> QTableWidgetItem:
     return it
 
 
-def make_numeric(item: QTableWidgetItem, mono: bool = True) -> QTableWidgetItem:
-    """Right-align a numeric/data cell and (default) give it the bundled tabular
-    monospace, so columns of numbers line up. Returns the item for chaining."""
+def make_numeric(item: QTableWidgetItem, mono: bool = False) -> QTableWidgetItem:
+    """Right-align a numeric cell and give it **tabular figures** in the system font,
+    so columns of numbers line up. `mono=True` is for genuinely technical strings
+    only (a FITS value, a filename). Returns the item for chaining."""
     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    if mono:
-        item.setFont(mono_font())
+    item.setFont(mono_font() if mono else tabular())
     return item
 
 
@@ -443,9 +453,23 @@ def reveal_in_manager(path) -> None:
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
 
+TABLE_ROW_HEIGHT = 26     # compact density (1.0): ~24–28 px rows, no toggle
+
+
+def compact_table(t: QTableWidget) -> QTableWidget:
+    """The 1.0 table look: compact rows, no cell grid (alternating rows separate
+    them), headers aligned with their columns rather than centered."""
+    t.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
+    t.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT - 4)
+    t.setShowGrid(False)
+    t.horizontalHeader().setDefaultAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    return t
+
+
 def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
-    """A read-only, row-selectable, sortable table (vertical header hidden)."""
-    t = QTableWidget(0, len(headers))
+    """A read-only, row-selectable, sortable, compact table (vertical header hidden)."""
+    t = compact_table(QTableWidget(0, len(headers)))
     t.setHorizontalHeaderLabels(headers)
     t.setEditTriggers(QTableWidget.NoEditTriggers)
     t.setSelectionBehavior(QTableWidget.SelectRows)
@@ -569,6 +593,41 @@ def fit_cell_widgets(tbl: QTableWidget, *cols: int) -> None:
                                     tallest + CELL_WIDGET_PAD_V + grid))
 
 
+def section_label(text: str) -> QLabel:
+    """A panel section label: tracked small capitals, muted (``DETAILS``)."""
+    lbl = QLabel(text)
+    lbl.setProperty("type", "section")
+    lbl.setFont(section_font())
+    return lbl
+
+
+def serif_label(text: str, kind: str = "title", *, bold: bool = False,
+                italic: bool = False) -> QLabel:
+    """A Newsreader label at a type-scale role ('display' 30 · 'title' 22 ·
+    'heading' 17), lining numerals forced — object names and titles."""
+    from m110.ui.theme.tokens import FONT_SIZE
+    lbl = QLabel(text)
+    lbl.setProperty("type", kind)
+    lbl.setFont(serif_font(FONT_SIZE[kind],
+                           weight=QFont.Weight.DemiBold if bold else QFont.Weight.Normal,
+                           italic=italic))
+    return lbl
+
+
+def object_title(designation: str, name: str = "", kind: str = "title") -> QLabel:
+    """An object's name as a star atlas sets it: the designation in a strong serif,
+    the common name in italic beside it (``M81 *Bode's Galaxy*``)."""
+    import html
+    lbl = serif_label("", kind)
+    lbl.setTextFormat(Qt.TextFormat.RichText)
+    text = f"<span style='font-weight:600'>{html.escape(designation)}</span>"
+    if name:
+        text += f"&nbsp; <i>{html.escape(name)}</i>"
+    lbl.setText(text)
+    lbl.setWordWrap(True)
+    return lbl
+
+
 class CollapsibleSection(QWidget):
     """A titled group whose body toggles open/closed via its header — the
     macOS-native disclosure-triangle pattern (a rotating arrow beside a bold
@@ -589,7 +648,8 @@ class CollapsibleSection(QWidget):
         self._btn.setChecked(expanded)
         self._btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._btn.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
-        self._btn.setStyleSheet("QToolButton { border: none; font-weight: bold; }")
+        self._btn.setObjectName("sectionHeader")     # tracked small caps (QSS)
+        self._btn.setFont(section_font())
         self._btn.toggled.connect(self._on_toggled)
         lay.addWidget(self._btn)
         self._body = QWidget()
@@ -833,3 +893,64 @@ def make_segment(items, active_key):
         row.addWidget(b)
     btns[active_key].setChecked(True)
     return frame, group, btns
+
+
+# ── header-bar controls (the shell toolbar; UI_ROADMAP → 1.0 redesign) ────────
+
+def make_view_switcher(items, active_key):
+    """An icon segmented control for view modes (List · Grid · Map) — the same
+    `#segControl` as `make_segment`, with Lucide icons and the label as tooltip.
+    `items` = [(key, icon_name, label)]. Returns (frame, group, {key: button})."""
+    from m110.ui.theme import icons
+    frame, group, btns = make_segment([(k, "") for k, _i, _l in items], active_key)
+    frame.setProperty("iconSegments", True)
+    for key, icon_name, label in items:
+        b = btns[key]
+        b.setIcon(icons.icon(icon_name, "text_secondary", selected_role="text_primary"))
+        b.setProperty("iconName", icon_name)
+        b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        b.setToolTip(f"View as {label}")
+        b.setAccessibleName(label)
+    return frame, group, btns
+
+
+def restyle_view_switcher(btns: dict) -> None:
+    """Re-tint a view switcher's icons after a theme change."""
+    from m110.ui.theme import icons
+    for b in btns.values():
+        name = b.property("iconName")
+        if name:
+            b.setIcon(icons.icon(name, "text_secondary", selected_role="text_primary"))
+
+
+def make_search_field(placeholder: str = "Search"):
+    """A real search field: leading magnifier, clear button, `search` role so the
+    shell's Edit › Find (⌘F) can focus it."""
+    from PySide6.QtWidgets import QLineEdit
+    from m110.ui.theme import icons
+    f = QLineEdit()
+    f.setObjectName("searchField")
+    f.setPlaceholderText(placeholder)
+    f.setClearButtonEnabled(True)
+    f.setAccessibleName(placeholder)
+    f.addAction(icons.icon("search", "text_secondary"),
+                QLineEdit.ActionPosition.LeadingPosition)
+    f.setMinimumWidth(160)
+    f.setMaximumWidth(240)
+    return f
+
+
+def header_group(widgets, parent=None) -> QWidget:
+    """Pack a page's toolbar controls into one row the shell's header bar can adopt.
+    Created hidden under the page, so a standalone page keeps ownership."""
+    w = QWidget(parent)
+    w.setObjectName("headerControls")
+    row = QHBoxLayout(w)
+    row.setContentsMargins(0, 0, 0, 0)
+    from m110.ui.theme.tokens import SPACE
+    row.setSpacing(SPACE["sm"])
+    for x in widgets:
+        row.addWidget(x)
+    w.hide()
+    return w
+

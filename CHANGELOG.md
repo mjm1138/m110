@@ -70,6 +70,53 @@ changes a **user** would notice, per release.
   in its name, plus the nearest one to where the telescope pointed.
 
 ### Changed
+- **A new look, first part of the 1.0 redesign.** M110 now looks like a Mac photo
+  app with an astronomer's-notebook feel, not a developer tool:
+  - **Warm colors.** Dark mode is warm graphite with clearer steps between panels and
+    far fewer boxes drawn around things. Light mode is warm paper. Photos sit on a
+    dark well in dark mode and on a medium gray in light mode, never on white. The
+    accent is brass, and text on it is easy to read. Selected rows no longer
+    fail contrast checks.
+  - **Status names are the same everywhere: Deep · 62% · Initial**, in sage, slate
+    and terracotta. "In progress" no longer looks like a selection. Hover a status
+    to see what "Deep" means.
+  - **Type and icons.** Object names, page titles and notes use the Newsreader
+    serif ("M81 *Bode's Galaxy*"). Section labels are small capitals, and number
+    columns line up. Icons are drawn from one set (Lucide), in the sidebar, the
+    toolbar and the image viewer, where they replace "⤓ Export…", "ⓘ Info" and
+    "‹ Prev".
+- **A grouped sidebar, and Overview opens first.** The sidebar is grouped: Overview ·
+  *Library:* Deep Sky, Media, Journal · *Workflow:* Import, Processing ·
+  *Observing:* Planning, Devices. Each place has an icon and a live count. Media
+  and the Journal (the old Feed view) are now places of their own instead of tabs
+  inside the Library. You can widen, narrow or hide the sidebar (View › Hide
+  Sidebar, ⌃⌘S). M110 now opens on Overview.
+- **A toolbar instead of stacked controls.** The top of the window names the place
+  you're in ("Deep Sky · 65 objects · 34 deep · 316.8 h") and holds that place's
+  view switcher, catalog picker and search field. On a Mac the sidebar now runs
+  the full height of the window, under the window buttons. Drag the top bar to
+  move the window; double-click it to zoom.
+- **Mac-style menus.** The menu bar is now File · Edit · View · Object · Library ·
+  Window · Help:
+  - **Edit** has **Undo / Redo**. You can undo Remove from Library and pin or
+    deprioritize changes, so Remove from Library no longer asks "are you sure?".
+    Edit also has Copy, Select All and **Find (⌘F)**, which jumps to the search field.
+  - **Object** has every action for the selected object: Set Goal…, Pin as
+    Priority, Process in Siril, Send to AstroWizard…, Export for Sharing… (⇧⌘E),
+    Reveal Working Folder (⇧⌘R), Remove from Library (⌘⌫) and more. Before,
+    most of these were only in right-click menus or detail-pane buttons.
+  - **View** switches views (as List / Grid / Map) and can hide the sidebar or
+    the inspector. **Window** has Minimize (⌘M), Zoom and a list of open windows.
+  - **Back Up… and Restore…** moved to File. The Tools menu is gone: *Prepare
+    working folders* is now **Library › Rebuild Working Folders**, and *Clean up
+    imported sidecars* is in the Library menu too. **Settings…** (⌘,) and **Check
+    for Updates…** are in the M110 menu on a Mac.
+- **Compact tables.** Rows are shorter and have no cell grid, so you see more of
+  each table at once. The duplicate title at the top of each page is gone; the
+  toolbar names the page.
+- **A quieter status bar.** It only shows sync, backup and import progress. The data
+  folder path no longer sits there all the time; you can find it in About and in
+  Settings.
 - **`seestar-stacks` is now `device-stacks`.** Each target's folder of on-telescope
   stacks (`Images/<target>/seestar-stacks/`) holds Dwarf 3 and Draco stacks too, so
   it now has a name that fits every telescope. M110 renames it for you the first

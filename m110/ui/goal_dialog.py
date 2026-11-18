@@ -23,7 +23,7 @@ class GoalDialog(QDialog):
         lay = QVBoxLayout(self)
         intro = QLabel(
             f"How many minutes of captured integration {object_label} needs on the "
-            f"<b>{model_label}</b>. Its status turns Deep Stack when it gets there, "
+            f"<b>{model_label}</b>. Its status turns Deep when it gets there, "
             "and Planning stops pushing it for this telescope.")
         intro.setWordWrap(True)
         lay.addWidget(intro)

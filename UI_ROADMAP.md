@@ -300,13 +300,18 @@ aesthetic critiques, measured on cocoa renders) and the identity mocks in
 | Density | **Compact** rows (~24–28 px, vs ~45 today) with no toggle. |
 | Delivery | **Phased betas**, below. |
 
-#### Phase 7 — Foundation  *(first beta)*
-- Re-cut `tokens.py`: warm dark, warm-paper light, night-vision red; an image-well role; AA on-accent text; new status hues.
-- Bundle Newsreader and Lucide (`NOTICE`, PyInstaller specs: **validate against a real frozen build**); type scale; tabular numerals.
-- Menus: Edit/Window/Object/View; File takes Back Up/Restore; drop Tools; Undo stack.
-- Unified toolbar with search (⌘F); status bar transient-only.
-- Grouped sidebar (icons, counts, collapsible); Media/Journal promoted; Overview lands.
-- Compact density; one page-header rule; status names everywhere.
+#### Phase 7 — Foundation  *(first beta)* — ✅ landed 2026-11-17 (`claude/ui-foundation-a5685c`)
+- ✅ Re-cut `tokens.py`: warm dark, warm-paper light, night-vision red; an image-well role; AA on-accent text; new status hues. `tests/test_theme_contrast.py` checks AA + the ladder numerically for all three palettes. *Change from the plan, at the user's review:* the **light** theme's well is a medium warm gray (`#5c5852`, L\* 38 — the lightest that keeps light captions AA), not near-black, which read as a hole in the paper.
+- ✅ Bundle Newsreader and Lucide (`NOTICE`; package-data globs, no spec change needed — **validated in a real PyInstaller build**: fonts + SVGs collected and rendering in the frozen app); type scale; tabular numerals.
+- ✅ Menus: Edit/Window/Object/View; File takes Back Up/Restore; drop Tools; Undo stack.
+- ✅ Toolbar with search (⌘F) — as a header bar in an expanded title-bar band, not `QToolBar` (see the resolved decision below); status bar transient-only.
+- ✅ Grouped sidebar (icons, counts, collapsible); Media/Journal promoted; Overview lands.
+- ✅ Compact density; one page-header rule; status names everywhere.
+
+Left for Phase 8 (noticed while doing 7): the traffic lights sit at the title bar's
+own height, ~10 px above the header bar's centre line (moving them needs AppKit, not
+Qt); table number columns are right-aligned but their headers aren't yet; the Overview
+can briefly show the old tables under a modal that opens while a sync rebuilds it.
 
 #### Phase 8 — Pages  *(follow-up betas, before 1.0)*
 - Overview catalog board.
@@ -332,8 +337,16 @@ aesthetic critiques, measured on cocoa renders) and the identity mocks in
   The Phase 4 sepia read poorly because it was desaturated, so tune for saturation and AA.
 - ~~**Bundled mono typeface**~~ — JetBrains Mono shipped (Phase 0).
 - ~~**Density default**~~ — *resolved 2026-11-17:* compact, no toggle.
-- **Unified toolbar fidelity in Qt:** how close `setUnifiedTitleAndToolBarOnMac` +
-  `QToolBar` gets to a native toolbar (title/subtitle, search field) — prototype first.
-- **Undo scope:** which actions join the Undo stack beyond Remove from Library and pins.
+- ~~**Unified toolbar fidelity in Qt**~~ — *resolved 2026-11-17 by prototype:*
+  `setUnifiedTitleAndToolBarOnMac` + `QToolBar` in Qt 6 draws the toolbar *below* a
+  separate native title strip (light when the app is dark), and every embedded
+  widget paints its own background — two bars, not one. Chosen instead:
+  `Qt.ExpandedClientAreaHint` (+ `NoTitleBarBackgroundHint`, Qt ≥ 6.9, macOS only)
+  with a full-height sidebar under the traffic lights and our own header bar in the
+  title row (`m110/ui/toolbar.py`), as in Finder/Photos. Off macOS the platform title
+  bar stays and the header bar is the first row.
+- ~~**Undo scope**~~ — *resolved for Phase 7:* Remove from Library and pin/deprioritize
+  overrides (every route). Candidates for later: Include in Publishing, Set as Hero,
+  Mark as Finished/Working, integration goals.
 - **Qt floor:** confirm `QStyleHints.colorScheme` behavior on the PySide6 6.6 baseline
   (and whether to require 6.8 for `setColorScheme` to *force* a theme cleanly).

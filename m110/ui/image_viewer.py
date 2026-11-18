@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from m110.ui import theme
+from m110.ui.theme import icons
 
 
 class ScalableImage(QLabel):
@@ -48,6 +49,7 @@ class ScalableImage(QLabel):
     def __init__(self, pixmap: QPixmap, max_height: int | None = None,
                  fit: str = "width", parent=None):
         super().__init__(parent)
+        self.setProperty("well", True)           # images sit on the dark well
         self._src = pixmap
         self._max_h = max_height
         self._fit = fit
@@ -115,6 +117,8 @@ class ZoomableImage(QScrollArea):
         self._zoom: float | None = None   # None = Fit
         self._label = QLabel()
         self._label.setAlignment(Qt.AlignCenter)
+        for w in (self, self._label):            # the viewer is all well
+            w.setProperty("well", True)
         self.setWidget(self._label)
         self.setWidgetResizable(False)
         self.setAlignment(Qt.AlignCenter)
@@ -253,25 +257,30 @@ class ImageViewer(QDialog):
 
         self._info_btn = None
         if any(it["meta"] for it in self._items):
-            self._info_btn = QPushButton("ⓘ Info")
+            self._info_btn = QPushButton("Info")
+            self._info_btn.setIcon(icons.icon("info"))
             self._info_btn.setToolTip("Toggle image details (I)")
             self._info_btn.setCheckable(True)
             self._info_btn.toggled.connect(lambda _checked: self._refresh_info_panel())
             zoom_row.addWidget(self._info_btn)
 
-        self._export_btn = QPushButton("⤓ Export…")
+        self._export_btn = QPushButton("Export…")
+        self._export_btn.setIcon(icons.icon("image-down"))
         self._export_btn.setToolTip("Export this image sized for web sharing")
         self._export_btn.clicked.connect(self._export_current)
         zoom_row.addWidget(self._export_btn)
         lay.addLayout(zoom_row)
 
         nav_row = QHBoxLayout()
-        self._prev = QPushButton("‹ Prev")
+        self._prev = QPushButton("Previous")
+        self._prev.setIcon(icons.icon("chevron-left"))
         self._prev.clicked.connect(self.prev)
         self._caption = QLabel()
         self._caption.setAlignment(Qt.AlignCenter)
         self._caption.setProperty("muted", True)
-        self._next = QPushButton("Next ›")
+        self._next = QPushButton("Next")
+        self._next.setIcon(icons.icon("chevron-right"))
+        self._next.setLayoutDirection(Qt.RightToLeft)      # chevron after the label
         self._next.clicked.connect(self.next)
         nav_row.addWidget(self._prev)
         nav_row.addWidget(self._caption, 1)

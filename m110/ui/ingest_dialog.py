@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from m110 import catalog, config, ingest
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
+from m110.ui.widgets import compact_table
 
 KIND_LABEL = {
     "light": "lights", "stack": "device stack", "media": "media",
@@ -149,7 +150,7 @@ class IngestDialog(QDialog):
         lay.addWidget(self._path_lbl)
 
         # One row per object/source folder, each selectable via a checkbox.
-        self.table = QTableWidget(0, 7)
+        self.table = compact_table(QTableWidget(0, 7))
         self.table.setHorizontalHeaderLabels(
             ["", "Object", "Kind", "Files", "Size", "Pointing", "→ Destination"])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)

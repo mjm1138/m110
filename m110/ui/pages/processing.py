@@ -15,7 +15,7 @@ from m110 import derived
 from m110.ui.widgets import (
     make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails,
     ROW_THUMB_SIZE, fit_table_height, target_working_dirs, add_siril_actions,
-    launch_siril,
+    launch_siril, section_label,
     connect_context_menu,
 )
 
@@ -38,6 +38,7 @@ _DEFAULT_SORT = (_COLS.index("+ new"), Qt.DescendingOrder)
 
 class ProcessingPage(QScrollArea):
     open_object = Signal(str)
+    subtitle_changed = Signal(str)     # the queue tally (header-bar subtitle)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -82,6 +83,9 @@ class ProcessingPage(QScrollArea):
                 launch_siril(self, acts[chosen])
         connect_context_menu(table, show)
 
+    def subtitle(self) -> str:
+        return getattr(self, "_subtitle", "")
+
     def reload(self):
         self._clear()
         proc = derived.load_processing()
@@ -89,15 +93,15 @@ class ProcessingPage(QScrollArea):
         queue = proc.get("queue", [])
         self._thumbs.reset()
 
-        title = QLabel("<h2>Processing Queue</h2>")
-        title.setTextFormat(Qt.RichText)
-        self._lay.addWidget(title)
+        # The place's name is the header bar's title (one page-header rule), and
+        # the queue tally is its subtitle.
         n_ready = sum(1 for f in queue if f.get("ready_for_import"))
-        self._lay.addWidget(QLabel(
+        self._subtitle = (
             (f"{n_ready} ready to import · " if n_ready else "")
             + f"{counts.get('out_of_date', 0)} out of date · "
             f"{counts.get('not_processed', 0)} not processed"
-            + (f" · {counts.get('dismissed')} dismissed" if counts.get("dismissed") else "")))
+            + (f" · {counts.get('dismissed')} dismissed" if counts.get("dismissed") else ""))
+        self.subtitle_changed.emit(self._subtitle)
 
         # "Ready to import" (finished Siril output waiting) takes precedence over the
         # status groups, so an object with output to pull in shows once, at the top.
@@ -111,9 +115,7 @@ class ProcessingPage(QScrollArea):
         for key, label, rows in groups:
             if not rows:
                 continue
-            h = QLabel(f"<h3>{label}</h3>")
-            h.setTextFormat(Qt.RichText)
-            self._lay.addWidget(h)
+            self._lay.addWidget(section_label(label))
             tbl = make_table(_COLS, stretch_last=True)
             tbl.setSortingEnabled(False)   # populate in queue order first
             tbl.setIconSize(QSize(ROW_THUMB_SIZE, ROW_THUMB_SIZE))

@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QDialog, QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QDialog, QMessageBox, QWidget  # noqa: E402
 
 from m110 import config  # noqa: E402
 from m110.ui.image_grid import KEY_ROLE, MUTED_ROLE  # noqa: E402
@@ -74,7 +74,7 @@ def test_goals_page_catalog_table_marks_captured_and_deep(tmp_path, monkeypatch,
         row = None
         for tbl in page._content.findChildren(QTableWidget):
             hdr = [tbl.horizontalHeaderItem(c).text() for c in range(tbl.columnCount())]
-            if hdr[:4] != ["Object", "Name", "Captured", "Deep stack"]:
+            if hdr[:4] != ["Object", "Name", "Captured", "Deep"]:
                 continue
             for r in range(tbl.rowCount()):
                 it = tbl.item(r, 0)
@@ -151,8 +151,8 @@ def test_catalog_parity_columns_search_and_stat(tmp_path, monkeypatch, qapp):
         headers = [page.table.horizontalHeaderItem(c).text()
                    for c in range(page.table.columnCount())]
         assert "Size" in headers and "Filter" in headers
-        # stat row reflects captured/total
-        assert "captured" in page._stat.text() and "total" in page._stat.text()
+        # the stat line (the toolbar subtitle) reflects objects/captured
+        assert "captured" in page.subtitle() and "object" in page.subtitle()
         # search hides non-matching rows
         page._search.setText("zzz-nomatch")
         assert all(page.table.isRowHidden(r) for r in range(page.table.rowCount()))
@@ -177,7 +177,7 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
         labels = " | ".join(l.text() for l in d._content.findChildren(QLabel))
         assert "Processing" in labels      # per-object processing section
         assert "Sessions" in labels        # per-object sessions section
-        assert "Object Notes" in labels    # per-object notes section (the journal body)
+        assert "Notes" in labels           # per-object notes section (the journal body)
         assert "Object details" in labels  # metadata block
         assert slug in labels              # metadata shows the slug
         # comprehensive details incl. RA/Dec (decimal + sexagesimal) when coords known
@@ -841,24 +841,20 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
     w._ready = False    # neuter the deferred launch-refresh worker (else it can run
                         # after monkeypatch unwinds → writes the LIVE store)
     try:
-        # Library menu = operations on the collection itself. (Back up / Restore /
-        # Prepare / Preferences moved to Tools; Import / Publish to File.)
+        # Library menu = operations on the collection itself. Back Up / Restore /
+        # Settings moved to File (the Tools menu is gone — 1.0 redesign).
         labels = [a.text() for a in w.lib_menu.actions()]
         assert "Refresh" in labels
-        assert any("Add object" in t for t in labels)
-        assert any("Fill missing metadata" in t for t in labels)
-        assert any("Enrich online" in t for t in labels)
-
-        tools = [a.text() for a in w.tools_menu.actions()]
-        assert any("Prepare working folders" in t for t in tools)
-        assert any("Back up" in t for t in tools)
-        assert any("Restore" in t for t in tools)
-        assert any("Preferences" in t for t in tools)
+        assert "Add Object…" in labels
+        assert "Fill All Missing Metadata…" in labels
+        assert "Enrich All Online…" in labels
+        assert "Rebuild Working Folders" in labels
+        assert "Clean Up Imported Sidecars…" in labels
 
         files = [a.text() for a in w.file_menu.actions()]
-        assert any("Import" in t for t in files)
-        assert any("Publish" in t for t in files)
-        assert any("Exit" in t for t in files)
+        for label in ("Import…", "Publish…", "Back Up…", "Restore…", "Settings…"):
+            assert label in files
+        assert "Quit M110" in files
     finally:
         w.close()
         qapp.processEvents()
@@ -1476,7 +1472,7 @@ def test_library_empty_state_hint(tmp_path, monkeypatch, qapp):
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        assert "Library is empty" in page._stat.text()
+        assert page.subtitle().startswith("Empty")
     finally:
         page.deleteLater()
         qapp.processEvents()
@@ -1534,7 +1530,7 @@ def test_overview_category_drops_total_column_keeps_total_row(tmp_path, monkeypa
         def hdr(t):
             return [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())]
         cat = next(t for t in page._content.findChildren(QTableWidget)
-                   if hdr(t) == ["Category", "Captured", "Deep stack", "Captured objects"])
+                   if hdr(t) == ["Category", "Captured", "Deep", "Captured objects"])
         assert "Total" not in hdr(cat)                       # no Total column
         col0 = [cat.item(r, 0).text() for r in range(cat.rowCount()) if cat.item(r, 0)]
         assert "Total" in col0                               # Total row remains
@@ -1567,61 +1563,52 @@ def test_overview_integration_is_per_object(tmp_path, monkeypatch, qapp):
         qapp.processEvents()
 
 
-def test_library_view_segment_stays_put_and_swaps_for_media(tmp_path, monkeypatch, qapp):
-    """Item 17: the List/Grid/Feed/Map segment lives on its own row, so hiding the
-    catalog filter in Feed mode can't relocate it. Media now has its own object
-    views, so entering that scope **swaps** the segment for List/Grid rather than
-    hiding it — same control, same position, different contents."""
+def test_library_header_controls_are_view_switcher_catalog_and_search(
+        tmp_path, monkeypatch, qapp):
+    """1.0 redesign: the Library's controls live in the shell's header bar, not in
+    four stacked rows above the grid. The page builds them as `header_controls`;
+    Feed became the Journal place and Media its own place, so the switcher is
+    List · Grid · Map."""
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
     page = CatalogPage()
     try:
-        assert set(page._view_btns) == {"list", "grid", "feed", "map"}
-        assert set(page._media_view_btns) == {"list", "grid"}
-        page._view_btns["feed"].setChecked(True)
-        assert page._filter_bar.isHidden() and not page._view_seg.isHidden()
-        # The map is an object view: unlike Feed it keeps the search + filter.
+        assert set(page._view_btns) == {"list", "grid", "map"}
+        kids = page.header_controls.findChildren(QWidget)
+        for w in (page._view_seg, page._catalog_combo, page._search):
+            assert w in kids
+        assert page._search.isClearButtonEnabled()
         page._view_btns["map"].setChecked(True)
-        assert not page._filter_bar.isHidden() and not page._search.isHidden()
-
-        page._media_btn.setChecked(True)
-        assert page._view_seg_stack.currentWidget() is page._media_view_seg
-        page._media_view_btns["list"].setChecked(True)
-        assert page.media_view.view_mode() == "list"
-
-        page._deepsky_btn.setChecked(True)
-        assert page._view_seg_stack.currentWidget() is page._view_seg
+        assert page.view_mode() == "map"
+        page.set_view_mode("list")
+        assert page._view_btns["list"].isChecked()
+        page.set_view_mode("feed")                     # no longer a Library mode
+        assert page.view_mode() == "list"
     finally:
         page.deleteLater()
         qapp.processEvents()
 
 
-def test_view_segment_buttons_stay_joined_in_media_scope(tmp_path, monkeypatch, qapp):
-    """The two segments share one slot, and a plain QStackedWidget sizes to its
-    *widest* page — which stretched the 2-button Media segment and let the
-    QBoxLayout spread the surplus between its Fixed-width buttons, drawing
-    "List | Grid" as two detached buttons. `widgets.SegmentStack` sizes to the
-    current page instead. Assert the buttons touch, not the stack's hint: the
-    gap is what the user sees."""
+def test_view_switcher_buttons_stay_joined(tmp_path, monkeypatch, qapp):
+    """A segmented control's buttons must touch — no gaps between segments."""
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
-    page = CatalogPage()
+    from m110.ui.pages.media import MediaPage
+    page, media = CatalogPage(), MediaPage()
     try:
-        page.resize(1200, 700)
-        page.show()
-        for scope, btns in ((page._media_btn, page._media_view_btns),
-                            (page._deepsky_btn, page._view_btns)):
-            scope.setChecked(True)
+        for host, btns in ((page, page._view_btns), (media, media._view_btns)):
+            host.resize(1000, 600)
+            host.show()
+            host.header_controls.show()
+            host.header_controls.adjustSize()
             qapp.processEvents()
-            rects = [b.geometry() for b in btns.values()]
-            rects.sort(key=lambda r: r.x())
+            rects = sorted((b.geometry() for b in btns.values()), key=lambda r: r.x())
             for a, b in zip(rects, rects[1:]):
-                assert a.right() + 1 == b.x(), (
-                    f"segment buttons detached: {a} then {b}")
+                assert a.right() + 1 == b.x(), f"segment buttons detached: {a} then {b}"
     finally:
-        page.deleteLater()
+        page.deleteLater(); media.deleteLater()
         qapp.processEvents()
 
 
