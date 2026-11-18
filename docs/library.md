@@ -8,8 +8,8 @@ each object's images.
 
 ## Four views of your collection
 
-A segmented control at the top of the Library switches how you see your objects — your
-choice is remembered:
+The view switcher in the top bar (or **View › as List / as Grid / as Map**) switches how
+you see your objects — your choice is remembered:
 
 - **Grid** (the default home view) — a wall of hero thumbnails, one tile per object,
   each with its designations, status, and integration time. Drag the zoom slider to
@@ -17,20 +17,21 @@ choice is remembered:
 - **List** — a sortable table (Object, Name, Type, Season, Mag, Size, Filter, Status,
   Integration, Sessions). Click a header to sort; the Object column sorts *naturally*
   (M1, M2, … M10, M100 — not alphabetically) and by catalog (Messier before NGC).
-- **Feed** — a reverse-chronological stream of object cards (hero + notes), a photo-blog
-  of your imaging that re-orders as you reprocess.
 - **Map** — your collection plotted on a star chart, so you can see where in the sky
   you've been working and what's still empty. See [The sky map](#the-sky-map) below.
 
 The **catalog filter** lists the catalogs you've set as **goals** (turn them on under
 Overview → Manage goals); catalogs you aren't working aren't offered.
 
-A separate **Deep sky · Media** toggle switches the whole page between your catalog
-objects and your non-catalog **Media** (lunar, planetary, scenery, startrails — photos
-and videos). A search box and a **catalog filter** (All / Messier / Caldwell / …) narrow
-the deep-sky views, and a stat row shows captured / total counts and integration time.
+The reverse-chronological stream of object cards (hero + notes) that used to be the
+Feed view is now the **Journal**, its own place in the sidebar.
 
-Media has its own **List** and **Grid** views, in the same place as the deep-sky ones,
+Your non-catalog **Media** (lunar, planetary, scenery, startrails — photos and videos)
+is its own place in the sidebar too. A search field and a **catalog filter**
+(All / Messier / Caldwell / …) in the top bar narrow the Deep Sky views, and the bar's
+summary line shows object, captured and deep counts and integration time.
+
+Media has its own **List** and **Grid** views, in the same place in the top bar,
 plus a category filter, a **Photos · Videos** switch and a search box. Videos show the
 preview frame your telescope saved next to the clip, marked with a small ▶; opening one
 hands it to your usual video player (M110 doesn't play video itself). Selecting anything
@@ -88,9 +89,9 @@ install; nothing else in the Library is affected.
 Every object has an **integration goal** for each telescope you shoot it with: the
 minutes of captured light it needs before you'd call it done. Its status follows it:
 
-- **Initial** (amber) — under a quarter of the way there;
-- **62% of goal** (blue) — on its way;
-- **Deep Stack** (green) — goal reached.
+- **Initial** (terracotta) — under a quarter of the way there;
+- **62%** (slate blue) — on its way;
+- **Deep** (sage green) — goal reached.
 
 Unless you set one, the goal is a **default** for the object's type (a faint nebula
 needs far more than a cluster), scaled by the telescope's speed: a faster f-ratio

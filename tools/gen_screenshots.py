@@ -113,8 +113,8 @@ def build(root: Path, out_dir: Path):
     _pump(app, 1.0)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1) Library — the thumbnail grid (home view)
-    win.nav.setCurrentRow(win._catalog_index)
+    # 1) Deep Sky — the thumbnail grid
+    win.go_to(win._catalog_index)
     _shot(win, app, out_dir / "shot-library.jpg")
 
     # 2) Object detail — a hero-bearing object with the fullest gallery
@@ -134,7 +134,7 @@ def build(root: Path, out_dir: Path):
     # members join the chart in grey, so the shot shows progress *and* the gaps,
     # which is the whole point of the view. Falls back to the unfiltered sky if
     # no goal catalog is on offer (a fresh store).
-    win.nav.setCurrentRow(win._catalog_index)
+    win.go_to(win._catalog_index)
     cat = win.catalog
     try:
         goal_idx = next((i for i in range(1, cat._catalog_combo.count())
@@ -163,11 +163,11 @@ def build(root: Path, out_dir: Path):
             pass
 
     # 4) Overview — the dashboard
-    win.nav.setCurrentRow(win._overview_index)
+    win.go_to(win._overview_index)
     _shot(win, app, out_dir / "shot-summary.jpg", settle=2.5)
 
     # 5) Planning — the priority ranking, plus a night plan + timeline if it computes
-    win.nav.setCurrentRow(win._planning_index)
+    win.go_to(win._planning_index)
     _pump(app, 1.0)
     try:
         win.planning._render_ranking()          # from the cached prioritized.json (no write)

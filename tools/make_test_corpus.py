@@ -606,11 +606,11 @@ def build(out: Path):
 
     # Integration goals (#184), sized to the corpus's few minutes so a tester sees
     # every state on one object: M51 is "in progress" on the S50 (11 of 18 min) and
-    # Deep Stack on the S30 (3 of 2 min) → its Library pill is green (its most
+    # Deep on the S30 (3 of 2 min) → its Library pill is green (its most
     # advanced telescope), and its detail pane shows one row per telescope.
     from m110 import integration_goals
     integration_goals.set_goal("m51", "seestar_s50", 18, "corpus: shows the blue state")
-    integration_goals.set_goal("m51", "seestar_s30", 2, "corpus: shows Deep Stack")
+    integration_goals.set_goal("m51", "seestar_s30", 2, "corpus: shows Deep")
     # …and a goal list scoped to the S30: only the S30's captures count toward it
     # (M13 + M51 captured; M42 is Dwarf-only, so it's unticked here).
     travel = goals.create_custom_goal("Travel scope", ["m13", "m51", "m42"])

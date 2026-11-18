@@ -267,7 +267,7 @@ class OverviewPage(QScrollArea):
         body.addWidget(ls)
 
     def _fill_priority(self, body):
-        cap = QLabel("Targets you've pinned (right-click an object → Pin as priority). "
+        cap = QLabel("Targets you've pinned (Object › Pin as Priority). "
                      "For an automatic ranking of what to shoot next, see the Planning page.")
         cap.setProperty("caption", True)
         cap.setWordWrap(True)

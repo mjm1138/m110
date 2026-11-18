@@ -16,7 +16,7 @@ from m110.ui import theme
 class PreferencesDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Preferences")
+        self.setWindowTitle("Settings")      # the menu item is "Settings…" (macOS 13+)
         self.resize(640, 620)
 
         from m110.ui.theme import tokens
