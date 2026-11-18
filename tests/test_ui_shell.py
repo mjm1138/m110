@@ -437,20 +437,33 @@ def test_logo_click_opens_about_out_of_the_mouse_handler(tmp_path, monkeypatch, 
         win.deleteLater(); qapp.processEvents()
 
 
-def test_status_bar_shows_the_data_root_without_a_capture_count(tmp_path,
-                                                                monkeypatch, qapp):
-    """The captured/total ratio duplicated the Library's own stat row."""
+def test_status_bar_is_transient_only(tmp_path, monkeypatch, qapp):
+    """1.0: no permanent data-root path (it leaked into every screenshot); the bar
+    speaks only while an operation runs or just finished."""
     seed_root(tmp_path, monkeypatch)
     win = _window(qapp)
     try:
         win._update_status()
         msg = win.statusBar().currentMessage()
-        assert str(config.DATA_ROOT) in msg
-        assert "captured" not in msg
-        win._update_status("  ·  Syncing…")     # extras still append
-        assert win.statusBar().currentMessage().endswith("Syncing…")
+        assert str(config.DATA_ROOT) not in msg and "captured" not in msg
+        win._update_status("  ·  Syncing…")
+        assert win.statusBar().currentMessage() == "Syncing…"
+        win._update_status()                            # done → cleared
+        assert win.statusBar().currentMessage() == ""
     finally:
         win.deleteLater(); qapp.processEvents()
+
+
+def test_data_folder_is_shown_in_about(tmp_path, monkeypatch, qapp):
+    from PySide6.QtWidgets import QLabel
+    seed_root(tmp_path, monkeypatch)
+    from m110.ui.about_dialog import AboutDialog
+    dlg = AboutDialog()
+    try:
+        texts = " ".join(l.text() for l in dlg.findChildren(QLabel))
+        assert config.DATA_ROOT.name in texts and "Data folder" in texts
+    finally:
+        dlg.deleteLater(); qapp.processEvents()
 
 
 # ---- Edit › Undo, Object menu, Find, Window ----

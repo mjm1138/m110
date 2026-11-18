@@ -11,11 +11,14 @@ worker thread and says whether one is waiting.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
 )
 
+from m110 import config
 from m110.ui import theme
 
 
@@ -71,6 +74,19 @@ class AboutDialog(QDialog):
         version.setFont(theme.mono_font(theme.tokens.FONT_SIZE["small"]))
         version.setStyleSheet(f"color:{t.text_secondary}; margin-top:{s['md']}px;")
         lay.addWidget(version)
+
+        # Where the library lives — moved here (and to Settings) from the status
+        # bar, where it sat permanently and leaked into every screenshot.
+        root = str(config.DATA_ROOT)
+        home = str(Path.home())
+        shown = "~" + root[len(home):] if root.startswith(home + "/") else root
+        data = QLabel(f"Data folder: {shown}")
+        data.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        data.setWordWrap(True)
+        data.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        data.setToolTip(root)
+        data.setStyleSheet(f"color:{t.text_secondary};")
+        lay.addWidget(data)
 
         # Filled in by the update check fired from showEvent — empty until then, so a
         # dialog that is built but never shown carries no status text.

@@ -838,12 +838,26 @@ class MainWindow(QMainWindow):
             config.save_setting(SIDEBAR_WIDTH_KEY, self.splitter.sizes()[0])
 
     # ---- status ----
+    STATUS_LINGER_MS = 8000     # how long a finished operation's result stays up
+
     def _update_status(self, extra: str = ""):
-        # Where the data lives, plus whatever a running operation wants to say. The
-        # captured/total count used to lead this line; it duplicated the Library's own
-        # stat row and read as noise in persistent chrome.
-        note = "" if derived.derived_available() else " · derived rollups not found"
-        self.statusBar().showMessage(f"{config.DATA_ROOT}{note}{extra}")
+        """The status bar is **transient only** (1.0 redesign): empty unless a sync,
+        backup, import or lookup has something to say. The data-root path that used
+        to sit here permanently is in Settings and About.
+
+        `extra` is what's running or just finished (callers prefix it with " · ",
+        from when it trailed the path). A message ending in "…" is in progress and
+        stays until replaced; a result lingers briefly, then clears."""
+        # (The old "derived rollups not found" note is gone too: launch syncs, and
+        # the sync rebuilds them, so it only ever flashed on a fresh store.)
+        msg = "  ·  ".join(p.strip() for p in extra.split("·") if p.strip())
+        bar = self.statusBar()
+        if not msg:
+            bar.clearMessage()
+        elif msg.endswith("…"):
+            bar.showMessage(msg)
+        else:
+            bar.showMessage(msg, self.STATUS_LINGER_MS)
 
     # ---- import / prefs ----
     def _open_ingest(self):

@@ -501,7 +501,8 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 
 /* ── misc ── */
-QStatusBar {{ color: {t.text_secondary}; }}
+QStatusBar {{ color: {t.text_secondary}; font-size: {FONT_SIZE['caption']}px; }}
+QStatusBar::item {{ border: none; }}
 QProgressBar {{
     background-color: {t.control};
     border: none; border-radius: {r['sm']}px; text-align: center;
