@@ -13,12 +13,10 @@ Rules (`match_masters`):
 
 * **dark** — same exposure, gain and binning; then the nearest sensor
   temperature (ties → the master averaged from more frames). A dark at the wrong
-  exposure or gain is worse than none, so those never match. A master the
-  telescope's own app made (``MasterInfo.app_made``: the Seestar's
-  ``darklibrary/`` masters, told by header — CREATOR) is never offered to lights
-  that other capture software saved: it is a different product (no colour
-  pattern, the app's own pedestal), kept for the subtraction the app does on the
-  device (#206).
+  exposure or gain is worse than none, so those never match; so is one more than
+  `DARK_WARM_LIMIT_C` warmer than the lights. Which program made a dark does not
+  matter: a Seestar app master serves N.I.N.A. lights as well as a N.I.N.A. set
+  at the same temperature (measured, #206).
 * **bias** — same binning; the same gain when any candidate has it, else the sole
   candidate with a note (some devices record a bias gain on a different scale
   from their lights').
@@ -56,19 +54,22 @@ _TIER_OF_KIND = {"dark": "darks", "flat": "flats", "bias": "biases"}
 FILTER_INDEX: dict[str, dict[str, str]] = {}
 
 
+# A dark warmer than the lights over-subtracts their hot pixels, and past about
+# 8 °C warmer it leaves them worse than no dark at all. A cooler dark
+# under-subtracts but still helps: 8 °C cooler still removed about half. Measured
+# on an S50's M74 N.I.N.A. 20 s lights against 14 library darks, 2026-11-19 (#206,
+# DONE.md); the limit keeps a degree of margin below that crossover.
+DARK_WARM_LIMIT_C = 7.0
+
+
+def _too_warm(m: "MasterInfo", temp: float | None) -> bool:
+    return (m.temp_c is not None and temp is not None
+            and m.temp_c - temp > DARK_WARM_LIMIT_C)
+
+
 DARKS_ON_DEVICE_NOTE = ("subs from this telescope are already dark-subtracted on the "
                         "device; its library darks are kept for reference and are "
                         "never applied again")
-
-
-def app_darks_note(what: str, n: int) -> str:
-    """Why raw lights got no dark although the library has some at their settings:
-    every one is the telescope app's own master (#206)."""
-    return (f"the only dark{'s' if n != 1 else ''} for {what} "
-            f"{'are' if n != 1 else 'is'} the telescope app's own "
-            f"master{'s' if n != 1 else ''} ({n}), made for the subtraction the app "
-            "does on the device — not applied to lights another program saved. "
-            "Import raw darks at these settings (e.g. from N.I.N.A.)")
 
 
 @dataclass
@@ -88,10 +89,6 @@ class MasterInfo:
     # For a raw SET candidate (`raw_sets`): every member frame. `path` is then the
     # first member, `temp_c` the median and `ncombine` the member count.
     frames: tuple = ()
-    # Made by a capture path that dark-subtracts on the device — the Seestar app's
-    # own master (CREATOR 'ZWO Seestar …', capture_profiles). Reference data for
-    # that app's subs, never a dark for raw lights (#206).
-    app_made: bool = False
 
     @property
     def is_set(self) -> bool:
@@ -216,8 +213,7 @@ def library(device: str) -> dict[str, list[MasterInfo]]:
                 path=f, tier=tier, exptime=facts["exptime"], gain=facts["gain"],
                 binning=facts["binning"], temp_c=facts["temp_c"],
                 filter=facts["filter"], ncombine=facts["ncombine"],
-                raw=facts["raw"], night=facts["night"] if facts["raw"] else None,
-                app_made=facts["darks_applied"] is True and not facts["raw"]))
+                raw=facts["raw"], night=facts["night"] if facts["raw"] else None))
         if masters:
             out[tier] = masters
     return out
@@ -332,9 +328,9 @@ def match_masters(facts: dict, device: str) -> MatchResult:
     # already subtracted one before saving the subs (devices.darks_applied_on_device)
     at_settings = [m for m in lib.get("darks", [])
                    if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
-    # The app's own masters serve only the app's (already darked) subs, so for raw
-    # lights they are no candidate at all — however near in temperature (#206).
-    darks = [m for m in at_settings if not m.app_made]
+    darks = [m for m in at_settings if not _too_warm(m, temp)]
+    too_warm = sorted((m for m in at_settings if _too_warm(m, temp)),
+                      key=lambda m: m.temp_c)
     # Per frame, by capture path (capture_profiles): the same S50 dark-subtracts
     # through its own app and not under N.I.N.A. Facts without the key (an older
     # caller) fall back to the telescope model.
@@ -348,6 +344,11 @@ def match_masters(facts: dict, device: str) -> MatchResult:
             return (dt, m.is_set, -(m.ncombine or 0), m.path.name)   # tie → a master
         best = min(darks, key=_rank)
         _take(res, "darks", best)
+        if too_warm and (best.temp_c is None
+                         or too_warm[0].temp_c - temp < abs(best.temp_c - temp)):
+            res.notes.append(f"passed over a nearer dark at {too_warm[0].temp_c:g} °C: more "
+                             f"than {DARK_WARM_LIMIT_C:g} °C warmer than the lights "
+                             f"({temp:g} °C) over-subtracts hot pixels")
         if best.temp_c is not None and temp is not None:
             dt = best.temp_c - temp
             if abs(dt) > 5:
@@ -358,8 +359,12 @@ def match_masters(facts: dict, device: str) -> MatchResult:
         elif temp is None:
             res.notes.append("lights carry no sensor temperature; the first matching "
                              "dark was taken")
-    elif at_settings:
-        res.notes.append(app_darks_note(what, len(at_settings)))
+    elif too_warm:
+        res.notes.append(f"no dark linked: every dark for {what} is more than "
+                         f"{DARK_WARM_LIMIT_C:g} °C warmer than the lights (nearest "
+                         f"{too_warm[0].temp_c:g} vs {temp:g} °C), and a dark that warm "
+                         "over-subtracts hot pixels — worse than none. Take darks nearer "
+                         "the lights' temperature")
     elif lib.get("darks"):
         res.notes.append(f"no master dark for {what} "
                          f"({len(lib['darks'])} darks in the library, none at those settings)")

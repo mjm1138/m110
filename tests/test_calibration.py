@@ -108,13 +108,34 @@ def test_dark_exact_settings_then_nearest_temperature(tmp_path, monkeypatch):
 
 def test_a_wide_temperature_gap_is_noted_not_hidden(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
-    _dark("DWARF 3", "d26.fits", 26, 1)
+    _dark("DWARF 3", "d6.fits", 6, 1)
     res = calibration.match_masters(FACTS, "DWARF 3")
-    assert res.darks.name == "d26.fits"
-    assert any("13 °C warmer" in n for n in res.notes)
+    assert res.darks.name == "d6.fits"
+    assert any("7 °C cooler" in n for n in res.notes)
     res = calibration.match_masters(dict(FACTS, temp_c=None), "DWARF 3")
-    assert res.darks.name == "d26.fits"
+    assert res.darks.name == "d6.fits"
     assert any("no sensor temperature" in n for n in res.notes)
+
+
+def test_a_dark_far_warmer_than_the_lights_is_never_linked(tmp_path, monkeypatch):
+    """Measured on M74 (#206): a dark ~8 °C warmer than the lights over-subtracts
+    their hot pixels worse than no dark; a cooler one still helps."""
+    seed_root(tmp_path, monkeypatch)
+    _dark("DWARF 3", "d26.fits", 26, 1)                    # 13 °C warmer
+    res = calibration.match_masters(FACTS, "DWARF 3")
+    assert res.darks is None and "darks" not in res.chosen
+    assert any("no dark linked" in n and "more than 7 °C warmer" in n
+               and "nearest 26 vs 13 °C" in n for n in res.notes)
+    # exactly at the limit: still linked
+    _dark("DWARF 3", "d20.fits", 20, 1)
+    assert calibration.match_masters(FACTS, "DWARF 3").darks.name == "d20.fits"
+    # a nearer warm dark loses to a farther cool one, and the note says so
+    _dark("DWARF 3", "d3.fits", 3, 1)                      # 9 °C cooler
+    res = calibration.match_masters(dict(FACTS, temp_c=12.0), "DWARF 3")
+    assert res.darks.name == "d3.fits"
+    assert any("passed over a nearer dark at 20 °C" in n for n in res.notes)
+    # no temperature on the lights: the limit can't be judged, nothing is refused
+    assert calibration.match_masters(dict(FACTS, temp_c=None), "DWARF 3").darks
 
 
 # ── bias + flat matching ──────────────────────────────────────────────────────
@@ -312,58 +333,29 @@ def test_darks_applied_is_per_frame_not_per_model(tmp_path, monkeypatch):
         {k: v for k, v in NINA.items() if k != "darks_applied"}, "S50_x").darks is None
 
 
-# ── the telescope app's own masters vs raw lights (#206) ─────────────────────
-
-def _app_master(dev, temp, *, exptime=30.0, name=None, **cards):
+def _app_master(dev, temp, *, exptime=30.0):
     """A Seestar-app master as the device writes it: CREATOR + STACKCNT, no
     IMAGETYP, no BAYERPAT, no TELESCOP."""
-    cards = {"CREATOR": "ZWO Seestar S50", **cards}
     return _master(config.calibration_dir(dev, "darks") /
-                   (name or f"MasterDark_5_{exptime:g}s_{temp:g}C_20261023-211609.fit"),
-                   None, EXPTIME=exptime, GAIN=80, XBINNING=1, CCD_TEMP=temp,
-                   STACKCNT=5, FILTER="dark", **cards)
+                   f"MasterDark_5_{exptime:g}s_{temp:g}C_20261023-211609.fit", None,
+                   EXPTIME=exptime, GAIN=80, XBINNING=1, CCD_TEMP=temp, STACKCNT=5,
+                   FILTER="dark", CREATOR="ZWO Seestar S50")
 
 
-def test_the_apps_own_master_is_told_by_header_not_by_name(tmp_path, monkeypatch):
-    seed_root(tmp_path, monkeypatch)
-    _app_master("S50_x", 23.1)
-    _app_master("S50_x", 13.9, name="renamed.fit")                  # still the app's
-    # named like the app's, but no CREATOR: not the app's
-    _app_master("S50_x", 10.5, name="MasterDark_5_30s_10.5C_20261023-211609.fit",
-                CREATOR="")
-    _raw_dark("S50_x", "r.fits", 5.7)
-    lib = {m.path.name: m for m in calibration.library("S50_x")["darks"]}
-    assert lib["MasterDark_5_30s_23.1C_20261023-211609.fit"].app_made
-    assert lib["renamed.fit"].app_made
-    assert not lib["MasterDark_5_30s_10.5C_20261023-211609.fit"].app_made
-    assert not lib["r.fits"].app_made
-
-
-def test_an_app_master_nearer_in_temperature_never_beats_a_raw_set(tmp_path, monkeypatch):
-    """M74, 2026-11-10: a 13.9 °C app master beside 5.3 °C N.I.N.A. darks went to
-    13.4 °C N.I.N.A. lights. The raw set is taken, however far, and nothing about
-    the skipped app master is said (the dark that was chosen is noted as usual)."""
+def test_an_app_master_competes_with_nina_darks_on_temperature_alone(tmp_path, monkeypatch):
+    """#206, measured on M74's N.I.N.A. lights: at the same temperature an app master
+    removes hot pixels as well as a N.I.N.A. set (36 % vs 34 % left) at the same
+    pedestal, so which program made a dark is no criterion — the nearer one wins."""
     seed_root(tmp_path, monkeypatch)
     raws = [_raw_dark("S50_x", f"a{i}.fits", 5.7) for i in range(3)]
-    _app_master("S50_x", 11.0)                    # the lights' own temperature
-    res = calibration.match_masters(NINA, "S50_x")
+    app = _app_master("S50_x", 10.5)
+    res = calibration.match_masters(NINA, "S50_x")               # lights at 11 °C
+    assert res.darks == app and "darks" not in res.sets
+    res = calibration.match_masters(dict(NINA, temp_c=6.0), "S50_x")
     assert res.sets["darks"] == sorted(raws)
-    assert not res.chosen["darks"].app_made
-    assert not any("app's own" in n for n in res.notes)
-
-
-def test_raw_lights_with_only_an_app_master_get_no_dark_and_say_why(tmp_path, monkeypatch):
-    seed_root(tmp_path, monkeypatch)
-    _app_master("S50_x", 23.1)
-    _app_master("S50_x", 23.1, exptime=20.0)      # another exposure: not counted
-    res = calibration.match_masters(NINA, "S50_x")
-    assert res.darks is None and "darks" not in res.chosen
-    assert calibration.app_darks_note("30 s, gain 80, bin 1", 1) in res.notes
-    assert "the only dark for 30 s, gain 80, bin 1 is the telescope app's own master (1)" \
-        in res.notes[0]
-    # the app's own subs: unchanged — already darked, nothing applied, the usual note
-    app = calibration.match_masters(dict(NINA, darks_applied=True), "S50_x")
-    assert app.darks is None and app.notes[0] == calibration.DARKS_ON_DEVICE_NOTE
+    # the app's own subs: unchanged — already darked, nothing applied
+    own = calibration.match_masters(dict(NINA, darks_applied=True), "S50_x")
+    assert own.darks is None and own.notes[0] == calibration.DARKS_ON_DEVICE_NOTE
 
 
 def test_app_and_nina_subs_in_one_target_are_refused(tmp_path, monkeypatch):

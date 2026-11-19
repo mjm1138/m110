@@ -431,7 +431,7 @@ and the title-bar band only exists on macOS with Qt ≥ 6.9.
       accept **Remember alias?** → the prompt names "NGC 6960 NGC 6992", not `LIGHT`.
       Re-scan → the row now lands on your pick with no prompt.
 - [ ] Import + Refresh → **Devices**: the corpus S50 is still **one** telescope; its
-      Dark library adds a row **"4 raw frames · 2026-06-19 · 9 °C"** beside the app
+      Dark library adds a row **"4 raw frames · 2026-06-19 · 14 °C"** beside the app
       masters, and the heading says app subs are dark-subtracted on the telescope and
       N.I.N.A. frames are not. Sessions for the PINS targets show **no** inferred Dark.
 - [ ] **Mixed target, from the corpus:** after importing the PINS night, M 72 holds
@@ -443,9 +443,7 @@ and the title-bar band only exists on macOS with Qt ≥ 6.9.
 - [ ] Beside them, `siril/.m110_calibration.json` (the masters manifest for
       Stackhammer) lists both folders with `"group": ["IRCUT", "IRCUT_20s"]`: `IRCUT`
       has an empty `calibration` and a note that its subs were dark-subtracted on the
-      telescope; `IRCUT_20s` names a `raw-set` of 4 darks (`IRCUT_20s/darks/…`)
-      at 9 °C — **not** the app's 13.9 °C `MasterDark_…`, though it is nearer the
-      lights' 14 °C: the app's own masters are never a dark for N.I.N.A. lights (#206).
+      telescope; `IRCUT_20s` names a `raw-set` of 4 darks (`IRCUT_20s/darks/…`).
 - [ ] `m110-stack "M 72/IRCUT_20s"` (proposal only): "Stacking IRCUT + IRCUT_20s
       together"; calibration shows two subsets (**dark ✓ (4 raw)** for the N.I.N.A.
       subs, none for the app subs); the solve script starts with `setcompress 0` and

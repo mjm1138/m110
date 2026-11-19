@@ -133,16 +133,12 @@ changes a **user** would notice, per release.
   popped up only after the first one closed, and it was easy to miss.
 
 ### Fixed
-- **N.I.N.A. lights no longer get the Seestar app's own master darks.** When
-  M110 chose a dark for frames captured with N.I.N.A., it could pick one of the
-  master darks the Seestar app keeps for itself, if that master was nearest in
-  temperature. Those masters are made for the subtraction the app does on the
-  telescope and are a different kind of dark (no colour pattern, a different
-  level), so Stackhammer dropped them and stacked with no dark at all. M110 now
-  picks only darks you imported, such as N.I.N.A.'s own. If the app's masters are
-  the only darks at those settings, the job gets no dark and its notes say why.
-  Subs saved by the Seestar app are unchanged: they are dark-subtracted on the
-  telescope and never get a second dark.
+- **A dark much warmer than your lights is no longer used.** M110 matched a dark
+  by nearest temperature, however far off. Measured on real Seestar S50 frames, a
+  dark more than about 8 °C warmer than the lights removes hot pixels so hard that
+  they come out as dark holes, which is worse than no dark at all. M110 now skips
+  any dark more than 7 °C warmer, takes a cooler one if there is one (cooler darks
+  still help), and otherwise links no dark and says why in the job's notes.
 - **Progress windows have room around Cancel.** On a Mac, the progress bar in
   the Import, backup, restore, publish and export progress windows touched the
   Cancel button. There is now a gap between them.

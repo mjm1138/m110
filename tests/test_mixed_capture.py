@@ -143,43 +143,24 @@ def test_prep_writes_the_masters_manifest_stackhammer_reads(tmp_path, monkeypatc
     assert all((base / f).is_file() for f in d["files"])
 
 
-def _app_master(temp, exptime):
-    """The Seestar app's own master dark, as its darklibrary/ writes it (#206)."""
-    path = (config.calibration_dir(S50, "darks")
-            / f"MasterDark_5_{exptime:g}s_{temp:g}C_20261023-211609.fit")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
-    for k, v in {"CREATOR": "ZWO Seestar S50", "STACKCNT": 5, "EXPTIME": exptime,
-                 "GAIN": 80, "XBINNING": 1, "CCD-TEMP": temp, "FILTER": "dark"}.items():
-        h.header[k] = v
-    h.writeto(path)
-    return path
-
-
-def test_the_nina_job_never_gets_the_apps_own_master(tmp_path, monkeypatch):
-    """#206: an app master at the N.I.N.A. lights' own temperature (11 °C) beside a
-    5.7 °C raw N.I.N.A. set. The raw set is linked and named in the manifest; with
-    no raw set, the job gets no dark and its notes say why."""
+def test_the_nina_job_takes_an_app_master_nearer_its_temperature(tmp_path, monkeypatch):
+    """#206: the Seestar app's own master at the N.I.N.A. lights' temperature (11 °C)
+    beats the library's 5.7 °C raw set; the manifest says it is a master."""
     seed_root(tmp_path, monkeypatch)
     _mixed_m74()
-    _app_master(11.0, 30.0)
+    master = config.calibration_dir(S50, "darks") / "MasterDark_5_30s_11C_20261023-211609.fit"
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    for k, v in {"CREATOR": "ZWO Seestar S50", "STACKCNT": 5, "EXPTIME": 30.0,
+                 "GAIN": 80, "XBINNING": 1, "CCD-TEMP": 11.0, "FILTER": "dark"}.items():
+        h.header[k] = v
+    h.writeto(master)
     siril.apply_prep(siril.plan_prep("M74"))
     base = config.siril_dir("M74")
     nina = {j["folder"]: j for j in siril.read_manifest(base)["jobs"]}["IRCUT_30s"]
-    assert nina["calibration"]["darks"]["kind"] == "raw-set"
-    assert sorted(p.name for p in (base / "IRCUT_30s" / "darks").iterdir()) == [
-        f"d{i}.fits" for i in range(4)]
-
-    seed_root(tmp_path / "bare", monkeypatch)
-    _mixed_m74(with_darks=False)
-    _app_master(11.0, 30.0)
-    siril.apply_prep(siril.plan_prep("M74"))
-    base = config.siril_dir("M74")
-    # neither subset gets a dark now, so the filter is not split: one job
-    (job,) = siril.read_manifest(base)["jobs"]
-    assert job["folder"] == "." and job["calibration"] == {}
-    assert not (base / "darks").exists() and not (base / "IRCUT_30s").exists()
-    assert any("is the telescope app's own master (1)" in n for n in job["notes"])
+    d = nina["calibration"]["darks"]
+    assert d["kind"] == "master" and d["temp_c"] == 11.0
+    assert d["library"] == [f"Calibration/{S50}/darks/{master.name}"]
+    assert [p.name for p in (base / "IRCUT_30s" / "darks").iterdir()] == [master.name]
 
 
 def test_an_unsplit_target_gets_a_one_job_manifest(tmp_path, monkeypatch):
