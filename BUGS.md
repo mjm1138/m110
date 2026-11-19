@@ -794,6 +794,18 @@ dark from the 20 matching raw 30 s darks and calibrated with it.
   Needed with it: N.I.N.A.'s Seestar filter `IR` is the app's `IRCUT` (the ZWO Alpaca
   name for the same UV/IR-cut slot). `capture_profiles.filter_name` renames it, so
   the two populations share a job folder instead of splitting by filter.
+- [x] **The Seestar app's own master darks were matched to N.I.N.A. lights** (#206;
+  found 2026-11-10 on M74, done). `match_masters` ranked every dark at the lights'
+  exposure/gain/binning by temperature, so a nearer app `MasterDark_…` beat the raw
+  N.I.N.A. set (M74 `IRCUT_20s`, 13.4 °C lights: the 13.9 °C app master over 5.3 °C
+  and 18.7 °C raw sets). The app master has no `BAYERPAT`, so Stackhammer refused it
+  and stacked with no dark. Now `library()` flags a master whose header reads as the
+  app's (`MasterInfo.app_made` = the capture profile dark-subtracts on the device,
+  i.e. `CREATOR ~ ^ZWO Seestar`), and `match_masters` never offers one to raw lights.
+  If app masters are the only darks at those settings, there is no dark and
+  `app_darks_note` says why. App lights are unchanged (`DARKS_ON_DEVICE_NOTE`).
+  `tests/test_calibration.py`, `tests/test_mixed_capture.py`; the corpus's PINS
+  darks moved to 9 °C so the 13.9 °C app master is the nearer one.
 - [ ] **A mixed-exposure stack is named for one exposure** (found 2026-11-07, not
   fixed). The mixed M74 stack (25 × 20 s app subs + 9 × 30 s NINA subs, 13 min) was
   named `M_74_034x30sec_…`. The integration in the report is right, but the name's

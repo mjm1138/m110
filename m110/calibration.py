@@ -13,7 +13,12 @@ Rules (`match_masters`):
 
 * **dark** — same exposure, gain and binning; then the nearest sensor
   temperature (ties → the master averaged from more frames). A dark at the wrong
-  exposure or gain is worse than none, so those never match.
+  exposure or gain is worse than none, so those never match. A master the
+  telescope's own app made (``MasterInfo.app_made``: the Seestar's
+  ``darklibrary/`` masters, told by header — CREATOR) is never offered to lights
+  that other capture software saved: it is a different product (no colour
+  pattern, the app's own pedestal), kept for the subtraction the app does on the
+  device (#206).
 * **bias** — same binning; the same gain when any candidate has it, else the sole
   candidate with a note (some devices record a bias gain on a different scale
   from their lights').
@@ -56,6 +61,16 @@ DARKS_ON_DEVICE_NOTE = ("subs from this telescope are already dark-subtracted on
                         "never applied again")
 
 
+def app_darks_note(what: str, n: int) -> str:
+    """Why raw lights got no dark although the library has some at their settings:
+    every one is the telescope app's own master (#206)."""
+    return (f"the only dark{'s' if n != 1 else ''} for {what} "
+            f"{'are' if n != 1 else 'is'} the telescope app's own "
+            f"master{'s' if n != 1 else ''} ({n}), made for the subtraction the app "
+            "does on the device — not applied to lights another program saved. "
+            "Import raw darks at these settings (e.g. from N.I.N.A.)")
+
+
 @dataclass
 class MasterInfo:
     path: Path
@@ -73,6 +88,10 @@ class MasterInfo:
     # For a raw SET candidate (`raw_sets`): every member frame. `path` is then the
     # first member, `temp_c` the median and `ncombine` the member count.
     frames: tuple = ()
+    # Made by a capture path that dark-subtracts on the device — the Seestar app's
+    # own master (CREATOR 'ZWO Seestar …', capture_profiles). Reference data for
+    # that app's subs, never a dark for raw lights (#206).
+    app_made: bool = False
 
     @property
     def is_set(self) -> bool:
@@ -197,7 +216,8 @@ def library(device: str) -> dict[str, list[MasterInfo]]:
                 path=f, tier=tier, exptime=facts["exptime"], gain=facts["gain"],
                 binning=facts["binning"], temp_c=facts["temp_c"],
                 filter=facts["filter"], ncombine=facts["ncombine"],
-                raw=facts["raw"], night=facts["night"] if facts["raw"] else None))
+                raw=facts["raw"], night=facts["night"] if facts["raw"] else None,
+                app_made=facts["darks_applied"] is True and not facts["raw"]))
         if masters:
             out[tier] = masters
     return out
@@ -310,8 +330,11 @@ def match_masters(facts: dict, device: str) -> MatchResult:
 
     # dark: exact exposure/gain/binning, nearest temperature — unless the device
     # already subtracted one before saving the subs (devices.darks_applied_on_device)
-    darks = [m for m in lib.get("darks", [])
-             if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
+    at_settings = [m for m in lib.get("darks", [])
+                   if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
+    # The app's own masters serve only the app's (already darked) subs, so for raw
+    # lights they are no candidate at all — however near in temperature (#206).
+    darks = [m for m in at_settings if not m.app_made]
     # Per frame, by capture path (capture_profiles): the same S50 dark-subtracts
     # through its own app and not under N.I.N.A. Facts without the key (an older
     # caller) fall back to the telescope model.
@@ -335,6 +358,8 @@ def match_masters(facts: dict, device: str) -> MatchResult:
         elif temp is None:
             res.notes.append("lights carry no sensor temperature; the first matching "
                              "dark was taken")
+    elif at_settings:
+        res.notes.append(app_darks_note(what, len(at_settings)))
     elif lib.get("darks"):
         res.notes.append(f"no master dark for {what} "
                          f"({len(lib['darks'])} darks in the library, none at those settings)")

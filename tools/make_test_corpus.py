@@ -745,11 +745,12 @@ def _pins_night(night: Path, coords: dict):
             seed += 1
     t = start.replace(hour=4) + timedelta(days=1)
     for i in range(4):
-        # 14.0 °C, the lights' own temperature: the raw set beats the library's real
-        # 13.9 °C app master, so the tester sees the raw-set path (dark ✓ (4 raw))
-        name = f"{t:%Y-%m-%d_%H-%M-%S}_14.00_20.00s_{i:04d}.fits"
+        # 9.0 °C, 5 °C under the lights: the library's real 13.9 °C app master is
+        # nearer, but an app master is never a dark for N.I.N.A. lights (#206), so
+        # the tester sees the raw-set path win anyway (dark ✓ (4 raw))
+        name = f"{t:%Y-%m-%d_%H-%M-%S}_9.00_20.00s_{i:04d}.fits"
         _nina_fits(night / "DARK" / name, "DARK", None, 0.0, 0.0, 20.0, "Dark", t,
-                   14.0, seed)
+                   9.0, seed)
         t += timedelta(seconds=25)
         seed += 1
 

@@ -974,6 +974,23 @@ puts masters and sets in one pool, and a one-frame set is used as a master.
 `MatchResult.sets` / `files()` hand a set on: Siril prep links it (Naztronomy stacks
 it), and m110-stack builds it (below). `device_rollup` lists one row per set.
 
+**The app's own masters are not darks for raw lights (#206, 2026-11-19).** The
+Seestar's `darklibrary/` masters sit in the same `Calibration/<device>/darks/` as
+N.I.N.A.'s raw darks, and `match_masters` ranked them all by temperature, so an app
+master nearer the lights won. It is a different product: `CREATOR = 'ZWO Seestar
+S50'`, `STACKCNT = 5`, no `BAYERPAT`/`SWCREATE`. Stackhammer refuses a dark with no
+colour pattern for colour lights, so such a job stacked with no dark. Measured on
+M74's 30 s frames: the app master is pixel-aligned with the N.I.N.A. frames, but its
+level is 521 ADU against 480, and a 23.1 °C app master over-subtracted a 5.7 °C
+N.I.N.A. dark's hot pixels to −9.7σ. `library()` now sets `MasterInfo.app_made`
+from the capture profile (`darks_applied is True`, so the shared CREATOR/BIAS rule,
+never a filename). `match_masters` drops those from the dark candidates for lights
+that were not darked on the device, and notes it (`app_darks_note`) only when
+nothing else is left. Header-only on purpose: the issue's alternative ("no
+`BAYERPAT` against lights that have one") would need the lights' pattern in the
+facts and would also catch a third-party mono master. `applied_darks` (which dark the
+*device* used) still reads every non-raw master and is untouched.
+
 **m110-stack builds the master.** `calibration_for_stack` turns several consistent
 raw frames in a job-dir tier (or a library set) into a list. `_raw_set_problem`
 refuses mixed settings, or darks at another exposure. The run step (`build_plan`
