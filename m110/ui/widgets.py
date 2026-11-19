@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMessageBox,
     QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton, QLabel,
+    QProgressBar, QProgressDialog, QStyleOptionProgressBar, QStylePainter,
 )
 
 from m110 import derived, objects, siril
@@ -954,3 +955,40 @@ def header_group(widgets, parent=None) -> QWidget:
     w.hide()
     return w
 
+
+class _SpacedProgressBar(QProgressBar):
+    """A progress bar that keeps `gap` px of empty space under itself.
+
+    QProgressDialog has no layout: it puts Cancel `PM_LayoutVerticalSpacing` below
+    the bar, and the macOS style reports -1 there, so the two touch. The dialog
+    sizes and places everything from the bar's `sizeHint`, so the gap goes in the
+    hint and the bar paints only the top part (a QSS margin opens the gap too, but
+    the percentage is still centred in the whole rect and hangs below the bar)."""
+
+    def __init__(self, gap: int, parent=None):
+        super().__init__(parent)
+        self._gap = gap
+
+    def sizeHint(self) -> QSize:
+        return super().sizeHint() + QSize(0, self._gap)
+
+    def minimumSizeHint(self) -> QSize:
+        return super().minimumSizeHint() + QSize(0, self._gap)
+
+    def paintEvent(self, _event):
+        opt = QStyleOptionProgressBar()
+        self.initStyleOption(opt)
+        opt.rect = self.rect().adjusted(0, 0, 0, -self._gap)
+        QStylePainter(self).drawControl(QStyle.CE_ProgressBar, opt)
+
+
+class ProgressDialog(QProgressDialog):
+    """The app's progress dialog: a QProgressDialog with room between the bar and
+    Cancel. Use it in place of QProgressDialog everywhere."""
+
+    def __init__(self, label: str, cancel: str, minimum: int, maximum: int,
+                 parent=None):
+        super().__init__(label, cancel, minimum, maximum, parent)
+        self.setBar(_SpacedProgressBar(SPACE["md"], self))
+        # setBar resets the range to the new bar's 0..100 — put the caller's back.
+        self.setRange(minimum, maximum)

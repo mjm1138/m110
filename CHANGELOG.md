@@ -133,6 +133,9 @@ changes a **user** would notice, per release.
   popped up only after the first one closed, and it was easy to miss.
 
 ### Fixed
+- **Progress windows have room around Cancel.** On a Mac, the progress bar in
+  the Import, backup, restore, publish and export progress windows touched the
+  Cancel button. There is now a gap between them.
 - **"Remember alias?" remembers the target name.** After you retarget a row, the
   alias now keys on the name in the frames' headers. It used to key on the folder,
   and with N.I.N.A.'s stock layout every target shares one `LIGHT` folder.

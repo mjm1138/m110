@@ -163,7 +163,7 @@ DONE.md's archived reference — grep the module name there.
 |---|---|
 | `main.py` | shell: grouped sidebar → 8 places (`sidebar.PLACES`: **Overview · Deep Sky · Media · Journal · Import · Processing · Planning · Devices**, routed by page index via `go_to`), header bar, Overview lands; `_build_menus()` (File/Edit/View/Object/Library/Window/Help, `MenuRole` hoisting, `AppMenuTranslator` → "Settings…"); expanded title-bar band on macOS; `RefreshWorker`; auto-sync on launch/focus/ingest; transient status bar; `open_object(slug)`; `_ready` gates launch workers |
 | `sidebar.py` · `toolbar.py` · `undo.py` | the source list (`PLACES`, headers, icons, live counts) · the header bar (place title/subtitle + each page's `header_controls`; window drag area) · the Undo stack (`run(cmd)`; `SetPinCommand`, `RemoveFromLibraryCommand`) |
-| `widgets.py` | shared table/thumbnail helpers (`ThumbnailLoader`, `fit_table_height`, `fit_cell_widgets`), launch helpers, **`drain_worker`**, **`modal_loop_active`/`defer`/`connect_context_menu`** |
+| `widgets.py` | shared table/thumbnail helpers (`ThumbnailLoader`, `fit_table_height`, `fit_cell_widgets`), launch helpers, **`drain_worker`**, `ProgressDialog` (never a bare `QProgressDialog`: macOS puts its Cancel flush against the bar), **`modal_loop_active`/`defer`/`connect_context_menu`** |
 | `image_grid.py` | reusable tile grid (model + delegate), app-data-agnostic |
 | `detail.py` | per-object `DetailPane`: hero, notes, Finished/Working gallery, image menu, integration goals (per model, Set goal… → `goal_dialog`), processing/sessions tables, handoff/import buttons |
 | `pages/catalog.py` | Deep Sky: List/Grid/Map views, `header_controls` (view switcher, catalog picker, search), right-click actions (shortcuts to the Object menu) |
@@ -200,7 +200,7 @@ DONE.md's archived reference — grep the module name there.
   feature is **preview-then-confirm**: a read-only `scan_*_plan()`, then one gated
   writer (`apply_ops`) after the dialog confirms.
 - **Engine stays Qt-free** (no `PySide6` in `m110/*.py`; only under `m110/ui/`).
-- **Slow ops run on a `QThread` worker** behind a modal `QProgressDialog` with a
+- **Slow ops run on a `QThread` worker** behind a modal `widgets.ProgressDialog` with a
   working Cancel (`threading.Event`). Workers talk to widgets only via signals.
 - **Minimal main-window chrome.** One control per meaning, sensible defaults;
   density belongs in detail panes and dialogs (`UI_ROADMAP.md` → Vision).

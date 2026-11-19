@@ -13,11 +13,11 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressDialog, QPushButton,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QVBoxLayout,
 )
 
-from m110.ui.widgets import drain_worker
+from m110.ui.widgets import drain_worker, ProgressDialog
 from m110 import config, publish
 from m110.publish.options import ALL_SECTIONS, PublishOptions
 
@@ -260,7 +260,7 @@ class PublishDialog(QDialog):
             github_deploy_mode=self._gh_mode.currentData())
 
         self._cancel_event = threading.Event()
-        pd = QProgressDialog("Rendering site…", "Cancel", 0, 0, self)
+        pd = ProgressDialog("Rendering site…", "Cancel", 0, 0, self)
         pd.setWindowTitle("Publishing")
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)

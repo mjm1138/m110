@@ -13,12 +13,12 @@ from collections import Counter
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QMessageBox, QHeaderView, QComboBox, QProgressDialog,
+    QTableWidgetItem, QMessageBox, QHeaderView, QComboBox,
 )
 
 from m110 import catalog, config, ingest
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
-from m110.ui.widgets import compact_table
+from m110.ui.widgets import compact_table, ProgressDialog
 
 KIND_LABEL = {
     "light": "lights", "stack": "device stack", "media": "media",
@@ -437,7 +437,7 @@ class IngestDialog(QDialog):
     # ---- progress + worker lifecycle ----
     def _make_progress(self, label, maximum, title):
         self._cancel_event = threading.Event()
-        pd = QProgressDialog(label, "Cancel", 0, maximum, self)
+        pd = ProgressDialog(label, "Cancel", 0, maximum, self)
         pd.setWindowTitle(title)
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)

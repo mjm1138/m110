@@ -13,11 +13,11 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QLabel,
-    QMessageBox, QProgressDialog, QPushButton, QRadioButton, QTreeWidget,
+    QMessageBox, QPushButton, QRadioButton, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
-from m110.ui.widgets import drain_worker
+from m110.ui.widgets import drain_worker, ProgressDialog
 from m110 import backup, config
 
 _REL_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -289,7 +289,7 @@ class RestoreDialog(QDialog):
     # ---- worker plumbing (shared by verify + restore) ----
     def _run(self, fn, on_done, label):
         self._cancel_event = threading.Event()
-        pd = QProgressDialog(label, "Cancel", 0, 0, self)
+        pd = ProgressDialog(label, "Cancel", 0, 0, self)
         pd.setWindowTitle(label.rstrip("…"))
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)

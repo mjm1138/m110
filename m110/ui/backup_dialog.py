@@ -23,11 +23,11 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QProgressDialog, QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout,
+    QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout,
     QWidget,
 )
 
-from m110.ui.widgets import drain_worker
+from m110.ui.widgets import drain_worker, ProgressDialog
 from m110 import backup, config
 
 LOCAL, CLOUD = backup.SLOT_LOCAL, backup.SLOT_CLOUD
@@ -662,7 +662,7 @@ class _SlotPanel(QWidget):
         options = backup.options_from_settings(self.slot)
 
         self._cancel_event = threading.Event()
-        pd = QProgressDialog("Backing up…", "Cancel", 0, 0, self)
+        pd = ProgressDialog("Backing up…", "Cancel", 0, 0, self)
         pd.setWindowTitle("Backing up")
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)
