@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QProgressDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
     QFileDialog, QSplitter, QGroupBox,
 )
 
@@ -28,7 +28,7 @@ from m110.ui.ingest_dialog import (
     NO_POINTING_KINDS,
 )
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
-from m110.ui.widgets import compact_table, fit_cell_widgets
+from m110.ui.widgets import compact_table, fit_cell_widgets, ProgressDialog
 
 RECENTS_KEY = "import_recents"
 MAX_RECENTS = 8
@@ -844,7 +844,7 @@ class ImportPage(QWidget):
     # ---- progress + worker lifecycle ----
     def _make_progress(self, label, maximum, title):
         self._cancel_event = threading.Event()
-        pd = QProgressDialog(label, "Cancel", 0, maximum, self)
+        pd = ProgressDialog(label, "Cancel", 0, maximum, self)
         pd.setWindowTitle(title)
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)

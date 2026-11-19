@@ -345,7 +345,7 @@ def test_back_up_now_on_each_tab_runs_that_slot(dlg, tmp_path, monkeypatch):
             pass
 
     monkeypatch.setattr("m110.ui.backup_dialog._BackupWorker", _Stub)
-    monkeypatch.setattr("m110.ui.backup_dialog.QProgressDialog.show",
+    monkeypatch.setattr("m110.ui.backup_dialog.ProgressDialog.show",
                         lambda self: None)
     dlg._local._dest.setText(str(tmp_path))
     dlg._local._backup_btn.click()

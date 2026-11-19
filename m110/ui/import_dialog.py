@@ -21,12 +21,12 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QMessageBox,
-    QProgressDialog, QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
     QGroupBox,
 )
 
 from m110 import objects, processing, roundtrip
-from m110.ui.widgets import compact_table
+from m110.ui.widgets import compact_table, ProgressDialog
 
 
 def _fmt_size(n: int) -> str:
@@ -311,7 +311,7 @@ class ImportDialog(QDialog):
     # ---- progress + worker lifecycle (same pattern as ingest) ----
     def _make_progress(self, label, maximum, title):
         self._cancel_event = threading.Event()
-        pd = QProgressDialog(label, "Cancel", 0, maximum, self)
+        pd = ProgressDialog(label, "Cancel", 0, maximum, self)
         pd.setWindowTitle(title)
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)

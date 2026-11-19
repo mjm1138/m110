@@ -16,11 +16,11 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,
-    QRadioButton, QButtonGroup, QDoubleSpinBox, QProgressDialog, QMessageBox,
+    QRadioButton, QButtonGroup, QDoubleSpinBox, QMessageBox,
     QFileDialog,
 )
 
-from m110.ui.widgets import drain_worker
+from m110.ui.widgets import drain_worker, ProgressDialog
 from m110 import config, webexport
 from m110.ui.widgets import open_in_default, reveal_in_manager
 
@@ -221,7 +221,7 @@ class ExportShareDialog(QDialog):
     # ---- progress + worker lifecycle (same pattern as ingest/import) ----
     def _make_progress(self, label):
         self._cancel_event = threading.Event()
-        pd = QProgressDialog(label, "Cancel", 0, 0, self)   # 0,0 = busy indicator
+        pd = ProgressDialog(label, "Cancel", 0, 0, self)   # 0,0 = busy indicator
         pd.setWindowTitle("Exporting")
         pd.setWindowModality(Qt.WindowModal)
         pd.setMinimumDuration(0)
