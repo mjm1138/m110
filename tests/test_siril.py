@@ -69,7 +69,7 @@ def test_prepare_single_filter_literal_lights(tmp_path, monkeypatch):
 
     res = siril.apply_prep(plan)
     assert res == {"linked": 350, "skipped": 0, "cancelled": False,
-                   "preset_conflicts": []}
+                   "preset_conflicts": [], "removed": 0, "notes": []}
     sb = config.siril_dir(target)
     lights = sb / "lights"                      # LITERAL 'lights' (Siril needs it)
     assert lights.is_dir() and len(list(lights.glob("*.fit"))) == 350

@@ -479,6 +479,20 @@ def build(out: Path):
         if any(f"_{t}_" in name for t in S50_STORE_DARKS):
             _seestar_master(name, config.calibration_dir(S50_TELESCOP, "darks"))
 
+    # M 15 — N.I.N.A. subs of the same S50 already in the store, prepped against
+    # the library as it stands: the nearest 20 s dark is the real 13.9 °C app
+    # master. Importing the PINS night adds a raw 14.0 °C set, and the sync after
+    # it re-matches M 15 by itself (status bar "Calibration re-matched: M 15";
+    # siril/darks/ swaps the master for the 4 raw frames).
+    ra, dec = C("m15")
+    t = datetime(2026, 6, 18, 23, 0, 0)
+    for i in range(3):
+        when = t + timedelta(seconds=25 * i)
+        _nina_fits(config.lights_dir("M 15") /
+                   f"{when:%Y-%m-%d_%H-%M-%S}_IR_14.00_20.00s_{i:04d}.fits",
+                   "LIGHT", "M 15", ra, dec, 20.0, "IR", when, 14.0, 7600 + i)
+    siril.apply_prep(siril.plan_prep("M 15"))
+
     # ---- M106 — a Siril sandbox with UNIMPORTED output (round-trip test) ----
     # Its sandbox hardlinks M106's *real* subs (it used to hold unrelated synthetic
     # names, which made the sandbox and the object disagree about what was being
@@ -1080,6 +1094,14 @@ def verify(out: Path):
     assert len([c for c in s50["captures"] if c["dark_ref"]]) == 2     # M 72 + M 76
     print(f"  Seestar darks: {len(s50['masters'])} in the library, 1 new on the device; "
           f"M 72 Δ{m72['dark_gap_c']} °C ({m72['dark_link']}), never linked into prep")
+
+    # M 15 was prepped before the PINS darks exist: the app master is linked, the
+    # stamp is current — until the PINS night is imported (then the sync re-matches).
+    m15 = config.siril_dir("M 15")
+    m15_darks = sorted(f.name for f in (m15 / "darks").iterdir())
+    assert len(m15_darks) == 1 and "_13.9C_" in m15_darks[0], m15_darks
+    assert siril.plan_rematch("M 15").status == "current"
+    print(f"  M 15 prepped on {m15_darks[0]} — importing the PINS night re-matches it")
 
     # Stackhammer: M106 ships a preset and one pending proposal to replace it.
     from m110 import stackhammer

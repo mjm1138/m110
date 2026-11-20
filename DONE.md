@@ -974,6 +974,42 @@ puts masters and sets in one pool, and a one-frame set is used as a master.
 `MatchResult.sets` / `files()` hand a set on: Siril prep links it (Naztronomy stacks
 it), and m110-stack builds it (below). `device_rollup` lists one row per set.
 
+**Sandboxes follow the library (2026-11-20).** A sandbox's calibration was matched
+once, at prep. `prepare_missing` skips an existing sandbox, and `apply_prep` only
+added links, so a change in the library never arrived, and an ingest re-prep left
+the old dark beside the new. Now:
+- **The stamp.** `calibration.calibration_key(target, device)` is a sha256 of
+  `MATCH_RULES` (bumped on any rule change), `library_fingerprint` (name, size,
+  mtime_ns, inode of each FITS, used only as a cache key, never as provenance) and
+  the target's own tiers. It lands in the manifest as `calibration_key`.
+- **Re-match.** `siril.plan_rematch` (read-only: `none` / `skipped` / `current` /
+  `unchanged` / `changes`, with human change lines) and `siril.apply_rematch` (the
+  same guards as autoprep; `user=True` raises on a live run). It runs on every sync
+  through `processing.rematch_calibration`, after `prepare_missing` and
+  `reconcile_rejected`, and from Processing → Re-match Calibration…
+  (`ui/rematch_dialog.py`).
+- **`apply_prep` makes the sandbox match the plan.** `_retire_stale_links` unlinks:
+  - a light link the plan doesn't put in that `lights/`, only when the sub is still
+    in the target's `lights/` (the `prune_rejected` rule);
+  - a calibration file M110 made (named in the previous manifest, or sharing an
+    inode with a library or target frame).
+
+  Anything else is kept and noted, and emptied dirs are removed, Finder litter
+  included. `_patch_calibration_switches` sets only darks/flats/biases in an
+  existing preset. `_already_split` keeps a split sandbox split when a filter
+  leaves (M81: its LP subs moved, so the IRCUT job would otherwise have moved to
+  the root under a stale `LP/`).
+- **Caches.** `frame_facts` and `library` are memoized on stat. On the live store
+  (73 sandboxes) a full re-plan is 54 s cold and 7 s warm.
+- **Found by the live preview:** flats crossing colour grids. The Seestar app saves
+  GRBG, N.I.N.A. RGGB (`BAYERPAT`), one column apart, and the 11-13 N.I.N.A. flats
+  would have gone to ~70 app objects. `match_masters` now drops any frame whose
+  `BAYERPAT` differs from the lights' (`facts["bayerpat"]`; an untagged side is not
+  judged, so app masters stay candidates). `_off_grid_note` says when that emptied a
+  tier, and a flat more than `FLAT_AGE_NOTE_DAYS` (30) from the lights' furthest
+  night gets a note. Raw sets also group by `BAYERPAT`. `stacking.Frame.bayerpat`
+  carries the pattern into the stacker's library fallback.
+
 **Which dark, measured (#206, 2026-11-19).** #206 asked to keep the Seestar app's own
 masters away from N.I.N.A. lights. They were measured first, read-only, on the live
 store. Method: a 3σ-clipped mean of 20 N.I.N.A. 20 s M74 lights (11-09, 13.0–14.0 °C,

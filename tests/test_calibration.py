@@ -358,6 +358,48 @@ def test_an_app_master_competes_with_nina_darks_on_temperature_alone(tmp_path, m
     assert own.darks is None and own.notes[0] == calibration.DARKS_ON_DEVICE_NOTE
 
 
+def _flat(dev, name, *, pattern, night="2026-11-13T05:00:00", filt="IR"):
+    return _master(config.calibration_dir(dev, "flats") / name, "Master Flat",
+                   XBINNING=1, FILTER=filt, BAYERPAT=pattern, NCOMBINE=30,
+                   DATE_OBS=night)
+
+
+def test_calibration_on_another_colour_grid_never_matches(tmp_path, monkeypatch):
+    """The Seestar app saves GRBG, N.I.N.A. RGGB (one column apart): a N.I.N.A.
+    flat must not calibrate app subs, and the note says why."""
+    seed_root(tmp_path, monkeypatch)
+    _flat("S50_x", "nina_flat.fits", pattern="RGGB")
+    app = dict(NINA, darks_applied=True, bayerpat="GRBG", filter="IR")
+    res = calibration.match_masters(app, "S50_x")
+    assert res.flats is None
+    assert any("no flat linked" in n and "RGGB" in n and "GRBG" in n for n in res.notes)
+    nina = dict(NINA, bayerpat="RGGB", filter="IR")
+    assert calibration.match_masters(nina, "S50_x").flats.name == "nina_flat.fits"
+    # no pattern on the lights or on the frame: not judged
+    assert calibration.match_masters(dict(app, bayerpat=None), "S50_x").flats
+    _raw_dark("S50_x", "d.fits", 11.0)                 # untagged: matches either
+    assert calibration.match_masters(dict(NINA, bayerpat="GRBG"), "S50_x").darks
+
+
+def test_an_old_flat_is_linked_with_a_note(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    _flat("S50_x", "f.fits", pattern="RGGB", night="2026-11-13T05:00:00")
+    near = dict(NINA, bayerpat="RGGB", nights=["2026-11-06", "2026-11-10"])
+    res = calibration.match_masters(near, "S50_x")
+    assert res.flats and not any("days from" in n for n in res.notes)
+    far = dict(near, nights=["2026-09-01", "2026-11-10"])
+    res = calibration.match_masters(far, "S50_x")
+    assert res.flats.name == "f.fits"
+    assert any("taken 2026-11-12, 72 days from the furthest" in n for n in res.notes)
+
+
+def test_facts_carry_the_colour_pattern_and_the_nights():
+    frames = [{"exptime": 30.0, "gain": 80, "binning": 1, "bayerpat": "RGGB",
+               "night": n} for n in ("2026-11-06", "2026-11-06", "2026-11-09")]
+    facts = calibration.facts_from_frames(frames)
+    assert facts["bayerpat"] == "RGGB" and facts["nights"] == ["2026-11-06", "2026-11-09"]
+
+
 def test_app_and_nina_subs_in_one_target_are_refused(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     frame = {"exptime": 30.0, "gain": 80, "binning": 1, "temp_c": 10.0,

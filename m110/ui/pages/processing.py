@@ -78,10 +78,21 @@ class ProcessingPage(QScrollArea):
                 return
             menu = QMenu(self)
             acts = add_siril_actions(menu, dirs)
+            menu.addSeparator()
+            rematch = menu.addAction("Re-match Calibration…")
             chosen = menu.exec(table.viewport().mapToGlobal(pos))
             if chosen in acts:
                 launch_siril(self, acts[chosen])
+            elif chosen is rematch:
+                self.open_rematch(folder)
         connect_context_menu(table, show)
+
+    def open_rematch(self, target: str):
+        """Preview, then confirm, re-matching one target's Siril calibration."""
+        from m110.ui.rematch_dialog import RematchDialog
+        dlg = RematchDialog(target, self)
+        dlg.exec()
+        dlg.deleteLater()
 
     def subtitle(self) -> str:
         return getattr(self, "_subtitle", "")

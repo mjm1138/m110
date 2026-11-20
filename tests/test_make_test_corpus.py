@@ -54,6 +54,20 @@ def test_generator_builds_and_verifies_a_corpus(tmp_path, capsys):
     m42 = siril.plan_prep("M42").jobs[0].preset          # the Dwarf 3 capture
     assert (m42["telescope"], m42["filter"]) == ("Dwarf 3", "Dual-Band")
 
+    # Re-match: importing the PINS night's darks re-matches M 15 at the next sync,
+    # exactly what the tester sees (TESTING.md).
+    from m110 import ingest, processing
+    src = tmp_path / "M110-test-import-source"
+    darks = [o for o in ingest.scan_source_plan(src) if o.kind == "cal-dark"
+             and o.layout == "nina"]
+    assert len(darks) == 4
+    ingest.apply_ops(darks)
+    out = processing.rematch_calibration()
+    assert "M 15" in out["updated"], out
+    m15_darks = siril.config.siril_dir("M 15") / "darks"
+    m15 = sorted(f.name for f in m15_darks.iterdir())
+    assert len(m15) == 4 and not any("MasterDark" in n for n in m15), m15
+
     # The two sibling fixtures the Import flows are driven from ship beside it.
     assert (tmp_path / "M110-test-import-source").is_dir()
     assert (tmp_path / "M110-test-device-mount").is_dir()

@@ -265,6 +265,9 @@ class PrepPlan:
     job_groups: dict = field(default_factory=dict)
     # what `CALIBRATION_MANIFEST_NAME` will say (`calibration_manifest`); {} = none
     manifest: dict = field(default_factory=dict)
+    # what the calibration was matched against (`calibration.calibration_key`),
+    # stamped into the manifest: a sync re-matches a sandbox whose key is stale
+    calibration_key: str = ""
 
 
 def _lights(target: str) -> list[Path]:
@@ -401,6 +404,17 @@ def _subset_info(e: dict) -> dict:
     }
 
 
+def _already_split(base: Path) -> bool:
+    """True when the sandbox has per-filter job folders holding light links."""
+    if not base.is_dir():
+        return False
+    for p in base.iterdir():
+        if p.is_dir() and p.name not in _NOT_JOB_DIRS and (p / "lights").is_dir():
+            if any(config.is_light_frame(f.name) for f in (p / "lights").iterdir()):
+                return True
+    return False
+
+
 def plan_prep(target: str, usable_frames: int | None = None,
               star_removal: bool = False, should_cancel=None) -> PrepPlan:
     """Read-only plan: lay each filter's lights into a literal `lights/` inside a
@@ -453,7 +467,11 @@ def plan_prep(target: str, usable_frames: int | None = None,
         for token, label, files, cal, notes, info in _calibration_subsets(
                 filt, by_filter[filt], telescop, should_cancel):
             planned.append((token, label, filt, files, cal, notes, info))
-    multi = len(planned) > 1
+    # A sandbox already split into filter folders stays split even when the target
+    # is down to one job (its other filter's subs moved to another target): the
+    # job keeps its folder — presets, process/, earlier stacks — instead of moving
+    # to the sandbox root, where a leftover sibling folder would hide it.
+    multi = len(planned) > 1 or _already_split(config.siril_dir(target))
     jobs: list[PrepJob] = []
     calib_links: list[tuple[str, str]] = []
     kinds: set[str] = set(calib)
@@ -487,8 +505,9 @@ def plan_prep(target: str, usable_frames: int | None = None,
     for token, _label, filt, *_rest in planned:
         job_groups.setdefault(filt, []).append(token)
     job_groups = {f: ts for f, ts in job_groups.items() if len(ts) > 1}
+    key = calibration.calibration_key(target, telescop)
     manifest = calibration_manifest(target, telescop, calib_source, planned, multi,
-                                    job_groups)
+                                    job_groups, key)
 
     return PrepPlan(
         target=target,
@@ -505,6 +524,7 @@ def plan_prep(target: str, usable_frames: int | None = None,
         calib_notes=calib_notes,
         job_groups=job_groups,
         manifest=manifest,
+        calibration_key=key,
     )
 
 
@@ -586,7 +606,8 @@ def _master_entry(tier: str, m, files: list[Path], job_dir: Path, sandbox: Path)
 
 
 def calibration_manifest(target: str, device: str | None, source: str,
-                         planned: list, multi: bool, job_groups: dict) -> dict:
+                         planned: list, multi: bool, job_groups: dict,
+                         key: str = "") -> dict:
     """The masters manifest for a prep plan (pure: builds, never writes). One entry
     per job folder: its lights (by name, in ``<folder>/lights/``), the subset's
     capture path and settings, each tier's master or raw set (paths relative to
@@ -617,7 +638,8 @@ def calibration_manifest(target: str, device: str | None, source: str,
             "notes": list(notes),
         })
     return {"version": CALIBRATION_MANIFEST_VERSION, "target": target,
-            "device": device, "source": source or None, "jobs": jobs}
+            "device": device, "source": source or None,
+            "calibration_key": key or None, "jobs": jobs}
 
 
 def _write_manifest(siril_dir: Path, manifest: dict) -> None:
@@ -819,12 +841,20 @@ def apply_preset_choices(conflicts, replace) -> dict:
     return {"replaced": replaced, "kept": kept}
 
 
-def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
-    """Create the sandbox, hardlink lights per job (+ shared darks/flats/biases at
-    the sandbox root), write presets + next-steps. THE WRITER — callers confirm (or
-    it runs via `autoprep` after ingest). Idempotent: existing links are skipped.
-    A preset is written only where none exists; one that differs from the
-    proposal comes back in ``preset_conflicts`` for `apply_preset_choices`."""
+def apply_prep(plan: PrepPlan, progress=None, should_cancel=None,
+               rematch: bool = False) -> dict:
+    """Make the sandbox match `plan`: hardlink lights per job and each job's
+    darks/flats/biases, then retire the links the plan no longer wants
+    (`_retire_stale_links`), and write presets, job groups, the manifest and
+    next-steps. THE WRITER — callers confirm (or it runs via `autoprep` after
+    ingest, or `apply_rematch` on sync). Idempotent: existing links are skipped.
+
+    Presets: a missing one is written; an existing one whose darks/flats/biases
+    switches disagree with what is now linked has **only those switches** patched
+    (a hand-edited preset keeps every other edit). Any other difference from the
+    proposal comes back in ``preset_conflicts`` for `apply_preset_choices` —
+    except when `rematch` (the background re-match), which never asks."""
+    old_manifest = read_manifest(Path(plan.siril_dir))
     ops = [(src, dst) for job in plan.jobs for (src, dst) in job.links]
     ops += list(plan.calib_links)          # calibration → sandbox root (shared)
     linked = skipped = 0
@@ -845,17 +875,20 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
             progress(i, total)
 
     conflicts: list[PresetConflict] = []
+    retired = {"removed": 0, "notes": []}
     if not cancelled:
+        retired = _retire_stale_links(plan, old_manifest)
         for job in plan.jobs:
             pp = Path(job.preset_path)
             pp.parent.mkdir(parents=True, exist_ok=True)
+            _patch_calibration_switches(pp, job.preset)
             # Only a missing preset is written here. One that differs — the user
             # saved their own from Naztronomy, or M110's proposal moved on — is
             # reported, and replaced only when the user says so.
             state = _preset_state(pp, job.preset)
             if state == "new":
                 _write_preset(pp, job.preset)
-            elif state == "differs":
+            elif state == "differs" and not rematch:
                 conflicts.append(PresetConflict(
                     target=plan.target, job=job.filt, preset_path=str(pp),
                     proposed=job.preset,
@@ -868,7 +901,290 @@ def apply_prep(plan: PrepPlan, progress=None, should_cancel=None) -> dict:
         (Path(plan.siril_dir) / "next-steps.md").write_text(_next_steps_md(plan), encoding="utf-8")
 
     return {"linked": linked, "skipped": skipped, "cancelled": cancelled,
-            "preset_conflicts": conflicts}
+            "preset_conflicts": conflicts, "removed": retired["removed"],
+            "notes": retired["notes"]}
+
+
+_CALIB_SWITCHES = ("darks", "flats", "biases")
+# Sandbox subdirs that are never a job folder (a job folder holds lights/).
+_NOT_JOB_DIRS = {"lights", "darks", "flats", "biases", "presets", "archive",
+                 "process", "stackhammer"}
+
+
+def _patch_calibration_switches(preset_path: Path, proposed: dict) -> bool:
+    """Set an existing preset's darks/flats/biases switches to the proposal's —
+    what is linked beside its lights — and touch nothing else. True if written."""
+    if not preset_path.exists():
+        return False
+    existing = _read_preset(preset_path)
+    if not existing:
+        return False                     # unreadable: never rewritten unasked
+    wrong = {k: proposed[k] for k in _CALIB_SWITCHES
+             if k in proposed and existing.get(k) != proposed[k]}
+    if not wrong:
+        return False
+    _write_preset(preset_path, {**existing, **wrong})
+    return True
+
+
+def _drop_if_empty(d: Path) -> None:
+    """Remove `d` if nothing but Finder litter (`.DS_Store`, ``._*``) is left."""
+    try:
+        rest = [e for e in d.iterdir() if not config.is_hidden_name(e.name)]
+        if rest:
+            return
+        for e in d.iterdir():
+            if e.is_file():
+                e.unlink()
+        d.rmdir()
+    except OSError:
+        pass
+
+
+def _inodes(paths) -> set:
+    out = set()
+    for f in paths:
+        try:
+            st = os.stat(f)
+        except OSError:
+            continue
+        out.add((st.st_dev, st.st_ino))
+    return out
+
+
+def _retire_stale_links(plan: PrepPlan, old_manifest: dict | None) -> dict:
+    """Unlink what the sandbox holds that `plan` no longer puts there — only
+    links M110 made, never data:
+
+    * a **light** in any ``lights/`` the plan doesn't put it in, and only when the
+      same name is still in the target's ``lights/`` (a redundant hardlink, the
+      `prune_rejected` rule — a vanished sub is never unlinked: it may be the last
+      copy). A ``lights/`` left empty is removed, so a job the plan retired (the
+      filter's split changed) stops being offered (`Sandbox.job_dirs`);
+    * a **calibration** file in a job's ``darks/``/``flats/``/``biases/`` the plan
+      doesn't link there, when M110 put it there: named in the previous manifest,
+      or the same inode as a library or target calibration frame. Anything else
+      is the user's: kept, and noted. An emptied tier dir is removed.
+
+    Presets, ``process/``, ``archive/`` and every other file are left alone."""
+    base = Path(plan.siril_dir)
+    if not base.is_dir():
+        return {"removed": 0, "notes": []}
+    want: dict[Path, set] = {}
+    for job in plan.jobs:
+        for _src, dst in job.links:
+            want.setdefault(Path(dst).parent, set()).add(Path(dst).name)
+    for _src, dst in plan.calib_links:
+        want.setdefault(Path(dst).parent, set()).add(Path(dst).name)
+    live = {f.name for f in _lights(plan.target)}
+
+    # what M110 linked before: the previous manifest's files, and anything that
+    # is one of the library's / the target's own calibration frames
+    owned_rel: set[str] = set()
+    for job in (old_manifest or {}).get("jobs", []):
+        for entry in (job.get("calibration") or {}).values():
+            owned_rel.update(entry.get("files") or [])
+    device = ((plan.manifest or {}).get("device")
+              or (old_manifest or {}).get("device"))
+    sources = [f for fs in _calib_frames(plan.target).values() for f in fs]
+    if device:
+        for tier in calibration.TIERS:
+            d = config.calibration_dir(_safe_device_segment(device), tier)
+            if d.is_dir():
+                sources += [f for f in d.iterdir() if config.is_fits_file(f.name)]
+    source_inodes = _inodes(sources)
+
+    jobs = [base] + [p for p in sorted(base.iterdir())
+                     if p.is_dir() and p.name not in _NOT_JOB_DIRS]
+    removed, notes = 0, []
+    for jd in jobs:
+        ldir = jd / "lights"
+        if ldir.is_dir():
+            keep = want.get(ldir, set())
+            for f in sorted(ldir.iterdir()):
+                if (f.is_file() and config.is_light_frame(f.name)
+                        and f.name not in keep and f.name in live):
+                    f.unlink()
+                    removed += 1
+            _drop_if_empty(ldir)
+        for tier in calibration.TIERS:
+            tdir = jd / tier
+            if not tdir.is_dir():
+                continue
+            keep = want.get(tdir, set())
+            foreign = []
+            for f in sorted(tdir.iterdir()):
+                if not f.is_file() or not config.is_fits_file(f.name) or f.name in keep:
+                    continue
+                rel = f.relative_to(base).as_posix()
+                if rel in owned_rel or _inodes([f]) & source_inodes:
+                    f.unlink()
+                    removed += 1
+                else:
+                    foreign.append(f.name)
+            if foreign:
+                where = tdir.relative_to(base).as_posix()
+                notes.append(f"{where}/ also holds {len(foreign)} file(s) M110 did not "
+                             f"link ({', '.join(foreign[:3])}"
+                             f"{', …' if len(foreign) > 3 else ''}); left in place — "
+                             "they are calibrated with too")
+            _drop_if_empty(tdir)
+    if removed:
+        _log.info("prep %s: retired %d stale link(s)", plan.target, removed)
+    return {"removed": removed, "notes": notes}
+
+
+def _safe_device_segment(device: str) -> str:
+    from .ingest import _safe_segment
+    return _safe_segment(device)
+
+
+# ── re-match: bring an existing sandbox's calibration up to date ─────────────
+#
+# A sandbox's calibration is matched at prep time. When the device library gains
+# or loses frames, the target's own calibration changes, or the matching rules do
+# (`calibration.MATCH_RULES`), the manifest's `calibration_key` goes stale and the
+# next sync re-matches (`processing.rematch_calibration`): `plan_rematch` reads,
+# `apply_rematch` writes through `apply_prep(rematch=True)`.
+
+@dataclass
+class RematchPlan:
+    target: str
+    # "none" (no sandbox / no lights), "skipped" (busy, or finished output waiting
+    # to be imported — the next sync retries), "current" (key unchanged), or
+    # "unchanged" / "changes" (re-planned: the links are already right, or not)
+    status: str
+    plan: PrepPlan | None = None
+    changes: list = field(default_factory=list)
+    key: str = ""
+
+    @property
+    def due(self) -> bool:
+        """True when `apply_rematch` has something to write (links, or the stamp)."""
+        return self.status in ("changes", "unchanged")
+
+
+def _tier_desc(entry: dict | None) -> str:
+    if not entry:
+        return "none"
+    if entry.get("kind") == "target":
+        return f"this object's own ({len(entry.get('files') or [])} file(s))"
+    temp = f", {entry['temp_c']:g} °C" if entry.get("temp_c") is not None else ""
+    if entry.get("kind") == "raw-set":
+        return f"{entry.get('frames')} raw frames{', ' + entry['night'] if entry.get('night') else ''}{temp}"
+    lib = (entry.get("library") or [""])[0]
+    return f"master {Path(lib).name}{temp}"
+
+
+def _on_disk(base: Path) -> dict:
+    """{folder: {"lights": set, tier: set}} for every job folder now on disk."""
+    out = {}
+    for jd in [base] + [p for p in sorted(base.iterdir())
+                        if p.is_dir() and p.name not in _NOT_JOB_DIRS]:
+        rec = {}
+        for sub_ in ("lights", *calibration.TIERS):
+            d = jd / sub_
+            if d.is_dir():
+                rec[sub_] = {f.name for f in d.iterdir()
+                             if f.is_file() and config.is_fits_file(f.name)}
+        if rec:
+            out["." if jd == base else jd.name] = rec
+    return out
+
+
+def _describe_changes(plan: PrepPlan, old_manifest: dict | None) -> list[str]:
+    base = Path(plan.siril_dir)
+    disk = _on_disk(base)
+    live = {f.name for f in _lights(plan.target)}
+    old_jobs = {j["folder"]: j for j in (old_manifest or {}).get("jobs", [])}
+    new_jobs = {j["folder"]: j for j in (plan.manifest or {}).get("jobs", [])}
+    out: list[str] = []
+    before = sorted(f for f, rec in disk.items() if rec.get("lights"))
+    # a folder whose lights/ still holds links to subs no longer in the target is
+    # kept (they may be the last copies — `_retire_stale_links`), so it stays
+    after = sorted(set(new_jobs) | {f for f, rec in disk.items()
+                                    if rec.get("lights", set()) - live})
+    if before != after:
+        out.append(f"job folders: {', '.join(before) or 'none'} → {', '.join(after)}")
+    for folder, nj in sorted(new_jobs.items()):
+        here = disk.get(folder, {})
+        jd = base if folder == "." else base / folder
+        for tier in calibration.TIERS:
+            entry = (nj.get("calibration") or {}).get(tier)
+            want = {Path(f).name for f in (entry or {}).get("files", [])}
+            have = here.get(tier, set())
+            if want == have:
+                continue
+            oe = (old_jobs.get(folder, {}).get("calibration") or {}).get(tier)
+            old = (_tier_desc(oe) if oe and {Path(f).name for f in oe.get("files", [])} == have
+                   else (f"{len(have)} file(s)" if have else "none"))
+            out.append(f"{folder if folder != '.' else 'sandbox'}: {tier[:-1]} "
+                       f"{old} → {_tier_desc(entry)}")
+        want_l = {Path(d).name for job in plan.jobs if Path(job.job_dir) == jd
+                  for _s, d in job.links}
+        have_l = here.get("lights", set())
+        # only what `_retire_stale_links` would really unlink: a link whose sub is
+        # still in the target's lights/ (a vanished one is left for prune_rejected)
+        gone_l = (have_l - want_l) & live
+        if before == after and (want_l - have_l or gone_l):
+            add, gone = len(want_l - have_l), len(gone_l)
+            out.append(f"{folder if folder != '.' else 'sandbox'}: lights "
+                       f"{'+' + str(add) if add else ''}{' ' if add and gone else ''}"
+                       f"{'−' + str(gone) if gone else ''}")
+        pp = jd / "presets" / PRESET_NAME
+        job = next((j for j in plan.jobs if Path(j.job_dir) == jd), None)
+        if job is not None and pp.exists():
+            cur = _read_preset(pp)
+            flips = [k for k in _CALIB_SWITCHES
+                     if cur and k in job.preset and cur.get(k) != job.preset[k]]
+            if flips and not any(l.startswith(f"{folder if folder != '.' else 'sandbox'}: ")
+                                 and "lights" not in l for l in out):
+                out.append(f"{folder if folder != '.' else 'sandbox'}: preset "
+                           f"{', '.join(flips)} switch(es) to match what is linked")
+    return out
+
+
+def plan_rematch(target: str, force: bool = False, should_cancel=None) -> RematchPlan:
+    """Read-only: is the target's sandbox calibration current, and if not, what
+    would re-matching change? `force` re-plans even when the stamp matches."""
+    base = config.siril_dir(target)
+    if not base.is_dir() or not _lights(target):
+        return RematchPlan(target, "none")
+    if has_unimported_output(target) or roundtrip.sandbox_busy(target, SANDBOX):
+        return RematchPlan(target, "skipped")
+    old = read_manifest(base)
+    device = calibration.target_facts(target, sample=3).get("device")
+    key = calibration.calibration_key(target, device)
+    if not force and old and old.get("calibration_key") == key:
+        return RematchPlan(target, "current", key=key)
+    plan = plan_prep(target, should_cancel=should_cancel)
+    if not plan.total_lights:
+        return RematchPlan(target, "none")
+    changes = _describe_changes(plan, old)
+    return RematchPlan(target, "changes" if changes else "unchanged", plan, changes,
+                       plan.calibration_key)
+
+
+def apply_rematch(rp: RematchPlan, user: bool = False, should_cancel=None) -> dict:
+    """Write a `plan_rematch` result: retire stale links, link the new match,
+    patch the preset switches, stamp the manifest. `user` = a person asked
+    (raises `roundtrip.StackInProgress` while a stack runs); otherwise a busy
+    sandbox or one with finished output to import is left for the next sync
+    (``"busy": True``, nothing written)."""
+    if not rp.due or rp.plan is None:
+        return {"written": False, "busy": rp.status == "skipped"}
+    t = rp.target
+    if user:
+        roundtrip.require_idle(t, SANDBOX)
+    elif roundtrip.sandbox_busy(t, SANDBOX):
+        return {"written": False, "busy": True}
+    if has_unimported_output(t):
+        return {"written": False, "busy": True}
+    res = apply_prep(rp.plan, should_cancel=should_cancel, rematch=True)
+    if rp.changes:
+        _log.info("rematch %s: %s", t, "; ".join(rp.changes))
+    # apply_prep's own "skipped" counts links already in place; "busy" is ours
+    return {**res, "written": not res["cancelled"], "busy": False}
 
 
 def autoprep(targets, should_cancel=None, only_missing: bool = False) -> dict:

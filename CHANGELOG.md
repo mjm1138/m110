@@ -11,6 +11,15 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Added
+- **Objects pick up new darks and flats by themselves.** When you import
+  calibration frames, or a new version of M110 changes how frames are matched,
+  every object's Siril working folder is now checked again in the background. Its
+  darks, flats and biases are swapped for the better match, and the status bar
+  says which objects changed. Nothing runs while a stack is going or while
+  finished output waits to be imported. A hand-edited Naztronomy preset keeps your
+  edits; only its darks/flats/biases switches follow what is linked. To check one
+  object yourself, right-click it on the Processing page and choose **Re-match
+  Calibration…**, which shows what would change before it changes anything.
 - **Stackhammer, a second stacking engine.** If you have
   [Stackhammer](https://github.com/mjm1138/stackhammer) (a faster stacker for
   Siril on Macs with Apple silicon, with local normalization for nights that
@@ -133,6 +142,18 @@ changes a **user** would notice, per release.
   popped up only after the first one closed, and it was easy to miss.
 
 ### Fixed
+- **A flat or dark on a different colour grid is no longer used.** The Seestar
+  app saves its subs with a different colour layout (GRBG) from the one N.I.N.A.
+  writes (RGGB). A N.I.N.A. flat applied to app subs would correct each pixel with
+  its neighbour's value, adding colour errors. M110 now only matches calibration
+  frames whose colour layout is the same as the lights', and the job's notes say
+  when that left it without one. A flat taken more than 30 days from the lights is
+  still used, with a note to check for dust rings.
+- **Re-preparing an object no longer leaves the old dark beside the new one.**
+  When new lights arrived and the best dark had changed, the old dark stayed in
+  the working folder next to the new one, and both were used. Old links are now
+  removed. So is a working folder's `lights/` left over from before it was split
+  by filter, so Siril is never opened on a stale, partial set of subs.
 - **A dark much warmer than your lights is no longer used.** M110 matched a dark
   by nearest temperature, however far off. Measured on real Seestar S50 frames, a
   dark more than about 8 °C warmer than the lights removes hot pixels so hard that
