@@ -20,6 +20,10 @@ changes a **user** would notice, per release.
   edits; only its darks/flats/biases switches follow what is linked. To check one
   object yourself, right-click it on the Processing page and choose **Re-match
   Calibration…**, which shows what would change before it changes anything.
+- **Re-match Calibration from the Library.** Right-click any object in Deep Sky
+  (or use **Object › Re-match Calibration**) to check its darks, flats and biases
+  against your calibration library, not just objects on the Processing page. As
+  before, it shows what would change and changes nothing until you confirm.
 - **Stackhammer, a second stacking engine.** If you have
   [Stackhammer](https://github.com/mjm1138/stackhammer) (a faster stacker for
   Siril on Macs with Apple silicon, with local normalization for nights that

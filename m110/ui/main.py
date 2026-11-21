@@ -554,6 +554,8 @@ class MainWindow(QMainWindow):
                                 checkable=True)
         self.siril_menu = QMenu("Process in Siril", self)
         self.siril_menu.aboutToShow.connect(self._rebuild_siril_menu)
+        self.rematch_menu = QMenu("Re-match Calibration", self)
+        self.rematch_menu.aboutToShow.connect(self._rebuild_rematch_menu)
         self.astrowizard_action = act("Send to AstroWizard…",
                                       lambda: cat.detail.cmd_send_to_astrowizard())
         self.stackingwizard_action = act("Stack in StackingWizard…",
@@ -583,6 +585,7 @@ class MainWindow(QMainWindow):
         fill(m, (self.show_object_action, self.set_goal_action, None,
                  self.pin_action, self.depri_action, None))
         m.addMenu(self.siril_menu)
+        m.addMenu(self.rematch_menu)
         fill(m, (self.astrowizard_action, self.stackingwizard_action,
                  self.import_finished_action, None, self.export_action,
                  self.reveal_action, self.publish_flag_action, None,
@@ -590,7 +593,8 @@ class MainWindow(QMainWindow):
                  self.remove_action))
         self.object_actions = [
             self.show_object_action, self.set_goal_action, self.pin_action,
-            self.depri_action, self.siril_menu.menuAction(), self.astrowizard_action,
+            self.depri_action, self.siril_menu.menuAction(),
+            self.rematch_menu.menuAction(), self.astrowizard_action,
             self.stackingwizard_action, self.import_finished_action,
             self.export_action, self.reveal_action, self.publish_flag_action,
             self.fill_one_action, self.enrich_one_action, self.remove_action]
@@ -629,6 +633,7 @@ class MainWindow(QMainWindow):
         self.publish_flag_action.setChecked(entry.get("publish", True) is not False)
         self.set_goal_action.setEnabled("set_goal" in have)
         self.siril_menu.menuAction().setEnabled("siril" in have)
+        self.rematch_menu.menuAction().setEnabled("siril" in have)
         self.astrowizard_action.setEnabled("astrowizard" in have)
         self.stackingwizard_action.setEnabled("stackingwizard" in have)
         self.import_finished_action.setEnabled("import_finished" in have)
@@ -653,6 +658,22 @@ class MainWindow(QMainWindow):
                 lambda _=False, d=d: defer(self, lambda: launch_siril(self, d)))
         if not acts:
             self.siril_menu.addAction("No Working Folder").setEnabled(False)
+
+    def _rebuild_rematch_menu(self) -> None:
+        """Object › Re-match Calibration: one entry per capture target of the
+        selected object that has a Siril working folder."""
+        from m110.ui.widgets import rematch_targets_for_slug
+        self.rematch_menu.clear()
+        slug = self._selected_slug()
+        targets = rematch_targets_for_slug(slug) if slug else []
+        for t in targets:
+            # Deferred: `triggered` fires inside the menu's own loop, and the
+            # dialog is modal.
+            self.rematch_menu.addAction(f"{t}…").triggered.connect(
+                lambda _=False, t=t: defer(
+                    self, lambda: self.catalog.open_rematch(t)))
+        if not targets:
+            self.rematch_menu.addAction("No Working Folder").setEnabled(False)
 
     def _show_selected_object(self) -> None:
         if self._selected_slug():

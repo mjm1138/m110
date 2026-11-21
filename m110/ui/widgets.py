@@ -369,6 +369,30 @@ def add_siril_actions(menu, dirs: list[tuple[str, Path]]) -> dict:
     return {sub.addAction(lbl): d for lbl, d in dirs}
 
 
+REMATCH_ACTION = "Re-match Calibration…"
+REMATCH_MENU = "Re-match Calibration"
+
+
+def rematch_targets_for_slug(slug: str) -> list[str]:
+    """The object's capture targets that have a Siril working folder — what
+    Re-match Calibration can act on (the dialog works one target at a time)."""
+    return [t for t in targets_for_slug(slug) if siril.working_dirs(t)]
+
+
+def add_rematch_actions(menu, targets: list[str]) -> dict:
+    """Add "Re-match Calibration…" to `menu` for `targets`; return {action: target}.
+
+    Same shape as :func:`add_siril_actions`: one target → one plain entry;
+    several (an object fed by more than one capture target) → a submenu with one
+    entry per target. No targets → nothing added."""
+    if not targets:
+        return {}
+    if len(targets) == 1:
+        return {menu.addAction(REMATCH_ACTION): targets[0]}
+    sub = menu.addMenu(REMATCH_MENU)
+    return {sub.addAction(f"{t}…"): t for t in targets}
+
+
 def stack_in_stackingwizard(parent, slug: str) -> None:
     """Open StackingWizard and reveal the finishing sandbox for it to be pointed at.
 

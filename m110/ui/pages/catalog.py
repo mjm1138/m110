@@ -31,6 +31,7 @@ from m110.ui.widgets import (
     StatusPillDelegate, STATUS_ROLE, STATUS_TOOLTIP, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
     working_dirs_for_slug, add_siril_actions, launch_siril, mono_font,
+    add_rematch_actions, rematch_targets_for_slug,
     connect_context_menu, make_search_field, make_view_switcher, restyle_view_switcher, header_group,
 )
 
@@ -742,6 +743,9 @@ class CatalogPage(QWidget):
         if siril_dirs:
             menu.addSeparator()
         process_acts = add_siril_actions(menu, siril_dirs)
+        # Re-match Calibration lives here too, not only on the Processing page:
+        # an object worth re-calibrating with new darks needn't be in its queue.
+        rematch_acts = add_rematch_actions(menu, rematch_targets_for_slug(slug))
         menu.addSeparator()
         published = entry.get("publish", True) is not False
         publish_act = menu.addAction(
@@ -755,6 +759,7 @@ class CatalogPage(QWidget):
         menu.addSeparator()
         remove_act = menu.addAction("Remove from Library")
         return menu, {"fill": fill_act, "online": online_act, "process": process_acts,
+                      "rematch": rematch_acts,
                       "publish": publish_act, "pin": pin_act, "depri": depri_act,
                       "remove": remove_act, "published": published, "state": state}
 
@@ -775,6 +780,8 @@ class CatalogPage(QWidget):
             self._enrich_one_online(slug)
         elif chosen in act["process"]:
             launch_siril(self, act["process"][chosen])
+        elif chosen in act["rematch"]:
+            self.open_rematch(act["rematch"][chosen])
         elif chosen is act["publish"]:
             self._toggle_publish(slug, not act["published"])
         elif chosen is act["pin"]:
@@ -783,6 +790,11 @@ class CatalogPage(QWidget):
             self._set_pin(slug, None if state == pins.DEPRIORITIZE else pins.DEPRIORITIZE)
         elif chosen is act["remove"]:
             self._remove_one(slug)
+
+    def open_rematch(self, target: str) -> None:
+        """Preview, then confirm, re-matching one capture target's calibration."""
+        from m110.ui.rematch_dialog import open_rematch
+        open_rematch(self, target)
 
     def _set_pin(self, slug: str, state):
         """Apply a Pin/Deprioritize/clear override (undoable), refresh the marker,
