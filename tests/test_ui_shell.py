@@ -490,6 +490,31 @@ def test_object_menu_follows_the_selection(tmp_path, monkeypatch, qapp):
         win.deleteLater(); qapp.processEvents()
 
 
+def test_object_menu_rematch_opens_the_dialog_for_each_target(tmp_path, monkeypatch, qapp):
+    root = seed_root(tmp_path, monkeypatch)
+    slug, _tid = seed_capture(root)
+    from m110.ui import rematch_dialog, widgets
+    opened = []
+    monkeypatch.setattr(rematch_dialog.RematchDialog, "exec",
+                        lambda self: opened.append(self._target))
+    monkeypatch.setattr(widgets, "rematch_targets_for_slug",
+                        lambda s: ["A", "B"] if s == slug else [])
+    win = _window(qapp)
+    try:
+        win._rebuild_rematch_menu()                     # nothing selected
+        (none,) = win.rematch_menu.actions()
+        assert not none.isEnabled()
+        _select(win, qapp, slug)
+        win._rebuild_rematch_menu()
+        acts = win.rematch_menu.actions()
+        assert [a.text() for a in acts] == ["A…", "B…"]
+        acts[1].trigger()
+        qapp.processEvents()                            # deferred out of the menu
+        assert opened == ["B"]
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
 def test_pin_from_the_object_menu_is_undoable(tmp_path, monkeypatch, qapp):
     from m110 import pins
     root = seed_root(tmp_path, monkeypatch)

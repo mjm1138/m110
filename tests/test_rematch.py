@@ -1,7 +1,8 @@
 """Re-matching an existing Siril sandbox's calibration when the library, the
 target's own frames or the matching rules change (`siril.plan_rematch` /
 `apply_rematch`, `processing.rematch_calibration`, the sync hook and the
-Processing page's Re-match Calibration…). Temp fixtures only."""
+Re-match Calibration… on the Processing page, Deep Sky's right-click menu
+and the Object menu). Temp fixtures only."""
 import json
 from pathlib import Path
 
@@ -259,6 +260,46 @@ def test_the_processing_page_offers_rematch(tmp_path, monkeypatch, qtbot):
     qtbot.addWidget(page)
     page.open_rematch("M74")
     assert opened == ["M74"]
+
+
+def test_the_library_right_click_offers_rematch(tmp_path, monkeypatch, qtbot):
+    """Deep Sky's right-click menu offers Re-match Calibration… for an object with
+    a Siril working folder, whether or not it is in the Processing queue."""
+    root = seed_root(tmp_path, monkeypatch)
+    _mixed_m74(n_app=0, with_darks=False)
+    _prep()
+    from tests._helpers import add_library
+    add_library(root, {"m74": {"id": "M74", "name": "Phantom", "type": "galaxy"},
+                       "m31": {"id": "M31", "name": "Andromeda", "type": "galaxy"}})
+    from m110.ui import rematch_dialog, widgets
+    from m110.ui.pages.catalog import CatalogPage
+    monkeypatch.setattr(widgets, "targets_for_slug",
+                        lambda slug: ["M74"] if slug == "m74" else [])
+    opened = []
+    monkeypatch.setattr(rematch_dialog.RematchDialog, "exec",
+                        lambda self: opened.append(self._target))
+    page = CatalogPage()
+    qtbot.addWidget(page)
+    menu, act = page._object_menu("m74")
+    (action, target), = act["rematch"].items()
+    assert action.text() == widgets.REMATCH_ACTION and target == "M74"
+    page.open_rematch(target)
+    assert opened == ["M74"]
+    menu.deleteLater()
+    bare, act2 = page._object_menu("m31")        # never captured → no entry
+    assert act2["rematch"] == {}
+    bare.deleteLater()
+
+
+def test_rematch_for_an_object_fed_by_two_targets_is_a_submenu(qapp):
+    from PySide6.QtWidgets import QMenu
+    from m110.ui.widgets import REMATCH_MENU, add_rematch_actions
+    menu = QMenu()
+    acts = add_rematch_actions(menu, ["M74", "M74_mosaic"])
+    assert [a.text() for a in menu.actions()] == [REMATCH_MENU]
+    assert sorted(acts.values()) == ["M74", "M74_mosaic"]
+    assert add_rematch_actions(QMenu(), []) == {}
+    menu.deleteLater()
 
 
 def test_a_split_sandbox_stays_split_when_one_filter_is_left(tmp_path, monkeypatch):

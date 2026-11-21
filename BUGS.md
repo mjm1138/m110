@@ -541,7 +541,10 @@ Legend: `[ ]` open · `[~]` partially done
   (`processing.rematch_calibration` → `siril.plan_rematch` / `apply_rematch`), and
   `apply_prep` now retires the links its plan no longer wants (`_retire_stale_links`).
   A preset's darks/flats/biases switches follow what is linked. Manual: Processing →
-  right-click → **Re-match Calibration…** (preview, then confirm).
+  right-click → **Re-match Calibration…** (preview, then confirm); since 2026-11-21 also
+  Deep Sky's right-click menu and **Object › Re-match Calibration** (one entry per
+  capture target with a Siril folder, `widgets.rematch_targets_for_slug`), so objects
+  outside the Processing queue are reachable.
   The preview against the live store found a second bug: the 2026-11-13 N.I.N.A. flats
   (RGGB) would have gone to ~70 Seestar-app objects (GRBG, one column off). Fixed with a
   colour-pattern check on every tier, plus a note on flats more than 30 days from the

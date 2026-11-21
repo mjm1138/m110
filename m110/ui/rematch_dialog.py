@@ -198,3 +198,12 @@ class RematchDialog(QDialog):
     def closeEvent(self, event):
         self._stop()
         super().closeEvent(event)
+
+
+def open_rematch(parent, target: str) -> None:
+    """Preview, then confirm, re-matching one target's Siril calibration (the one
+    entry point for the Processing page, the Deep Sky right-click menu and the
+    Object menu)."""
+    dlg = RematchDialog(target, parent)
+    dlg.exec()
+    dlg.deleteLater()

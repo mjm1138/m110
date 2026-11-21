@@ -464,6 +464,11 @@ and the title-bar band only exists on macOS with Qt ≥ 6.9.
       Calibration…** shows "already current" with nothing to change. Delete one
       frame from `Calibration/<S50>/darks/` and run it again: the dialog lists the
       change, writes nothing until **Re-match**, then relinks.
+- [ ] **Re-match from the Library:** Deep Sky → right-click M 15 (list and grid) →
+      **Re-match Calibration…** opens the same dialog; so does **Object › Re-match
+      Calibration › M 15…** with it selected. An object fed by two capture targets
+      shows a submenu with one entry per target; one never captured has no entry
+      (and the Object submenu is disabled).
 
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.

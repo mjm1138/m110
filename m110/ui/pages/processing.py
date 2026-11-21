@@ -89,10 +89,8 @@ class ProcessingPage(QScrollArea):
 
     def open_rematch(self, target: str):
         """Preview, then confirm, re-matching one target's Siril calibration."""
-        from m110.ui.rematch_dialog import RematchDialog
-        dlg = RematchDialog(target, self)
-        dlg.exec()
-        dlg.deleteLater()
+        from m110.ui.rematch_dialog import open_rematch
+        open_rematch(self, target)
 
     def subtitle(self) -> str:
         return getattr(self, "_subtitle", "")
