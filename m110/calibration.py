@@ -13,14 +13,23 @@ Rules (`match_masters`):
 
 * **dark** — same exposure, gain and binning; then the nearest sensor
   temperature (ties → the master averaged from more frames). A dark at the wrong
-  exposure or gain is worse than none, so those never match.
+  exposure or gain is worse than none, so those never match; so is one more than
+  `DARK_WARM_LIMIT_C` warmer than the lights. Which program made a dark does not
+  matter: a Seestar app master serves N.I.N.A. lights as well as a N.I.N.A. set
+  at the same temperature (measured, #206).
+* **colour pattern** (every tier) — a frame whose ``BAYERPAT`` differs from the
+  lights' is not on the same pixel grid, so it never matches. The Seestar app
+  saves its subs GRBG, one column off the sensor's RGGB that N.I.N.A. writes:
+  a N.I.N.A. flat would divide each app pixel by a neighbouring colour's value.
+  A frame or lights with no ``BAYERPAT`` (the app's own masters) are not judged.
 * **bias** — same binning; the same gain when any candidate has it, else the sole
   candidate with a note (some devices record a bias gain on a different scale
   from their lights').
 * **flat** — same binning and a filter that resolves to the lights' filter. A
   DwarfLab flat's FILTER is an ``ir_<n>`` index whose mapping to a filter name
   is per device (`FILTER_INDEX`), so two flats that could both apply yield none
-  and a note rather than a guess.
+  and a note rather than a guess. A flat taken more than `FLAT_AGE_NOTE_DAYS`
+  from the lights is still linked, with a note: dust on the sensor window moves.
 
 A target whose subs carry more than one ``TELESCOP`` is refused too: each
 device has its own library.
@@ -32,6 +41,9 @@ makes such a target stackable with calibration.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
 import statistics
 from collections import Counter
@@ -49,6 +61,19 @@ _TIER_OF_KIND = {"dark": "darks", "flat": "flats", "bias": "biases"}
 # FILTER token → the filter name the lights carry. No mapping is verified yet, so
 # it is empty: no ir_ flat can match, and `match_masters` says so.
 FILTER_INDEX: dict[str, dict[str, str]] = {}
+
+
+# A dark warmer than the lights over-subtracts their hot pixels, and past about
+# 8 °C warmer it leaves them worse than no dark at all. A cooler dark
+# under-subtracts but still helps: 8 °C cooler still removed about half. Measured
+# on an S50's M74 N.I.N.A. 20 s lights against 14 library darks, 2026-11-19 (#206,
+# DONE.md); the limit keeps a degree of margin below that crossover.
+DARK_WARM_LIMIT_C = 7.0
+
+
+def _too_warm(m: "MasterInfo", temp: float | None) -> bool:
+    return (m.temp_c is not None and temp is not None
+            and m.temp_c - temp > DARK_WARM_LIMIT_C)
 
 
 DARKS_ON_DEVICE_NOTE = ("subs from this telescope are already dark-subtracted on the "
@@ -73,6 +98,11 @@ class MasterInfo:
     # For a raw SET candidate (`raw_sets`): every member frame. `path` is then the
     # first member, `temp_c` the median and `ncombine` the member count.
     frames: tuple = ()
+    # BAYERPAT (upper-case), None when the header has none
+    bayerpat: str | None = None
+    # the local night it was taken (`_night`), for every frame — `night` above is
+    # the raw-set grouping key and stays None for a master
+    taken: str | None = None
 
     @property
     def is_set(self) -> bool:
@@ -139,11 +169,98 @@ def _is_raw(h, ncombine: int | None) -> bool:
             and bool(h.get("DATE-OBS")))
 
 
+# ── caches + change detection ────────────────────────────────────────────────
+# A re-match (siril.plan_rematch) reads every light header of a target and the
+# whole device library, and sync runs one whenever the library changes. Both reads
+# are memoized for the life of the process, keyed on the file's stat — name, size,
+# mtime_ns, inode — which only says "this file is not the one we read", never
+# when or where a frame was taken (provenance stays header-only).
+
+# Bump whenever a matching rule changes what `match_masters` picks from the same
+# library for the same lights: every sandbox stamped with an older key is
+# re-matched at the next sync. 1 = through 2026-11-19; 2 = `DARK_WARM_LIMIT_C` +
+# the colour-pattern check.
+MATCH_RULES = 2
+
+_FACTS_CACHE: dict[str, tuple[tuple, dict]] = {}
+_FACTS_CACHE_MAX = 250_000
+_LIBRARY_CACHE: dict[str, tuple[str, dict]] = {}
+
+
+def clear_caches() -> None:
+    """Forget every memoized header read (tests; a data-root change)."""
+    _FACTS_CACHE.clear()
+    _LIBRARY_CACHE.clear()
+
+
+def _stat_key(st) -> tuple:
+    return (st.st_size, st.st_mtime_ns, st.st_ino)
+
+
+def _listing(d: Path) -> list:
+    """[(name, size, mtime_ns, inode)] of the FITS files directly in `d` (what
+    `library` / `siril._calib_frames` read), sorted; [] when `d` is absent."""
+    try:
+        it = os.scandir(d)
+    except OSError:
+        return []
+    out = []
+    with it:
+        for e in it:
+            if not config.is_fits_file(e.name):
+                continue
+            try:
+                if e.is_file():
+                    out.append((e.name, *_stat_key(e.stat())))
+            except OSError:
+                continue
+    return sorted(out)
+
+
+def library_fingerprint(device: str | None) -> str:
+    """A digest of what is in ``Calibration/<device>/`` — it changes when a frame
+    is added, removed or replaced, and costs one directory scan per tier."""
+    if not device:
+        return ""
+    seg = _safe_segment(device)
+    blob = [(t, _listing(config.calibration_dir(seg, t))) for t in TIERS]
+    return hashlib.sha256(json.dumps(blob).encode()).hexdigest()
+
+
+def calibration_key(target: str, device: str | None) -> str:
+    """What a sandbox's calibration was matched against: the rules
+    (`MATCH_RULES`), the device library, and the target's own darks/flats/biases.
+    A sandbox whose manifest carries another key is due a re-match."""
+    own = [(t, _listing(fn(target))) for t, fn in
+           (("darks", config.darks_dir), ("flats", config.flats_dir),
+            ("biases", config.biases_dir))]
+    blob = {"rules": MATCH_RULES, "library": library_fingerprint(device), "target": own}
+    return hashlib.sha256(json.dumps(blob, sort_keys=True).encode()).hexdigest()
+
+
 def frame_facts(path) -> dict | None:
     """The header facts calibration matching keys on, or None if unreadable.
     ``temp_c`` is CCD-TEMP, else DET-TEMP (what some DwarfLab devices write);
     ``device`` / ``darks_applied`` / ``capture`` come from the capture profile
-    (capture_profiles.facts)."""
+    (capture_profiles.facts). Memoized on the file's stat (a copy is returned)."""
+    p = str(path)
+    try:
+        key = _stat_key(os.stat(p))
+    except OSError:
+        return None
+    hit = _FACTS_CACHE.get(p)
+    if hit is not None and hit[0] == key:
+        return dict(hit[1])
+    facts = _read_frame_facts(p)
+    if facts is not None:
+        if len(_FACTS_CACHE) >= _FACTS_CACHE_MAX:
+            _FACTS_CACHE.clear()
+        _FACTS_CACHE[p] = (key, facts)
+        return dict(facts)
+    return None
+
+
+def _read_frame_facts(path: str) -> dict | None:
     try:
         from astropy.io import fits
         h = fits.getheader(str(path))
@@ -168,6 +285,8 @@ def frame_facts(path) -> dict | None:
         "telescop": (str(tel).strip() or None) if tel not in (None, "") else None,
         "raw": _is_raw(h, ncomb),
         "night": _night(h),
+        "bayerpat": (str(h.get("BAYERPAT")).strip().upper() or None)
+                    if h.get("BAYERPAT") not in (None, "") else None,
         **capture_profiles.facts(h),
     }
 
@@ -177,7 +296,18 @@ def library(device: str) -> dict[str, list[MasterInfo]]:
     kept for a tier if its IMAGETYP says so or is absent (the folder is trusted);
     one that claims another type is skipped. Tiers with nothing are omitted.
     `device` goes through the same `_safe_segment` ingest writes with, so a
-    hostile TELESCOP reads the folder it was imported into, never a path above."""
+    hostile TELESCOP reads the folder it was imported into, never a path above.
+    Memoized on `library_fingerprint` (each call gets its own lists)."""
+    fp = library_fingerprint(device)
+    ck = str(config.calibration_dir(_safe_segment(device), "darks").parent)
+    hit = _LIBRARY_CACHE.get(ck)
+    if hit is None or hit[0] != fp:
+        hit = (fp, _read_library(device))
+        _LIBRARY_CACHE[ck] = hit
+    return {t: list(ms) for t, ms in hit[1].items()}
+
+
+def _read_library(device: str) -> dict[str, list[MasterInfo]]:
     out: dict[str, list[MasterInfo]] = {}
     for tier in TIERS:
         d = config.calibration_dir(_safe_segment(device), tier)
@@ -197,7 +327,8 @@ def library(device: str) -> dict[str, list[MasterInfo]]:
                 path=f, tier=tier, exptime=facts["exptime"], gain=facts["gain"],
                 binning=facts["binning"], temp_c=facts["temp_c"],
                 filter=facts["filter"], ncombine=facts["ncombine"],
-                raw=facts["raw"], night=facts["night"] if facts["raw"] else None))
+                raw=facts["raw"], night=facts["night"] if facts["raw"] else None,
+                bayerpat=facts["bayerpat"], taken=facts["night"]))
         if masters:
             out[tier] = masters
     return out
@@ -219,7 +350,8 @@ def raw_sets(frames: list[MasterInfo]) -> list[MasterInfo]:
         if not m.raw:
             continue
         filt = m.filter if m.tier == "flats" else None
-        groups.setdefault((m.exptime, m.gain, m.binning, filt, m.night), []).append(m)
+        groups.setdefault((m.exptime, m.gain, m.binning, filt, m.night, m.bayerpat),
+                          []).append(m)
     out: list[MasterInfo] = []
     for key in sorted(groups, key=lambda k: tuple("" if v is None else str(v) for v in k)):
         members = sorted(groups[key], key=lambda m: (m.temp_c is None, m.temp_c or 0.0,
@@ -240,7 +372,8 @@ def raw_sets(frames: list[MasterInfo]) -> list[MasterInfo]:
                 gain=first.gain, binning=first.binning,
                 temp_c=round(statistics.median(temps), 2) if temps else None,
                 filter=first.filter, ncombine=len(run), raw=True, night=first.night,
-                frames=tuple(m.path for m in run)))
+                frames=tuple(m.path for m in run), bayerpat=first.bayerpat,
+                taken=first.night))
     return out
 
 
@@ -293,12 +426,45 @@ def _take(res: MatchResult, tier: str, m: MasterInfo) -> None:
                          "from them")
 
 
+# A flat taken further than this from the lights is still linked, with a note.
+FLAT_AGE_NOTE_DAYS = 30
+
+
+def _off_grid_note(kind: str, frames: list[MasterInfo], pattern: str) -> str:
+    theirs = ", ".join(sorted({m.bayerpat for m in frames if m.bayerpat}))
+    return (f"no {kind} linked: the library's {kind}s are {theirs} and these lights "
+            f"are {pattern} — a {kind} on another colour grid would calibrate each "
+            "pixel with a neighbour's value. Take them with the same capture software")
+
+
+def _flat_age_days(m: MasterInfo, nights) -> int | None:
+    """Days between the flat's night and the furthest of the lights' nights."""
+    if not m.taken or not nights:
+        return None
+    from datetime import date
+    try:
+        f = date.fromisoformat(m.taken)
+        return max(abs((date.fromisoformat(n) - f).days) for n in nights)
+    except ValueError:
+        return None
+
+
 def match_masters(facts: dict, device: str) -> MatchResult:
     """The one master per tier for lights with `facts` (``exptime``, ``gain``,
     ``binning``, ``temp_c``, ``filter``) from `device`'s library. Missing tiers
     are None; every non-match and every judgement call lands in ``notes``."""
     res = MatchResult(device=device)
     lib = {t: candidates(ms) for t, ms in library(device).items()}
+    # The colour-pattern check, every tier: a frame on another pixel grid is no
+    # candidate. Said once per tier when it is what left the tier empty.
+    pattern = facts.get("bayerpat")
+    off_grid: dict[str, list[MasterInfo]] = {}
+    if pattern:
+        for tier, ms in list(lib.items()):
+            off = [m for m in ms if m.bayerpat and m.bayerpat != pattern]
+            if off:
+                off_grid[tier] = off
+                lib[tier] = [m for m in ms if not m.bayerpat or m.bayerpat == pattern]
     if not lib:
         res.notes.append(f"no calibration library for {device} "
                          f"(Calibration/{device}/ is empty)")
@@ -310,8 +476,11 @@ def match_masters(facts: dict, device: str) -> MatchResult:
 
     # dark: exact exposure/gain/binning, nearest temperature — unless the device
     # already subtracted one before saving the subs (devices.darks_applied_on_device)
-    darks = [m for m in lib.get("darks", [])
-             if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
+    at_settings = [m for m in lib.get("darks", [])
+                   if _same(m.exptime, exp, 0.01) and m.gain == gain and m.binning == binning]
+    darks = [m for m in at_settings if not _too_warm(m, temp)]
+    too_warm = sorted((m for m in at_settings if _too_warm(m, temp)),
+                      key=lambda m: m.temp_c)
     # Per frame, by capture path (capture_profiles): the same S50 dark-subtracts
     # through its own app and not under N.I.N.A. Facts without the key (an older
     # caller) fall back to the telescope model.
@@ -325,6 +494,11 @@ def match_masters(facts: dict, device: str) -> MatchResult:
             return (dt, m.is_set, -(m.ncombine or 0), m.path.name)   # tie → a master
         best = min(darks, key=_rank)
         _take(res, "darks", best)
+        if too_warm and (best.temp_c is None
+                         or too_warm[0].temp_c - temp < abs(best.temp_c - temp)):
+            res.notes.append(f"passed over a nearer dark at {too_warm[0].temp_c:g} °C: more "
+                             f"than {DARK_WARM_LIMIT_C:g} °C warmer than the lights "
+                             f"({temp:g} °C) over-subtracts hot pixels")
         if best.temp_c is not None and temp is not None:
             dt = best.temp_c - temp
             if abs(dt) > 5:
@@ -335,6 +509,14 @@ def match_masters(facts: dict, device: str) -> MatchResult:
         elif temp is None:
             res.notes.append("lights carry no sensor temperature; the first matching "
                              "dark was taken")
+    elif too_warm:
+        res.notes.append(f"no dark linked: every dark for {what} is more than "
+                         f"{DARK_WARM_LIMIT_C:g} °C warmer than the lights (nearest "
+                         f"{too_warm[0].temp_c:g} vs {temp:g} °C), and a dark that warm "
+                         "over-subtracts hot pixels — worse than none. Take darks nearer "
+                         "the lights' temperature")
+    elif off_grid.get("darks") and not lib.get("darks"):
+        res.notes.append(_off_grid_note("dark", off_grid["darks"], pattern))
     elif lib.get("darks"):
         res.notes.append(f"no master dark for {what} "
                          f"({len(lib['darks'])} darks in the library, none at those settings)")
@@ -354,6 +536,8 @@ def match_masters(facts: dict, device: str) -> MatchResult:
                              "is unverified")
         elif len(pool) > 1:
             res.notes.append(f"{len(pool)} master biases match; using {pool[0].path.name}")
+    elif off_grid.get("biases") and not lib.get("biases"):
+        res.notes.append(_off_grid_note("bias", off_grid["biases"], pattern))
     elif lib.get("biases"):
         res.notes.append(f"no master bias at bin {binning}")
     elif not on_device:          # a darks-only Seestar library has no bias tier by design
@@ -368,6 +552,11 @@ def match_masters(facts: dict, device: str) -> MatchResult:
         flats = [max(flats, key=lambda m: (m.night or "", m.ncombine or 0))]  # newest
     if len(flats) == 1:
         _take(res, "flats", flats[0])
+        age = _flat_age_days(flats[0], facts.get("nights"))
+        if age is not None and age > FLAT_AGE_NOTE_DAYS:
+            res.notes.append(f"the flat was taken {flats[0].taken}, {age} days from "
+                             "the furthest of these lights — dust on the sensor "
+                             "window moves, so check for dust-mote rings")
     elif len(flats) > 1:
         names = ", ".join(m.filter or m.path.name for m in flats)
         res.notes.append(f"{len(flats)} master flats could apply ({names}); "
@@ -377,6 +566,8 @@ def match_masters(facts: dict, device: str) -> MatchResult:
         res.notes.append(f"master flats present ({tokens}) but none is known to match "
                          f"filter {filt or '?'} — the {device} filter-index map is "
                          "unverified, so no flat was linked")
+    elif off_grid.get("flats") and not lib.get("flats"):
+        res.notes.append(_off_grid_note("flat", off_grid["flats"], pattern))
     elif lib.get("flats"):
         res.notes.append(f"no master flat at bin {binning}")
     elif not on_device:
@@ -419,11 +610,14 @@ def facts_from_frames(frames: list[dict]) -> dict:
                if (f.get("exptime"), f.get("gain"), f.get("binning")) == (exp, gain, binning)]
     temps = [f["temp_c"] for f in members if f.get("temp_c") is not None]
     filters = Counter(f["filter"] for f in members if f.get("filter"))
+    patterns = Counter(f["bayerpat"] for f in members if f.get("bayerpat"))
     telescop = next((f["telescop"] for f in frames if f.get("telescop")), None)
     return {
         "exptime": exp, "gain": gain, "binning": binning,
         "temp_c": statistics.median(temps) if temps else None,
         "filter": filters.most_common(1)[0][0] if filters else None,
+        "bayerpat": patterns.most_common(1)[0][0] if patterns else None,
+        "nights": sorted({f["night"] for f in members if f.get("night")}),
         "telescop": telescop,
         "mixed": len(groups) > 1,
         "groups": {f"{k[0]}s/g{k[1]}/b{k[2]}": n for k, n in groups.items()},

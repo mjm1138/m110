@@ -529,6 +529,23 @@ Legend: `[ ]` open · `[~]` partially done
   canonical stack is *not older* than the working_files one. Needs a call on what "In stack"
   means before changing behavior.
 
+- [x] **Existing sandboxes never picked up new calibration; re-prep left stale links**
+  (found 2026-11-19 while measuring #206, done). `prepare_missing` skips an existing
+  sandbox, and `apply_prep` was add-only. New library darks/flats, or a rule change,
+  never reached a prepped object, and an ingest re-prep left the old dark *beside* the
+  new one: `darks/` and the manifest disagreed, and m110-stack read the mixture as a raw
+  set. Live: `M110/siril/IRCUT_30s` kept a 23.1 °C app master on 14.75 °C lights while
+  32 raw darks at 16 °C sat in the library. Fixed: every manifest stamps
+  `calibration_key` (the rules, `calibration.MATCH_RULES`; the device library's
+  fingerprint; the target's own calibration). Each sync re-matches a stale sandbox
+  (`processing.rematch_calibration` → `siril.plan_rematch` / `apply_rematch`), and
+  `apply_prep` now retires the links its plan no longer wants (`_retire_stale_links`).
+  A preset's darks/flats/biases switches follow what is linked. Manual: Processing →
+  right-click → **Re-match Calibration…** (preview, then confirm).
+  The preview against the live store found a second bug: the 2026-11-13 N.I.N.A. flats
+  (RGGB) would have gone to ~70 Seestar-app objects (GRBG, one column off). Fixed with a
+  colour-pattern check on every tier, plus a note on flats more than 30 days from the
+  lights. After both fixes the live preview is 11 sandboxes changed and 62 stamped only.
 - [ ] **#28 — Siril prep is confusing (per-filter layout + stale dirs).** (Bug D from the
   M27 investigation.) The single↔multi-filter sandbox layout is hard to follow: a target
   that becomes "multi-filter" grows `siril/<FILTER>/lights/` job dirs, but an earlier
@@ -541,6 +558,10 @@ Legend: `[ ]` open · `[~]` partially done
   split should be **opt-in** — a Seestar user is effectively single-filter (LP or none), so
   the split mostly adds confusion. Edge case today (one object shot with mixed filter
   settings), but the stale-dir cleanup is the generally-useful piece.
+  **(a) done 2026-11-20:** prep now retires a job's `lights/` links that its plan no
+  longer puts there (only links whose sub is still in the target's `lights/`), and
+  removes the emptied `lights/`, so the stale folder stops being offered. A sandbox
+  already split by filter stays split when one filter is left. (b) and (c) are open.
 
 - [ ] **#17 — Intermediate / finished file hinting.** The naming patterns for
   intermediate and finished images are built on Mike's particular habits, and are
@@ -794,6 +815,25 @@ dark from the 20 matching raw 30 s darks and calibrated with it.
   Needed with it: N.I.N.A.'s Seestar filter `IR` is the app's `IRCUT` (the ZWO Alpaca
   name for the same UV/IR-cut slot). `capture_profiles.filter_name` renames it, so
   the two populations share a job folder instead of splitting by filter.
+- [x] **The Seestar app's own master darks are matched to N.I.N.A. lights** (#206;
+  found 2026-11-10 on M74; measured 2026-11-19, **not a bug in M110**). The worry:
+  `match_masters` ranks every dark by temperature, so an app `MasterDark_…` can serve
+  N.I.N.A. lights, and Stackhammer refuses it (no `BAYERPAT`) and stacks with no dark.
+  Measured on M74's N.I.N.A. 20 s lights (two sets of 20 lights, at 13.5 and 11.9 °C;
+  all 14 library darks; DONE.md has the table): at matched temperature the app master
+  removes hot pixels as well as a N.I.N.A. set (36 % vs 34 % left; no dark = 100 %), at
+  the same level (480 ADU), with a matching hot-pixel pattern (correlation 0.72 vs
+  0.74). Its 5 frames add a little noise (background 25.0 vs 23.7 ADU). The issue's
+  521-vs-480 ADU level gap came from temperature: dark level rises from 476 to 512 ADU
+  between 7.7 and 24.9 °C. So the suggested exclusion was **not** taken: it would have
+  forced the issue's own `IRCUT_20s` job from the 0.4 °C-off app master (36 % left) to
+  a 5–8 °C-off raw set (58–63 % left). The Stackhammer refusal is Stackhammer's to
+  revisit (mjm1138/stackhammer#27).
+  What the measurement did find: **a dark much warmer than the lights is worse than
+  none.** It crosses 100 % left at about +8 °C (+9.7 °C → 126 %, +12.6 °C → 204 %),
+  whichever program made it, while 8 °C cooler still leaves only 58 %. Fixed:
+  `calibration.DARK_WARM_LIMIT_C` = 7 — `match_masters` never links a dark more than
+  that much warmer, prefers a cooler one, and notes it.
 - [ ] **A mixed-exposure stack is named for one exposure** (found 2026-11-07, not
   fixed). The mixed M74 stack (25 × 20 s app subs + 9 × 30 s NINA subs, 13 min) was
   named `M_74_034x30sec_…`. The integration in the report is right, but the name's

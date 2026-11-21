@@ -236,6 +236,7 @@ class Frame:
     # dark-subtracted before it was saved (the capture path decides —
     # capture_profiles.darks_applied); None when the header was unreadable
     darks_applied: bool | None = None
+    bayerpat: str | None = None     # BAYERPAT, upper-case — calibration's grid check
 
 
 def read_frames(lights: Path | list[Path]) -> tuple[list[Frame], dict]:
@@ -280,6 +281,8 @@ def read_frames(lights: Path | list[Path]) -> tuple[list[Frame], dict]:
             dec=float(h["DEC"]) if h.get("DEC") is not None else None,
             binning=int(h["XBINNING"]) if h.get("XBINNING") is not None else None,
             darks_applied=capture_profiles.darks_applied(h),
+            bayerpat=(str(h.get("BAYERPAT")).strip().upper() or None)
+                     if h.get("BAYERPAT") not in (None, "") else None,
         ))
         if not geom:
             geom = {"naxis1": h.get("NAXIS1"), "naxis2": h.get("NAXIS2"),
@@ -1923,7 +1926,8 @@ def calibration_for_stack(working: Path, frames: list, geom: dict,
         {"exptime": f.exposure, "gain": f.gain, "binning": f.binning,
          "temp_c": f.temp, "filter": None if f.filter == "UNKNOWN" else f.filter,
          "telescop": geom.get("telescop") or None,
-         "device": geom.get("device"), "darks_applied": f.darks_applied}
+         "device": geom.get("device"), "darks_applied": f.darks_applied,
+         "bayerpat": f.bayerpat}
         for f in frames])
     device = facts.get("device")
     if not device:

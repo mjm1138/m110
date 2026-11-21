@@ -455,6 +455,16 @@ and the title-bar band only exists on macOS with Qt ≥ 6.9.
       `<object>_mosaic`, no-OBJECT darks go to the S50's library, and
       `m110-stack --run` on a NINA-only target builds the master and finishes.
 
+- [ ] **Re-match on sync (from the corpus):** before importing, `Images/M 15/siril/darks/`
+      holds the app's `MasterDark_…_13.9C_…`. Import the PINS night (its 20 s darks go
+      to the library); after the sync the status bar says **"Calibration re-matched:
+      M 15"** and that `darks/` holds the 4 raw frames instead. The preset's `darks`
+      switch is still on, and any key you hand-edited first is kept.
+- [ ] **Re-match by hand:** Processing → right-click M 15 → **Re-match
+      Calibration…** shows "already current" with nothing to change. Delete one
+      frame from `Calibration/<S50>/darks/` and run it again: the dialog lists the
+      change, writes nothing until **Re-match**, then relinks.
+
 #### Ingest — Seestar device  (mounted, USB or SMB)
 - [ ] Source dropdown offers "Seestar device — <volume>" when mounted.
 - [ ] Selecting it shows a **"Scanning…" modal that does NOT freeze**; the dropdown

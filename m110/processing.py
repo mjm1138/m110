@@ -155,6 +155,50 @@ def prepare_missing(should_cancel=None) -> dict:
                         only_missing=True)
 
 
+def rematch_calibration(targets=None, force: bool = False, should_cancel=None,
+                        progress=None) -> dict:
+    """Bring existing Siril sandboxes' calibration up to date — the sync-time
+    counterpart of the ingest re-prep. A sandbox whose manifest stamp
+    (`calibration.calibration_key`: the matching rules, the device library, the
+    target's own darks/flats/biases) is stale is re-planned and, where the links
+    differ, re-linked (`siril.plan_rematch` → `siril.apply_rematch`). A current
+    stamp costs one directory scan per device plus a manifest read; a busy sandbox,
+    or one with finished output to import, is left for the next sync.
+
+    Like `prepare_missing`, it runs only while Siril prep is enabled. Returns
+    ``{"updated": [targets], "skipped": [targets], "changes": {target: [lines]},
+    "notes": {target: [lines]}}``."""
+    out: dict = {"updated": [], "skipped": [], "changes": {}, "notes": {}}
+    w = WORKFLOWS_BY_ID.get("siril")
+    if not (w and w.available and "siril" in enabled_workflow_ids()):
+        return out
+    names = list(targets) if targets is not None else [
+        t for t in _store_targets() if config.siril_dir(t).is_dir()]
+    for i, t in enumerate(names, 1):
+        if should_cancel and should_cancel():
+            break
+        if progress:
+            progress(i, len(names))
+        try:
+            rp = siril.plan_rematch(t, force=force, should_cancel=should_cancel)
+            if rp.status == "skipped":
+                out["skipped"].append(t)
+                continue
+            if not rp.due:
+                continue
+            res = siril.apply_rematch(rp, should_cancel=should_cancel)
+        except siril.PrepCancelled:
+            break
+        if res.get("busy"):
+            out["skipped"].append(t)
+        elif res.get("written") and (rp.changes or res.get("removed")):
+            out["updated"].append(t)
+            out["changes"][t] = rp.changes
+            if res.get("notes"):
+                out["notes"][t] = res["notes"]
+    return out
+
+
 def _rejected_targets() -> list[str]:
     """Capture targets that have a ``rejected/`` tier — the only ones a prune can
     affect, so the common store (nobody has rejected anything) costs one listdir."""

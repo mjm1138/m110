@@ -44,6 +44,9 @@ def _reset_to_seal(_seal_live_store):
     config._apply(_seal_live_store)
     config.SETTINGS_FILE = _seal_live_store / "settings.json"
     config.APP_CONFIG_DIR = _seal_live_store / "app_config"
+    # calibration's header caches are keyed on stat, not on the test: start clean
+    from m110 import calibration
+    calibration.clear_caches()
     yield
 
 

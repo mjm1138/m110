@@ -185,6 +185,14 @@ Default root `~/Documents/M110` (override: `M110_DATA_ROOT` env → saved prefer
                      disagree with `lights`, then checks each master itself.
                      {"version": 1, "target", "device", "source": "library" |
                       "target" | null,
+                      "calibration_key": what the match was made against —
+                                sha256 of `calibration.MATCH_RULES`, the device
+                                library's fingerprint and the target's own
+                                darks/flats/biases. A sync re-matches a sandbox
+                                whose key is stale or absent
+                                (`siril.plan_rematch`), so a sandbox follows its
+                                library: links M110 made are swapped, nothing else.
+                                Added 2026-11-20, version still 1,
                       "jobs": [{"folder": "IRCUT_30s" (or "." for the single-job
                                 sandbox root), "filter", "label",
                                 "group": [job folders stacked together] | null,

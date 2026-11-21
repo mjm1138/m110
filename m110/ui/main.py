@@ -51,6 +51,16 @@ def _expanded_chrome() -> bool:
     return sys.platform == "darwin" and hasattr(Qt.WindowType, "ExpandedClientAreaHint")
 
 
+def recalibrated_message(targets) -> str:
+    """The status-bar line for a sync that re-matched calibration ("" for none)."""
+    targets = list(targets or [])
+    if not targets:
+        return ""
+    shown = ", ".join(targets[:3])
+    more = f" (+{len(targets) - 3} more)" if len(targets) > 3 else ""
+    return f"  ·  Calibration re-matched: {shown}{more}"
+
+
 class RefreshWorker(QThread):
     """Runs the (potentially slow) scan+derive+prepare-missing off the UI thread.
     `cancel` stops it at the next safe point, emitting nothing (quit uses it)."""
@@ -76,6 +86,12 @@ class RefreshWorker(QThread):
             # so a rejection takes effect without waiting for the next import.
             pruned = processing.reconcile_rejected()
             summary["pruned"] = sum(r.get("pruned", 0) for r in pruned.values())
+            # …and re-match calibration where the library (or the matching rules)
+            # changed since a sandbox was set up — new darks reach existing objects.
+            remat = processing.rematch_calibration(should_cancel=self.cancel.is_set)
+            if self.cancel.is_set():
+                return
+            summary["recalibrated"] = remat["updated"]
             self.done.emit(summary)
         except RefreshCancelled:
             return                              # nothing half-written; nothing to report
@@ -1244,7 +1260,7 @@ class MainWindow(QMainWindow):
             return                         # editor opened while we waited
         for p in self.pages:
             p.reload()
-        self._update_status()
+        self._update_status(extra=recalibrated_message(summary.get("recalibrated")))
         if self._prep_feedback:
             self._prep_feedback = False
             n = summary.get("prepared", 0)

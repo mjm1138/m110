@@ -143,6 +143,26 @@ def test_prep_writes_the_masters_manifest_stackhammer_reads(tmp_path, monkeypatc
     assert all((base / f).is_file() for f in d["files"])
 
 
+def test_the_nina_job_takes_an_app_master_nearer_its_temperature(tmp_path, monkeypatch):
+    """#206: the Seestar app's own master at the N.I.N.A. lights' temperature (11 °C)
+    beats the library's 5.7 °C raw set; the manifest says it is a master."""
+    seed_root(tmp_path, monkeypatch)
+    _mixed_m74()
+    master = config.calibration_dir(S50, "darks") / "MasterDark_5_30s_11C_20261023-211609.fit"
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    for k, v in {"CREATOR": "ZWO Seestar S50", "STACKCNT": 5, "EXPTIME": 30.0,
+                 "GAIN": 80, "XBINNING": 1, "CCD-TEMP": 11.0, "FILTER": "dark"}.items():
+        h.header[k] = v
+    h.writeto(master)
+    siril.apply_prep(siril.plan_prep("M74"))
+    base = config.siril_dir("M74")
+    nina = {j["folder"]: j for j in siril.read_manifest(base)["jobs"]}["IRCUT_30s"]
+    d = nina["calibration"]["darks"]
+    assert d["kind"] == "master" and d["temp_c"] == 11.0
+    assert d["library"] == [f"Calibration/{S50}/darks/{master.name}"]
+    assert [p.name for p in (base / "IRCUT_30s" / "darks").iterdir()] == [master.name]
+
+
 def test_an_unsplit_target_gets_a_one_job_manifest(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     _mixed_m74(n_app=0)

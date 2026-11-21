@@ -108,13 +108,34 @@ def test_dark_exact_settings_then_nearest_temperature(tmp_path, monkeypatch):
 
 def test_a_wide_temperature_gap_is_noted_not_hidden(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
-    _dark("DWARF 3", "d26.fits", 26, 1)
+    _dark("DWARF 3", "d6.fits", 6, 1)
     res = calibration.match_masters(FACTS, "DWARF 3")
-    assert res.darks.name == "d26.fits"
-    assert any("13 °C warmer" in n for n in res.notes)
+    assert res.darks.name == "d6.fits"
+    assert any("7 °C cooler" in n for n in res.notes)
     res = calibration.match_masters(dict(FACTS, temp_c=None), "DWARF 3")
-    assert res.darks.name == "d26.fits"
+    assert res.darks.name == "d6.fits"
     assert any("no sensor temperature" in n for n in res.notes)
+
+
+def test_a_dark_far_warmer_than_the_lights_is_never_linked(tmp_path, monkeypatch):
+    """Measured on M74 (#206): a dark ~8 °C warmer than the lights over-subtracts
+    their hot pixels worse than no dark; a cooler one still helps."""
+    seed_root(tmp_path, monkeypatch)
+    _dark("DWARF 3", "d26.fits", 26, 1)                    # 13 °C warmer
+    res = calibration.match_masters(FACTS, "DWARF 3")
+    assert res.darks is None and "darks" not in res.chosen
+    assert any("no dark linked" in n and "more than 7 °C warmer" in n
+               and "nearest 26 vs 13 °C" in n for n in res.notes)
+    # exactly at the limit: still linked
+    _dark("DWARF 3", "d20.fits", 20, 1)
+    assert calibration.match_masters(FACTS, "DWARF 3").darks.name == "d20.fits"
+    # a nearer warm dark loses to a farther cool one, and the note says so
+    _dark("DWARF 3", "d3.fits", 3, 1)                      # 9 °C cooler
+    res = calibration.match_masters(dict(FACTS, temp_c=12.0), "DWARF 3")
+    assert res.darks.name == "d3.fits"
+    assert any("passed over a nearer dark at 20 °C" in n for n in res.notes)
+    # no temperature on the lights: the limit can't be judged, nothing is refused
+    assert calibration.match_masters(dict(FACTS, temp_c=None), "DWARF 3").darks
 
 
 # ── bias + flat matching ──────────────────────────────────────────────────────
@@ -310,6 +331,73 @@ def test_darks_applied_is_per_frame_not_per_model(tmp_path, monkeypatch):
     # no flag at all (an older caller): the model rule, as before
     assert calibration.match_masters(
         {k: v for k, v in NINA.items() if k != "darks_applied"}, "S50_x").darks is None
+
+
+def _app_master(dev, temp, *, exptime=30.0):
+    """A Seestar-app master as the device writes it: CREATOR + STACKCNT, no
+    IMAGETYP, no BAYERPAT, no TELESCOP."""
+    return _master(config.calibration_dir(dev, "darks") /
+                   f"MasterDark_5_{exptime:g}s_{temp:g}C_20261023-211609.fit", None,
+                   EXPTIME=exptime, GAIN=80, XBINNING=1, CCD_TEMP=temp, STACKCNT=5,
+                   FILTER="dark", CREATOR="ZWO Seestar S50")
+
+
+def test_an_app_master_competes_with_nina_darks_on_temperature_alone(tmp_path, monkeypatch):
+    """#206, measured on M74's N.I.N.A. lights: at the same temperature an app master
+    removes hot pixels as well as a N.I.N.A. set (36 % vs 34 % left) at the same
+    pedestal, so which program made a dark is no criterion — the nearer one wins."""
+    seed_root(tmp_path, monkeypatch)
+    raws = [_raw_dark("S50_x", f"a{i}.fits", 5.7) for i in range(3)]
+    app = _app_master("S50_x", 10.5)
+    res = calibration.match_masters(NINA, "S50_x")               # lights at 11 °C
+    assert res.darks == app and "darks" not in res.sets
+    res = calibration.match_masters(dict(NINA, temp_c=6.0), "S50_x")
+    assert res.sets["darks"] == sorted(raws)
+    # the app's own subs: unchanged — already darked, nothing applied
+    own = calibration.match_masters(dict(NINA, darks_applied=True), "S50_x")
+    assert own.darks is None and own.notes[0] == calibration.DARKS_ON_DEVICE_NOTE
+
+
+def _flat(dev, name, *, pattern, night="2026-11-13T05:00:00", filt="IR"):
+    return _master(config.calibration_dir(dev, "flats") / name, "Master Flat",
+                   XBINNING=1, FILTER=filt, BAYERPAT=pattern, NCOMBINE=30,
+                   DATE_OBS=night)
+
+
+def test_calibration_on_another_colour_grid_never_matches(tmp_path, monkeypatch):
+    """The Seestar app saves GRBG, N.I.N.A. RGGB (one column apart): a N.I.N.A.
+    flat must not calibrate app subs, and the note says why."""
+    seed_root(tmp_path, monkeypatch)
+    _flat("S50_x", "nina_flat.fits", pattern="RGGB")
+    app = dict(NINA, darks_applied=True, bayerpat="GRBG", filter="IR")
+    res = calibration.match_masters(app, "S50_x")
+    assert res.flats is None
+    assert any("no flat linked" in n and "RGGB" in n and "GRBG" in n for n in res.notes)
+    nina = dict(NINA, bayerpat="RGGB", filter="IR")
+    assert calibration.match_masters(nina, "S50_x").flats.name == "nina_flat.fits"
+    # no pattern on the lights or on the frame: not judged
+    assert calibration.match_masters(dict(app, bayerpat=None), "S50_x").flats
+    _raw_dark("S50_x", "d.fits", 11.0)                 # untagged: matches either
+    assert calibration.match_masters(dict(NINA, bayerpat="GRBG"), "S50_x").darks
+
+
+def test_an_old_flat_is_linked_with_a_note(tmp_path, monkeypatch):
+    seed_root(tmp_path, monkeypatch)
+    _flat("S50_x", "f.fits", pattern="RGGB", night="2026-11-13T05:00:00")
+    near = dict(NINA, bayerpat="RGGB", nights=["2026-11-06", "2026-11-10"])
+    res = calibration.match_masters(near, "S50_x")
+    assert res.flats and not any("days from" in n for n in res.notes)
+    far = dict(near, nights=["2026-09-01", "2026-11-10"])
+    res = calibration.match_masters(far, "S50_x")
+    assert res.flats.name == "f.fits"
+    assert any("taken 2026-11-12, 72 days from the furthest" in n for n in res.notes)
+
+
+def test_facts_carry_the_colour_pattern_and_the_nights():
+    frames = [{"exptime": 30.0, "gain": 80, "binning": 1, "bayerpat": "RGGB",
+               "night": n} for n in ("2026-11-06", "2026-11-06", "2026-11-09")]
+    facts = calibration.facts_from_frames(frames)
+    assert facts["bayerpat"] == "RGGB" and facts["nights"] == ["2026-11-06", "2026-11-09"]
 
 
 def test_app_and_nina_subs_in_one_target_are_refused(tmp_path, monkeypatch):

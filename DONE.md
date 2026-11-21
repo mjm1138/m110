@@ -974,6 +974,75 @@ puts masters and sets in one pool, and a one-frame set is used as a master.
 `MatchResult.sets` / `files()` hand a set on: Siril prep links it (Naztronomy stacks
 it), and m110-stack builds it (below). `device_rollup` lists one row per set.
 
+**Sandboxes follow the library (2026-11-20).** A sandbox's calibration was matched
+once, at prep. `prepare_missing` skips an existing sandbox, and `apply_prep` only
+added links, so a change in the library never arrived, and an ingest re-prep left
+the old dark beside the new. Now:
+- **The stamp.** `calibration.calibration_key(target, device)` is a sha256 of
+  `MATCH_RULES` (bumped on any rule change), `library_fingerprint` (name, size,
+  mtime_ns, inode of each FITS, used only as a cache key, never as provenance) and
+  the target's own tiers. It lands in the manifest as `calibration_key`.
+- **Re-match.** `siril.plan_rematch` (read-only: `none` / `skipped` / `current` /
+  `unchanged` / `changes`, with human change lines) and `siril.apply_rematch` (the
+  same guards as autoprep; `user=True` raises on a live run). It runs on every sync
+  through `processing.rematch_calibration`, after `prepare_missing` and
+  `reconcile_rejected`, and from Processing → Re-match Calibration…
+  (`ui/rematch_dialog.py`).
+- **`apply_prep` makes the sandbox match the plan.** `_retire_stale_links` unlinks:
+  - a light link the plan doesn't put in that `lights/`, only when the sub is still
+    in the target's `lights/` (the `prune_rejected` rule);
+  - a calibration file M110 made (named in the previous manifest, or sharing an
+    inode with a library or target frame).
+
+  Anything else is kept and noted, and emptied dirs are removed, Finder litter
+  included. `_patch_calibration_switches` sets only darks/flats/biases in an
+  existing preset. `_already_split` keeps a split sandbox split when a filter
+  leaves (M81: its LP subs moved, so the IRCUT job would otherwise have moved to
+  the root under a stale `LP/`).
+- **Caches.** `frame_facts` and `library` are memoized on stat. On the live store
+  (73 sandboxes) a full re-plan is 54 s cold and 7 s warm.
+- **Found by the live preview:** flats crossing colour grids. The Seestar app saves
+  GRBG, N.I.N.A. RGGB (`BAYERPAT`), one column apart, and the 11-13 N.I.N.A. flats
+  would have gone to ~70 app objects. `match_masters` now drops any frame whose
+  `BAYERPAT` differs from the lights' (`facts["bayerpat"]`; an untagged side is not
+  judged, so app masters stay candidates). `_off_grid_note` says when that emptied a
+  tier, and a flat more than `FLAT_AGE_NOTE_DAYS` (30) from the lights' furthest
+  night gets a note. Raw sets also group by `BAYERPAT`. `stacking.Frame.bayerpat`
+  carries the pattern into the stacker's library fallback.
+
+**Which dark, measured (#206, 2026-11-19).** #206 asked to keep the Seestar app's own
+masters away from N.I.N.A. lights. They were measured first, read-only, on the live
+store. Method: a 3σ-clipped mean of 20 N.I.N.A. 20 s M74 lights (11-09, 13.0–14.0 °C,
+median 13.47 °C, spread over 22:05–23:31 so stars move out). Each candidate dark was
+subtracted, and each pixel compared with the median of its 8 same-CFA-colour
+neighbours. Hot pixels were those > 40 ADU in both the nearest app master and the
+nearest N.I.N.A. set (1,548). "Left" = residual RMS on them, against no dark:
+
+| dark | ΔT | k | left | bg noise | level |
+|---|---|---|---|---|---|
+| none | – | – | 100 % | 24.4 | – |
+| app 13.9 °C (5) | +0.4 | 0.92 | 36 % | 25.0 | 480 |
+| N.I.N.A. 12.6 °C (17) | −0.9 | 1.06 | 34 % | 23.9 | 480 |
+| N.I.N.A. 10.9 °C (20) | −2.5 | 1.24 | 39 % | 23.6 | 478 |
+| N.I.N.A. 5.3 °C (20) | −8.2 | 1.67 | 58 % | 23.7 | 474 |
+| app 18.1 °C (5) | +4.6 | 0.67 | 59 % | 25.3 | 486 |
+| N.I.N.A. 18.8 °C (20) | +5.3 | 0.64 | 63 % | 23.4 | 489 |
+| app 23.2 °C (5) | +9.7 | 0.43 | 126 % | 26.2 | 502 |
+| N.I.N.A. 26.1 °C (8) | +12.6 | 0.31 | 204 % | 32.5 | 518 |
+
+(k = fitted scale of the lights' hot-pixel signal on the dark's; 1 = matched.) A
+second set of 20 lights at 11.9 °C repeated it (app 10.5 °C: 37 %; N.I.N.A. 12.6 °C:
+33 %; app 23.2 °C: 151 %). Conclusions: the source of a dark is no criterion, only its
+temperature. The app master is pixel-aligned, at the same pedestal, and only slightly
+noisier (5 frames). The 521-vs-480 ADU gap in the issue was temperature. So no
+exclusion was added. Over-subtraction is the real hazard: past about +8 °C a dark does
+more harm than none, while a cooler one always helps. Hence `DARK_WARM_LIMIT_C` = 7
+(a degree of margin) in `match_masters`, with notes for "passed over a nearer warm
+dark" and "every dark too warm". The crossover was measured on the S50 only;
+dark-current doubling of ~6 °C is typical of CMOS sensors, so it is applied to every
+device. The script is not in the repo; rerun from this description if the firmware
+or sensor changes.
+
 **m110-stack builds the master.** `calibration_for_stack` turns several consistent
 raw frames in a job-dir tier (or a library set) into a list. `_raw_set_problem`
 refuses mixed settings, or darks at another exposure. The run step (`build_plan`
