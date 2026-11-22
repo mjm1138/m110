@@ -26,13 +26,16 @@ from PySide6.QtWidgets import (
 from m110 import catalog, devices, integration_goals, pins, prioritize
 from m110 import planning_config as pc
 from m110.ui.widgets import (
-    compact_table,
+    clear_layout, compact_table, keep_identity_column, make_numeric,
     make_table, fit_table_height, CollapsibleSection, connect_context_menu,
     reveal_in_manager, reveal_label,
 )
 from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
 
+# Ranking-table columns that hold numbers (right-aligned, tabular): Rank,
+# Integration, Of goal, Score, Closes.
+_RANK_NUMERIC = {0, 3, 4, 5, 7}
 _STRATEGY_LABELS = [("Capture many (breadth)", prioritize.STRATEGY_CAPTURE),
                     ("Go deep (depth)", prioritize.STRATEGY_DEEP)]
 _FACTOR_LABELS = [("Goal", "goal"), ("Urgency", "urgency"),
@@ -466,8 +469,15 @@ class PlanningPage(QScrollArea):
                     f"{hm(e['up_start'])}–{hm(e['up_end'])}"))
                 self._plan_table.setItem(r, 4, QTableWidgetItem(sa))
                 self._plan_table.setItem(r, 5, moon_item(e))
+        # Start, Duration, Alt and Moon are numbers: right-aligned, tabular.
+        for r in range(self._plan_table.rowCount()):
+            for c in range(2, 6):
+                it = self._plan_table.item(r, c)
+                if it is not None:
+                    make_numeric(it)
         self._plan_table.blockSignals(False)
         self._plan_table.resizeColumnsToContents()
+        keep_identity_column(self._plan_table, 1)
         fit_table_height(self._plan_table, max_rows=15)
         self._set_plan_controls_enabled(bool(self._slots or self._entries))
         self._refresh_timeline()
@@ -723,11 +733,7 @@ class PlanningPage(QScrollArea):
 
     # ---- ranking (instant re-rank of the cached contexts) ----
     def _render_ranking(self):
-        while self._ptable_holder.count():
-            it = self._ptable_holder.takeAt(0)
-            w = it.widget()
-            if w is not None:
-                w.deleteLater()
+        clear_layout(self._ptable_holder)
         contexts = prioritize.load_contexts()
         if not contexts:
             hint = QLabel("No ranking yet — computing tonight's observability from "
@@ -755,8 +761,11 @@ class PlanningPage(QScrollArea):
         # Uncaptured goal members aren't in the Library — label them from the
         # reference, as the Overview checklists do (not the raw slug).
         ref = catalog.load_reference()
-        tbl = make_table(["#", "Object", "Type", "Integ", "Of goal", "Score", "Season",
-                          "Closes"], stretch_last=True)
+        tbl = make_table(["Rank", "Object", "Type", "Integration", "Of goal", "Score",
+                          "Season", "Closes"])
+        rank_tip = ("Overall rank among every target. With “Visible tonight” on, "
+                    "targets that aren't up are hidden, so the numbers skip.")
+        tbl.horizontalHeaderItem(0).setToolTip(rank_tip)
         tbl.setSortingEnabled(False)
         pin_state = pins.load()
         registry = devices.load_registry()
@@ -785,12 +794,17 @@ class PlanningPage(QScrollArea):
                        f": {integ:.0f} of {goal:.0f} min")
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
+                if c in _RANK_NUMERIC:
+                    make_numeric(item)
+                if c == 0:
+                    item.setToolTip(rank_tip)
                 if c == 1:
                     item.setData(Qt.UserRole, slug)
                 if c in (3, 4) and tip:
                     item.setToolTip(tip)
                 tbl.setItem(r, c, item)
         tbl.resizeColumnsToContents()
+        keep_identity_column(tbl, 1)
         fit_table_height(tbl, max_rows=15)
         tbl.itemDoubleClicked.connect(lambda item: self._open_row(tbl, item.row()))
         connect_context_menu(tbl, lambda pos, t=tbl: self._pin_menu(t, pos))

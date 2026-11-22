@@ -633,6 +633,85 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 8 · A, tables + carry-overs *(2026-11-21, `feature/ui-p8-tables`)*
+
+First of six Phase 8 PRs (UI_ROADMAP → Phase 8).
+
+- **Header alignment lives in one class.** `widgets.AlignedHeader(QHeaderView)` is
+  installed by `compact_table`, which every table goes through. Its
+  `initStyleOptionForIndex` (virtual since Qt 6.0, exposed by PySide6) sets each
+  section's alignment from the column's cells (`column_alignment`: the first
+  non-empty cell's `TextAlignmentRole` in the top 8 rows). A page right-aligns its
+  number cells (`make_numeric`) and the title follows. An explicit header-item
+  alignment still wins. The header repaints on `rowsInserted`/`modelReset`/
+  `layoutChanged`/`dataChanged`, because Qt doesn't repaint a header for cell edits.
+  **Gotchas:**
+  - The styled (QSS) header doesn't shrink the label rect for the sort indicator,
+    so a sorted right-aligned title ran under the arrow. The sorted section gets
+    two en spaces appended (ASCII spaces would collapse).
+  - A right-aligned column that is also the stretched last section pushes its
+    numbers to the far edge. `tests/test_ui_tables.py` sweeps every page's tables
+    for both rules.
+  - Without a stretched last section the columns end short of the table, and
+    neither band reached the edge. The header's strip past the last column is
+    `CE_HeaderEmptyArea`, which QSS styles through the **`QHeaderView`** rule, not
+    `::section` (and `QHeaderView:horizontal` doesn't match the widget). The
+    divider moved there from `::section` too, else it was 2 px under the columns.
+    Qt paints alternating-row and selection colour only inside cells:
+    `widgets.RowBandFiller`, a viewport event filter installed by `compact_table`,
+    fills each row's band across the strip before the table paints its cells,
+    from the palette the stylesheet sets. It is parented to the table and keeps no
+    Python reference back to it: holding one leaked every throwaway table, whose
+    header slots then fired after teardown ("Slot 'AlignedHeader::' not found").
+- **Identity columns.**
+  - `keep_identity_column(tbl, col)` sets `ResizeToContents` live. "NG…" in
+    Processing came from `RowThumbnails`: the table was fitted *before* the async
+    decode set the icon, so the icon then took the name's width.
+    `RowThumbnails.add` now sets a transparent placeholder icon of the thumbnail
+    size first. Rows without a hero indent the same as rows with one.
+  - Deep Sky › List stretches the Name column instead, so the list fits the window.
+  - The Devices list lost its Model column. Its narrow pane couldn't fit it, the
+    label already carries the model, and a nickname's model is in the tooltip.
+- **Stale Overview tables (Phase 7 carry-over).** Two causes:
+  - `OverviewPage._clear` only `deleteLater()`ed, so old sections stayed visible
+    children.
+  - `_apply_refresh` opened the prep message or backup nudge in the same call. A
+    modal's nested loop doesn't run deletes posted from the outer loop, so the old
+    tables painted until it closed.
+
+  The fixes:
+  - `widgets.clear_layout` hides and unparents before `deleteLater`. It is used by
+    the Overview, Journal, Processing, Planning ranking and `DetailPane`.
+  - The modal follow-ups moved to `_after_refresh`, run via `defer`.
+  - Separately, a sync landing while `catalog.is_editing()` used to `return` and
+    drop the rebuild. It is now parked in `_pending_refresh` like the modal case.
+- **Traffic lights (Phase 7 carry-over), via AppKit.** Qt 6.12 has no API for this:
+  `QNativeInterface` is empty in PySide and the cocoa plugin has no toolbar-style
+  property. `m110/ui/macos_chrome.center_traffic_lights` goes from `winId()` (an
+  NSView) to `window()`, then sets an empty `NSToolbar` with
+  `NSWindowToolbarStyleUnified` and `NSWindowTitleHidden`. AppKit then lays out a
+  52 pt title band (= `toolbar.HEIGHT`) and centres the buttons itself. That
+  survives resize and full screen, where moving buttons by hand with
+  `setFrameOrigin` would not.
+  - **Measured on cocoa:** close-button centre 16 → 26 pt from the top (the header's
+    centre), unchanged after a resize and a full-screen round trip.
+    `NSView.hitTest_` at points across the 52 pt band still returns Qt's `QNSView`
+    before and after, so header clicks aren't eaten by the toolbar.
+  - Qt's `safeAreaMargins().top` grows to 66, which is harmless because
+    `WA_ContentsMarginsRespectsSafeArea` is off on the main window.
+  - **Gotcha:** only the `cocoa` plugin's `winId()` is an NSView. The offscreen
+    test platform on a Mac also reports `darwin`, so the helpers check
+    `QGuiApplication.platformName()` before touching pyobjc.
+  - Applied from `MainWindow.showEvent`, **deferred** one event cycle
+    (idempotent). **Gotcha:** run inside `showEvent` itself, the NSWindow doesn't
+    have its final frame yet, and `setToolbar_` left the window at AppKit's
+    default size (849×575, then 640×512). That lost the saved geometry. The helper
+    also restores the pre-toolbar frame if AppKit re-fits it.
+  - **Frozen build validated.** `build_app.sh` ran from a copy of the working tree
+    in a throwaway venv. PyInstaller's stock pyobjc hooks collect `AppKit`
+    (`Frameworks/AppKit/_AppKit…so`) with no spec change. The frozen app's log
+    reads "window buttons centred at 26.0 pt".
+
 ## UI 1.0 redesign — Phase 7, Foundation *(done 2026-11-17, `claude/ui-foundation-a5685c`)*
 
 Identity **A · notebook-tinged pro** (UI_ROADMAP → 1.0 redesign; critique in

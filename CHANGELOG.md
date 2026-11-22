@@ -10,6 +10,32 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+### Changed
+- **Tables line up.** Every number column now has its heading right-aligned over
+  its figures, and numbers use tabular figures throughout: on the Overview,
+  Planning, Processing, Devices, Sessions, the object pane and Import. A sorted
+  column's arrow no longer sits on top of its heading. Where a table's columns
+  don't fill its width, the heading bar and each row's stripe and selection
+  still run all the way across, like other Mac tables.
+- **Names are never cut short in tables.** Processing showed "NG…" for NGC
+  objects; target and object names now always show in full, and rows with and
+  without a thumbnail line up. The Devices list no longer scrolls sideways (a
+  device's model is in its tooltip), and Deep Sky's List view fits the window,
+  with long common names shortened instead of designations.
+- **Planning: "#" is now "Rank".** With *Visible tonight* on, targets that aren't up
+  are hidden, so the ranks skip numbers; the column's tooltip says so.
+- **The window buttons sit level with the title bar on macOS.** The close,
+  minimise and zoom buttons are centred on the header bar instead of near the top
+  edge.
+
+### Fixed
+- **Old Overview tables no longer show through a dialog.** When a sync finished
+  just as a dialog opened (such as the one-time backup suggestion), the Overview
+  could show its previous tables over the new ones until the dialog closed.
+- **A sync that finished while you were editing notes is no longer lost.** The
+  pages now update once you save or cancel the edit, instead of waiting for the
+  next sync.
+
 ### Added
 - **Objects pick up new darks and flats by themselves.** When you import
   calibration frames, or a new version of M110 changes how frames are matched,

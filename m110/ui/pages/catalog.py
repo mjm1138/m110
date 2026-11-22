@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QTableWidget,
     QTableWidgetItem, QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
-    QMenu, QListView, QSlider,
+    QHeaderView, QMenu, QListView, QSlider,
 )
 
 from m110 import (config, derived, devices, goals, integration_goals, objects, pins,
@@ -26,7 +26,7 @@ from m110.ui.image_grid import (
 from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
 from m110.ui.theme.tokens import SPACE
 from m110.ui.widgets import (
-    compact_table,
+    compact_table, keep_identity_column,
     NumItem, STATUS_RANK, status_label, status_color, muted_color, targets_for_slug,
     StatusPillDelegate, STATUS_ROLE, STATUS_TOOLTIP, make_numeric,
     ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
@@ -435,7 +435,9 @@ class CatalogPage(QWidget):
             table.setItem(row, 0, obj)
             if captured:
                 self._thumbs.add(slug, obj)
-            table.setItem(row, 1, QTableWidgetItem(str(e.get("name") or "")))
+            name = QTableWidgetItem(str(e.get("name") or ""))
+            name.setToolTip(name.text())
+            table.setItem(row, 1, name)
             table.setItem(row, 2, QTableWidgetItem(str(e.get("type") or "").replace("_", " ")))
             season = str(e.get("season") or "")
             table.setItem(row, 3, NumItem(season, season_sort_key(season)))
@@ -473,6 +475,10 @@ class CatalogPage(QWidget):
                         table.item(row, c).setForeground(muted_color())
 
         table.resizeColumnsToContents()
+        # The designation never elides; the common name gives way instead, so the
+        # list fits the window rather than scrolling sideways.
+        keep_identity_column(table, 0)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         table.setSortingEnabled(True)
         table.sortByColumn(self._sort_col, self._sort_order)
         table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)

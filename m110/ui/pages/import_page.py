@@ -28,7 +28,7 @@ from m110.ui.ingest_dialog import (
     NO_POINTING_KINDS,
 )
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
-from m110.ui.widgets import compact_table, fit_cell_widgets, ProgressDialog
+from m110.ui.widgets import compact_table, fit_cell_widgets, make_numeric, ProgressDialog
 
 RECENTS_KEY = "import_recents"
 MAX_RECENTS = 8
@@ -289,8 +289,8 @@ class ImportPage(QWidget):
             kind_item = QTableWidgetItem(KIND_LABEL.get(g.kind, g.kind))
             kind_item.setToolTip(f"Detected layout: {ingest.layout_label(g.layout)}")
             self.table.setItem(r, 2, kind_item)
-            self.table.setItem(r, 3, QTableWidgetItem(str(g.frames)))
-            self.table.setItem(r, 4, QTableWidgetItem(_fmt_size(g.size_bytes)))
+            self.table.setItem(r, 3, make_numeric(QTableWidgetItem(str(g.frames))))
+            self.table.setItem(r, 4, make_numeric(QTableWidgetItem(_fmt_size(g.size_bytes))))
             point = g.pointing or ("—" if g.kind in NO_POINTING_KINDS else "✓")
             self.table.setItem(r, 5, QTableWidgetItem(point))
             self.table.setItem(r, 6, QTableWidgetItem(g.dest_dir))
@@ -506,10 +506,11 @@ class ImportPage(QWidget):
             folder_item = QTableWidgetItem(g.group)
             folder_item.setToolTip(tip)
             self.holding_table.setItem(r, 0, folder_item)
-            files_item = QTableWidgetItem(str(g.frames))
+            files_item = make_numeric(QTableWidgetItem(str(g.frames)))
             files_item.setToolTip(tip)
             self.holding_table.setItem(r, 1, files_item)
-            self.holding_table.setItem(r, 2, QTableWidgetItem(_fmt_size(g.size_bytes)))
+            self.holding_table.setItem(
+                r, 2, make_numeric(QTableWidgetItem(_fmt_size(g.size_bytes))))
             prev_obj, prev_kind = prev.get((g.group, g.object), ("", None))
             obj = self._make_object_combo(ids)
             sug_id, reason = aid.get("suggested_id"), aid.get("reason")

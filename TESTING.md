@@ -347,6 +347,33 @@ and the title-bar band only exists on macOS with Qt ≥ 6.9.
 - [ ] **Status bar:** empty at rest; "Syncing…" during a sync; a backup/import
       result lingers a few seconds, then clears. The data folder is in About.
 
+#### 1.0 pages — tables + title bar (UI Phase 8a)  ⚙ *(header alignment, no-stretch numbers, stale-table hiding, deferred modals, macOS no-op — `test_ui_tables.py`, `test_ui_modal_safety.py`, `test_ui_macos_chrome.py`)*
+On **cocoa**, against the test corpus (§0.3).
+- [ ] **Traffic lights** sit on the header bar's centre line (level with the place
+      title), not near the top edge. They stay centred after a resize and after
+      View › Enter Full Screen and back. Clicks on the header's controls (sidebar
+      button, view switcher, catalog picker, search field) still work, and dragging
+      the empty header still moves the window.
+- [ ] **Number columns** (Processing, Overview, Planning, Devices, Sessions, the
+      object pane's Processing/Sessions tables, Import's Files/Size) are
+      right-aligned in tabular figures, and **their headers are right-aligned too**.
+      Sort a number column → its arrow doesn't overlap the title ("+ new").
+      Where the columns stop short of the table's right edge (Overview › Goals,
+      Planning's ranking), the heading bar, the row stripes and a selected row's
+      highlight still run all the way across.
+- [ ] **No identity-losing truncation:** Processing's Target column reads
+      "NGC 7000", "M81 M82" in full (not "NG…"), including rows that have a
+      thumbnail; rows without one line their names up with those that do. The
+      Devices list shows no sideways scrollbar (the model is in the name's
+      tooltip). Deep Sky › List fits the window without scrolling sideways; long
+      common names elide (hover for the whole name), designations never do.
+- [ ] **Planning:** the ranking's first column is **Rank**; with "Visible tonight"
+      on, hover it → the tooltip explains why the numbers skip.
+- [ ] **Sync under a dialog:** on a store whose captures changed since the last run,
+      launch and let the first sync finish while the backup nudge (fresh
+      `~/.m110`) or another dialog opens → the Overview behind it shows the new
+      content only, never the old tables painted through.
+
 #### Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.

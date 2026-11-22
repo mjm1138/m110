@@ -308,12 +308,31 @@ aesthetic critiques, measured on cocoa renders) and the identity mocks in
 - ✅ Grouped sidebar (icons, counts, collapsible); Media/Journal promoted; Overview lands.
 - ✅ Compact density; one page-header rule; status names everywhere.
 
-Left for Phase 8 (noticed while doing 7): the traffic lights sit at the title bar's
-own height, ~10 px above the header bar's centre line (moving them needs AppKit, not
-Qt); table number columns are right-aligned but their headers aren't yet; the Overview
-can briefly show the old tables under a modal that opens while a sync rebuilds it.
+Left for Phase 8 (noticed while doing 7) — all three closed in Phase 8 · A: the traffic
+lights sat at the title bar's own height, ~10 px above the header bar's centre line
+(moving them needs AppKit, not Qt); table number columns were right-aligned but their
+headers weren't; the Overview could briefly show the old tables under a modal that
+opens while a sync rebuilds it.
 
 #### Phase 8 — Pages  *(follow-up betas, before 1.0)*
+Shipped as six PRs, in order: **A** tables + Phase 7 carry-overs · **B** grid tiles +
+inspector · **C** Overview board · **D** Import empty state · **E** Settings window ·
+**F** night vision + 1.0 exit audit. Every critique **P1** already closed in Phase 7,
+so Phase 8 closes P2s; F re-audits P1s and AA. The only goldens are the engine render
+goldens (thumbnail/hero), which Phase 8 doesn't touch; pages are checked by structural
+tests and cocoa before/after screenshots instead of UI pixel goldens (offscreen Fusion
+can't validate macOS painting and renders differently per machine).
+
+- ✅ **A · Tables + carry-overs** (`feature/ui-p8-tables`). Every header aligns with
+  its column (`widgets.AlignedHeader`, installed by `compact_table`, reads the cells'
+  alignment); number cells right-aligned + tabular on every page; right-aligned
+  columns never stretch as the last section; identity columns size to contents
+  (`keep_identity_column`) and row thumbnails reserve their width up front, so no
+  "NG…"; Devices list drops its Model column; Planning "#" → **Rank**. Carry-overs:
+  **traffic lights centred** — feasible after all, via an empty unified `NSToolbar`
+  (pyobjc, `m110/ui/macos_chrome.py`), so AppKit lays out a 52 pt band and centres the
+  buttons itself; **stale Overview tables** under a modal fixed (`widgets.clear_layout`
+  hides before `deleteLater`; post-sync modals `defer`red).
 - Overview catalog board.
 - Grid tiles: overlay captions and a justified layout.
 - Inspector: full-width hero on the well, key/value details, notes without the duplicate H1.

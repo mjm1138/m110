@@ -12,7 +12,7 @@ from m110 import derived, devices
 from m110.build_derived import session_device
 from m110.ui.widgets import (
     make_table, NumItem, make_numeric, ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE,
-    dark_gap_item,
+    dark_gap_item, keep_identity_column,
 )
 
 _COLS = ["Date", "Object", "Frames", "Exp (s)", "Filter", "Integration", "Mount", "Device",
@@ -82,6 +82,7 @@ class SessionsPage(QWidget):
             t.setItem(r, 7, QTableWidgetItem(devices.label(session_device(s), registry)))
             t.setItem(r, 8, dark_gap_item(s))
         t.resizeColumnsToContents()
+        keep_identity_column(t, 1)
         t.setSortingEnabled(True)
         t.sortItems(0, Qt.DescendingOrder)   # most recent first
 

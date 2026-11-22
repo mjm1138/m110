@@ -24,7 +24,8 @@ from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
 from m110.ui.widgets import (
-    status_label, targets_for_slug, make_table, fit_table_height,
+    status_label, targets_for_slug, make_table, make_numeric, keep_identity_column,
+    fit_table_height,
     working_dirs_for_slug, launch_siril, stack_in_stackingwizard, open_in_default,
     reveal_in_manager, reveal_label, defer, connect_context_menu, FlowLayout,
     dark_gap_item, section_label, object_title, serif_font, STATUS_TOOLTIP,
@@ -229,21 +230,11 @@ class DetailPane(QScrollArea):
 
     @staticmethod
     def _clear_layout(layout):
-        # Recurse: takeAt on a nested layout (addLayout) returns a layout item
-        # whose child widgets must be deleted too — otherwise buttons added via
-        # sub-layouts (Edit / Save+Cancel) leak and pile up on every re-render
+        # Recurses into nested layouts (addLayout): their buttons (Edit /
+        # Save+Cancel) must go too, or they leak and pile up on every re-render
         # (and clicking a stale one can crash on teardown).
-        while layout.count():
-            item = layout.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.setParent(None)
-                w.deleteLater()
-                continue
-            sub = item.layout()
-            if sub is not None:
-                DetailPane._clear_layout(sub)
-                sub.deleteLater()
+        from m110.ui.widgets import clear_layout
+        clear_layout(layout)
 
     def placeholder(self):
         self._current = None
@@ -493,7 +484,10 @@ class DetailPane(QScrollArea):
             btn_row.deleteLater()
 
     # ---- enrichment sections (Phase 3) ----
-    def _section_table(self, title: str, headers: list[str], rows: list[list]):
+    def _section_table(self, title: str, headers: list[str], rows: list[list],
+                       numeric: tuple[int, ...] = ()):
+        """A titled read-only table; `numeric` columns are right-aligned with
+        tabular figures (their headers follow — `widgets.AlignedHeader`)."""
         self._lay.addWidget(_section_label(title))
         tbl = make_table(headers)
         tbl.setSortingEnabled(False)
@@ -501,9 +495,12 @@ class DetailPane(QScrollArea):
             i = tbl.rowCount()
             tbl.insertRow(i)
             for c, val in enumerate(r):
-                tbl.setItem(i, c, val if isinstance(val, QTableWidgetItem)
-                            else QTableWidgetItem(val))
+                item = val if isinstance(val, QTableWidgetItem) else QTableWidgetItem(val)
+                if c in numeric:
+                    make_numeric(item)
+                tbl.setItem(i, c, item)
         tbl.resizeColumnsToContents()
+        keep_identity_column(tbl, 0)
         fit_table_height(tbl, max_rows=6)      # whole row fits; scroll past 6 rows
         self._lay.addWidget(tbl)
 
@@ -528,7 +525,7 @@ class DetailPane(QScrollArea):
         self._section_table(
             "Processing",
             ["Target", "Status", "Raw integ", "In stack", "+ new", "Latest stack"],
-            rows)
+            rows, numeric=(2, 3, 4))
 
     def _add_sessions_section(self, slug: str):
         rows = [s for s in derived.load_sessions() if slug in s.get("slugs", [])]
@@ -549,7 +546,7 @@ class DetailPane(QScrollArea):
         self._section_table(
             "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount",
                          "Device",
-                         "Dark"], out)
+                         "Dark"], out, numeric=(1, 2, 4))
 
     def _add_metadata_section(self, slug: str, e: dict, totals: dict | None = None):
         from m110 import catalog
