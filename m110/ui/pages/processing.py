@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from m110 import derived
 from m110.ui.widgets import (
+    clear_layout, keep_identity_column,
     make_table, make_numeric, NumItem, ThumbnailLoader, RowThumbnails,
     ROW_THUMB_SIZE, fit_table_height, target_working_dirs, add_siril_actions,
     launch_siril, section_label,
@@ -55,10 +56,7 @@ class ProcessingPage(QScrollArea):
         self.reload()
 
     def _clear(self):
-        while self._lay.count():
-            w = self._lay.takeAt(0).widget()
-            if w is not None:
-                w.deleteLater()
+        clear_layout(self._lay)
 
     def _wire_open(self, table):
         def go(item):
@@ -157,6 +155,7 @@ class ProcessingPage(QScrollArea):
                     f.get("last_capture") or "—", f.get("last_capture") or ""))
                 tbl.setItem(r, 7, QTableWidgetItem(f.get("note") or ""))
             tbl.resizeColumnsToContents()
+            keep_identity_column(tbl, 0)      # "NGC 6888", never "NG…"
             # Sort by the remembered per-group choice (default: "+ new" desc), then
             # start recording header clicks so the choice survives the next reload.
             tbl.setSortingEnabled(True)

@@ -33,11 +33,15 @@ from m110.planning_config import DEVICE_PRESETS
 from m110.ui import theme
 from m110.ui.widgets import (
     CollapsibleSection, NumItem, ROW_THUMB_SIZE, ThumbnailLoader, connect_context_menu,
-    dark_gap_item, defer, fit_table_height, make_numeric, make_table, reveal_in_manager,
+    dark_gap_item, defer, fit_table_height, keep_identity_column, make_numeric,
+    make_table, reveal_in_manager,
     reveal_label,
 )
 
-_LIST_COLS = ["Device", "Last capture", "Integration", "Model"]
+# No Model column: the list sits in a narrow splitter pane, the name already
+# carries the model ("ZWO Seestar S50 · c0ffee00"), and a nickname's model is in
+# its tooltip and the detail heading.
+_LIST_COLS = ["Device", "Last capture", "Integration"]
 _OBJ_COLS = ["Object", "Integration", "Sessions", "Frames"]
 _LIB_COLS = ["Dark", "Exp (s)", "Gain", "Frames", "Median", "Hot px", "Captures"]
 _CAP_COLS = ["Date", "Object", "Frames", "Sensor (°C)", "Dark", "Link"]
@@ -163,10 +167,11 @@ class DevicesPage(QWidget):
         self.show_retired = QCheckBox("Show retired")
         self.show_retired.toggled.connect(lambda _on: self._fill_list())
         ll.addWidget(self.show_retired)
-        self.device_list = make_table(_LIST_COLS, stretch_last=True)
+        self.device_list = make_table(_LIST_COLS)
         # the rollup's order is the meaningful one (most recent capture first,
         # retired last) — not an alphabetical sort of the labels
         self.device_list.setSortingEnabled(False)
+        keep_identity_column(self.device_list, 0)      # the name never elides
         self.device_list.itemSelectionChanged.connect(self._on_device_selected)
         ll.addWidget(self.device_list, 1)
         self._empty = QLabel("No devices yet — import from a telescope; M110 learns "
@@ -369,15 +374,16 @@ class DevicesPage(QWidget):
             t.insertRow(r)
             name = QTableWidgetItem(d.get("label") or d["device"])
             name.setData(Qt.UserRole, d["device"])
+            if d.get("model"):
+                name.setToolTip(d["model"])
             items = [name,
                      NumItem(d["totals"].get("last_capture") or "—",
                              d["totals"].get("last_capture") or ""),
-                     _hm(d["totals"].get("integration_min")),
-                     QTableWidgetItem(d.get("model") or "—")]
+                     _hm(d["totals"].get("integration_min"))]
             for c, it in enumerate(items):
                 if d.get("retired"):
                     it.setForeground(muted)
-                    it.setToolTip("Retired")
+                    it.setToolTip("Retired" + (f" · {d['model']}" if c == 0 and d.get("model") else ""))
                 t.setItem(r, c, it)
         t.resizeColumnsToContents()
         t.blockSignals(False)
@@ -736,8 +742,8 @@ class DevicesPage(QWidget):
             t.setItem(r, 1, obj)
             t.setItem(r, 2, _num(c.get("frames")))
             lo, hi = c.get("temp_min"), c.get("temp_max")
-            t.setItem(r, 3, NumItem("—" if lo is None else f"{lo:g}–{hi:g}",
-                                    -1e9 if hi is None else hi))
+            t.setItem(r, 3, make_numeric(NumItem(
+                "—" if lo is None else f"{lo:g}–{hi:g}", -1e9 if hi is None else hi)))
             t.setItem(r, 4, dark_gap_item(c))
             t.setItem(r, 5, QTableWidgetItem(c.get("dark_link") or "—"))
         t.resizeColumnsToContents()

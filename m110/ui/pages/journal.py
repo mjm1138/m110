@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
 
 from m110 import config, derived, objects, catalog
 from m110.ui.theme.tokens import FONT_SIZE
-from m110.ui.widgets import header_group, make_search_field, serif_font, status_label
+from m110.ui.widgets import (
+    clear_layout, header_group, make_search_field, serif_font, status_label,
+)
 
 _HEADING_LINE_RE = re.compile(r"(?m)^\s{0,3}#.*$")   # a whole ATX heading line
 _THUMB_W = 220
@@ -70,10 +72,7 @@ class JournalPage(QWidget):
 
     def _clear(self):
         self._cards.clear()
-        while self._lay.count():
-            w = self._lay.takeAt(0).widget()
-            if w is not None:
-                w.deleteLater()
+        clear_layout(self._lay)
 
     def card_count(self) -> int:
         return len(self._cards)

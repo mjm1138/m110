@@ -132,11 +132,23 @@ def test_row_thumbnails_reset_drops_stale_slug(tmp_path, qapp, monkeypatch):
     thumbs = RowThumbnails(ThumbnailLoader())
     item = QTableWidgetItem("M1")
     thumbs.add("m1", item)
+    placeholder = item.icon().cacheKey()   # width reserved before the decode lands
     # a rebuild resets tracking before the slug reappears (or not) — an apply
     # for a slug no longer tracked must be a no-op, not touch a stale item.
     thumbs.reset()
     thumbs._apply("m1", QPixmap(4, 4))   # simulate a late callback landing post-reset
-    assert item.icon().isNull()
+    assert item.icon().cacheKey() == placeholder
+
+
+def test_row_thumbnails_reserve_icon_width_up_front(qapp):
+    """A row is fitted before its thumbnail decodes; without a placeholder the late
+    icon pushed the name into an elided "NG…" (Processing, critique §1.5)."""
+    from m110.ui.widgets import ThumbnailLoader, RowThumbnails, ROW_THUMB_SIZE
+    thumbs = RowThumbnails(ThumbnailLoader())
+    item = QTableWidgetItem("NGC 6888")
+    thumbs.add("no-hero-yet", item)              # no hero on disk at all
+    assert not item.icon().isNull()
+    assert item.icon().availableSizes()[0].width() == ROW_THUMB_SIZE
 
 
 def test_no_widget_label_eats_an_ampersand_as_a_mnemonic():

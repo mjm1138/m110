@@ -20,10 +20,17 @@ from PySide6.QtWidgets import (
 from m110 import (catalog, config, derived, devices, integration_goals, pins, refresh,
                   goals as goals_mod)
 from m110.ui.widgets import (
+    clear_layout, make_numeric,
     NumItem, status_label, make_table, CollapsibleSection, fit_table_height,
     connect_context_menu, defer, STATUS_TOOLTIP,
 )
 from m110.ui.theme import status_color
+
+
+def _num(value, text=None) -> NumItem:
+    """A right-aligned, tabular, numerically-sorting cell."""
+    return make_numeric(NumItem(str(value) if text is None else text, value))
+
 
 # Manage-goals sub-groups (hemisphere), mirroring the former Goals page.
 _GROUPS = [
@@ -75,23 +82,9 @@ class OverviewPage(QScrollArea):
             title, expanded=exp, on_toggle=lambda on, k=key: self._persist(k, on))
 
     def _clear(self):
-        while self._lay.count():
-            it = self._lay.takeAt(0)
-            w = it.widget()
-            if w is not None:
-                w.deleteLater()
-            elif it.layout() is not None:
-                self._drop_layout(it.layout())
-
-    def _drop_layout(self, lay):
-        while lay.count():
-            it = lay.takeAt(0)
-            w = it.widget()
-            if w is not None:
-                w.deleteLater()
-            elif it.layout() is not None:
-                self._drop_layout(it.layout())
-        lay.deleteLater()
+        # Hide, not just deleteLater: a modal opened right after a rebuild would
+        # otherwise paint the old tables over the new ones (`clear_layout`).
+        clear_layout(self._lay)
 
     def _wire_open(self, table):
         def go(item):
@@ -157,19 +150,19 @@ class OverviewPage(QScrollArea):
             body.addWidget(QLabel("<i>No active goals. Pick one under "
                                   "“Manage goals”.</i>"))
             return
-        g_tbl = make_table(["Goal", "Captured", "Deep", "Total", "Progress"],
-                           stretch_last=True)
+        # No stretch: a stretched last column would push its right-aligned
+        # percentages to the far edge, away from their row.
+        g_tbl = make_table(["Goal", "Captured", "Deep", "Total", "Progress"])
         g_tbl.setSortingEnabled(False)
         for g in goals:
             r = g_tbl.rowCount()
             g_tbl.insertRow(r)
             g_tbl.setItem(r, 0, QTableWidgetItem(g.get("name", g.get("id", ""))))
-            g_tbl.setItem(r, 1, QTableWidgetItem(str(g.get("captured", 0))))
-            g_tbl.setItem(r, 2, QTableWidgetItem(str(g.get("deep", 0))))
-            g_tbl.setItem(r, 3, QTableWidgetItem(str(g.get("total", 0))))
-            g_tbl.setItem(r, 4, QTableWidgetItem(
-                f"{g.get('captured', 0)}/{g.get('total', 0)} "
-                f"({g.get('percent', 0)}%)"))
+            g_tbl.setItem(r, 1, _num(g.get("captured", 0)))
+            g_tbl.setItem(r, 2, _num(g.get("deep", 0)))
+            g_tbl.setItem(r, 3, _num(g.get("total", 0)))
+            g_tbl.setItem(r, 4, make_numeric(QTableWidgetItem(
+                f"{g.get('percent', 0)}%")))
         g_tbl.resizeColumnsToContents()
         fit_table_height(g_tbl)
         body.addWidget(g_tbl)
@@ -185,16 +178,16 @@ class OverviewPage(QScrollArea):
             r = cat_tbl.rowCount()
             cat_tbl.insertRow(r)
             cat_tbl.setItem(r, 0, QTableWidgetItem(cat.replace("_", " ").title()))
-            cat_tbl.setItem(r, 1, QTableWidgetItem(str(v.get("captured", 0))))
-            cat_tbl.setItem(r, 2, QTableWidgetItem(str(v.get("deep_stack", 0))))
+            cat_tbl.setItem(r, 1, _num(v.get("captured", 0)))
+            cat_tbl.setItem(r, 2, _num(v.get("deep_stack", 0)))
             cat_tbl.setItem(r, 3, QTableWidgetItem(", ".join(v.get("captured_ids", []))))
         grand = summary.get("grand", {})
         if grand:
             r = cat_tbl.rowCount()
             cat_tbl.insertRow(r)
             cat_tbl.setItem(r, 0, QTableWidgetItem("Total"))
-            cat_tbl.setItem(r, 1, QTableWidgetItem(str(grand.get("captured", 0))))
-            cat_tbl.setItem(r, 2, QTableWidgetItem(str(grand.get("deep_stack", 0))))
+            cat_tbl.setItem(r, 1, _num(grand.get("captured", 0)))
+            cat_tbl.setItem(r, 2, _num(grand.get("deep_stack", 0)))
             cat_tbl.setItem(r, 3, QTableWidgetItem(""))
         cat_tbl.resizeColumnsToContents()
         fit_table_height(cat_tbl)
@@ -224,9 +217,9 @@ class OverviewPage(QScrollArea):
             obj = QTableWidgetItem(t.get("id") or slug)
             obj.setData(Qt.UserRole, slug)
             ci.setItem(r, 0, obj)
-            ci.setItem(r, 1, NumItem(str(t.get("session_count", 0)), t.get("session_count", 0)))
-            ci.setItem(r, 2, NumItem(str(t.get("frames", 0)), t.get("frames", 0)))
-            ci.setItem(r, 3, NumItem(t.get("integration_hms", ""), t.get("integration_min", 0)))
+            ci.setItem(r, 1, _num(t.get("session_count", 0)))
+            ci.setItem(r, 2, _num(t.get("frames", 0)))
+            ci.setItem(r, 3, _num(t.get("integration_min", 0), t.get("integration_hms", "")))
             ci.setItem(r, 4, QTableWidgetItem("/".join(t.get("filters", []))))
             st = QTableWidgetItem(status_label(t.get("status"), True, t.get("progress")))
             st.setForeground(status_color(t.get("status")))
@@ -242,7 +235,7 @@ class OverviewPage(QScrollArea):
         sessions = sorted(derived.load_sessions(),
                           key=lambda s: s.get("date", ""), reverse=True)[:5]
         ls = make_table(["Date", "Object", "Frames", "Exp (s)", "Filter",
-                         "Integration"], stretch_last=True)
+                         "Integration"])
         ls.setSortingEnabled(False)
         for s in sessions:
             r = ls.rowCount()
@@ -252,12 +245,12 @@ class OverviewPage(QScrollArea):
                 obj.setData(Qt.UserRole, s["slugs"][0])
             ls.setItem(r, 0, QTableWidgetItem(s.get("date", "")))
             ls.setItem(r, 1, obj)
-            ls.setItem(r, 2, NumItem(str(s.get("frames", 0)), s.get("frames", 0)))
-            ls.setItem(r, 3, QTableWidgetItem(str(s.get("exposure_s", ""))))
+            ls.setItem(r, 2, _num(s.get("frames", 0)))
+            ls.setItem(r, 3, make_numeric(QTableWidgetItem(str(s.get("exposure_s", "")))))
             ls.setItem(r, 4, QTableWidgetItem(s.get("filter", "")))
-            ls.setItem(r, 5, QTableWidgetItem(
+            ls.setItem(r, 5, make_numeric(QTableWidgetItem(
                 f"{s.get('integration_min', 0) / 60:.1f}h"
-                if s.get("integration_min") else "—"))
+                if s.get("integration_min") else "—")))
         # wire open on the Object column (col 1)
         ls.itemDoubleClicked.connect(
             lambda item: self.open_object.emit(ls.item(item.row(), 1).data(Qt.UserRole))
@@ -288,8 +281,8 @@ class OverviewPage(QScrollArea):
             pt.setItem(r, 2, QTableWidgetItem(row["season"]))
             pt.setItem(r, 3, QTableWidgetItem(row["priority"]))
             pt.setItem(r, 4, QTableWidgetItem(row["filter"]))
-            pt.setItem(r, 5, QTableWidgetItem(row["target"]))
-            pt.setItem(r, 6, QTableWidgetItem(row["progress"]))
+            pt.setItem(r, 5, make_numeric(QTableWidgetItem(row["target"])))
+            pt.setItem(r, 6, make_numeric(QTableWidgetItem(row["progress"])))
         pt.resizeColumnsToContents()
         fit_table_height(pt, max_rows=12)
         self._wire_open(pt)

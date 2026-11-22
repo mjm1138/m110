@@ -1216,6 +1216,17 @@ class MainWindow(QMainWindow):
         self._update_status()
         QMessageBox.warning(self, "Online lookup unavailable", msg)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._expanded:
+            # Centre the traffic lights on the header bar (an empty unified NSToolbar
+            # makes AppKit lay out a 52 pt band; Qt has no API for it). Idempotent,
+            # so a re-created native window is simply fixed up again. Deferred: inside
+            # showEvent the NSWindow doesn't have its final frame yet, and adding a
+            # toolbar then left the window at AppKit's default size.
+            from m110.ui import macos_chrome
+            defer(self, lambda: macos_chrome.center_traffic_lights(self))
+
     # ---- auto-sync ----
     def changeEvent(self, event):
         super().changeEvent(event)
@@ -1254,8 +1265,6 @@ class MainWindow(QMainWindow):
     def _on_refresh_done(self, summary: dict):
         self._refreshing = False
         self._last_refresh = time.monotonic()
-        if self.catalog.is_editing():
-            return                         # don't disturb an open editor
         self.refresh_action.setEnabled(True)
         self._apply_refresh(summary)
 
@@ -1272,16 +1281,26 @@ class MainWindow(QMainWindow):
         while the image viewer's loop is spinning inside the gallery's own
         `mouseDoubleClickEvent`. Re-check on a timer instead; the pages are only
         rebuilt once the user is back at the main window."""
-        if modal_loop_active():
+        # Park the rebuild while a modal is up — and while an inline editor is open
+        # (rebuilding would discard it). Either way the sync isn't lost: the retry
+        # timer applies it once the modal closes or the edit is saved/cancelled.
+        if modal_loop_active() or self.catalog.is_editing():
             self._pending_refresh = summary
             self._reload_retry.start()
             return
         self._pending_refresh = None
-        if self.catalog.is_editing():
-            return                         # editor opened while we waited
         for p in self.pages:
             p.reload()
         self._update_status(extra=recalibrated_message(summary.get("recalibrated")))
+        self._refresh_assistant_banner()
+        # Anything below can open a modal. Run it one event cycle later, so the
+        # rebuild's deferred deletes are processed by the main loop first rather
+        # than surviving under the modal's nested loop (the old Overview tables
+        # once showed through a backup nudge this way).
+        defer(self, lambda s=summary: self._after_refresh(s))
+
+    def _after_refresh(self, summary: dict):
+        """The modal follow-ups to a rebuilt store (deferred by `_apply_refresh`)."""
         if self._prep_feedback:
             self._prep_feedback = False
             n = summary.get("prepared", 0)
@@ -1294,7 +1313,6 @@ class MainWindow(QMainWindow):
         # there's a visible window to show it in — a refresh that completes with no
         # window shown (headless tests) must not open a stray modal (it double-frees
         # on Linux Qt). Production always show()s the window before events pump.
-        self._refresh_assistant_banner()
         if self.isVisible():
             if not self._auto_backup_checked:
                 self._auto_backup_checked = True

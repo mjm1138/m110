@@ -275,3 +275,62 @@ def test_every_worker_dialog_drains_instead_of_bare_deletelater():
         "these drop a QThread without going through widgets.drain_worker, which is "
         "how a still-running thread reaches ~QThread and aborts the process:\n  "
         + "\n  ".join(offenders))
+
+
+def test_rebuilt_overview_hides_its_old_tables_at_once(tmp_path, monkeypatch, qapp):
+    """Phase 7 carry-over: a sync rebuilt the Overview, then a modal (the backup
+    nudge) opened in the same call — the old tables, only `deleteLater`ed, stayed
+    visible children and painted through until the modal closed."""
+    from PySide6.QtWidgets import QTableWidget
+    from tests._helpers import seed_capture
+    root = seed_root(tmp_path, monkeypatch)
+    seed_capture(root)
+    win = _window(qapp)
+    try:
+        win.resize(1200, 800)
+        win.show()
+        qapp.processEvents()
+        page = win.pages[win._overview_index]
+        old = [t for t in page.findChildren(QTableWidget) if t.isVisible()]
+        assert old, "the Overview should show tables for a store with captures"
+        page.reload()                       # no event-loop turn: deletes still pending
+        assert not any(t.isVisible() for t in old)
+        assert not any(page.isAncestorOf(t) for t in old)   # detached, not just queued
+    finally:
+        win.close(); win.deleteLater(); qapp.processEvents()
+
+
+def test_post_refresh_modals_wait_for_the_next_event_cycle(tmp_path, monkeypatch, qapp):
+    """The prep message / backup nudge run *after* the rebuild's deferred deletes,
+    never inside the same call (where their nested loop would keep them alive)."""
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        calls = []
+        monkeypatch.setattr(win, "_after_refresh", lambda s: calls.append(s))
+        win._apply_refresh({"x": 1})
+        assert calls == []                  # not in the rebuild's own call
+        qapp.processEvents()
+        assert calls == [{"x": 1}]
+    finally:
+        win.deleteLater(); qapp.processEvents()
+
+
+def test_sync_during_inline_edit_is_parked_not_dropped(tmp_path, monkeypatch, qapp):
+    seed_root(tmp_path, monkeypatch)
+    win = _window(qapp)
+    try:
+        reloads = []
+        for p in win.pages:
+            monkeypatch.setattr(p, "reload", lambda p=p: reloads.append(p))
+        editing = [True]
+        monkeypatch.setattr(win.catalog, "is_editing", lambda: editing[0])
+        win._on_refresh_done({})
+        assert reloads == [] and win._pending_refresh is not None
+        assert win.refresh_action.isEnabled()
+        editing[0] = False
+        win._retry_pending_refresh()
+        assert len(reloads) == len(win.pages)
+        assert win._pending_refresh is None
+    finally:
+        win.deleteLater(); qapp.processEvents()

@@ -12,7 +12,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLayout, QMessageBox,
+    QApplication, QButtonGroup, QFrame, QHBoxLayout, QHeaderView, QLayout, QMessageBox,
     QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton, QLabel,
     QProgressBar, QProgressDialog, QStyleOptionProgressBar, QStylePainter,
@@ -480,16 +480,134 @@ def reveal_in_manager(path) -> None:
 
 TABLE_ROW_HEIGHT = 26     # compact density (1.0): ~24–28 px rows, no toggle
 
+_H_MASK = (Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignRight
+           | Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignJustify)
+_HEADER_PROBE_ROWS = 8    # rows sampled for a column's alignment
+
+
+def column_alignment(model, col: int) -> Qt.AlignmentFlag:
+    """The horizontal alignment a column's **cells** use: the first non-empty cell's
+    `TextAlignmentRole` among the top few rows (left when unset). A column of
+    numbers is right-aligned cell by cell (`make_numeric`); this reads that back."""
+    if model is None:
+        return Qt.AlignmentFlag.AlignLeft
+    for row in range(min(model.rowCount(), _HEADER_PROBE_ROWS)):
+        idx = model.index(row, col)
+        if not idx.data(Qt.ItemDataRole.DisplayRole):
+            continue
+        a = idx.data(Qt.ItemDataRole.TextAlignmentRole)
+        if a is None:
+            return Qt.AlignmentFlag.AlignLeft
+        h = Qt.AlignmentFlag(int(a)) & _H_MASK
+        return h if h else Qt.AlignmentFlag.AlignLeft
+    return Qt.AlignmentFlag.AlignLeft
+
+
+class AlignedHeader(QHeaderView):
+    """A horizontal table header whose section titles align **with their column**:
+    a right-aligned number column gets a right-aligned title (HIG; critique §1.5).
+
+    Every table goes through `compact_table`, so this is the one place the rule
+    lives — a page only has to right-align its number cells (`make_numeric`) and the
+    title follows. An explicit `TextAlignmentRole` on the header item still wins."""
+
+    def __init__(self, parent=None):
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.setSectionsClickable(True)
+        self.setHighlightSections(True)
+
+    def setModel(self, model):
+        old = self.model()
+        if old is not None:
+            for sig in (old.rowsInserted, old.modelReset, old.layoutChanged,
+                        old.dataChanged):
+                try:
+                    sig.disconnect(self._repaint)
+                except (RuntimeError, TypeError):
+                    pass
+        super().setModel(model)
+        if model is not None:
+            # Titles follow the cells, so repaint when the cells change. The header
+            # is its own widget: Qt doesn't repaint it for a cell edit.
+            for sig in (model.rowsInserted, model.modelReset, model.layoutChanged,
+                        model.dataChanged):
+                sig.connect(self._repaint)
+
+    def _repaint(self, *_):
+        self.viewport().update()
+
+    def section_alignment(self, logical: int) -> Qt.AlignmentFlag:
+        m = self.model()
+        if m is None:
+            return self.defaultAlignment()
+        explicit = m.headerData(logical, Qt.Orientation.Horizontal,
+                                Qt.ItemDataRole.TextAlignmentRole)
+        if explicit is not None:
+            return Qt.AlignmentFlag(int(explicit))
+        return column_alignment(m, logical) | Qt.AlignmentFlag.AlignVCenter
+
+    # The sort indicator is drawn at the section's right edge, and the styled
+    # header doesn't shrink the label for it — so a right-aligned title ran under
+    # the arrow ("+ nev"). Pad a sorted right-aligned title by the arrow's room.
+    _SORT_ROOM = "  "     # two en spaces (don't collapse like ASCII spaces)
+
+    def initStyleOptionForIndex(self, option, logical):
+        super().initStyleOptionForIndex(option, logical)
+        align = self.section_alignment(logical)
+        option.textAlignment = align
+        if (align & Qt.AlignmentFlag.AlignRight and self.isSortIndicatorShown()
+                and self.sortIndicatorSection() == logical):
+            option.text = option.text + self._SORT_ROOM
+
 
 def compact_table(t: QTableWidget) -> QTableWidget:
     """The 1.0 table look: compact rows, no cell grid (alternating rows separate
-    them), headers aligned with their columns rather than centered."""
+    them), headers aligned with their columns rather than centered — a right-aligned
+    number column gets a right-aligned title (`AlignedHeader`)."""
     t.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
     t.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT - 4)
     t.setShowGrid(False)
+    if not isinstance(t.horizontalHeader(), AlignedHeader):
+        old = t.horizontalHeader()
+        hdr = AlignedHeader(t)
+        hdr.setStretchLastSection(old.stretchLastSection())
+        t.setHorizontalHeader(hdr)
     t.horizontalHeader().setDefaultAlignment(
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     return t
+
+
+def keep_identity_column(tbl: QTableWidget, col: int = 0) -> None:
+    """Never elide the column that says which row is which (Object, Target, Device).
+
+    The column sizes itself to its contents — live, so a row thumbnail that lands
+    after the table was fitted widens it instead of cutting "NGC 6888" to "NG…" —
+    and stops being user-resizable. Give the slack to a descriptive column instead
+    (`stretch_last`)."""
+    tbl.horizontalHeader().setSectionResizeMode(
+        col, QHeaderView.ResizeMode.ResizeToContents)
+
+
+def clear_layout(layout) -> None:
+    """Empty a layout for a rebuild, **hiding** what it held.
+
+    `deleteLater()` alone leaves the old widgets visible children until control
+    returns to the loop that posted the delete — and a modal opened right after a
+    rebuild (a sync's backup nudge) runs its own nested loop, which doesn't run
+    them. The old tables then paint over the new ones until the modal closes.
+    Hiding and unparenting first takes them off screen at once."""
+    while layout.count():
+        item = layout.takeAt(0)
+        w = item.widget()
+        if w is not None:
+            w.hide()
+            w.setParent(None)
+            w.deleteLater()
+            continue
+        sub = item.layout()
+        if sub is not None:
+            clear_layout(sub)
+            sub.deleteLater()
 
 
 def make_table(headers: list[str], stretch_last: bool = False) -> QTableWidget:
@@ -848,7 +966,17 @@ class RowThumbnails:
     def reset(self):
         self._items = {}
 
+    def _placeholder(self) -> QIcon:
+        pm = QPixmap(self._size, self._size)
+        pm.fill(Qt.GlobalColor.transparent)
+        return QIcon(pm)
+
     def add(self, slug: str, item: QTableWidgetItem):
+        # Reserve the thumbnail's width now, with a transparent placeholder: the
+        # table is fitted before the async decode lands, and an icon arriving later
+        # would push the name into an elided "NG…". It also keeps every row's name
+        # at the same indent, whether or not the object has a hero yet.
+        item.setIcon(self._placeholder())
         hp = objects.hero_path(slug)
         if hp is None:
             return
