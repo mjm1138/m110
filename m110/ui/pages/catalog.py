@@ -35,6 +35,21 @@ from m110.ui.widgets import (
     connect_context_menu, make_search_field, make_view_switcher, restyle_view_switcher, header_group,
 )
 
+def object_tooltip(label: str, name: str, t: dict | None) -> str:
+    """The one hover text for an object, shared by the list, grid and map:
+    designation, common name, then where its capture stands."""
+    lines = [label, name]
+    if t:
+        n = int(t.get("session_count") or 0)
+        lines.append(" · ".join(x for x in (
+            status_label(t.get("status"), True, t.get("progress")),
+            t.get("integration_hms", ""),
+            f"{n} session{'' if n == 1 else 's'}") if x))
+    else:
+        lines.append("Not captured yet")
+    return "\n".join(x for x in lines if x)
+
+
 LIBRARY_VIEW_KEY = "library_view_mode"   # "list" | "grid" | "map"
 VIEW_MODES = ("list", "grid", "map")      # the Feed is its own page now (Journal)
 LIBRARY_ZOOM_KEY = "library_grid_zoom"   # int px
@@ -108,6 +123,8 @@ class CatalogPage(QWidget):
         # it is built lazily and only re-rendered while it is the visible view —
         # `_map_dirty` records that the filtered set moved underneath it.
         self.map_view = SkyMapView()
+        self._reference = None              # bundled reference, read on first need
+        self.map_view.canvas.describe = self._describe_slug
         # Clicking a marker is selection *within* the view, like clicking a row —
         # not `select_object`, which is the routing entry point other pages use
         # and clears the search + catalog filter to guarantee the target is
@@ -390,11 +407,13 @@ class CatalogPage(QWidget):
             captured = bool(t)
             subtitle = (f"{t.get('integration_hms', '')} · "
                         f"{t.get('session_count', '')} sessions") if captured else ""
+            label = object_label(ids[slug])
             out.append(TileItem(
                 key=slug,
                 thumb_path=objects.hero_path(slug) if captured else None,
-                title=self._pin_marker(slug) + object_label(ids[slug]),
+                title=self._pin_marker(slug) + label,
                 subtitle=subtitle,
+                tooltip=object_tooltip(label, str(e.get("name") or ""), t),
                 status=t.get("status") if captured else None,
                 status_text=(status_label(t.get("status"), True, t.get("progress"))
                              if captured else None),
@@ -431,9 +450,7 @@ class CatalogPage(QWidget):
             table.setItem(row, 0, obj)
             if captured:
                 self._thumbs.add(slug, obj)
-            name = QTableWidgetItem(str(e.get("name") or ""))
-            name.setToolTip(name.text())
-            table.setItem(row, 1, name)
+            table.setItem(row, 1, QTableWidgetItem(str(e.get("name") or "")))
             table.setItem(row, 2, QTableWidgetItem(str(e.get("type") or "").replace("_", " ")))
             season = str(e.get("season") or "")
             table.setItem(row, 3, NumItem(season, season_sort_key(season)))
@@ -451,11 +468,6 @@ class CatalogPage(QWidget):
                 (STATUS_RANK.get(status, -1), float(t.get("progress") or 0.0)))
             status_item.setForeground(status_color(status) if captured else muted_color())
             status_item.setData(STATUS_ROLE, status)
-            tip = [STATUS_TOOLTIP[status]] if status in STATUS_TOOLTIP else []
-            if t.get("by_model"):
-                tip += integration_goals.progress_lines(t["by_model"], registry)
-            if tip:
-                status_item.setToolTip("\n".join(tip))
             table.setItem(row, self._status_col, status_item)
 
             integ_min = float(t.get("integration_min", 0) or 0)
@@ -464,6 +476,17 @@ class CatalogPage(QWidget):
             sc = int(t.get("session_count", 0) or 0)
             table.setItem(row, 9, make_numeric(
                 NumItem(str(sc) if captured else "", float(sc))))
+
+            # The whole row hovers alike (and like the grid tile and map marker);
+            # the status cell adds what the status means and the per-telescope goals.
+            row_tip = object_tooltip(object_label(oid), str(e.get("name") or ""), t)
+            extra = [STATUS_TOOLTIP[status]] if status in STATUS_TOOLTIP else []
+            if t.get("by_model"):
+                extra += integration_goals.progress_lines(t["by_model"], registry)
+            for c in range(len(self.HEADERS)):
+                table.item(row, c).setToolTip(
+                    "\n\n".join([row_tip, "\n".join(extra)]) if c == self._status_col
+                    and extra else row_tip)
 
             if not captured:
                 for c in range(len(self.HEADERS)):
@@ -508,6 +531,18 @@ class CatalogPage(QWidget):
     def _on_map_click(self, slug: str):
         """A marker was clicked — select it in place, leaving the filters alone."""
         self._select_slug(slug)
+
+    def _describe_slug(self, slug: str) -> str:
+        """The shared hover text for a map marker. A goal's unshot members are
+        charted too, and those live only in the bundled reference."""
+        e = self._cat.get(slug)
+        if e is None:
+            if self._reference is None:
+                self._reference = catalog_mod.load_reference()
+            e = self._reference.get(slug, {})
+        ids = object_identifiers(slug, e, primary_catalog=self._catalog_filter)
+        return object_tooltip(object_label(ids) or slug, str(e.get("name") or ""),
+                              self._totals.get(slug))
 
     def _map_has(self, slug: str) -> bool:
         """Whether `slug` is currently drawn on either disc."""
