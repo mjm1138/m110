@@ -1,4 +1,4 @@
-"""The backup dialog's cloud and scope controls, driven rather than constructed.
+"""Settings › Backup: the cloud and scope controls, driven rather than constructed.
 
 Constructing a dialog proves its constructor runs and nothing more — the
 `stack_in_stackingwizard` lesson. Every control added for issue #93 is therefore
@@ -9,7 +9,7 @@ keyring and the widgets.
 import pytest
 
 from m110 import backup, config
-from m110.ui.backup_dialog import BackupDialog
+from m110.ui.backup_pane import BackupPane
 
 pytestmark = pytest.mark.usefixtures("qtbot")
 
@@ -44,28 +44,45 @@ def clean_settings():
 
 @pytest.fixture
 def dlg(qtbot):
-    d = BackupDialog()
+    d = BackupPane()
     qtbot.addWidget(d)
     return d
 
 
 # ── two slots: the cloud option is always on screen ────────────────────────
 
-def test_both_slots_have_a_tab_and_a_summary_line(dlg):
+def test_both_slots_have_a_segment_and_a_summary_line(dlg):
     """The whole point: cloud backup used to be reachable only by typing
-    `s3://`. It now has its own tab and a summary line naming the providers, on
-    screen before anyone looks for it."""
-    labels = [dlg._tabs.tabText(i) for i in range(dlg._tabs.count())]
+    `s3://`. It now has its own segment and a summary line naming the providers,
+    on screen before anyone looks for it."""
+    labels = [b.text() for b in dlg._seg_btns.values()]
     assert labels == ["Local drive", "Cloud"]
     cloud = dlg._summary[backup.SLOT_CLOUD].text()
     assert "Not set up" in cloud
     assert "Backblaze B2" in cloud and "Cloudflare R2" in cloud
 
 
-def test_the_summary_link_opens_that_slots_tab(dlg):
+def test_the_segment_shows_one_slot_at_a_time(dlg):
+    """Clicked, both ways. Only the chosen slot's panel is shown — the other is
+    hidden, not stacked — so the pane's height is that slot's."""
+    sizes = []
+    dlg.size_changed.connect(lambda: sizes.append(dlg.current_slot()))
     assert dlg.current_slot() == backup.SLOT_LOCAL
-    dlg._summary[backup.SLOT_CLOUD].linkActivated.emit(backup.SLOT_CLOUD)
+    assert not dlg._cloud.isVisibleTo(dlg) and dlg._local.isVisibleTo(dlg)
+    dlg._seg_btns[backup.SLOT_CLOUD].click()
     assert dlg.current_slot() == backup.SLOT_CLOUD
+    assert dlg._cloud.isVisibleTo(dlg) and not dlg._local.isVisibleTo(dlg)
+    dlg._seg_btns[backup.SLOT_LOCAL].click()
+    assert dlg.current_slot() == backup.SLOT_LOCAL
+    assert sizes == [backup.SLOT_CLOUD, backup.SLOT_LOCAL]
+
+
+def test_the_summary_has_no_links(dlg):
+    """The old "Set up…" / "Edit…" links were primary actions dressed as
+    hyperlinks (critique §P2 Dialogs); the segment is the way to a slot."""
+    from PySide6.QtCore import Qt
+    for label in dlg._summary.values():
+        assert label.textFormat() == Qt.PlainText and "<a" not in label.text()
 
 
 def test_a_configured_slot_summarises_destination_and_schedule(qtbot, tmp_path):
@@ -73,7 +90,7 @@ def test_a_configured_slot_summarises_destination_and_schedule(qtbot, tmp_path):
     backup.update_slot(backup.SLOT_LOCAL, destination=str(tmp_path), auto=True)
     backup.record_backup(backup.SLOT_CLOUD, datetime.now() - timedelta(hours=3))
     backup.update_slot(backup.SLOT_CLOUD, destination="s3://bucket/m110")
-    d = BackupDialog()
+    d = BackupPane()
     qtbot.addWidget(d)
 
     local = d._summary[backup.SLOT_LOCAL].text()
@@ -85,59 +102,52 @@ def test_a_configured_slot_summarises_destination_and_schedule(qtbot, tmp_path):
 
 def test_opens_on_the_cloud_tab_when_only_cloud_is_set_up(qtbot):
     backup.update_slot(backup.SLOT_CLOUD, destination="s3://bucket/m110")
-    d = BackupDialog()
+    d = BackupPane()
     qtbot.addWidget(d)
     assert d.current_slot() == backup.SLOT_CLOUD
 
 
-def test_each_tab_saves_only_its_own_slot(dlg, tmp_path, keyring_stub):
+def test_each_slot_saves_only_its_own_settings(dlg, tmp_path, keyring_stub):
+    """No Save button: a committed field is saved at once, to its own slot."""
     backup.update_slot(backup.SLOT_CLOUD, destination="s3://keep/me", auto=True)
     dlg._local._dest.setText(str(tmp_path))
+    dlg._local._dest.editingFinished.emit()
     dlg._local._auto.setChecked(True)
-
-    dlg._save_btn.click()
 
     local, cloud = backup.load_slot("local"), backup.load_slot("cloud")
     assert local.destination == str(tmp_path) and local.auto is True
     assert cloud.destination == "s3://keep/me" and cloud.auto is True
 
 
-def test_both_slots_save_at_once(dlg, tmp_path, keyring_stub):
+def test_both_slots_save_as_they_are_edited(dlg, tmp_path, keyring_stub):
     dlg._local._dest.setText(str(tmp_path))
+    dlg._local._dest.editingFinished.emit()
     dlg._cloud._dest.setText("s3://bucket/m110")
+    dlg._cloud._dest.editingFinished.emit()
     dlg._cloud._auto.setChecked(True)
-
-    dlg._save_btn.click()
 
     assert backup.configured_slots() == [backup.SLOT_LOCAL, backup.SLOT_CLOUD]
     assert backup.load_slot("cloud").auto is True
 
 
 @pytest.mark.parametrize("slot,dest,words", [
-    ("local", "s3://bucket/x", "Cloud tab"),
+    ("local", "s3://bucket/x", "under Cloud"),
     ("cloud", "/Volumes/Backup", "s3://"),
 ])
-def test_a_destination_in_the_wrong_tab_is_refused(dlg, monkeypatch, slot, dest,
-                                                   words):
-    warned = []
-    monkeypatch.setattr("m110.ui.backup_dialog.QMessageBox.warning",
-                        lambda *a, **k: warned.append(a[2]))
+def test_a_destination_in_the_wrong_slot_is_refused(dlg, slot, dest, words):
+    """Committed, it isn't saved; the status line says why."""
     panel = dlg._panels[slot]
     panel._dest.setText(dest)
-    panel._refresh_status()
+    panel._dest.editingFinished.emit()
+
     assert words in panel._status.text()
-
-    dlg._save_btn.click()
-
-    assert warned and words in warned[0]
-    assert dlg.current_slot() == slot
     assert backup.load_slot(slot).destination == ""
 
 
 def test_the_cloud_tab_is_always_pooled_and_has_no_free_space_rule(dlg):
     """A bucket has no choice of format and no volume to fill; controls that
     implied otherwise would promise things that never happen."""
-    from m110.ui.backup_dialog import CLOUD_FORMAT_NOTE
+    from m110.ui.backup_pane import CLOUD_FORMAT_NOTE
     cloud = dlg._cloud
     assert cloud._format is None and cloud._min_free is None
     assert cloud._current_format() == backup.FORMAT_POOLED
@@ -262,35 +272,58 @@ def test_narrowing_scope_explains_what_happens_to_existing_backups(dlg):
     assert "pruned" in note or "retention" in note
 
 
-def test_scope_change_marks_the_dialog_dirty(dlg):
-    """Every control `persist` writes has to arm Save, or the user makes
-    a change they can't save."""
-    assert dlg._save_btn.isEnabled() is False
-    dlg._local._scope.setCurrentIndex(dlg._local._scope.findData(backup.SCOPE_ESSENTIALS))
-    assert dlg._save_btn.isEnabled() is True
+@pytest.mark.parametrize("slot", ["local", "cloud"])
+def test_every_setting_saves_itself(dlg, slot):
+    """Every field `persist` writes must also save on its own commit — there is
+    no Save button to catch the one that doesn't."""
+    panel = dlg._panels[slot]
+    other = (backup.SCOPE_EVERYTHING if panel._current_scope() == backup.SCOPE_ESSENTIALS
+             else backup.SCOPE_ESSENTIALS)
+    panel._scope.setCurrentIndex(panel._scope.findData(other))
+    panel._auto.setChecked(not panel._auto.isChecked())
+    panel._interval.setValue(panel._interval.value() + 5)
+    panel._keep.setValue(panel._keep.value() + 2)
+    if panel._min_free is not None:
+        panel._min_free.setValue(42)
+    if panel._format is not None:
+        panel._format.setCurrentIndex(panel._format.findData(backup.FORMAT_POOLED))
+
+    saved = backup.load_slot(slot)
+    assert saved.scope == other
+    assert saved.auto is panel._auto.isChecked()
+    assert saved.interval_hours == panel._interval.value()
+    assert saved.retention_keep == panel._keep.value()
+    if panel._min_free is not None:
+        assert saved.min_free_gb == 42
+    if panel._format is not None:
+        assert saved.format == backup.FORMAT_POOLED
+
+
+def test_cloud_credentials_save_when_their_field_is_left(dlg, keyring_stub):
+    cloud = dlg._cloud
+    cloud._s3_endpoint.setText("https://example.r2.dev")
+    cloud._s3_endpoint.editingFinished.emit()
+    cloud._s3_access.setText("KEY9")
+    cloud._s3_access.editingFinished.emit()
+    cloud._s3_secret.setText("S3CRET")
+    cloud._s3_secret.editingFinished.emit()
+
+    assert config.get_setting(backup.SETTING_S3_ENDPOINT) == "https://example.r2.dev"
+    assert config.get_setting(backup.SETTING_S3_ACCESS_KEY) == "KEY9"
+    assert keyring_stub[("m110-backup-s3", "KEY9")] == "S3CRET"
+    assert cloud._s3_secret.text() == ""
+
+
+def test_a_malformed_bucket_is_not_saved(dlg):
+    dlg._cloud._dest.setText("s3://")
+    dlg._cloud._dest.editingFinished.emit()
+    assert "bucket" in dlg._cloud._status.text().lower()
+    assert backup.load_slot("cloud").destination == ""
 
 
 # ── destination validation ──────────────────────────────────────────────────
 
 # ── layout ──────────────────────────────────────────────────────────────────
-
-def test_the_tabs_scroll_and_the_dialog_fits_the_screen(dlg):
-    """The cloud tab is taller than a laptop screen. A layout that doesn't fit is
-    squeezed, not scrolled — which is how the retention spin boxes once came to
-    overlap — so each page scrolls and the window never opens taller than the
-    screen."""
-    from PySide6.QtWidgets import QScrollArea
-    for i in range(dlg._tabs.count()):
-        page = dlg._tabs.widget(i)
-        assert isinstance(page, QScrollArea) and page.widgetResizable()
-    assert dlg.height() <= dlg.screen().availableGeometry().height()
-    # Nothing squeezed inside the scroll area: the panel gets what it asks for.
-    dlg.show_slot(backup.SLOT_CLOUD)
-    dlg.show()
-    dlg.layout().activate()
-    cloud = dlg._cloud
-    assert cloud.height() >= cloud.layout().minimumSize().height()
-
 
 def test_the_cloud_default_scope_carries_no_narrowing_warning(dlg):
     """Essentials is where the cloud tab starts, not a change the user made —
@@ -306,6 +339,7 @@ def test_no_explanatory_text_is_cut_off(dlg, slot):
     text with a line sliced off rather than an obviously-too-small window."""
     panel = dlg._panels[slot]
     dlg.show_slot(slot)
+    dlg.resize(560, dlg.heightForWidth(560))
     dlg.show()
     dlg.layout().activate()
     labels = [panel._status, panel._format_note, panel._scope_note,
@@ -318,21 +352,23 @@ def test_no_explanatory_text_is_cut_off(dlg, slot):
 
 def test_a_malformed_bucket_uri_is_refused_before_any_work(dlg, monkeypatch):
     warned = []
-    monkeypatch.setattr("m110.ui.backup_dialog.QMessageBox.warning",
+    monkeypatch.setattr("m110.ui.backup_pane.QMessageBox.warning",
                         lambda *a, **k: warned.append(a[2]))
     started = []
     monkeypatch.setattr(backup, "options_from_settings",
                         lambda d: started.append(d))
     dlg._cloud._dest.setText("s3://")
 
-    dlg._cloud._backup_btn.click()
+    dlg.show_slot(backup.SLOT_CLOUD)
+    dlg._backup_btn.click()
 
     assert warned and "bucket" in warned[0].lower()
     assert started == []
 
 
-def test_back_up_now_on_each_tab_runs_that_slot(dlg, tmp_path, monkeypatch):
-    """Both Back up now buttons, clicked: each builds options for its own slot."""
+def test_back_up_now_runs_the_slot_on_screen(dlg, tmp_path, monkeypatch):
+    """The pane's one Back Up Now, clicked on each slot: each run builds options
+    for the slot shown."""
     started = []
 
     class _Stub:
@@ -344,14 +380,20 @@ def test_back_up_now_on_each_tab_runs_that_slot(dlg, tmp_path, monkeypatch):
         def start(self):
             pass
 
-    monkeypatch.setattr("m110.ui.backup_dialog._BackupWorker", _Stub)
-    monkeypatch.setattr("m110.ui.backup_dialog.ProgressDialog.show",
+    monkeypatch.setattr("m110.ui.backup_pane._BackupWorker", _Stub)
+    monkeypatch.setattr("m110.ui.backup_pane.ProgressDialog.show",
                         lambda self: None)
     dlg._local._dest.setText(str(tmp_path))
-    dlg._local._backup_btn.click()
+    dlg._backup_btn.click()
+    # A run disables the pane's actions until it finishes (the stub never does).
+    assert not dlg._backup_btn.isEnabled()
+    assert not dlg._seg_btns[backup.SLOT_CLOUD].isEnabled()
     dlg._local._worker = None
+    dlg._local._close_progress()
+    dlg._local.busy.emit(False)
+    dlg._seg_btns[backup.SLOT_CLOUD].click()
     dlg._cloud._dest.setText("s3://bucket/m110")
-    dlg._cloud._backup_btn.click()
+    dlg._backup_btn.click()
     dlg._cloud._worker = None
 
     assert started == [backup.SLOT_LOCAL, backup.SLOT_CLOUD]

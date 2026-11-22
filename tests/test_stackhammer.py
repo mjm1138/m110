@@ -37,7 +37,7 @@ def _exe(path):
 def test_nothing_installed_means_not_found(tmp_path, monkeypatch):
     seed_root(tmp_path, monkeypatch)
     assert sh.find_binary() is None
-    with pytest.raises(sh.StackhammerError, match="Preferences"):
+    with pytest.raises(sh.StackhammerError, match="Settings › Tools"):
         sh.require_binary()
 
 
@@ -481,4 +481,4 @@ def test_cli_says_where_it_looked_when_stackhammer_is_missing(tmp_path, monkeypa
     seed_root(tmp_path, monkeypatch)
     stackhammer_job()
     assert _main(monkeypatch, "M51", "--engine", "stackhammer") == 2
-    assert "Preferences → Processing tools" in capsys.readouterr().err
+    assert "Settings › Tools" in capsys.readouterr().err

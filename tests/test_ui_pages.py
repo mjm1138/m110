@@ -852,7 +852,7 @@ def test_main_window_library_menu(tmp_path, monkeypatch, qapp):
         assert "Clean Up Imported Sidecars…" in labels
 
         files = [a.text() for a in w.file_menu.actions()]
-        for label in ("Import…", "Publish…", "Back Up…", "Restore…", "Settings…"):
+        for label in ("Import…", "Publish…", "Back Up Now", "Restore…", "Settings…"):
             assert label in files
         assert "Quit M110" in files
     finally:
@@ -871,15 +871,15 @@ def _settle_probe(dlg, qapp):
     qapp.processEvents()
 
 
-def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatch, qapp):
+def test_backup_pane_constructs_and_shows_snapshot_status(tmp_path, monkeypatch, qapp):
     from m110 import backup
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     dest = tmp_path / "backups"
     backup.create_snapshot(backup.BackupOptions(destination=dest))
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
         dlg._local._dest.setText(str(dest))
         # Typing must NOT probe (it used to walk the destination on the GUI
@@ -895,47 +895,7 @@ def test_backup_dialog_constructs_and_shows_snapshot_status(tmp_path, monkeypatc
         qapp.processEvents()
 
 
-def test_backup_dialog_exit_button_says_close_until_something_changes(
-        tmp_path, monkeypatch, qapp):
-    """"Cancel" should only appear when it can actually undo something.
-
-    The reported confusion: after "Back up now" — which persists the settings
-    itself, before running — the exit button still read "Cancel", as though it
-    would roll back the snapshot that just ran. `reject()` only closes the window,
-    so there was nothing to cancel and the label was simply untrue."""
-    seed_root(tmp_path, monkeypatch)
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
-    try:
-        assert dlg._reject_btn.text() == "Close"
-        assert dlg._save_btn.isEnabled() is False      # nothing to save either
-
-        dlg._local._interval.setValue(dlg._local._interval.value() + 1)
-        assert dlg._reject_btn.text() == "Cancel"      # now it can discard an edit
-        assert dlg._save_btn.isEnabled() is True
-
-        # Persisting is what makes the widgets and the stored settings agree —
-        # whether it came from Save or from "Back up now".
-        dlg._local._dest.setText(str(tmp_path / "dest"))
-        dlg._local.persist()
-        assert dlg._reject_btn.text() == "Close"
-        assert dlg._save_btn.isEnabled() is False
-
-        # Changing the destination arms it too — including programmatically, because
-        # Browse sets the field with `setText` and picking a folder is very much a
-        # change worth saving. (An earlier version listened to `textEdited` to skip
-        # programmatic writes; that left Save greyed out after Browse. Nothing else
-        # writes this field — the destination probe updates the status label.)
-        dlg._local._dest.setText(str(tmp_path / "elsewhere"))
-        assert dlg._reject_btn.text() == "Cancel"
-        assert dlg._save_btn.isEnabled() is True
-    finally:
-        dlg.close()
-        dlg.deleteLater()
-        qapp.processEvents()
-
-
-def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monkeypatch, qapp):
+def test_backup_pane_warns_when_destination_cannot_share_files(tmp_path, monkeypatch, qapp):
     """The #92 case: a destination whose filesystem has no hardlinks stores a full
     copy per backup. Say so *before* the first backup, not after."""
     import os
@@ -947,8 +907,8 @@ def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monke
     monkeypatch.setattr(os, "link",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
         dlg._local._dest.setText(str(dest))
         dlg._local._refresh_status()
@@ -962,14 +922,14 @@ def test_backup_dialog_warns_when_destination_cannot_share_files(tmp_path, monke
         qapp.processEvents()
 
 
-def test_backup_dialog_offers_the_format_choice_and_explains_it(tmp_path, monkeypatch, qapp):
+def test_backup_pane_offers_the_format_choice_and_explains_it(tmp_path, monkeypatch, qapp):
     from m110 import backup
     seed_root(tmp_path, monkeypatch)
     dest = tmp_path / "backups"
     dest.mkdir()
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
         assert dlg._local._current_format() == backup.FORMAT_MIRRORED     # the default
         dlg._local._dest.setText(str(dest))
@@ -978,10 +938,9 @@ def test_backup_dialog_offers_the_format_choice_and_explains_it(tmp_path, monkey
         assert dlg._local._format.isEnabled()                             # a real choice
         assert "browsable copy" in dlg._local._format_note.text()
 
-        dlg._local._select_format(backup.FORMAT_POOLED)
-        dlg._local._on_format_changed()
+        dlg._local._format.setCurrentIndex(
+            dlg._local._format.findData(backup.FORMAT_POOLED))   # a user's pick
         assert "stored once" in dlg._local._format_note.text()
-        dlg._save_and_close()
         assert backup.load_slot("local").format == backup.FORMAT_POOLED
     finally:
         dlg.close()
@@ -989,7 +948,7 @@ def test_backup_dialog_offers_the_format_choice_and_explains_it(tmp_path, monkey
         qapp.processEvents()
 
 
-def test_backup_dialog_forces_pooled_where_files_cannot_be_shared(tmp_path, monkeypatch, qapp):
+def test_backup_pane_forces_pooled_where_files_cannot_be_shared(tmp_path, monkeypatch, qapp):
     """#92: on a destination without hardlinks, mirrored backups are a full copy
     every night. The dialog makes the choice, says why, and remembers it."""
     import os
@@ -1001,8 +960,8 @@ def test_backup_dialog_forces_pooled_where_files_cannot_be_shared(tmp_path, monk
     monkeypatch.setattr(os, "link",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("no links")))
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
         dlg._local._dest.setText(str(dest))
         dlg._local._refresh_status()
@@ -1097,20 +1056,20 @@ def test_restore_dialog_lists_both_formats_and_restores_a_pooled_snapshot(
         qapp.processEvents()
 
 
-def test_backup_dialog_save_persists_settings_without_backup(tmp_path, monkeypatch, qapp):
+def test_backup_pane_edits_persist_settings_without_backup(tmp_path, monkeypatch, qapp):
     from m110 import backup, config
     root = seed_root(tmp_path, monkeypatch)
     seed_capture(root)
     dest = tmp_path / "backups"
     dest.mkdir()
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
         dlg._local._dest.setText(str(dest))
+        dlg._local._dest.editingFinished.emit()   # each field saves on commit
         dlg._local._auto.setChecked(True)
         dlg._local._interval.setValue(6)
-        dlg._save_and_close()                     # Save, not "Back up now"
         qapp.processEvents()
         # Settings persisted…
         local = backup.load_slot("local")
@@ -2098,19 +2057,18 @@ def test_reveal_guide_opens_the_folder_not_the_file(tmp_path, monkeypatch, qapp)
 
 
 
-def test_backup_dialog_browse_enables_save(tmp_path, monkeypatch, qapp):
-    """Picking a folder with **Browse** must enable Save.
+def test_backup_pane_browse_saves_the_destination(tmp_path, monkeypatch, qapp):
+    """Picking a folder with **Browse** saves it.
 
-    Regression: dirty-tracking listened to `textEdited`, which by design ignores
-    programmatic writes — and Browse sets the field with `setText`. So a user who
-    fixed a wrong destination via Browse got a greyed-out Save and no way to keep
-    the correction. Only the constructor and Browse ever write this field; the
-    destination probe writes the status label, never the path."""
+    Regression lineage: the old dialog's dirty-tracking listened to `textEdited`,
+    which ignores programmatic writes — and Browse sets the field with `setText` —
+    so a destination fixed via Browse couldn't be saved. With no Save button, Browse
+    commits the destination itself."""
+    from m110 import backup
     seed_root(tmp_path, monkeypatch)
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
-        assert dlg._save_btn.isEnabled() is False
         chosen = tmp_path / "picked"
         chosen.mkdir()
         monkeypatch.setattr(
@@ -2118,40 +2076,40 @@ def test_backup_dialog_browse_enables_save(tmp_path, monkeypatch, qapp):
             lambda *a, **k: str(chosen))
         dlg._local._browse()
         assert dlg._local._dest.text() == str(chosen)
-        assert dlg._save_btn.isEnabled() is True
-        assert dlg._reject_btn.text() == "Cancel"
+        assert backup.load_slot("local").destination == str(chosen)
     finally:
         dlg.close()
         dlg.deleteLater()
         qapp.processEvents()
 
 
-def test_backup_dialog_never_erases_a_configured_destination(
+def test_backup_pane_never_erases_a_configured_destination(
         tmp_path, monkeypatch, qapp):
     """An empty box means "not entered", not "clear it".
 
     The destination is a path the user chose once and may not remember, and losing
     it silently stops their backups. Saving with the field blank used to write ""
-    straight over it."""
+    straight over it; now an empty commit is simply not saved."""
     seed_root(tmp_path, monkeypatch)
     from m110 import backup, config
     config.save_setting(backup.SETTING_DEST, "/Volumes/Archive/M110-backup")
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
         assert dlg._local._dest.text() == "/Volumes/Archive/M110-backup"   # loads it back
         dlg._local._dest.setText("")
-        dlg._save_and_close()
+        dlg._local._dest.editingFinished.emit()
         assert backup.load_slot("local").destination == "/Volumes/Archive/M110-backup"
     finally:
         dlg.deleteLater()
         qapp.processEvents()
 
 
-def test_backup_dialog_round_trips_the_destination_untouched(
+def test_backup_pane_round_trips_the_destination_untouched(
         tmp_path, monkeypatch, qapp):
-    """Open, change nothing, Save: the stored destination must come back byte-identical.
+    """Open, commit the field unchanged: the stored destination must come back
+    byte-identical.
     A settings dialog that rewrites a value it merely displayed is how a path gets
     silently replaced."""
     seed_root(tmp_path, monkeypatch)
@@ -2159,10 +2117,10 @@ def test_backup_dialog_round_trips_the_destination_untouched(
     original = "/Volumes/AstroArchive/M110-backup/"
     config.save_setting(backup.SETTING_DEST, original)
 
-    from m110.ui.backup_dialog import BackupDialog
-    dlg = BackupDialog()
+    from m110.ui.backup_pane import BackupPane
+    dlg = BackupPane()
     try:
-        dlg._save_and_close()
+        dlg._local._dest.editingFinished.emit()
         assert backup.load_slot("local").destination == original
     finally:
         dlg.deleteLater()

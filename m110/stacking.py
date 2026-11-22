@@ -102,7 +102,7 @@ def require_siril() -> str:
     if not found:
         raise StackingError(
             "Siril was not found. Install it from https://siril.org, or set its "
-            "location in M110 → Preferences → Processing tools."
+            "location in M110 › Settings › Tools."
         )
     return found
 

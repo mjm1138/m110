@@ -179,7 +179,7 @@ which folder it's in, and you can override any image:
   and Linux) hand the file off to your OS; Reveal opens the folder with the file selected.
 
 What counts as a "finished" render versus an intermediate by-product is decided by
-filename keywords you control in **Preferences → Finished-image hints** (defaults:
+filename keywords you control in **Settings › Processing → Finished-image hints** (defaults:
 `processed`, `final`, `finished`, and the intermediates `starless`, `starmask`).
 
 Next: **[Your telescopes — the Devices page →](devices.md)**

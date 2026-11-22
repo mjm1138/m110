@@ -100,7 +100,7 @@ def test_without_stackhammer_the_tool_says_where_it_looked(store, monkeypatch):
     monkeypatch.setattr(sh, "_on_path", lambda: None)
     with pytest.raises(registry.ToolError) as e:
         call("plan_stackhammer", target="M51")
-    assert "Preferences → Processing tools" in str(e.value)
+    assert "Settings › Tools" in str(e.value)
     assert "stackhammer-stacking" in str(e.value)
     assert str(Path.home()) not in str(e.value)
 

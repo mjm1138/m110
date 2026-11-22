@@ -33,7 +33,7 @@ that shared a seam, not the one that was edited.
 | `ingest.py`, `ui/import_page.py`, `ui/ingest_dialog.py`, `ui/holding_inspect_dialog.py` | **[§2.2 Ingest](#22-ingest--import)** | §2.3 (new objects must appear), §0.3 (corpus fixtures) |
 | `catalog.py`, `objects.py`, `ui/pages/catalog.py`, `ui/detail.py`, `ui/media*.py`, `ui/image_*.py` | **[§2.3 Library](#23-library--object-detail)** | §2.1 (theme), §2.7 (what publishes) |
 | `siril.py`, `roundtrip.py`, `astrowizard.py`, `stacking.py`, `processing.py`, `launch.py`, `hints.py` | **[§2.4 Processing](#24-processing)** | §2.5 (the sandbox backup rule) |
-| `backup/**`, `ui/backup_dialog.py`, `ui/restore_dialog.py` | **[§2.5 Backup](#25-backup--restore)** | §3 (the pooled/format regressions) |
+| `backup/**`, `ui/backup_pane.py`, `ui/restore_dialog.py` | **[§2.5 Backup](#25-backup--restore)** | §3 (the pooled/format regressions) |
 | `planning.py`, `planning_config.py`, `prioritize.py`, `horizon.py`, `glow.py`, `fieldguide.py`, `ui/pages/planning.py` | **[§2.6 Planning](#26-planning)** | §2.3 (pins are shared) |
 | `publish/**`, `ui/publish_dialog.py` | **[§2.7 Publishing](#27-publishing)** | §2.3 (curation decides what publishes) |
 | `assistant/**` | **[§2.8 Assistant](#28-ai-assistant)** | §2.6 (its planning tools) |
@@ -286,8 +286,8 @@ re-run when its area changes and you want eyes on the visuals).
       hidden inside).
 - [ ] **Old-layout root migrates** (see [§0.2](#02-migration-check-13)): a copied
       pre-#13 root reshapes in place on launch; relaunch makes no further change.
-- [ ] Preferences (Cmd+,) → change data folder → Save → prompts restart →
-      relaunch reads the new folder.
+- [ ] Settings (Cmd+,) › General → **Change…** the data folder → saved at once, with
+      "M110 is using <old> until you restart it." → relaunch reads the new folder.
 - [ ] `M110_DATA_ROOT` env var overrides the saved preference.
 - [ ] **Data root on a network share from a Mac (#161).** Point `M110_DATA_ROOT`
       at an NFS or SMB mount that can't hold xattrs (a Synology NFS export
@@ -297,7 +297,7 @@ re-run when its area changes and you want eyes on the visuals).
       subs only. The synthetic corpus ships the same sidecars on a local disk.
 
 #### Appearance / theme (UI Phase 0)  ⚙ *(tokens/qss/manager/restyle automated — `test_theme_*.py`)*
-- [ ] **Preferences → Appearance → Theme**: switch **Light / Dark / Follow system** →
+- [ ] **Settings › Appearance**: switch **Light / Dark / Follow System** →
       the whole app (tables, nav rail, menus, dialogs, status chips, muted labels,
       scrollbars) restyles **live** (no restart); status colors + muted text stay legible
       in both.
@@ -421,6 +421,26 @@ On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a
 - [ ] On a **fresh, empty store** the welcome card is followed by an all-empty
       board for Messier.
 
+#### 1.0 pages — Settings window (UI Phase 8e)  ⚙ *(pane buttons, title, fit per pane, last pane, no OK/Close/Save, Change… data folder, tool Browse…, single instance, ⌘W, Back Up Now queue/none-configured, nudge, every backup field persists — `test_ui_settings_window.py`, `test_ui_preferences.py`, `test_ui_backup_pane.py`)*
+On **cocoa**, against the test corpus (§0.3), in light and dark.
+- [ ] **Settings…** (⌘,) opens a window titled **General** with six pane buttons
+      across the top (icon over label). Click each → the title follows and the
+      window resizes to the pane. ⌘, again brings the same window forward.
+- [ ] There is no OK / Save / Close button. ⌘W closes Settings (not the main
+      window); reopen → it's on the pane you left.
+- [ ] Change a few things on each pane (a workflow tick, a tool path, the theme),
+      close, reopen → they stuck; the theme switched live.
+- [ ] **General › Change…** the data folder → the field shows it at once with "M110
+      is using <old> until you restart it."; relaunch opens the new folder.
+- [ ] **Backup:** the summary has no links; **Local drive | Cloud** switches slots
+      and refits the window. Type a destination, press Tab → saved (close/reopen
+      shows it). An `s3://` address under Local drive says to use Cloud and isn't
+      saved. **Back Up Now** runs the slot on screen with a progress window.
+- [ ] **File › Back Up Now** with both slots set up → the status bar reports each in
+      turn, no dialog. With none set up → Settings opens on Backup.
+- [ ] Nothing reads "Preferences" anymore (errors about a missing Siril/Stackhammer
+      say **Settings › Tools**).
+
 #### 1.0 pages — Import empty state (UI Phase 8d)  ⚙ *(start page, primary action per device, scan reveals the table, Change Source, nothing-found note, post-import note, holding visibility, busy — `test_ui_import_empty.py`, `test_ui_import.py`)*
 On **cocoa**, against the test corpus (§0.3), in light and dark.
 - [ ] With no Seestar mounted, **Import** shows only the start page: the download
@@ -463,7 +483,7 @@ On **cocoa**, against the test corpus.
 - [ ] UI stays responsive during sync (threaded; "Syncing…" in the status bar).
 - [ ] Manual override still works: **Library** menu → Refresh (Ctrl+R).
 
-#### Updates — banner + Preferences  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
+#### Updates — banner + Settings  ⚙ *(engine automated — `test_updates.py`; banner/worker — `test_ui_update_notice.py`)*
 - [ ] **Help → Check for updates…**: an up-to-date build shows "You're up to date"; a
       newer release shows an **Update available** dialog with **Download** (opens the
       release page).
@@ -471,7 +491,7 @@ On **cocoa**, against the test corpus.
       dismissible strip appears above the page stack — **Download · Skip this version ·
       ✕**. **Skip** hides it and never shows that version again; **✕** hides it until next
       launch.
-- [ ] **Preferences → Updates → "Check for updates on launch"** toggles the launch check;
+- [ ] **Settings › General → "Check for updates on launch"** toggles the launch check;
       the choice persists (`update_check_enabled`).
 
 ---
@@ -762,7 +782,7 @@ On **cocoa**, against the test corpus.
 
 #### Processing-prep round-trip (0.1f)  ⚙ *(prep + import round-trip automated — `test_siril.py` / `test_processing.py`)*
 **Preference**
-- [ ] Preferences (Cmd+,) shows **"Processing workflows you use:"** with **Siril** and
+- [ ] Settings (Cmd+,) › Processing shows **Workflows** with **Siril** and
       **AstroWizard** checked (default) and PixInsight / DeepSkyStacker / Astro Pixel
       Processor **disabled ("soon")**. Saving persists the choice (no restart).
 
@@ -775,7 +795,7 @@ On **cocoa**, against the test corpus.
       **not** create a `process/` (Siril makes its own inside the sandbox).
 - [ ] A target with **mixed filters** (LP + IRCUT) gets per-filter jobs
       `siril/IRCUT/` and `siril/LP/`, each a self-contained working dir.
-- [ ] **Uncheck all workflows** in Preferences → a subsequent ingest creates **no**
+- [ ] **Uncheck all workflows** in Settings › Processing → a subsequent ingest creates **no**
       `siril/` sandbox.
 - [ ] **Self-heal on refresh:** delete an object's `siril/` folder, then Refresh
       (Ctrl+R) or refocus the window → the sandbox is recreated automatically;
@@ -817,7 +837,7 @@ On **cocoa**, against the test corpus.
 - [ ] **Re-import keeps the hero:** process again, import again → the hero picker
       defaults to **"Keep current (…)"**; a second `archive/<timestamp>/` appears
       alongside the first.
-- [ ] **Archive retention:** with **Preferences → "Keep the last N processing
+- [ ] **Archive retention:** with **Settings › Processing → "Keep the last N processing
       sessions"** set to 2, import a third time → the oldest `archive/<ts>/` is
       gone and the two newest remain. Set it to 0 ("all") → nothing is pruned.
 
@@ -894,7 +914,7 @@ m110-stack ~/some/loose/folder      # or any directory of subs
 - [ ] `ls` the folder before and after: **unchanged**. (This is the same code path the
       assistant's `plan_stack` uses.)
 - [ ] With Siril **not** installed (rename `/Applications/Siril.app` briefly), it exits
-      with a message naming Preferences → Processing tools, not a traceback.
+      with a message naming Settings › Tools, not a traceback.
 
 **Running it** — on a **copy**, and something small (a few dozen subs, not a mosaic):
 
@@ -975,7 +995,7 @@ m110-stack "<copy>" --engine stackhammer
 m110-stack "<copy>" --engine stackhammer --set weight=noise --run
 ```
 
-- [ ] The proposal names where Stackhammer was found (Preferences, or "named by
+- [ ] The proposal names where Stackhammer was found (Settings, or "named by
       the Stackhammer script installed in Siril"), lists every setting with its
       reason, the calibration matched for the lights, and the Siril steps. Nothing
       is written: no `process/` appears.
@@ -995,7 +1015,7 @@ m110-stack "<copy>" --engine stackhammer --set weight=noise --run
       `process/` kept, the run marker gone.
 - [ ] In M110, the new stack is offered by **Send stack to AstroWizard**; nothing
       under `stackhammer/` is offered there or by **Import finished work**.
-- [ ] Preferences → Processing tools has a **Stackhammer** row whose placeholder
+- [ ] Settings › Tools has a **Stackhammer** row whose placeholder
       shows the auto-detected binary; a path set there wins.
 
 **Handing on to AstroWizard**
@@ -1050,9 +1070,9 @@ m110-stack "<copy>" --run --handoff
 - [ ] Send the same stack again: no error, and the dialog now says it is already
       there.
 
-**Launch and Preferences** — needs AstroWizard actually installed.
+**Launch and Settings** — needs AstroWizard actually installed.
 
-- [ ] Preferences → Processing tools shows a row for **Siril** and one for
+- [ ] Settings › Tools shows a row for **Siril** and one for
       **AstroWizard**, each with its auto-detected path as placeholder. Setting one
       does not clear the other.
 - [ ] After Send, choose **Open AstroWizard**: it launches *and* the folder is
@@ -1092,7 +1112,7 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
 
 (Linux: `mkfs.vfat` a loop file. Windows: format a small VHD as exFAT.)
 
-- [ ] **Capability line, before the first backup.** File › Back Up…, Local drive tab, choose a normal
+- [ ] **Capability line, before the first backup.** Settings › Backup, **Local drive**, choose a normal
       folder: "Unchanged files are shared between backups", plus free space. Choose
       `/Volumes/M110TEST`: it says the destination can't share files. Neither needs an
       existing backup to report this.
@@ -1176,7 +1196,7 @@ a matching Xcode — that is how it failed here on macOS 27.
 credentials, and create a bucket named `m110test`. (Or, with the `mc` client:
 `mc alias set local http://localhost:9000 minioadmin minioadmin && mc mb local/m110test`.)
 
-**Point M110 at it** — File › Back Up…, **Cloud** tab:
+**Point M110 at it** — Settings › Backup, **Cloud**:
 
 | Field | Value |
 |---|---|
@@ -1205,11 +1225,11 @@ changed.
 
 **The checks.**
 
-- [ ] **The Cloud tab is complete before any probe**: the credentials section is
+- [ ] **Cloud is complete before any probe**: the credentials section is
       there, the format note says files are stored once (no mention of file links or
       a browsable copy), **Back up:** defaults to **Essentials**, and there is **no
-      Keep at least … GB free** control. Typing `s3://…` into the *Local drive* tab
-      instead says to use the Cloud tab, and a folder in the Cloud tab says it needs
+      Keep at least … GB free** control. Typing `s3://…` under *Local drive*
+      instead says to set it up under Cloud, and a folder under Cloud says it needs
       an `s3://` address.
 - [ ] **Test connection** → the status line says "Connected".
 - [ ] **Wrong credentials fail clearly.** Change one character of the secret → Test
@@ -1238,7 +1258,7 @@ changed.
       ```bash
       diff -r ~/Documents/M110-test /tmp/restored | grep -v '\.m110_internal_data/derived\|renders\|sessions.jsonl'
       ```
-- [ ] **Essentials scope.** With the Cloud tab on **Everything**, back up once; then set **Back up: Essentials**, run again → the file count
+- [ ] **Essentials scope.** With Cloud on **Everything**, back up once; then set **Back up: Essentials**, run again → the file count
       drops by the light frames (on the corpus, 251 → 53 — the synthetic frames are
       tiny, so the *byte* saving is nothing like the "few percent" a real library sees;
       it's the file list that matters here). Then restore from the **earlier**
@@ -1318,18 +1338,18 @@ A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
 
 - [ ] **Upgrading keeps the old destination.** With a pre-slot `~/.m110/settings.json`
       holding `backup_destination` (a folder), `backup_auto_on_launch: true` and a
-      `backup_retention_keep`, open File › Back Up… → the summary shows that folder
-      on the **Local** line, "automatic", and the Local drive tab has the same
+      `backup_retention_keep`, open Settings › Backup → the summary shows that folder
+      on the **Local** line, "automatic", and **Local drive** has the same
       interval and keep count. The Cloud line reads "Not set up — back up your
       essentials offsite to Amazon S3, Backblaze B2, …". Repeat with an `s3://`
       `backup_destination` → it lands on the **Cloud** line instead. After Save,
       `settings.json` has a `backup_destinations` dict *and still has* the old flat
       keys.
-- [ ] **The summary link opens the tab.** Click **Set up cloud backup…** → the Cloud
-      tab, with the destination field focused. With only Cloud configured, the dialog
-      opens on the Cloud tab.
-- [ ] **Each tab saves only itself.** Change the Local interval and Save; reopen →
-      Cloud's settings are unchanged, and vice versa.
+- [ ] **The segment switches slots.** **Local drive | Cloud** shows one slot at a
+      time and the window refits. With only Cloud configured, the pane opens on Cloud.
+- [ ] **Each slot saves only itself.** Change the Local interval (no Save button);
+      close and reopen Settings → it stuck, and Cloud's settings are unchanged, and
+      vice versa.
 - [ ] **Both run, one after the other.** Tick **Back up automatically** on both, with
       a short interval, quit and relaunch → the status bar reads "Backing up to
       Local…", then "Backed up N files to Local · Backing up to Cloud…", then both
@@ -1470,7 +1490,7 @@ python tools/smoke_mcp.py
 
 **Connecting a real client**
 
-- [ ] **Preferences → AI assistant → Connection details…** offers the same connection
+- [ ] **Settings › Assistant → Connection Details…** offers the same connection
       in three shapes (an `mcpServers` JSON block · command + env · the
       `claude mcp add` line), each with a working **Copy**.
 - [ ] **Set up Claude Desktop…** merges M110 into its config *without* disturbing other
@@ -1488,7 +1508,7 @@ python tools/smoke_mcp.py
       excluded. Ask the assistant to do everything it offers — rank, plan, propose pins,
       propose a journal entry, save a field guide. **The checksum must not change**, and
       anything it produced must be sitting in `.m110_internal_data/assistant/`.
-- [ ] With **"save plans straight to `Plans/`"** ticked in Preferences, a saved field
+- [ ] With **"save plans straight to `Plans/`"** ticked in Settings › Assistant, a saved field
       guide lands in `Plans/` instead — the one sanctioned write, and only that one.
 - [ ] Ask it to delete or overwrite something explicitly. It must decline and explain,
       not fail with a traceback.
@@ -1606,8 +1626,8 @@ data / a packaged build where noted).
 
 - **`processing.json` changes every Refresh** — it stamps a `generated_at`
   timestamp; the rest of `derived/` is deterministic.
-- **Changing the data root prompts a restart** — by design (simplest UX);
-  Preferences saves + prompts. (Engine modules read paths dynamically now, so the
+- **Changing the data root takes effect on restart** — by design (simplest UX);
+  Settings › General saves it at once and says so inline. (Engine modules read paths dynamically now, so the
   restart is no longer a hard requirement.)
 - **Qt font warning** ("Populating font family aliases…") on offscreen runs is
   harmless.

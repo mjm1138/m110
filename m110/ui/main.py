@@ -196,6 +196,7 @@ class MainWindow(QMainWindow):
         self._prep_feedback = False
         self._backup_worker = None
         self._backup_cancel = None
+        self._settings_window = None            # the one Settings window, while open
         self._backup_queue: list[str] = []      # slots due, run one at a time
         self._backup_notes: list[str] = []      # this round's results so far
         self._auto_backup_checked = False
@@ -418,10 +419,16 @@ class MainWindow(QMainWindow):
         # ── File ── moving data in and out of the store, and the window itself.
         self.ingest_action = act("Import…", self._open_ingest, "Ctrl+I")
         self.publish_action = act("Publish…", self._open_publish)
-        self.backup_action = act("Back Up…", self._open_backup)
+        # Back Up Now runs every configured slot in the background; setting
+        # backups up lives in Settings › Backup (where Back Up Now goes when
+        # nothing is configured yet).
+        self.backup_action = act("Back Up Now", self._back_up_now)
         self.restore_action = act("Restore…", self._open_restore)
         self.close_window_action = act("Close Window", self._close_active_window,
                                        QKeySequence.StandardKey.Close)
+        # App-wide, so ⌘W also reaches the Settings window (its own top-level, with
+        # no menu bar off macOS). Qt still blocks it under a modal.
+        self.close_window_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         self.prefs_action = act("Settings…", self._open_prefs,
                                 QKeySequence.StandardKey.Preferences)
         self.prefs_action.setMenuRole(QAction.MenuRole.PreferencesRole)
@@ -916,8 +923,26 @@ class MainWindow(QMainWindow):
         self.import_page.reload()
 
     def _open_prefs(self):
-        from m110.ui.preferences import PreferencesDialog
-        PreferencesDialog(self).exec()
+        self._show_settings()
+
+    def _show_settings(self, pane: str | None = None):
+        """Open (or bring forward) the one Settings window, optionally at `pane`.
+        Non-modal: it applies each change at once, so there's nothing to wait for."""
+        from m110.ui.preferences import SettingsWindow
+        w = self._settings_window
+        if w is None:
+            w = SettingsWindow(self, pane=pane)
+            w.destroyed.connect(self._on_settings_destroyed)
+            self._settings_window = w
+        elif pane:
+            w.show_pane(pane)
+        w.show()
+        w.raise_()
+        w.activateWindow()
+        return w
+
+    def _on_settings_destroyed(self, *_):
+        self._settings_window = None
 
     def _open_about(self):
         from m110.ui.about_dialog import AboutDialog
@@ -983,10 +1008,26 @@ class MainWindow(QMainWindow):
         PublishDialog(self).exec()
 
     def _open_backup(self):
+        """Settings › Backup (the backup nudge's Yes; Back Up Now with nothing set up)."""
+        self._show_settings("backup")
+
+    def _back_up_now(self):
+        """File › Back Up Now — every configured slot, one at a time, in the
+        background (the same queue as the automatic backups), reported in the
+        status bar. With nothing configured yet, open Settings › Backup instead."""
         if self.catalog.is_editing():
             return
-        from m110.ui.backup_dialog import BackupDialog
-        BackupDialog(self).exec()
+        from m110 import backup
+        slots = backup.configured_slots()
+        if not slots:
+            self._open_backup()
+            return
+        if self._backup_worker is not None or self._backup_queue:
+            self._update_status(extra="A backup is already running.")
+            return
+        self._backup_queue = list(slots)
+        self._backup_notes = []
+        self._run_next_auto_backup()
 
     def _open_restore(self):
         if self.catalog.is_editing():
@@ -1359,7 +1400,7 @@ class MainWindow(QMainWindow):
             self, "Back up your library",
             "M110 is beta software, and your captures are irreplaceable.\n\n"
             "Set up a backup of your library now? (You can also do this any time "
-            "from File › Back Up….)",
+            "from Settings › Backup.)",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if resp == QMessageBox.Yes:
             self._open_backup()
@@ -1399,6 +1440,8 @@ class MainWindow(QMainWindow):
             uw.wait()
 
     def closeEvent(self, event):
+        if self._settings_window is not None:
+            self._settings_window.close()       # tears down its backup workers
         self._stop_worker()
         super().closeEvent(event)
 

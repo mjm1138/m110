@@ -633,6 +633,70 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 8 · E, Settings window *(2026-11-22, `feature/ui-p8-settings`)*
+
+Fifth of six Phase 8 PRs. It closes critique §P2 *Dialogs* for Preferences and
+Backup: Preferences was one long scrolling sheet of paragraphs that applied the data
+folder on Close; Backup was a ~1000 pt dialog with link-styled primary actions, a
+floating tab selector and Restore… / Close / (disabled) Save.
+
+- **`preferences.SettingsWindow(QWidget, Qt.Window)`**, `WA_DeleteOnClose`.
+  `MainWindow._show_settings(pane)` keeps the one instance (`_settings_window`,
+  cleared on `destroyed`) and raises it; `_open_prefs` and `_open_backup` (the nudge)
+  go through it. The main window's `closeEvent` closes it first.
+  - **Pane bar:** checkable `QToolButton`s (`ToolButtonTextUnderIcon`, 24 pt Lucide
+    icon with Off/On states built by `_tab_icon`, since a checkable button picks
+    On/Off and not the Selected mode `icons.icon` fills). It's a `#settingsBar`
+    frame in the chrome tone, not a `QToolBar` (Phase 7 measured that drawing two
+    bars). New Lucide icons: `settings`, `wrench`, `hard-drive`, `sparkles`,
+    `sun-moon` (lucide-static 0.525.0, license comment + class stripped to match the
+    bundled ones).
+  - **Panes:** all six in one scrolling column, only the current one visible, so
+    the column's `heightForWidth` is that pane's. `_fit()` resizes to bar + pane
+    (85% screen cap) on switch and once after show (styles polish on show). Fixed
+    600 pt width. The title follows the pane; the last pane is saved as
+    `settings_pane`.
+  - **Instant apply:** every control already persisted live except the data
+    folder, which is now a read-only path + *Change…* (`config.save_data_root` +
+    `ensure_data_root` at once, inline "M110 is using <old> until you restart it.").
+  - **Copy:** each group is a one-line description + a caption. Group titles have
+    no colons, buttons are title case (*Connection Details…*, *Set Up Claude
+    Desktop…*). Text inside a `QGroupBox` is now transparent (new QSS rule): the
+    base `QWidget` background painted a window-coloured band behind every label and
+    check box in the card, app-wide.
+- **Backup:** `backup_dialog.py` → **`backup_pane.py`**.
+  - `BackupPane` = intro + caption, the two-slot summary (plain text, no links),
+    a `make_segment` Local drive | Cloud, both `_SlotPanel`s (the hidden one hidden,
+    so `size_changed` lets the window refit), then Restore… and **Back Up Now**
+    (default = accent, runs the slot on screen; a panel's `busy` signal disables
+    the actions and the segment while it runs).
+  - `_SlotPanel` lost dirty tracking. Each control commits through
+    `_commit(**fields)` → `backup.update_slot` (that slot's keys only). Combos on a
+    user change (`_select_*` block signals), spins per step, the check box on
+    toggle, cloud fields on `editingFinished`, and the secret on leaving its field
+    (then cleared). `_commit_destination`: empty → never erases; wrong slot or
+    malformed bucket → status line, not saved; unchanged → no write (round-trips
+    byte-identical). `persist()` stays as Back Up Now's write-everything step.
+  - Teardown: probes stop when the window hides; workers stop when it closes.
+- **Menus:** File › **Back Up Now** (`_back_up_now`) queues `configured_slots()`
+  into the same `_backup_queue` / `_BackupBgWorker` as the automatic backups
+  (status-bar reporting). Already running → a status note; none configured → it
+  opens Settings › Backup. File › Back Up… is gone. *Close Window* is now
+  `ApplicationShortcut`, so ⌘W reaches the Settings window (Qt still blocks it
+  under a modal).
+- **Copy app-wide:** "Preferences → Processing tools" → "Settings › Tools" (launch,
+  stacking, stackhammer, the assistant's stacking tool, handoff, widgets); slot
+  validation says "under Cloud" / "use Local drive"; the nudge says "Settings ›
+  Backup"; the user guide follows.
+- **Tests:** `test_ui_backup_dialog.py` → `test_ui_backup_pane.py` (per-field
+  persistence for every control on both slots, segment, no links, Back Up Now per
+  slot). The Save/Cancel-label tests are gone with the buttons. `test_ui_pages`'s
+  backup tests now commit fields instead of saving. `test_ui_preferences.py` drives
+  `SettingsWindow`, with the cut-off check per pane plus "nothing scrolls". New
+  `test_ui_settings_window.py`.
+
+---
+
 ## UI 1.0 redesign — Phase 8 · D, Import empty state *(2026-11-22, `feature/ui-p8-import-empty`)*
 
 Fourth of six Phase 8 PRs. It closes critique §P2 *Empty states*: Import used to

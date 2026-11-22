@@ -94,10 +94,10 @@ def check_slot_destination(slot: str, destination: str) -> str | None:
     if wanted == slot:
         return None
     if slot == SLOT_LOCAL:
-        return ("That's a cloud storage address — set it up on the Cloud tab "
+        return ("That's a cloud storage address — set it up under Cloud "
                 "instead.")
     return ("Cloud backups need an s3:// address, like s3://your-bucket/backups. "
-            "For a folder or drive, use the Local drive tab.")
+            "For a folder or drive, use Local drive.")
 
 
 def _clean(slot: str, raw: dict) -> SlotSettings:

@@ -33,7 +33,7 @@ appear in the Publish dialog marked *"(soon)"*.
 ## Other processing tools
 
 M110 prepares for **Siril** today. Other tools (PixInsight and friends) appear in
-Preferences marked *"(soon)"* — the prepare-and-guide framework is built to add them,
+Settings › Processing marked *"(soon)"* — the prepare-and-guide framework is built to add them,
 but only Siril is wired up for now.
 
 ---

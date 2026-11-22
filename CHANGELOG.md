@@ -64,6 +64,19 @@ changes a **user** would notice, per release.
 - **Goals show as progress bars.** Each active goal is one row: a bar (deep, then
   captured) and its count, instead of a table of numbers. In *Integration Time and
   Sessions*, each object's status has a small bar toward its goal.
+- **Settings is one window with a pane for each area.** **Settings…** (⌘,) now
+  opens a window with **General · Processing · Tools · Backup · Assistant ·
+  Appearance** across the top, instead of one long scrolling sheet. Every change
+  applies the moment you make it — there's no Save or Close button; close the
+  window with ⌘W. The descriptions are now one line each, with shorter help text
+  underneath. Changing the data folder is saved at once, with a note that it takes
+  effect after you restart.
+- **Backup lives in Settings, and File › Back Up Now runs it.** The Back Up window
+  is now the **Backup** pane in Settings, with a **Local drive | Cloud** switch. It
+  keeps each setting as you change it, so there's no Save button any more. **File ›
+  Back Up Now** backs up to every destination you've set up, one after the other,
+  in the background, and the status bar says how it went. With nothing set up yet,
+  it opens the Backup pane instead.
 - **Import starts with one clear action.** Instead of empty tables and greyed-out
   buttons, the Import page opens on a short welcome with one button: **Import from
   Seestar — <name>** when a Seestar is connected, otherwise **Choose Folder…**.

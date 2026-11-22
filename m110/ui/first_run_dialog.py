@@ -51,7 +51,7 @@ class FirstRunDialog(QDialog):
             "M110 organizes your smart-telescope deep-sky collection — importing, "
             "tracking, and preparing your captures for processing.\n\n"
             "Choose where M110 should keep its data (your captures, catalog, and "
-            "renders live here). You can move it later in Preferences.")
+            "renders live here). You can move it later in Settings.")
         blurb.setWordWrap(True)
         blurb.setStyleSheet(f"color:{t.text_secondary};")
         lay.addWidget(blurb)
