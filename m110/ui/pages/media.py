@@ -26,13 +26,13 @@ import threading
 from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit,
-    QListView, QMenu, QSlider, QSplitter, QStackedWidget, QTableWidgetItem,
+    QMenu, QSlider, QSplitter, QStackedWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
 from m110 import config, media
 from m110.ui.image_grid import (
-    TileItem, TileModel, TileDelegate, KEY_ROLE,
+    TileItem, TileModel, JustifiedGridView, KEY_ROLE,
     GRID_ZOOM_MIN, GRID_ZOOM_MAX, GRID_ZOOM_DEFAULT,
 )
 from m110.ui.image_viewer import ImageViewer
@@ -149,15 +149,13 @@ class MediaPage(QWidget):
         connect_context_menu(self.table, self._table_menu)
 
         self._grid_model = TileModel(self)
-        self.grid_view = QListView()
-        self.grid_view.setProperty("well", True)      # images sit on the dark well
-        self.grid_view.setViewMode(QListView.IconMode)
-        self.grid_view.setResizeMode(QListView.Adjust)
-        self.grid_view.setMovement(QListView.Static)
-        self.grid_view.setUniformItemSizes(True)
+        # Justified like the Library grid; filenames in the system font, cut in
+        # the middle so both the name's start and its extension stay visible.
+        self.grid_view = JustifiedGridView(self._zoom, serif=False,
+                                           elide=Qt.TextElideMode.ElideMiddle)
         self.grid_view.setModel(self._grid_model)
-        self._grid_delegate = TileDelegate(self._zoom, self.grid_view)
-        self.grid_view.setItemDelegate(self._grid_delegate)
+        self._grid_delegate = self.grid_view.tile_delegate()
+        self.grid_view.tileSideChanged.connect(self._request_grid_thumbnails)
         self.grid_view.selectionModel().selectionChanged.connect(self._on_grid_select)
         self.grid_view.doubleClicked.connect(
             lambda idx: self._open_item(self._item_for_key(idx.data(KEY_ROLE))))
@@ -391,16 +389,21 @@ class MediaPage(QWidget):
                 title=it.name, subtitle=sub,
                 badge=VIDEO_BADGE if it.kind == "video" else ""))
         self._grid_model.set_items(tiles)
-        self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        self._request_grid_thumbnails()
 
     def _on_zoom_changing(self, value: int):
         self._zoom = value
-        self._grid_delegate.set_tile_size(value)
-        self.grid_view.doItemsLayout()
+        self.grid_view.set_target_size(value)
 
     def _on_zoom_released(self):
-        self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        self._request_grid_thumbnails()
         config.save_setting(MEDIA_ZOOM_KEY, self._zoom)
+
+    def _request_grid_thumbnails(self, *_):
+        """Decode posters at the tiles' real size in device pixels."""
+        px = self.grid_view.thumbnail_px()
+        self.grid_view.note_decoded(px)
+        self._grid_model.request_thumbnails(self._thumb_loader, px)
 
     # ---- selection ------------------------------------------------------
     def _item_for_key(self, key) -> media.MediaItem | None:

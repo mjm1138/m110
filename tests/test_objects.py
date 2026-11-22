@@ -132,3 +132,14 @@ def test_curation_rejects_unknown_state(tmp_path, monkeypatch):
     _objects_root(tmp_path, monkeypatch)
     assert objects.set_curation("m99", "img.png", "bogus") is None
     assert objects.get_curation("m99") == {}
+
+
+def test_strip_title_heading_drops_only_a_leading_h1():
+    s = objects.strip_title_heading
+    assert s("# M81 — Bode's Galaxy\n\nIRCUT looked better.\n") == "IRCUT looked better.\n"
+    assert s("\n\n#M81\nNotes") == "Notes"                     # blank lines, no space
+    assert s("## Session 1\ntext") == "## Session 1\ntext"   # an H2 stays
+    assert s("Opening prose.\n# Later H1\n") == "Opening prose.\n# Later H1\n"
+    assert s("#hashtag-free line") == ""                       # still an ATX H1
+    assert s("") == "" and s(None) == ""
+    assert s("# Only a title") == ""

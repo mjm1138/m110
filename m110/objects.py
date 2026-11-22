@@ -44,6 +44,31 @@ def journal_to_markdown(body: str) -> str:
     return "\n".join(out).strip("\n")
 
 
+_H1_RE = re.compile(r"^\s{0,3}#(?!#)\s*\S")      # "# M81 — Bode's Galaxy", not "## …"
+
+
+def strip_title_heading(body: str) -> str:
+    """A journal body without its leading H1, for display under a title that
+    already names the object.
+
+    Every journal opens with `# <id> — <name>` (the stub writes it; users keep it),
+    so the detail pane and the Journal feed showed the object's name twice — once
+    in the pane's own title, once as the biggest text in the notes. Only a level-1
+    heading that is the **first content line** goes (with the blank lines after it);
+    a later H1, a `##`, or a body that opens with prose is left alone. The file is
+    never changed — editing shows the raw text."""
+    lines = (body or "").split("\n")
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and _H1_RE.match(lines[i]):
+        i += 1
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        return "\n".join(lines[i:])
+    return body or ""
+
+
 def object_folder_name(slug: str) -> str:
     """Human-friendly folder name for a catalog slug — the catalog `id`
     (e.g. 'm101' → 'M101'), falling back to the slug if unknown."""

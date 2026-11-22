@@ -374,6 +374,32 @@ On **cocoa**, against the test corpus (§0.3).
       `~/.m110`) or another dialog opens → the Overview behind it shows the new
       content only, never the old tables painted through.
 
+#### 1.0 pages — grid tiles + inspector (UI Phase 8b)  ⚙ *(justify maths, wrap-vs-columns, tile paint, caption priority, cover hero, card, details order, H1 strip — `test_ui_grid_inspector.py`, `test_ui_detail.py`, `test_objects.py`)*
+On **cocoa**, against the test corpus (§0.3), in light and dark.
+- [ ] **Deep Sky › Grid:** each tile is the picture, rounded, with the designation
+      bottom-left in the serif and a coloured dot + "Deep"/"n%"/"Initial"
+      bottom-right. A long designation ("C20 (NGC 7000)") keeps the dot but drops
+      the word before it is cut. Hover a tile → the integration and session count
+      appear in the tooltip. Selecting a tile draws a brass outline.
+- [ ] **Justified:** the tiles fill each row edge to edge, with equal gutters left
+      and right — at every Tile size, while resizing the window, and with the
+      object pane open or closed. Make a tile large → its picture is sharp, not a
+      blown-up thumbnail.
+- [ ] **Media › Grid:** the same tiles; a long filename keeps its start and its
+      extension ("2026-08-1…r-RAW.avi"); videos show ▶ top-left.
+- [ ] **Object pane** (open M81): the hero fills the pane's width at the top, with
+      no gutters; double-click → the viewer shows the whole image. Below: the serif
+      name with an ✕ that closes the pane · "Galaxy · mag 6.9 · …" · the
+      **Integration** card (total, a bar in the status colour, "Initial · goal 4 h on
+      ZWO Seestar S50") · **Details** as two aligned columns, capture facts first ·
+      **Processing** with *Process in Siril* filled in the accent · **Notes**.
+- [ ] **Notes** don't open with "M81 — Bode's Galaxy" again; the box is as tall as
+      the text (no inner scrollbar, no empty well). **Edit** shows the `# M81 —
+      Bode's Galaxy` line still in the file. The Journal feed's cards don't repeat
+      the name either.
+- [ ] An **uncaptured** object (Library › All of a catalog, pick one not shot): the
+      card says *Not captured yet*; Details shows the catalogue facts only.
+
 #### Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.

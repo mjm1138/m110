@@ -534,4 +534,18 @@ QProgressBar {{
     border: none; border-radius: {r['sm']}px; text-align: center;
 }}
 QProgressBar::chunk {{ background-color: {t.accent}; }}
+/* Progress toward an integration goal takes the capture status's hue, not the
+   accent (accent = selection; critique §2.5). `status` is set per bar. */
+QProgressBar[status="deep_stack"]::chunk {{ background-color: {t.status_deep}; border-radius: {r['sm']}px; }}
+QProgressBar[status="in_progress"]::chunk {{ background-color: {t.status_progress}; border-radius: {r['sm']}px; }}
+QProgressBar[status="initial"]::chunk {{ background-color: {t.status_initial}; border-radius: {r['sm']}px; }}
+
+/* A card: one tonal step up from the pane, no frame (the inspector's
+   Integration summary). */
+QFrame[card="true"] {{
+    background-color: {t.surface};
+    border: none;
+    border-radius: {r['md']}px;
+}}
+QFrame[card="true"] QLabel {{ background-color: transparent; }}
 """

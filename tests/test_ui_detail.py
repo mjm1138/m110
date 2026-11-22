@@ -320,13 +320,15 @@ def test_gallery_set_hero_writes_and_rerenders(tmp_path, monkeypatch, qapp):
         d.deleteLater(); qapp.processEvents()
 
 
-def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, qapp):
-    """The processing actions (Import / Process / Reveal / Send / Stack) used to be
-    a `QHBoxLayout` *above* the hero, whose minimum width — the sum of five
-    buttons — forced the pane into a horizontal scrollbar. They now live below the
-    hero and the notes, in a wrapping `FlowLayout`."""
-    from PySide6.QtWidgets import QPushButton
-    from m110.ui.detail import DetailPane
+def test_inspector_sections_follow_mock_a_and_actions_wrap(tmp_path, monkeypatch, qapp):
+    """UI 1.0 order (mock A): the hero edge to edge above everything (its own
+    margin-less slot), then title · Integration card · DETAILS · PROCESSING ·
+    Notes. The processing actions (Import / Process / Reveal / Send / Stack) are
+    a wrapping `FlowLayout` — a `QHBoxLayout`'s minimum width, the sum of five
+    buttons, forced the whole pane into a horizontal scrollbar — and Process in
+    Siril is the accent (default) button."""
+    from PySide6.QtWidgets import QFrame, QPushButton
+    from m110.ui.detail import DetailPane, _NotesView
     from m110.ui.widgets import FlowLayout
     from m110.ui.image_viewer import ScalableImage
     import numpy as np
@@ -342,20 +344,30 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
     d = DetailPane()
     try:
         d.show_object(slug, e, t)
+        # The hero is alone in the edge-to-edge slot, cover-fitted.
+        assert d._hero_slot.count() == 1
+        hero = d._hero_slot.itemAt(0).widget()
+        assert isinstance(hero, ScalableImage) and hero._fit == "cover"
+        assert d._hero_slot.contentsMargins().left() == 0
         lay = d._lay
         kinds = []
         for i in range(lay.count()):
             it = lay.itemAt(i)
-            if it.widget() is not None:
-                w = it.widget()
-                kinds.append("hero" if isinstance(w, ScalableImage)
-                             else "notes" if w.__class__.__name__ == "QTextBrowser"
+            w = it.widget()
+            if w is not None:
+                kinds.append("card" if isinstance(w, QFrame) and w.property("card")
+                             else "notes" if isinstance(w, _NotesView)
                              or (isinstance(w, QLabel) and "No notes" in w.text())
+                             else f"label:{w.text()}" if isinstance(w, QLabel)
                              else None)
             elif isinstance(it.layout(), FlowLayout):
                 kinds.append("actions")
         kinds = [k for k in kinds if k]
-        assert kinds.index("hero") < kinds.index("notes") < kinds.index("actions")
+        assert not any(isinstance(lay.itemAt(i).widget(), ScalableImage)
+                       for i in range(lay.count()))
+        order = [kinds.index(k) for k in
+                 ("card", "label:Details", "label:Processing", "actions", "notes")]
+        assert order == sorted(order), kinds
         flow = next(lay.itemAt(i).layout() for i in range(lay.count())
                     if isinstance(lay.itemAt(i).layout(), FlowLayout))
         labels = [flow.itemAt(i).widget().text() for i in range(flow.count())]
@@ -364,6 +376,9 @@ def test_action_row_sits_below_hero_and_notes_and_wraps(tmp_path, monkeypatch, q
                           "Send to AstroWizard…"]
         assert all(isinstance(flow.itemAt(i).widget(), QPushButton)
                    for i in range(flow.count()))
+        defaults = [flow.itemAt(i).widget().text() for i in range(flow.count())
+                    if flow.itemAt(i).widget().isDefault()]
+        assert defaults == ["Process in Siril"]
         # The row's minimum is one button wide, so a narrow pane wraps it rather
         # than growing a horizontal scrollbar for the whole pane.
         widest = max(flow.itemAt(i).widget().minimumSizeHint().width()

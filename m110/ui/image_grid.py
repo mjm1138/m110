@@ -1,5 +1,7 @@
-"""Reusable image-grid component — a generic tile-per-item grid (thumbnail +
-title + optional subtitle + optional status chip), zoomable via tile size.
+"""Reusable image-grid component — a generic tile-per-item grid, zoomable via
+tile size: square image tiles with the title overlaid bottom-left on a soft
+gradient and a status dot + label bottom-right (UI 1.0, mock A), laid out by a
+`JustifiedGridView` so every row fills the width.
 
 No imports from `m110.catalog`/`m110.objects`/`m110.derived` — this module
 knows nothing about catalog objects. The first consumer (`m110/ui/pages/
@@ -12,16 +14,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import (
-    QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
+from PySide6.QtCore import (
+    QAbstractListModel, QModelIndex, QPointF, QRectF, QSize, Qt, QTimer, Signal,
 )
+from PySide6.QtGui import (
+    QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen,
+    QPixmap,
+)
+from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate
 
 from m110.ui import theme
-from m110.ui.widgets import ThumbnailLoader, paint_status_chip, status_label
+from m110.ui.theme.fonts import serif_font
+from m110.ui.theme.tokens import FONT_SIZE, RADIUS, SPACE
+from m110.ui.widgets import ThumbnailLoader, status_label
 
-# Tile (zoom) size bounds, shared by every consumer of this grid.
+# Tile (zoom) size bounds, shared by every consumer of this grid. The slider sets
+# the *target* side; `JustifiedGridView` stretches it to fill each row.
 GRID_ZOOM_MIN = 80
 GRID_ZOOM_MAX = 220
 GRID_ZOOM_DEFAULT = 140
@@ -33,6 +41,8 @@ MUTED_ROLE = Qt.ItemDataRole.UserRole + 4
 BADGE_ROLE = Qt.ItemDataRole.UserRole + 5
 STATUS_TEXT_ROLE = Qt.ItemDataRole.UserRole + 6
 
+_DOT = 6.0          # status dot diameter (px)
+
 
 @dataclass
 class TileItem:
@@ -41,11 +51,11 @@ class TileItem:
     key: str
     thumb_path: Path | None
     title: str
-    subtitle: str = ""
+    subtitle: str = ""                # not drawn: part of the tooltip
     status: str | None = None
-    status_text: str | None = None   # chip text override (else the status's label)
+    status_text: str | None = None   # status label override (else the status's label)
     muted: bool = False
-    badge: str = ""     # short glyph drawn over the thumbnail (e.g. "\u25b6" for video)
+    badge: str = ""     # short glyph drawn over the thumbnail (e.g. "▶" for video)
 
 
 class TileModel(QAbstractListModel):
@@ -85,6 +95,10 @@ class TileModel(QAbstractListModel):
             return it.title
         if role == Qt.ItemDataRole.DecorationRole:
             return self._pixmaps.get(it.key)
+        if role == Qt.ItemDataRole.ToolTipRole:
+            # The caption carries the title and status only; the rest is on hover
+            # (and the whole title, when the tile had to elide it).
+            return "\n".join(x for x in (it.title, it.status_text, it.subtitle) if x)
         if role == KEY_ROLE:
             return it.key
         if role == STATUS_ROLE:
@@ -100,15 +114,16 @@ class TileModel(QAbstractListModel):
         return None
 
     def request_thumbnails(self, loader: ThumbnailLoader, size: int):
-        """Kick off async decodes for every item with a thumbnail source.
-        Call after `set_items()` and again whenever the tile (zoom) size
-        changes — cache hits for a previously-seen size return instantly."""
+        """Kick off async decodes for every item with a thumbnail source, at
+        `size` device pixels. Call after `set_items()` and again when the tiles
+        grow (`JustifiedGridView.tileSideChanged`) — cache hits for a
+        previously-seen size return instantly."""
         for it in self._items:
             if it.thumb_path is None:
                 continue
             loader.request(it.thumb_path, size,
-                            lambda pm, key=it.key: self._on_thumb(key, pm),
-                            crop="square")
+                           lambda pm, key=it.key: self._on_thumb(key, pm),
+                           crop="square")
 
     def _on_thumb(self, key: str, pm):
         if pm is None:
@@ -116,115 +131,277 @@ class TileModel(QAbstractListModel):
         idx = self.index_of(key)
         if not idx.isValid():
             return   # a stale callback landed after set_items() dropped this key
+        old = self._pixmaps.get(key)
+        if old is not None and not old.isNull() and old.width() > pm.width():
+            return   # a smaller decode finished after a sharper one — keep the sharp one
         self._pixmaps[key] = pm
         self.dataChanged.emit(idx, idx, [Qt.ItemDataRole.DecorationRole])
 
 
 class TileDelegate(QStyledItemDelegate):
-    """Paints one tile: a square thumbnail (or a muted placeholder), an
-    elided title, and a status-chip + subtitle line. Colors/spacing all come
-    from the active theme; `set_tile_size` drives the zoom slider."""
+    """Paints one tile: the image fills a rounded square (center-cropped), the
+    title sits bottom-left over a gradient that fades to the well colour, and a
+    status dot + label sits bottom-right. A tile without an image is an empty well
+    slot carrying its title. Selection is a brass outline, so the picture stays
+    the brightest thing in the cell. Every colour is read from the active theme at
+    paint time.
 
-    def __init__(self, tile_size: int, parent=None):
+    The **cell** is the whole grid cell (`JustifiedGridView` sets it); the tile is
+    the cell inset by half the gap on every side. `serif` sets titles in the
+    display serif (object designations); `elide` picks where a long title is cut
+    (filenames keep both ends)."""
+
+    def __init__(self, tile_size: int, parent=None, *, serif: bool = True,
+                 elide: Qt.TextElideMode = Qt.TextElideMode.ElideRight):
         super().__init__(parent)
-        self._tile_size = tile_size
+        self._gap = SPACE["sm"]
+        self._cell = int(tile_size) + self._gap
+        self._serif = serif
+        self._elide = elide
 
     def set_tile_size(self, size: int):
-        self._tile_size = size
+        """The tile's side in px (the image square, without the gap)."""
+        self._cell = int(size) + self._gap
+
+    def set_cell(self, cell: int, gap: int):
+        self._cell, self._gap = int(cell), int(gap)
+
+    def tile_side(self) -> int:
+        return self._cell - self._gap
 
     def sizeHint(self, option, index):
-        s = theme.tokens.SPACE
-        text_h = option.fontMetrics.height() * 2 + s["xs"]
-        side = self._tile_size + s["sm"] * 2
-        return QSize(side, side + text_h)
+        return QSize(self._cell, self._cell)
+
+    # ---- geometry, kept apart from painting so tests can check it ----
+    def tile_rect(self, cell_rect) -> QRectF:
+        half = self._gap / 2
+        return QRectF(cell_rect).adjusted(half, half, -half, -half)
+
+    def title_font(self, side: float) -> QFont:
+        big = side >= 120
+        if self._serif:
+            return serif_font(FONT_SIZE["section"] if big else FONT_SIZE["body"])
+        f = QFont()
+        f.setPixelSize(FONT_SIZE["body"] if big else FONT_SIZE["caption"])
+        return f
+
+    @staticmethod
+    def status_font() -> QFont:
+        f = QFont()
+        f.setPixelSize(FONT_SIZE["caption"])
+        return f
+
+    def caption_layout(self, tile: QRectF, title: str, status_text: str | None):
+        """Where the caption goes: ``(title_text, title_rect, status_rect | None,
+        show_label)``. The status keeps its dot; its label is dropped first when
+        space runs out, and only then does the title elide — the designation is
+        the tile's identity."""
+        pad = SPACE["sm"]
+        tf = QFontMetricsF(self.title_font(tile.width()))
+        sf = QFontMetricsF(self.status_font())
+        line_h = max(tf.height(), sf.height())
+        top = tile.bottom() - pad - line_h
+        avail = tile.width() - 2 * pad
+        status_rect, show_label, status_w = None, False, 0.0
+        if status_text:
+            label_w = _DOT + SPACE["xs"] + sf.horizontalAdvance(status_text)
+            if tf.horizontalAdvance(title) + SPACE["sm"] + label_w <= avail:
+                status_w, show_label = label_w, True
+            else:
+                status_w = _DOT
+            status_rect = QRectF(tile.right() - pad - status_w, top, status_w, line_h)
+        title_w = max(0.0, avail - (status_w + SPACE["sm"] if status_text else 0.0))
+        text = tf.elidedText(title, self._elide, title_w)
+        return text, QRectF(tile.left() + pad, top, title_w, line_h), status_rect, show_label
 
     def paint(self, painter, option, index):
-        opt = QStyleOptionViewItem(option)
-        self.initStyleOption(opt, index)
-        opt.text = ""
-        style = opt.widget.style() if opt.widget else QApplication.style()
-        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
-
         title = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        subtitle = index.data(SUBTITLE_ROLE) or ""
         status = index.data(STATUS_ROLE)
         muted = bool(index.data(MUTED_ROLE))
         badge = index.data(BADGE_ROLE) or ""
         pm = index.data(Qt.ItemDataRole.DecorationRole)
-
-        s = theme.tokens.SPACE
-        pad = s["sm"]
-        rect = option.rect
-        thumb_side = min(self._tile_size, rect.width() - pad * 2)
-        thumb_rect = QRectF(rect.left() + (rect.width() - thumb_side) / 2,
-                             rect.top() + pad, thumb_side, thumb_side)
-
-        painter.save()
-        painter.setRenderHint(painter.RenderHint.Antialiasing)
-        if isinstance(pm, QPixmap) and not pm.isNull():
-            scaled = pm.scaled(int(thumb_side), int(thumb_side),
-                               Qt.AspectRatioMode.KeepAspectRatio,
-                               Qt.TransformationMode.SmoothTransformation)
-            x = thumb_rect.left() + (thumb_rect.width() - scaled.width()) / 2
-            y = thumb_rect.top() + (thumb_rect.height() - scaled.height()) / 2
-            painter.drawPixmap(int(x), int(y), scaled)
-        else:
-            painter.setBrush(QColor(theme.on_well().surface))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(thumb_rect, 4, 4)
-        if badge:
-            self._paint_badge(painter, thumb_rect, badge)
-        painter.restore()
-
-        fm = option.fontMetrics
-        title_rect = QRectF(rect.left() + pad, thumb_rect.bottom() + s["xs"],
-                             rect.width() - pad * 2, fm.height())
-        painter.save()
-        painter.setPen(theme.well_muted_color() if muted else theme.well_text_color())
-        elided = fm.elidedText(title, Qt.TextElideMode.ElideMiddle, int(title_rect.width()))
-        painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, elided)
-        painter.restore()
-
-        caption_rect = QRectF(rect.left() + pad, title_rect.bottom(),
-                               rect.width() - pad * 2, fm.height())
-        x = caption_rect.left()
+        status_text = None
         if status and not muted:
-            text = index.data(STATUS_TEXT_ROLE) or status_label(status, True)
-            chip_w = fm.horizontalAdvance(text) + 16
-            chip_h = fm.height()
-            chip_rect = QRectF(x, caption_rect.top() + (caption_rect.height() - chip_h) / 2,
-                               chip_w, chip_h)
-            # Selection on the well is an outline, so the chip keeps its own hue.
-            paint_status_chip(painter, chip_rect, text, theme.status_color(status, well=True))
-            x = chip_rect.right() + s["xs"]
-        remaining = caption_rect.right() - x
-        if subtitle and remaining > 12:
-            sub_rect = QRectF(x, caption_rect.top(), remaining, caption_rect.height())
-            painter.save()
-            painter.setPen(theme.well_muted_color())
-            elided_sub = fm.elidedText(subtitle, Qt.TextElideMode.ElideRight, int(remaining))
-            painter.drawText(sub_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                             elided_sub)
-            painter.restore()
+            status_text = index.data(STATUS_TEXT_ROLE) or status_label(status, True)
+
+        w = theme.on_well()
+        tile = self.tile_rect(option.rect)
+        radius = RADIUS["md"]
+        shape = QPainterPath()
+        shape.addRoundedRect(tile, radius, radius)
+        state = option.state
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setClipPath(shape)
+        if isinstance(pm, QPixmap) and not pm.isNull():
+            # Cover the square: the short side fills the tile, the rest is cropped.
+            pw, ph = pm.width(), pm.height()
+            side = min(pw, ph)
+            painter.drawPixmap(tile, pm, QRectF((pw - side) / 2, (ph - side) / 2,
+                                                side, side))
+            # The caption's scrim: transparent → the well colour over the bottom 45%.
+            g = QLinearGradient(QPointF(0, tile.bottom() - tile.height() * 0.45),
+                                QPointF(0, tile.bottom()))
+            clear, scrim = QColor(w.well), QColor(w.well)
+            clear.setAlpha(0)
+            scrim.setAlpha(215)
+            g.setColorAt(0.0, clear)
+            g.setColorAt(1.0, scrim)
+            painter.fillRect(tile, g)
+        else:
+            painter.fillRect(tile, QColor(w.surface))       # an empty slot on the well
+        if state & QStyle.StateFlag.State_MouseOver and not state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(tile, QColor(255, 255, 255, 14))
+        painter.setClipping(False)
+
+        text, title_rect, status_rect, show_label = self.caption_layout(
+            tile, title, status_text)
+        painter.setFont(self.title_font(tile.width()))
+        painter.setPen(QColor(w.well_muted if muted else w.well_text))
+        painter.drawText(title_rect,
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+        if status_rect is not None:
+            cy = status_rect.center().y()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(theme.status_color(status, well=True))
+            painter.drawEllipse(QPointF(status_rect.left() + _DOT / 2, cy), _DOT / 2, _DOT / 2)
+            if show_label:
+                painter.setFont(self.status_font())
+                painter.setPen(QColor(w.well_text))
+                painter.drawText(status_rect.adjusted(_DOT + SPACE["xs"], 0, 0, 0),
+                                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                                 status_text)
+        if badge:
+            self._paint_badge(painter, tile, badge)
+        if state & QStyle.StateFlag.State_Selected:
+            painter.setPen(QPen(QColor(theme.active_tokens().accent), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(tile.adjusted(1, 1, -1, -1), radius, radius)
+        painter.restore()
 
     @staticmethod
-    def _paint_badge(painter, thumb_rect: QRectF, text: str):
-        """A small rounded glyph in the thumbnail's bottom-left corner.
-
-        Marks a tile whose content isn't a still image (a video). Drawn over the
-        thumbnail rather than in the caption row so it survives at every zoom
-        level and reads even on the muted no-thumbnail placeholder."""
-        side = max(14.0, thumb_rect.width() * 0.16)
-        pad = 4.0
-        rect = QRectF(thumb_rect.left() + pad,
-                      thumb_rect.bottom() - side - pad, side, side)
+    def _paint_badge(painter, tile: QRectF, text: str):
+        """A small rounded glyph in the tile's top-left corner — marks content that
+        isn't a still image (a video). Top-left, clear of the caption, so it reads
+        at every zoom level and on an empty slot."""
+        side = max(14.0, tile.width() * 0.16)
+        pad = SPACE["xs"]
+        rect = QRectF(tile.left() + pad, tile.top() + pad, side, side)
         painter.save()
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 140))
-        painter.drawRoundedRect(rect, 3, 3)
-        f = painter.font()
-        f.setPointSizeF(max(7.0, side * 0.5))
+        painter.drawRoundedRect(rect, RADIUS["sm"], RADIUS["sm"])
+        f = QFont(painter.font())
+        f.setPixelSize(int(max(9.0, side * 0.55)))
         painter.setFont(f)
         painter.setPen(QColor(255, 255, 255, 230))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
         painter.restore()
+
+
+def justify(width: int, target: int, gap: int) -> tuple[int, int]:
+    """``(columns, cell)`` for a justified row: as many `target`-sized tiles as
+    fit in `width`, then every cell widened so the row fills it. A cell is a tile
+    plus one `gap` (half each side), so ``columns * cell <= width`` and what's
+    left over is under a pixel per column."""
+    width, target, gap = max(1, int(width)), max(1, int(target)), max(0, int(gap))
+    cols = max(1, width // (target + gap))      # every cell carries its own gap
+    return cols, max(gap + 1, width // cols)
+
+
+class JustifiedGridView(QListView):
+    """An icon-mode list whose rows fill the width (Lightroom, Photos), instead of
+    leaving a ragged gap on the right (critique §2.4).
+
+    The Tile size slider sets a *target* side; the view fits as many columns as
+    that allows and stretches the tiles to fill the row — again on every resize
+    (window, splitter, detail pane, scrollbar). `tileSideChanged` fires, debounced,
+    once the tiles outgrow the size their thumbnails were decoded at, so the page
+    can ask for sharper ones."""
+
+    tileSideChanged = Signal(int)
+
+    def __init__(self, target: int, parent=None, **delegate_opts):
+        super().__init__(parent)
+        self.setProperty("well", True)                 # images sit on the dark well
+        self.setViewMode(QListView.ViewMode.IconMode)
+        self.setResizeMode(QListView.ResizeMode.Adjust)
+        self.setMovement(QListView.Movement.Static)
+        self.setUniformItemSizes(True)
+        self.setSpacing(0)
+        self.setVerticalScrollMode(QListView.ScrollMode.ScrollPerPixel)
+        self.setMouseTracking(True)                    # hover highlight
+        self._gap = SPACE["sm"]
+        self._target = int(target)
+        self._cols = 1
+        self._delegate = TileDelegate(self._target, self, **delegate_opts)
+        self.setItemDelegate(self._delegate)
+        # Qt lays a wrapping icon view out inside the viewport *minus a vertical
+        # scrollbar's width* whenever the bar is as-needed — shown or not, overlay
+        # (macOS) or not. That strip is always empty on the right; an equal margin
+        # on the left centres the rows between two even gutters.
+        self.setViewportMargins(self._reserved_scrollbar(), 0, 0, 0)
+        self._decoded_px = 0
+        self._side_timer = QTimer(self)
+        self._side_timer.setSingleShot(True)
+        self._side_timer.setInterval(200)
+        self._side_timer.timeout.connect(self._emit_side)
+        self._relayout()
+
+    def tile_delegate(self) -> TileDelegate:
+        return self._delegate
+
+    def target_size(self) -> int:
+        return self._target
+
+    def set_target_size(self, size: int):
+        self._target = int(size)
+        self._relayout()
+
+    def columns(self) -> int:
+        return self._cols
+
+    def tile_side(self) -> int:
+        return self._delegate.tile_side()
+
+    def thumbnail_px(self) -> int:
+        """The size to decode thumbnails at: the tile in device pixels (sharp on
+        a Retina display, where the logical size would be blurred 2×)."""
+        return max(1, int(self.tile_side() * max(1.0, self.devicePixelRatioF())))
+
+    def note_decoded(self, px: int):
+        """The page requested thumbnails at `px` — only a bigger tile re-requests."""
+        self._decoded_px = max(self._decoded_px, int(px))
+
+    def _reserved_scrollbar(self) -> int:
+        if self.verticalScrollBarPolicy() != Qt.ScrollBarPolicy.ScrollBarAsNeeded:
+            return 0
+        return self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None,
+                                        self.verticalScrollBar())
+
+    def layout_width(self) -> int:
+        """The width Qt wraps rows at (`QListViewPrivate::prepareItemsLayout`): the
+        largest viewport less the reserved scrollbar strip. A row of exactly this
+        width still fits (Qt wraps on `>` its last pixel), hence the −1."""
+        return self.maximumViewportSize().width() - self._reserved_scrollbar() - 1
+
+    def _relayout(self):
+        cols, cell = justify(self.layout_width(), self._target, self._gap)
+        self._cols = cols
+        self._delegate.set_cell(cell, self._gap)
+        self.setGridSize(QSize(cell, cell))
+        self.doItemsLayout()
+        if self.thumbnail_px() > self._decoded_px:
+            self._side_timer.start()
+
+    def _emit_side(self):
+        px = self.thumbnail_px()
+        if px > self._decoded_px:
+            self._decoded_px = px
+            self.tileSideChanged.emit(px)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
