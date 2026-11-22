@@ -358,6 +358,9 @@ On **cocoa**, against the test corpus (§0.3).
       object pane's Processing/Sessions tables, Import's Files/Size) are
       right-aligned in tabular figures, and **their headers are right-aligned too**.
       Sort a number column → its arrow doesn't overlap the title ("+ new").
+      Where the columns stop short of the table's right edge (Overview › Goals,
+      Planning's ranking), the heading bar, the row stripes and a selected row's
+      highlight still run all the way across.
 - [ ] **No identity-losing truncation:** Processing's Target column reads
       "NGC 7000", "M81 M82" in full (not "NG…"), including rows that have a
       thumbnail; rows without one line their names up with those that do. The

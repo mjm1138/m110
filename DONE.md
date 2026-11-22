@@ -652,6 +652,17 @@ First of six Phase 8 PRs (UI_ROADMAP → Phase 8).
   - A right-aligned column that is also the stretched last section pushes its
     numbers to the far edge. `tests/test_ui_tables.py` sweeps every page's tables
     for both rules.
+  - Without a stretched last section the columns end short of the table, and
+    neither band reached the edge. The header's strip past the last column is
+    `CE_HeaderEmptyArea`, which QSS styles through the **`QHeaderView`** rule, not
+    `::section` (and `QHeaderView:horizontal` doesn't match the widget). The
+    divider moved there from `::section` too, else it was 2 px under the columns.
+    Qt paints alternating-row and selection colour only inside cells:
+    `widgets.RowBandFiller`, a viewport event filter installed by `compact_table`,
+    fills each row's band across the strip before the table paints its cells,
+    from the palette the stylesheet sets. It is parented to the table and keeps no
+    Python reference back to it: holding one leaked every throwaway table, whose
+    header slots then fired after teardown ("Slot 'AlignedHeader::' not found").
 - **Identity columns.**
   - `keep_identity_column(tbl, col)` sets `ResizeToContents` live. "NG…" in
     Processing came from `RowThumbnails`: the table was fitted *before* the async

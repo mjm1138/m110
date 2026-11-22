@@ -260,6 +260,17 @@ QHeaderView::section {{
     font-size: {FONT_SIZE['caption']}px;
     padding: {SPACE['xs'] // 2}px {SPACE['sm']}px;
     border: none;
+}}
+/* The strip past the last column (CE_HeaderEmptyArea) is styled by the header
+   itself, not by ::section — without this the header band stopped at the last
+   column of a table whose columns don't fill it (no stretched last column, so
+   numbers stay next to their labels), leaving the table wider than its header.
+   The divider lives here too, once: on ::section as well it drew 2 px under the
+   columns and 1 px past them. (`QHeaderView:horizontal` doesn't match the
+   widget, only its sections; the vertical header is hidden on every table.) */
+QHeaderView {{
+    background-color: {t.surface};
+    border: none;
     border-bottom: 1px solid {t.divider};
 }}
 QTableCornerButton::section {{ background-color: {t.surface}; border: none; }}

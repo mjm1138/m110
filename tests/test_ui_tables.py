@@ -112,3 +112,70 @@ def test_planning_rank_column(tmp_path, monkeypatch, qapp):
     src = inspect.getsource(planning.PlanningPage._render_ranking)
     assert '"Rank"' in src and '["#"' not in src
     assert 0 in planning._RANK_NUMERIC
+
+
+# ── the header band and the row bands run the full table width ──────────────
+# Tables no longer stretch their last column, so the columns often end short of
+# the table's edge. The header (stylesheet `QHeaderView`, its CE_HeaderEmptyArea)
+# and each row's stripe/selection (`widgets.RowBandFiller`) must still reach it.
+
+def _short_columns_table(qapp, rows=4):
+    from m110.ui.theme import qss, tokens
+    t = widgets.make_table(["A", "B"])
+    t.setStyleSheet(qss.build_qss(tokens.DARK))
+    t.setRowCount(rows)
+    for r in range(rows):
+        for c in range(2):
+            t.setItem(r, c, QTableWidgetItem(f"{r}{c}"))
+    t.horizontalHeader().resizeSection(0, 60)
+    t.horizontalHeader().resizeSection(1, 60)
+    t.resize(600, 220)
+    t.show()
+    qapp.processEvents()
+    return t
+
+
+def _grab(w):
+    from PySide6.QtGui import QPixmap
+    pm = QPixmap(w.size())
+    w.render(pm)
+    return pm.toImage()
+
+
+def test_header_band_runs_past_the_last_column(qapp):
+    t = _short_columns_table(qapp)
+    h = t.horizontalHeader()
+    assert h.length() < h.width() - 100          # columns end well short
+    im = _grab(h)
+    inside, past = 100, h.width() - 20            # blank bit of section 1 (no sort arrow); the strip
+    column = lambda x: [im.pixel(x, yy) for yy in range(h.height())]
+    assert column(inside) == column(past)         # same band, same single divider
+    band = column(past)
+    assert sum(1 for p in band if p != band[0]) == 1      # 1 px divider, not 2
+    t.close()
+
+
+def test_row_stripes_and_selection_run_past_the_last_column(qapp):
+    t = _short_columns_table(qapp)
+    t.selectRow(2)
+    qapp.processEvents()
+    filler = t.findChild(widgets.RowBandFiller)
+    assert filler is not None
+    vp = t.viewport()
+    assert filler.empty_strip_left() < vp.width() - 100
+    im = _grab(vp)
+    colours = []
+    for r in range(4):
+        y = t.rowViewportPosition(r) + t.rowHeight(r) // 2
+        cell, past = im.pixel(30, y), im.pixel(vp.width() - 20, y)
+        assert cell == past, f"row {r}: band stops at the last column"
+        colours.append(cell)
+    assert colours[0] != colours[1]               # stripes really alternate
+    assert colours[2] not in (colours[0], colours[1])   # selection is its own colour
+    t.close()
+
+
+def test_compact_table_installs_one_band_filler(qapp):
+    t = widgets.make_table(["A"])
+    widgets.compact_table(t)                      # idempotent
+    assert len(t.findChildren(widgets.RowBandFiller)) == 1

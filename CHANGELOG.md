@@ -14,7 +14,9 @@ changes a **user** would notice, per release.
 - **Tables line up.** Every number column now has its heading right-aligned over
   its figures, and numbers use tabular figures throughout: on the Overview,
   Planning, Processing, Devices, Sessions, the object pane and Import. A sorted
-  column's arrow no longer sits on top of its heading.
+  column's arrow no longer sits on top of its heading. Where a table's columns
+  don't fill its width, the heading bar and each row's stripe and selection
+  still run all the way across, like other Mac tables.
 - **Names are never cut short in tables.** Processing showed "NG…" for NGC
   objects; target and object names now always show in full, and rows with and
   without a thumbnail line up. The Devices list no longer scrolls sideways (a

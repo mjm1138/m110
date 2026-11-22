@@ -560,6 +560,72 @@ class AlignedHeader(QHeaderView):
             option.text = option.text + self._SORT_ROOM
 
 
+class RowBandFiller(QObject):
+    """Carry each row's stripe and selection across the strip past the last column.
+
+    Qt paints alternating-row and selection colour only inside cells. Tables no
+    longer stretch a right-aligned last column (that pushed numbers away from their
+    titles), so their columns often end short of the table's right edge — and the
+    rows' bands stopped there, under a header that runs the full width. Native
+    macOS tables carry both bands to the edge; this does the same.
+
+    An event filter on the viewport: it paints the empty strip just before the
+    table paints its cells (the viewport's background is already filled), so it
+    never draws over a cell. Colours come from the table's palette, which the
+    stylesheet's `alternate-background-color` / `selection-background-color` set."""
+
+    def __init__(self, table):
+        super().__init__(table)      # parented: no Python ref back to the table,
+        table.viewport().installEventFilter(self)   # which would keep it alive
+
+    def empty_strip_left(self) -> int:
+        """Viewport x where the columns end (== viewport width when they fill it)."""
+        h = self.parent().horizontalHeader()
+        return h.length() - h.offset()
+
+    def eventFilter(self, obj, event):
+        if event.type() == event.Type.Paint and obj is self.parent().viewport():
+            self._paint(obj, event.rect())
+        return False
+
+    def _paint(self, vp, clip) -> None:
+        t = self.parent()
+        x0 = self.empty_strip_left()
+        model = t.model()
+        if x0 >= vp.width() or model is None:
+            return
+        n = model.rowCount(t.rootIndex())
+        if n == 0:
+            return
+        first = t.rowAt(max(clip.top(), 0))
+        if first < 0:
+            return
+        last = t.rowAt(clip.bottom())
+        if last < 0:
+            last = n - 1
+        pal = t.palette()
+        group = (QPalette.ColorGroup.Disabled if not t.isEnabled()
+                 else QPalette.ColorGroup.Active if t.isActiveWindow()
+                 else QPalette.ColorGroup.Inactive)
+        sel = t.selectionModel()
+        root = t.rootIndex()
+        p = QPainter(vp)
+        try:
+            for row in range(first, last + 1):
+                if t.isRowHidden(row):
+                    continue
+                if sel is not None and sel.isRowSelected(row, root):
+                    color = pal.color(group, QPalette.ColorRole.Highlight)
+                elif t.alternatingRowColors() and t.verticalHeader().visualIndex(row) % 2:
+                    color = pal.color(group, QPalette.ColorRole.AlternateBase)
+                else:
+                    continue
+                y = t.rowViewportPosition(row)
+                p.fillRect(QRect(x0, y, vp.width() - x0, t.rowHeight(row)), color)
+        finally:
+            p.end()
+
+
 def compact_table(t: QTableWidget) -> QTableWidget:
     """The 1.0 table look: compact rows, no cell grid (alternating rows separate
     them), headers aligned with their columns rather than centered — a right-aligned
@@ -572,6 +638,8 @@ def compact_table(t: QTableWidget) -> QTableWidget:
         hdr = AlignedHeader(t)
         hdr.setStretchLastSection(old.stretchLastSection())
         t.setHorizontalHeader(hdr)
+    if t.findChild(RowBandFiller) is None:
+        RowBandFiller(t)
     t.horizontalHeader().setDefaultAlignment(
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     return t
