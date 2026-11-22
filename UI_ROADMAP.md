@@ -346,7 +346,17 @@ can't validate macOS painting and renders differently per machine).
   then the old "Object details") · PROCESSING (Process in Siril = accent) · Notes
   without the leading H1 (`objects.strip_title_heading`; also the Journal feed) ·
   gallery · goals · Processing status · Sessions. Lucide `x` close button.
-- Overview catalog board.
+- ✅ **C · Overview catalog board** (`feature/ui-p8-overview-board`). Engine
+  `goals.board(gid, by_slug)` → every member in catalog order as `{slug, label,
+  state: missing|initial|progress|deep, progress}`, scope-aware (agrees with
+  `build_goals`); `board_counts`. `m110/ui/catalog_board.py`: `CatalogBoard` (one
+  painted widget, `heightForWidth`, justified cells; hero thumbnails, a status-hued
+  foot bar filling to the goal, empty well slots; hover tooltip; click → deferred
+  `object_activated`), `GoalBar` (deep + captured segments), `StatusBarDelegate`
+  (mini bar + label). The Overview leads with the board (section titled with the
+  goal; "11 / 110 captured · 1 deep · 10%", legend, a goal picker when >1 active,
+  saved as `overview_board_goal`); Goals = bar rows; the integration table's Status
+  is a mini bar. An empty store shows the board too.
 - Settings window, with Backup folded in.
 - Import empty state (one primary action; tables appear with data).
 - Tables: aligned headers, right-aligned tabular numbers, no identity-losing truncation; Planning "#" → Rank.
