@@ -7,31 +7,44 @@ tree) from Favorites/Recent places or **Browse…**; the page recurses it
 on confirm **copies** the selected groups into the collection (the source is left
 untouched). Scanning and applying run on the shared workers behind modal progress
 dialogs — strictly preview-then-confirm.
+
+The page has two states in a `QStackedWidget` (UI Phase 8 · D): a **start** page
+with one primary action — *Import from Seestar — <volume>* when one is mounted,
+else *Choose Folder…* — plus recent places; and the **scan** page (the grouped
+preview), shown only once a scan finds something. The holding area appears below
+either one, and only while something is held.
 """
 from __future__ import annotations
 
+import html
 import threading
 from collections import Counter
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
-    QFileDialog, QSplitter, QGroupBox,
+    QFileDialog, QSplitter, QGroupBox, QStackedWidget,
 )
 
 from m110 import catalog, config, ingest
 from m110.ui import theme
+from m110.ui.theme import icons
 from m110.ui.ingest_dialog import (
     _ScanWorker, _ApplyWorker, _fmt_size, KIND_LABEL, ASSIGNABLE_KINDS,
     NO_POINTING_KINDS,
 )
 from m110.ui.preset_conflict_dialog import resolve_preset_conflicts
-from m110.ui.widgets import compact_table, fit_cell_widgets, make_numeric, ProgressDialog
+from m110.ui.widgets import (
+    clear_layout, compact_table, fit_cell_widgets, make_numeric, serif_label, ProgressDialog,
+)
 
 RECENTS_KEY = "import_recents"
 MAX_RECENTS = 8
+START_RECENTS = 3          # recent places offered on the start page
+START_WIDTH = 460          # the start page's text column
 
 
 class ImportPage(QWidget):
@@ -55,27 +68,110 @@ class ImportPage(QWidget):
         # The place's name is the header bar's title (one page-header rule).
         outer.setContentsMargins(0, 0, 0, 0)
 
-        # Top block (source picker + scan preview) and the holding-area panel share
-        # a vertical splitter so the panel is always visible (6c).
+        self._device_path = None
+        self._recent_btns = []
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self._build_start_page())
+        self._stack.addWidget(self._build_scan_page())
+
+        split = QSplitter(Qt.Vertical)
+        split.addWidget(self._stack)
+        self._holding_box = self._build_holding_panel()
+        split.addWidget(self._holding_box)
+        # Give the holding panel a real default height (it was cramped) and keep it
+        # from collapsing on resize. setSizes scales proportionally to actual height.
+        split.setStretchFactor(0, 2)
+        split.setStretchFactor(1, 1)
+        split.setSizes([480, 320])
+        outer.addWidget(split, 1)
+
+        # Wait for a still-running worker before the app tears down — never destroy
+        # a running QThread (Qt aborts). Mirrors MainWindow's guard.
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._stop_worker)
+
+        self.reload()
+
+    # ---- the two states ----
+    def _build_start_page(self) -> QWidget:
+        """One empty state, one primary action (critique §P2 · Empty states)."""
+        sp = theme.tokens.SPACE
+        page = QWidget()
+        page.setObjectName("importStart")
+        outer = QVBoxLayout(page)
+        outer.addStretch(2)
+        col = QWidget()
+        # Fixed, not a maximum: a wrapped label measures its height at the
+        # column's width, and a centred column shrinks to its hint otherwise.
+        col.setFixedWidth(START_WIDTH)
+        v = QVBoxLayout(col)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(sp["sm"])
+
+        self._glyph = QLabel()
+        self._glyph.setAlignment(Qt.AlignHCenter)
+        v.addWidget(self._glyph)
+        title = serif_label("Import captures", "title")
+        title.setAlignment(Qt.AlignHCenter)
+        v.addWidget(title)
+        body = QLabel("Copy captures in from your smart telescope or any folder. "
+                      "M110 looks through every subfolder and leaves the source as "
+                      "it is.")
+        body.setProperty("muted", True)
+        body.setWordWrap(True)
+        body.setAlignment(Qt.AlignHCenter)
+        v.addWidget(body)
+
+        # Why we're back here (a scan found nothing, an import finished, …).
+        self._start_note = QLabel()
+        self._start_note.setObjectName("importStartNote")
+        self._start_note.setWordWrap(True)
+        self._start_note.setAlignment(Qt.AlignHCenter)
+        self._start_note.hide()
+        v.addWidget(self._start_note)
+        v.addSpacing(sp["sm"])
+
+        self._primary_btn = QPushButton()
+        self._primary_btn.setObjectName("importPrimary")
+        self._primary_btn.setDefault(True)               # the accent button
+        self._primary_btn.clicked.connect(self._on_primary)
+        v.addWidget(self._primary_btn, 0, Qt.AlignHCenter)
+        self._other_btn = QPushButton("Choose Another Folder…")
+        self._other_btn.setObjectName("importOther")
+        self._other_btn.clicked.connect(self._browse)
+        v.addWidget(self._other_btn, 0, Qt.AlignHCenter)
+
+        self._recent_head = QLabel("Recent")
+        self._recent_head.setProperty("caption", True)
+        self._recent_head.setAlignment(Qt.AlignHCenter)
+        v.addSpacing(sp["md"])
+        v.addWidget(self._recent_head)
+        self._recent_box = QVBoxLayout()
+        self._recent_box.setSpacing(sp["xs"])
+        v.addLayout(self._recent_box)
+
+        outer.addWidget(col, 0, Qt.AlignHCenter)
+        outer.addStretch(3)
+        return page
+
+    def _build_scan_page(self) -> QWidget:
+        """The grouped preview of what a scan found."""
         s = theme.tokens.SPACE
         top = QWidget()
         tv = QVBoxLayout(top)
         tv.setContentsMargins(0, 0, 0, s["sm"])   # keep the button row off the splitter handle
 
         src_row = QHBoxLayout()
-        src_row.addWidget(QLabel("Source:"))
-        self._source = QComboBox()
-        self._source.activated.connect(self._on_source_chosen)
-        src_row.addWidget(self._source, 1)
-        self._browse_btn = QPushButton("Browse…")
-        self._browse_btn.clicked.connect(self._browse)
-        src_row.addWidget(self._browse_btn)
-        tv.addLayout(src_row)
-
         self._path_lbl = QLabel()
-        self._path_lbl.setProperty("muted", True)
         self._path_lbl.setWordWrap(True)       # a long path mustn't force window width (#63)
-        tv.addWidget(self._path_lbl)
+        self._path_lbl.setTextFormat(Qt.RichText)
+        src_row.addWidget(self._path_lbl, 1)
+        self._change_btn = QPushButton("Change Source…")
+        self._change_btn.clicked.connect(lambda: self.show_start())
+        src_row.addWidget(self._change_btn, 0, Qt.AlignTop)
+        tv.addLayout(src_row)
 
         # A persistent scan-result headline (what the recursive scan found), set on
         # each scan and independent of the selection-driven `_summary` below — so
@@ -107,6 +203,7 @@ class ImportPage(QWidget):
         self._none_btn = QPushButton("Select none")
         self._none_btn.clicked.connect(lambda: self._set_all_checked(False))
         self._import_btn = QPushButton("Import")
+        self._import_btn.setDefault(True)
         self._import_btn.clicked.connect(self._do_import)
         row.addWidget(self._rescan_btn)
         row.addWidget(self._all_btn)
@@ -114,72 +211,91 @@ class ImportPage(QWidget):
         row.addStretch(1)
         row.addWidget(self._import_btn)
         tv.addLayout(row)
+        return top
 
-        split = QSplitter(Qt.Vertical)
-        split.addWidget(top)
-        split.addWidget(self._build_holding_panel())
-        # Give the holding panel a real default height (it was cramped) and keep it
-        # from collapsing on resize. setSizes scales proportionally to actual height.
-        split.setStretchFactor(0, 2)
-        split.setStretchFactor(1, 1)
-        split.setSizes([480, 320])
-        outer.addWidget(split, 1)
+    def showing_start(self) -> bool:
+        return self._stack.currentIndex() == 0
 
-        # Wait for a still-running worker before the app tears down — never destroy
-        # a running QThread (Qt aborts). Mirrors MainWindow's guard.
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance()
-        if app is not None:
-            app.aboutToQuit.connect(self._stop_worker)
+    def show_start(self, note: str = ""):
+        """Back to the start page — nothing scanned, or nothing left to import.
+        `note` says why, when there's something to say."""
+        self._root = None
+        self._groups = []
+        self.table.setRowCount(0)
+        self._scan_note.setText("")
+        self._summary.setText("")
+        self._import_btn.setEnabled(False)
+        self._start_note.setText(note)
+        self._start_note.setVisible(bool(note))
+        self._populate_start()
+        self._stack.setCurrentIndex(0)
 
-        self.reload()
+    def _show_scan(self):
+        self._start_note.hide()
+        self._stack.setCurrentIndex(1)
 
-    # ---- source list (Favorites / Recent places) ----
+    # ---- start page: the device, recent places ----
     def reload(self):
-        """Rebuild the source list (a freshly-mounted device shows up here). Does
-        not auto-scan — scanning a big tree is modal, so it's user-initiated."""
-        self._populate_sources()
-        if self._root is None:
-            self._set_empty("Choose a folder to import from "
-                            "(a device, another scope's export, or any directory).")
+        """Re-read the start page's places (a freshly-mounted device shows up
+        here) and the holding area. Never auto-scans — scanning a big tree is
+        modal, so it's user-initiated."""
+        if self.showing_start():
+            self._populate_start()
         self.refresh_holding()
 
-    def _places(self):
-        """(label, path) entries: detected device(s) + the user's recent browse
-        targets. The Inbox is the holding area now (6c), not a browse source."""
-        places, seen = [], set()
-
-        def add(label, path):
-            if path and path not in seen:
-                seen.add(path)
-                places.append((label, path))
-
+    def _device(self):
+        """(volume name, MyWorks path) for a mounted Seestar, or None."""
         mw = config.find_seestar_myworks()
-        if mw is not None:
-            add(f"Seestar device — {mw.parent.name}", str(mw))
+        return (mw.parent.name, str(mw)) if mw is not None else None
+
+    def _recents(self) -> list[str]:
+        """Recent browse targets that are still there (an unplugged drive drops
+        out rather than offering a scan that can only fail)."""
+        out = []
         for p in config.get_setting(RECENTS_KEY, []) or []:
-            add(f"Recent — {p}", p)
-        return places
+            try:
+                if p and Path(p).is_dir():
+                    out.append(p)
+            except OSError:
+                continue
+        return out
 
-    def _populate_sources(self):
-        cur = self._root
-        self._source.blockSignals(True)
-        self._source.clear()
-        self._source.addItem("Choose a source…", None)
-        for label, path in self._places():
-            self._source.addItem(label, path)
-        # keep the current selection if it's still in the list
-        if cur is not None:
-            i = self._source.findData(cur)
-            if i >= 0:
-                self._source.setCurrentIndex(i)
-        self._source.blockSignals(False)
+    def _populate_start(self):
+        self._glyph.setPixmap(icons.icon("download", size=48).pixmap(48, 48))
+        dev = self._device()
+        self._device_path = dev[1] if dev else None
+        if dev:
+            # a name's "&" would be read as a mnemonic
+            self._primary_btn.setText(f"Import from Seestar — {dev[0]}".replace("&", "&&"))
+            self._primary_btn.setToolTip(dev[1])
+        else:
+            self._primary_btn.setText("Choose Folder…")
+            self._primary_btn.setToolTip("A device, another scope's export, or any folder")
+        self._other_btn.setVisible(dev is not None)
 
-    def _on_source_chosen(self, _idx):
-        path = self._source.currentData()
-        if path:
-            self._root = path
-            self.scan()
+        clear_layout(self._recent_box)
+        self._recent_btns = []
+        recents = [p for p in self._recents() if p != self._device_path][:START_RECENTS]
+        for path in recents:
+            b = QPushButton(icons.icon("folder-open"),
+                            (Path(path).name or path).replace("&", "&&"))
+            b.setProperty("link", True)
+            b.setToolTip(path)
+            b.clicked.connect(lambda _=False, p=path: self.scan_folder(p))
+            self._recent_box.addWidget(b, 0, Qt.AlignHCenter)
+            self._recent_btns.append(b)
+        self._recent_head.setVisible(bool(recents))
+
+    def _on_primary(self):
+        if self._device_path:
+            self.scan_folder(self._device_path)
+        else:
+            self._browse()
+
+    def scan_folder(self, path: str):
+        """Scan `path` (the device, a recent place, a chosen folder)."""
+        self._root = path
+        self.scan()
 
     def _browse(self):
         start = self._root or str(config.DATA_ROOT)
@@ -187,12 +303,7 @@ class ImportPage(QWidget):
         if not path:
             return
         self._remember_recent(path)
-        self._root = path
-        self._populate_sources()
-        i = self._source.findData(path)
-        if i >= 0:
-            self._source.setCurrentIndex(i)
-        self.scan()
+        self.scan_folder(path)
 
     def _remember_recent(self, path: str):
         recents = [p for p in (config.get_setting(RECENTS_KEY, []) or []) if p != path]
@@ -203,11 +314,13 @@ class ImportPage(QWidget):
     def scan(self, *_):
         if not self._root:
             return
-        from pathlib import Path
         if not Path(self._root).is_dir():
-            self._set_empty(f"Folder not found:\n{self._root}")
+            self.show_start(f"Folder not found: {self._root}")
             return
-        self._path_lbl.setText(f"{self._root}  (files are copied; the source is left untouched)")
+        self._path_lbl.setText(
+            f"<b>{html.escape(self._root)}</b><br><span style='color:"
+            f"{theme.tokens.active().text_secondary}'>Files are copied; the source "
+            f"is left untouched.</span>")
         root = self._root
         self._set_busy(True)
         self._make_progress("Scanning…", 0, "Scanning")   # 0 max = indeterminate
@@ -232,14 +345,21 @@ class ImportPage(QWidget):
         self._finish_worker()
         self._close_progress()
         self._set_busy(False)
+        msg, self._post_import_msg = self._post_import_msg, None
+        if not groups:
+            # Nothing (left) to show: back to the start page, saying why.
+            name = Path(self._root).name or self._root
+            self.show_start(f"{msg}  Nothing left to import." if msg else
+                            f"No capture files were found in {name} or its "
+                            "subfolders. M110 looks for FITS (.fit/.fits) files "
+                            "and images.")
+            return
         self._groups = groups
         self._populate()
         self._set_scan_note(groups)
-        if self._post_import_msg:    # confirm the import, then show what's left
-            tail = (f"  {self._summary.text()}" if self._groups
-                    else "  Nothing left to import.")
-            self._summary.setText(self._post_import_msg + tail)
-            self._post_import_msg = None
+        self._show_scan()
+        if msg:                      # confirm the import, then show what's left
+            self._summary.setText(f"{msg}  {self._summary.text()}")
 
     def _set_scan_note(self, groups):
         """Headline what the (recursive) scan found — object/file counts, and how
@@ -266,14 +386,14 @@ class ImportPage(QWidget):
         self._close_progress()
         self._set_busy(False)
         self._post_import_msg = None
-        self._set_empty("Scan cancelled.")
+        self.show_start("Scan cancelled.")
 
     def _on_scan_failed(self, msg):
         self._finish_worker()
         self._close_progress()
         self._set_busy(False)
         self._post_import_msg = None
-        self._set_empty(f"Scan failed: {msg}")
+        self.show_start(f"Scan failed: {msg}")
 
     # ---- table / summary ----
     def _populate(self):
@@ -481,6 +601,9 @@ class ImportPage(QWidget):
     def _populate_holding(self, prev: dict | None = None):
         prev = prev or {}
         groups = self._holding_groups
+        # Only while something is held: an empty "Nothing held." frame is chrome
+        # for a state the start page already explains.
+        self._holding_box.setVisible(bool(groups))
         n = sum(g.frames for g in groups)
         if not groups:
             self._holding_header.setText(
@@ -763,16 +886,10 @@ class ImportPage(QWidget):
                               f"({', '.join(parts)}){extra}")
         self._import_btn.setEnabled(True)
 
-    def _set_empty(self, msg):
-        self._groups = []
-        self.table.setRowCount(0)
-        self._scan_note.setText("")
-        self._summary.setText(msg)
-        self._import_btn.setEnabled(False)
-
     def _set_busy(self, busy: bool):
-        self._source.setEnabled(not busy)
-        self._browse_btn.setEnabled(not busy)
+        for b in (self._primary_btn, self._other_btn, self._change_btn,
+                  *self._recent_btns):
+            b.setEnabled(not busy)
         self._rescan_btn.setEnabled(not busy)
         self._all_btn.setEnabled(not busy)
         self._none_btn.setEnabled(not busy)

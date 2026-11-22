@@ -64,6 +64,14 @@ changes a **user** would notice, per release.
 - **Goals show as progress bars.** Each active goal is one row: a bar (deep, then
   captured) and its count, instead of a table of numbers. In *Integration Time and
   Sessions*, each object's status has a small bar toward its goal.
+- **Import starts with one clear action.** Instead of empty tables and greyed-out
+  buttons, the Import page opens on a short welcome with one button: **Import from
+  Seestar — <name>** when a Seestar is connected, otherwise **Choose Folder…**.
+  Your recent folders are listed underneath, one click each. The table of what
+  was found appears once a scan finds something, with **Change Source…** to go
+  back. A folder with nothing to import, a cancelled scan, or an import that
+  leaves nothing behind brings you back to the start with a line saying so. The
+  holding area only appears while files are waiting in it.
 
 ### Fixed
 - **Old Overview tables no longer show through a dialog.** When a sync finished

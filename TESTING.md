@@ -421,6 +421,26 @@ On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a
 - [ ] On a **fresh, empty store** the welcome card is followed by an all-empty
       board for Messier.
 
+#### 1.0 pages — Import empty state (UI Phase 8d)  ⚙ *(start page, primary action per device, scan reveals the table, Change Source, nothing-found note, post-import note, holding visibility, busy — `test_ui_import_empty.py`, `test_ui_import.py`)*
+On **cocoa**, against the test corpus (§0.3), in light and dark.
+- [ ] With no Seestar mounted, **Import** shows only the start page: the download
+      glyph, "Import captures", one line, and one accent button, **Choose
+      Folder…**. No empty tables, no disabled buttons.
+- [ ] Mount the corpus's device folder (or a real Seestar) and revisit Import → the
+      button reads **Import from Seestar — <volume>**, with **Choose Another
+      Folder…** under it. Click it → the scan runs, then the preview table appears.
+- [ ] **Recent** lists up to three folders you've imported from (a missing drive
+      drops out); clicking one scans it.
+- [ ] On the preview, **Change Source…** returns to the start page.
+- [ ] Choose an empty folder → back on the start page with "No capture files were
+      found in <folder> …". Cancel a scan → "Scan cancelled.".
+- [ ] Import everything from a source → the start page says "N file(s) imported.
+      Nothing left to import."
+- [ ] The **Holding area** appears below either state only while files are held
+      (the corpus has some); Discard or assign them all → it disappears.
+- [ ] The window doesn't widen when you open Import (it used to be pushed to ~1590
+      pt by the old Source row).
+
 #### Deep Sky hover text  ⚙ *(shared text, list = grid = map, marker names — `test_ui_library_tooltips.py`, `test_ui_sky_map.py`)*
 On **cocoa**, against the test corpus.
 - [ ] **Deep Sky › List:** hover any cell of M42's row → "M42 / Orion Nebula /
