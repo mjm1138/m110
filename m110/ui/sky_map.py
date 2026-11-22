@@ -22,6 +22,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from m110 import skymap
+from m110.ui import theme
 from m110.ui.theme import active_tokens
 from m110.ui.widgets import make_segment
 
@@ -380,7 +381,9 @@ def _tooltip(marker: dict, text: str | None = None) -> str:
                                      str(marker.get("name") or "")) if x)
     name = html.escape(text).replace("\n", "<br>")
     image = marker.get("image")
-    if not image or not Path(image).is_file():
+    # Night vision: a tooltip's <img> is drawn by Qt's text engine straight from
+    # the file, in full colour — no filter reaches it — so the photo is left out.
+    if not image or not Path(image).is_file() or theme.is_night():
         return name
     src = QUrl.fromLocalFile(str(image)).toString(QUrl.FullyEncoded)
     return (f'<div style="text-align:center">'
@@ -420,4 +423,12 @@ def chart_palette() -> dict:
         # Stars keep their own colour temperature; only the neutral tint follows
         # the theme, so a light chart doesn't paint white stars on white sky.
         "star": t.text_primary,
-    }
+    } | (_night_stars(t) if t.name == "night" else {})
+
+
+def _night_stars(t) -> dict:
+    """Night vision: uranometria tints stars by colour temperature with fixed
+    blue/yellow/orange hexes — near-white light that would spoil dark adaptation.
+    At night every star is one of the palette's two reds instead."""
+    return {"star_blue": t.text_primary, "star_yellow": t.text_primary,
+            "star_orange": t.text_secondary}

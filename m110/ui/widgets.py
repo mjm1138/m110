@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QFrame, QHBoxLayout, QHeaderView, QLayout, QMessageBox,
     QSizePolicy, QStackedWidget, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTableWidget, QTableWidgetItem, QWidget, QVBoxLayout, QToolButton, QLabel,
-    QProgressBar, QProgressDialog, QStyleOptionProgressBar, QStylePainter,
+    QProgressBar, QProgressDialog, QStyleOptionProgressBar, QStylePainter, QLineEdit,
 )
 
 from m110 import derived, objects, siril
@@ -893,6 +893,13 @@ _thumb_cache: dict[tuple[str, int, str], tuple[float, QImage]] = {}
 _THUMB_CACHE_CAP = 512
 
 
+def _shown(img: QImage) -> QPixmap:
+    """The cache keeps the decoded original; night vision filters on the way out,
+    so toggling it repaints from cache rather than re-decoding."""
+    from m110.ui import theme
+    return QPixmap.fromImage(theme.display_image(img))
+
+
 class _ThumbSignals(QObject):
     done = Signal(str, int, str, object)   # path, size, crop, QImage | None
 
@@ -945,7 +952,7 @@ class ThumbnailLoader(QObject):
             return
         cached = _thumb_cache.get(key)
         if cached and cached[0] == mtime:
-            callback(QPixmap.fromImage(cached[1]))
+            callback(_shown(cached[1]))
             return
         pending = self._pending.get(key)
         if pending is not None:
@@ -965,7 +972,7 @@ class ThumbnailLoader(QObject):
             if len(_thumb_cache) > _THUMB_CACHE_CAP:
                 _thumb_cache.clear()
             _thumb_cache[key] = (mtime, img)
-            pm = QPixmap.fromImage(img)
+            pm = _shown(img)
         for cb in callbacks:
             cb(pm)
 
@@ -1144,21 +1151,34 @@ def restyle_view_switcher(btns: dict) -> None:
             b.setIcon(icons.icon(name, "text_secondary", selected_role="text_primary"))
 
 
-def make_search_field(placeholder: str = "Search"):
+class SearchField(QLineEdit):
     """A real search field: leading magnifier, clear button, `search` role so the
-    shell's Edit › Find (⌘F) can focus it."""
-    from PySide6.QtWidgets import QLineEdit
-    from m110.ui.theme import icons
-    f = QLineEdit()
-    f.setObjectName("searchField")
-    f.setPlaceholderText(placeholder)
-    f.setClearButtonEnabled(True)
-    f.setAccessibleName(placeholder)
-    f.addAction(icons.icon("search", "text_secondary"),
-                QLineEdit.ActionPosition.LeadingPosition)
-    f.setMinimumWidth(160)
-    f.setMaximumWidth(240)
-    return f
+    shell's Edit › Find (⌘F) can focus it. The magnifier is a token-tinted icon, so
+    it re-tints itself when the theme changes (night vision included)."""
+
+    def __init__(self, placeholder: str = "Search"):
+        super().__init__()
+        from m110.ui import theme
+        from m110.ui.theme import icons
+        self.setObjectName("searchField")
+        self.setPlaceholderText(placeholder)
+        self.setClearButtonEnabled(True)
+        self.setAccessibleName(placeholder)
+        self._glyph = self.addAction(icons.icon("search", "text_secondary"),
+                                     QLineEdit.ActionPosition.LeadingPosition)
+        self.setMinimumWidth(160)
+        self.setMaximumWidth(240)
+        mgr = theme.manager()
+        if mgr is not None:
+            mgr.changed.connect(self.restyle)
+
+    def restyle(self) -> None:
+        from m110.ui.theme import icons
+        self._glyph.setIcon(icons.icon("search", "text_secondary"))
+
+
+def make_search_field(placeholder: str = "Search"):
+    return SearchField(placeholder)
 
 
 def header_group(widgets, parent=None) -> QWidget:

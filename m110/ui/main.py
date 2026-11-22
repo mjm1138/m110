@@ -354,6 +354,7 @@ class MainWindow(QMainWindow):
             app.aboutToQuit.connect(lambda: drain_thumbnail_pool(3000))
 
         # Theme: repaint programmatic (non-QSS) colors when the palette changes.
+        self._night_shown = theme.is_night()   # images on screen were filtered for this
         if theme.manager() is not None:
             theme.manager().changed.connect(self._restyle_pages)
 
@@ -496,8 +497,13 @@ class MainWindow(QMainWindow):
         # AppKit appends its own "Enter Full Screen" to a menu titled View, so on
         # macOS ours would be the second one; elsewhere ours is the only one.
         self.full_screen_action.setVisible(not hoists_roles)
+        # Night vision: red on black, images in red monochrome. A toggle that
+        # remembers the mode it replaced (theme.ThemeManager.set_night).
+        self.night_action = act("Night Vision", self._toggle_night, "Ctrl+Shift+N",
+                                checkable=True)
+        self.night_action.setChecked(theme.is_night())
         fill(self.view_menu, (self.toggle_sidebar_action, self.toggle_inspector_action,
-                              None, self.full_screen_action))
+                              None, self.night_action, None, self.full_screen_action))
         self.view_menu.aboutToShow.connect(self._update_view_menu)
         self.catalog.view_mode_changed.connect(lambda _m: self._update_view_menu())
         self.media_page.view_mode_changed.connect(lambda _m: self._update_view_menu())
@@ -1289,6 +1295,32 @@ class MainWindow(QMainWindow):
         for p in self.pages:
             if hasattr(p, "restyle"):
                 p.restyle()
+        night = theme.is_night()
+        if hasattr(self, "night_action"):
+            blocked = self.night_action.blockSignals(True)
+            self.night_action.setChecked(night)
+            self.night_action.blockSignals(blocked)
+        if night != self._night_shown:
+            # Images are filtered as they're handed out (theme.display_image), so
+            # the ones already on screen need handing out again.
+            defer(self, self._repaint_images)
+        self._night_shown = night
+
+    def _toggle_night(self, on: bool):
+        theme.set_night(bool(on))
+
+    def _repaint_images(self):
+        """Re-show every page's images through the night filter (or without it).
+        Pages with a `restyle` already rebuilt their views; the rest reload, which
+        re-requests thumbnails from the decode cache. Never under a modal or the
+        journal editor — the same rule as a sync's rebuild."""
+        if modal_loop_active() or self.catalog.is_editing():
+            QTimer.singleShot(250, self, self._repaint_images)
+            return
+        for p in self.pages:
+            if not hasattr(p, "restyle"):
+                p.reload()
+        self.catalog._refresh_open_detail()
 
     def _do_refresh(self):
         if not self._ready or self._refreshing or self.catalog.is_editing():

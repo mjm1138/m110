@@ -110,7 +110,8 @@ def test_type_scale():
     assert set(tokens.FONT_SIZE.values()) <= set(tokens.TYPE_SCALE)
 
 
-def test_only_light_and_dark_are_selectable_yet():
-    assert set(tokens.THEMES) == {"light", "dark"}
+def test_light_dark_and_night_are_selectable():
+    """Night joined in UI Phase 8 · F (View › Night Vision, Settings › Appearance)."""
+    assert set(tokens.THEMES) == {"light", "dark", "night"}
     assert tokens.ALL_THEMES["night"] is tokens.NIGHT
     assert tokens.NIGHT.is_dark and not tokens.LIGHT.is_dark

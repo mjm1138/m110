@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
@@ -195,6 +195,16 @@ class SettingsWindow(QWidget):
     def _restyle(self):
         for key, _title, icon_name in PANES:
             self._tabs[key].setIcon(_tab_icon(icon_name))
+        self._sync_theme_combo()           # View › Night Vision may have moved it
+
+    def _sync_theme_combo(self):
+        mgr = theme.manager()
+        cur = mgr.mode if mgr is not None else config.get_setting(theme.SETTING_KEY,
+                                                                   "system")
+        idx = self._theme_combo.findData(cur)
+        blocked = self._theme_combo.blockSignals(True)
+        self._theme_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._theme_combo.blockSignals(blocked)
 
     def hideEvent(self, event):
         # A probe of a slow share mustn't keep running for a window nobody sees.
@@ -574,16 +584,17 @@ class SettingsWindow(QWidget):
         row.addWidget(QLabel("Appearance:"))
         self._theme_combo = QComboBox()
         for mode, label in (("system", "Follow System"), ("light", "Light"),
-                            ("dark", "Dark")):
+                            ("dark", "Dark"), ("night", "Night Vision")):
             self._theme_combo.addItem(label, mode)
-        cur = config.get_setting(theme.SETTING_KEY, "system")
-        idx = self._theme_combo.findData(cur)
-        self._theme_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self._sync_theme_combo()
         # Applied live (no restart); the initial setCurrentIndex is pre-connect.
         self._theme_combo.currentIndexChanged.connect(
             lambda *_: theme.set_mode(self._theme_combo.currentData()))
         row.addWidget(self._theme_combo)
         row.addStretch(1)
         g.addLayout(row)
+        keys = QKeySequence("Ctrl+Shift+N").toString(QKeySequence.SequenceFormat.NativeText)
         g.addWidget(_caption("Follow System switches with macOS, Windows or your "
-                             "desktop's light and dark setting."))
+                             "desktop's light and dark setting. Night Vision is red on "
+                             f"black for use at the telescope (View › Night Vision, "
+                             f"{keys}), with images in dimmed red."))

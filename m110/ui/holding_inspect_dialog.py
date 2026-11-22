@@ -50,7 +50,8 @@ def _preview_pixmap(sample: str | None, box: int = 320) -> QPixmap | None:
         img.convert("RGB").save(buf, "PNG")
         pm = QPixmap()
         pm.loadFromData(buf.getvalue(), "PNG")
-        return pm if not pm.isNull() else None
+        from m110.ui import theme
+        return theme.display_pixmap(pm) if not pm.isNull() else None
     except Exception:
         return None
 

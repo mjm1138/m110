@@ -118,8 +118,8 @@ LIGHT = Tokens(
 )
 
 # Night vision: red on black, nothing above the red channel, so it doesn't spoil
-# dark adaptation at the telescope. Not user-selectable until Phase 8 wires it to
-# View and Settings; it is complete and contrast-checked now so that is a drop-in.
+# dark adaptation at the telescope. Chosen explicitly (View › Night Vision or
+# Settings › Appearance), never by following the system.
 NIGHT = Tokens(
     name="night",
     well="#000000", window="#0d0202", chrome="#120303", sidebar="#140404",
@@ -134,8 +134,8 @@ NIGHT = Tokens(
     ok="#ff8a70", warn="#ff6b5c", danger="#ff8a70", neutral="#e0503f",
 )
 
-# The themes a user can pick today. NIGHT joins in Phase 8.
-THEMES = {"light": LIGHT, "dark": DARK}
+# The themes a user can pick (UI Phase 8 · F added night).
+THEMES = {"light": LIGHT, "dark": DARK, "night": NIGHT}
 ALL_THEMES = {"light": LIGHT, "dark": DARK, "night": NIGHT}
 
 # Roles a complete Tokens must define (used by tests to catch a missing field).

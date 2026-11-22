@@ -159,7 +159,8 @@ class MediaDetailPane(QWidget):
                 w.deleteLater()
         if poster is None or not Path(poster).is_file():
             return
-        pm = QPixmap(str(poster))
+        from m110.ui import theme
+        pm = theme.display_pixmap(QPixmap(str(poster)))
         if pm.isNull():
             return
         self._preview_box.addWidget(

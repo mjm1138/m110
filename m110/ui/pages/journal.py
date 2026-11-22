@@ -125,7 +125,8 @@ class JournalPage(QWidget):
         body_row = QHBoxLayout()
         hp = objects.hero_path(slug)
         if hp and hp.is_file():
-            pm = QPixmap(str(hp))
+            from m110.ui import theme
+            pm = theme.display_pixmap(QPixmap(str(hp)))
             if not pm.isNull():
                 thumb = QLabel()
                 thumb.setPixmap(pm.scaledToWidth(

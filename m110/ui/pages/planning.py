@@ -34,7 +34,7 @@ from m110.ui.site_profile_editor import SiteProfileEditor
 from m110.ui.night_timeline import NightTimeline
 
 # Ranking-table columns that hold numbers (right-aligned, tabular): Rank,
-# Integration, Of goal, Score, Closes.
+# Integration, Progress (of the integration goal), Score, Closes.
 _RANK_NUMERIC = {0, 3, 4, 5, 7}
 _STRATEGY_LABELS = [("Capture many (breadth)", prioritize.STRATEGY_CAPTURE),
                     ("Go deep (depth)", prioritize.STRATEGY_DEEP)]
@@ -761,7 +761,7 @@ class PlanningPage(QScrollArea):
         # Uncaptured goal members aren't in the Library — label them from the
         # reference, as the Overview checklists do (not the raw slug).
         ref = catalog.load_reference()
-        tbl = make_table(["Rank", "Object", "Type", "Integration", "Of goal", "Score",
+        tbl = make_table(["Rank", "Object", "Type", "Integration", "Progress", "Score",
                           "Season", "Closes"])
         rank_tip = ("Overall rank among every target. With “Visible tonight” on, "
                     "targets that aren't up are hidden, so the numbers skip.")

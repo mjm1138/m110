@@ -421,6 +421,24 @@ On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a
 - [ ] On a **fresh, empty store** the welcome card is followed by an all-empty
       board for Messier.
 
+#### 1.0 exit — Night vision + audit (UI Phase 8f)  ⚙ *(filter pixels, mode + toggle round trip, native scheme, View ↔ Settings sync, repaint on flip and under a modal, map tooltip/stars, planner series, banners, P1 audit, night palette/sheet red-only — `test_ui_night_vision.py`, `test_ui_exit_audit.py`, `test_theme_contrast.py`)*
+On **cocoa**, against the test corpus (§0.3). Best in a dark room.
+- [ ] **View › Night Vision** (⇧⌘N) → the whole window turns red on black with no
+      restart: sidebar, header, tables, the inspector, the Overview board.
+- [ ] Every image is dimmed red monochrome: Deep Sky tiles and the inspector hero,
+      the Overview board cells, the Journal thumbnails, Media, the image viewer
+      (double-click the hero). Nothing on screen is white, blue or green.
+- [ ] Deep Sky › Map: stars and rings are red; hovering a ring shows the name only
+      (no photo). Planning › Plan a Night: the altitude curves are reds.
+- [ ] Menus and scroll bars are dark (not red — macOS can't tint them).
+- [ ] Settings › Appearance reads **Night Vision**. Toggle the menu item off → back
+      to the theme you had (try from Light and from Follow System).
+- [ ] Choose Night Vision in Settings → the View menu item is checked.
+- [ ] Quit and relaunch in night → it opens in night, images red from the start.
+- [ ] **Audit:** in light, dark and night, the menu bar has Edit (Undo/Redo/Copy/
+      Select All/Find ⌘F), Window (Minimize ⌘M, Zoom) and Object; a selected sidebar
+      row and a default button are readable; Deep Sky's search is in the header bar.
+
 #### 1.0 pages — Settings window (UI Phase 8e)  ⚙ *(pane buttons, title, fit per pane, last pane, no OK/Close/Save, Change… data folder, tool Browse…, single instance, ⌘W, Back Up Now queue/none-configured, nudge, every backup field persists — `test_ui_settings_window.py`, `test_ui_preferences.py`, `test_ui_backup_pane.py`)*
 On **cocoa**, against the test corpus (§0.3), in light and dark.
 - [ ] **Settings…** (⌘,) opens a window titled **General** with six pane buttons
@@ -712,7 +730,7 @@ On **cocoa**, against the test corpus.
 - [ ] **Track for another telescope…** on Messier → pick the Dwarf 3 → a *Messier ·
       DwarfLab Dwarf 3* goal appears, active, counting only M42.
 - [ ] **Planning** with two telescopes: switching the telescope re-ranks at once; the
-      **Of goal** column's tooltip names the telescope.
+      **Progress** column's tooltip names the telescope.
 - [ ] **Devices**: the S50 shows 50 mm · 250 mm · f/5.0 · 2.9 µm, read-only; a telescope
       with no preset shows editable Optics, and **Save optics** turns "f-ratio unknown"
       into a scale factor.

@@ -54,12 +54,9 @@ class UpdateBanner(QFrame):
         super().__init__(parent)
         self._info = info
         self.setObjectName("updateBanner")
-        t = theme.active_tokens()
+        # Styled by the app stylesheet (`#updateBanner` in theme/qss.py), so it
+        # follows a theme switch; an inline sheet would bake in today's colours.
         s = theme.tokens.SPACE
-        r = theme.tokens.RADIUS["md"]
-        self.setStyleSheet(
-            f"#updateBanner {{ background:{t.surface_alt}; "
-            f"border:1px solid {t.border}; border-radius:{r}px; }}")
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(s["md"], s["sm"], s["sm"], s["sm"])

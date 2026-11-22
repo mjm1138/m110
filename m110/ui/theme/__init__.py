@@ -10,7 +10,8 @@ from PySide6.QtGui import QColor, QFont
 
 from .fonts import mono_font
 from .brand import app_icon, logo_icon, logo_pixmap
-from .manager import MODES, SETTING_KEY, ThemeManager, resolve, system_scheme
+from .manager import MODES, NIGHT_PREV_KEY, SETTING_KEY, ThemeManager, resolve, system_scheme
+from .night import NIGHT_DIM, display_image, display_pixmap, is_night, night_image
 from .qss import build_qss
 from . import tokens
 from .tokens import DARK, LIGHT, NIGHT, Tokens, active, on_well
@@ -21,6 +22,8 @@ __all__ = [
     "MODES", "on_well", "well_text_color", "well_muted_color",
     "SETTING_KEY", "build_qss", "resolve", "system_scheme",
     "app_icon", "logo_icon", "logo_pixmap",
+    "NIGHT_PREV_KEY", "NIGHT_DIM", "display_image", "display_pixmap", "is_night",
+    "night_image", "set_night",
 ]
 
 _MANAGER: ThemeManager | None = None
@@ -41,6 +44,11 @@ def manager() -> ThemeManager | None:
 def set_mode(mode: str) -> None:
     if _MANAGER is not None:
         _MANAGER.set_mode(mode)
+
+
+def set_night(on: bool) -> None:
+    if _MANAGER is not None:
+        _MANAGER.set_night(on)
 
 
 def active_tokens() -> Tokens:

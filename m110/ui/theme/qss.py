@@ -6,6 +6,9 @@ and token-driven — page-level polish (pill chips, alt rows, row heights) is Ph
 """
 from __future__ import annotations
 
+import os
+import re
+import tempfile
 from pathlib import Path
 
 from .tokens import FONT_SIZE, RADIUS, SPACE, Tokens
@@ -18,16 +21,39 @@ def _icon_url(name: str) -> str:
     return (ICONS_DIR / name).as_posix()
 
 
+# The glyphs a stylesheet draws itself (check, dash, radio dot, spin chevrons) ship
+# in one colour. QSS `url()` can't take a data URI, so each theme gets tinted copies
+# in a temp folder — named by colour, written once. Fixed white glyphs were drawn
+# white on the night palette's red fill, and 2:1 white-on-gold on dark.
+_TINT_DIR = Path(tempfile.gettempdir()) / "m110-qss-glyphs"
+
+
+def _tinted_url(name: str, color: str) -> str:
+    src = (ICONS_DIR / name).read_text(encoding="utf-8")
+    svg = re.sub(r'(stroke|fill)="#[0-9a-fA-F]{6}"', rf'\1="{color}"', src)
+    out = _TINT_DIR / f"{Path(name).stem}-{color.lstrip('#').lower()}.svg"
+    try:
+        if not out.is_file() or out.read_text(encoding="utf-8") != svg:
+            _TINT_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = out.with_suffix(f".{os.getpid()}.tmp")
+            tmp.write_text(svg, encoding="utf-8")
+            os.replace(tmp, out)
+    except OSError:
+        return _icon_url(name)              # unwritable temp: the stock glyph
+    return out.as_posix()
+
+
 def build_qss(t: Tokens) -> str:
     r = RADIUS
     # Controls separate from the panel by tone on the dark themes; warm paper is
     # too close to its own controls, so light mode keeps a hairline around them.
     ctl_border = t.border if not t.is_dark else t.control
-    check_url = _icon_url("check.svg")
-    dash_url = _icon_url("dash.svg")
-    radio_dot_url = _icon_url("radio-dot.svg")
-    chevron_up_url = _icon_url("chevron-up.svg")
-    chevron_down_url = _icon_url("chevron-down.svg")
+    # Drawn on the accent fill → the accent's own text colour; chevrons on a control.
+    check_url = _tinted_url("check.svg", t.accent_text)
+    dash_url = _tinted_url("dash.svg", t.accent_text)
+    radio_dot_url = _tinted_url("radio-dot.svg", t.accent_text)
+    chevron_up_url = _tinted_url("chevron-up.svg", t.text_secondary)
+    chevron_down_url = _tinted_url("chevron-down.svg", t.text_secondary)
     return f"""
 /* ── base ── */
 QWidget {{
@@ -195,6 +221,15 @@ QToolButton#headerButton {{
     padding: {SPACE['xs']}px;
 }}
 QToolButton#headerButton:hover {{ background-color: {t.control}; }}
+
+/* ── banners (update available, assistant items) ── in the app sheet rather than
+   inline, so a theme switch (night vision at the telescope) restyles them. */
+#assistantBanner, #updateBanner {{
+    background-color: {t.surface_alt};
+    border: 1px solid {t.border};
+    border-radius: {r['md']}px;
+}}
+#assistantBanner QLabel, #updateBanner QLabel {{ background-color: transparent; }}
 
 /* ── the Settings window's pane bar (m110/ui/preferences.py) ──
    A macOS Settings toolbar: icon over label, the selected pane a lifted fill (as a

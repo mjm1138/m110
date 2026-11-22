@@ -64,6 +64,16 @@ changes a **user** would notice, per release.
 - **Goals show as progress bars.** Each active goal is one row: a bar (deep, then
   captured) and its count, instead of a table of numbers. In *Integration Time and
   Sessions*, each object's status has a small bar toward its goal.
+- **Night vision.** **View › Night Vision** (⇧⌘N), or Settings › Appearance, turns
+  M110 red on black for use at the telescope. Your photos, thumbnails and the sky
+  map's stars are shown in dimmed red too, so nothing on screen spoils your dark
+  adaptation. Menus and scroll bars switch to dark (macOS can't tint them red).
+  Turning it off goes back to the appearance you had before.
+- **Small fixes across the themes.** Checkbox ticks are now dark on gold in dark
+  mode, so they're easier to see. The assistant and update banners, and the search
+  field's magnifier, now follow a change of light/dark appearance straight away.
+  Planning's *Of goal* column is now **Progress**, and Devices says "Planning uses
+  this telescope."
 - **Settings is one window with a pane for each area.** **Settings…** (⌘,) now
   opens a window with **General · Processing · Tools · Backup · Assistant ·
   Appearance** across the top, instead of one long scrolling sheet. Every change

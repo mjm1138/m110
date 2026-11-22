@@ -95,12 +95,29 @@ def test_checkbox_radio_have_min_height():
 def test_check_indicator_icons_exist():
     """Every url(...) the sheet references must resolve, or the glyph silently
     vanishes (Qt fails quietly on a missing stylesheet image)."""
-    qss = build_qss(tokens.LIGHT)
-    urls = re.findall(r"image: url\(([^)]+)\)", qss)
-    assert urls, "no indicator images referenced"
-    for u in urls:
-        assert ICONS_DIR.joinpath(u.rsplit("/", 1)[-1]).is_file(), f"missing icon {u}"
-        assert "\\" not in u, "QSS url() needs POSIX separators"
+    from pathlib import Path
+    for t in tokens.ALL_THEMES.values():
+        qss = build_qss(t)
+        urls = re.findall(r"image: url\(([^)]+)\)", qss)
+        assert urls, "no indicator images referenced"
+        for u in urls:
+            assert Path(u).is_file(), f"missing icon {u}"
+            assert "\\" not in u, "QSS url() needs POSIX separators"
+
+
+def test_stylesheet_glyphs_are_tinted_per_palette():
+    """The check/dash/dot are drawn on the accent fill in `accent_text`, and the spin
+    chevrons in muted text — not the stock white/grey, which was white on night's
+    red and 2:1 white-on-gold on dark (UI Phase 8 · F)."""
+    from pathlib import Path
+    for t in tokens.ALL_THEMES.values():
+        qss = build_qss(t)
+        urls = dict((Path(u).stem.rsplit("-", 1)[0], Path(u))
+                    for u in re.findall(r"url\(([^)]+\.svg)\)", qss))
+        for glyph in ("check", "dash", "radio-dot"):
+            assert t.accent_text.lower() in urls[glyph].read_text().lower(), (t.name, glyph)
+        for glyph in ("chevron-up", "chevron-down"):
+            assert t.text_secondary.lower() in urls[glyph].read_text().lower(), (t.name, glyph)
 
 
 def test_pushbutton_has_min_height():
@@ -177,7 +194,7 @@ def test_styled_spinboxes_declare_their_stepper():
     qss = build_qss(tokens.LIGHT)
     for sub in ("up-button", "down-button", "up-arrow", "down-arrow"):
         assert f"QSpinBox::{sub}" in qss, f"QSpinBox::{sub} rule missing"
-    for glyph in ("chevron-up.svg", "chevron-down.svg"):
+    for glyph in ("chevron-up", "chevron-down"):      # tinted copies: <name>-<hex>.svg
         assert glyph in qss
 
 
