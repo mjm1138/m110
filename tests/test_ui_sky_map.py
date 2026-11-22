@@ -441,8 +441,8 @@ def test_tooltip_shows_the_hero(tmp_path, monkeypatch, qapp):
 
         tip = _tooltip(by_slug["m81"])
         assert "<img" in tip and "m81.jpg" in tip and "M81" in tip
-        # No hero rendered for M31, so it falls back to the plain designation.
-        assert _tooltip(by_slug["m31"]) == "M31"
+        # No hero rendered for M31, so it falls back to designation and name.
+        assert _tooltip(by_slug["m31"]) == "M31<br>Andromeda Galaxy"
         # A hero path that has since gone away must not produce a broken image.
         assert _tooltip({"disp": "X", "image": str(tmp_path / "gone.jpg")}) == "X"
     finally:

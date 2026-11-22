@@ -676,6 +676,30 @@ frame before anything happened.
 
 ---
 
+## Deep Sky hover text *(2026-11-22, `feature/ui-p8-library-tooltips`)*
+
+User request after Phase 8 · C: hovering an object should name it ("Orion Nebula"
+for M42), the same way in the List, Grid and Map.
+
+- **`pages/catalog.object_tooltip(label, name, t)`** is the one text: designation,
+  common name, then "status · integration · n session(s)" or *Not captured yet*.
+  - The grid sets it through the new `TileItem.tooltip`. `TileModel` falls back to
+    title/status/subtitle when it is empty, so Media is unchanged.
+  - The list sets it on every cell of the row. The Status cell appends a blank
+    line, then `STATUS_TOOLTIP` and `integration_goals.progress_lines` (what it
+    showed alone before).
+  - The map: `SkyMapCanvas.describe` is a host hook (slug → text). The page's
+    `_describe_slug` falls back to the bundled reference, read once, for a goal's
+    unshot members, which are charted but aren't in the Library.
+- **`skymap.render`** markers now carry `name` too, so `sky_map._tooltip(marker)`
+  with no host text reads "designation<br>name". The text is HTML-escaped and its
+  newlines become `<br>` under the hero.
+- The canvas sets its tooltip once per marker entered rather than on every mouse
+  move: the text is built from the catalog. `set_chart` resets `_hover`, so a
+  re-render re-reads it.
+
+---
+
 ## UI 1.0 redesign — Phase 8 · C, Overview catalog board *(2026-11-21, `feature/ui-p8-overview-board`)*
 
 Third of six Phase 8 PRs (critique §2.3, "the signature visual is missing").

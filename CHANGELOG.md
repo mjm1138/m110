@@ -55,6 +55,12 @@ changes a **user** would notice, per release.
   it. If more than one goal is active, a menu beside the count picks which goal
   the board shows, and the Overview remembers your choice. A new, empty store
   shows the board too.
+- **Deep Sky's hover text names the object.** Hovering an object in the List,
+  Grid or Map view now shows the same thing in all three: its designation, its
+  common name ("M42", "Orion Nebula") and where its capture stands ("Initial ·
+  0:04 · 1 session", or *Not captured yet*). In the List the whole row hovers
+  alike; the Status cell also explains the status and lists your goal per
+  telescope, as before. The map keeps the picture above the text.
 - **Goals show as progress bars.** Each active goal is one row: a bar (deep, then
   captured) and its count, instead of a table of numbers. In *Integration Time and
   Sessions*, each object's status has a small bar toward its goal.
