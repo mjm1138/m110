@@ -399,6 +399,14 @@ On **cocoa**, against the test corpus (§0.3), in light and dark.
       the name either.
 - [ ] An **uncaptured** object (Library › All of a catalog, pick one not shot): the
       card says *Not captured yet*; Details shows the catalogue facts only.
+- [ ] **Click selects, double-click opens** *(⚙ `test_ui_grid_double_click.py`)*:
+      with the pane closed, click a tile → it gets the brass outline, the grid
+      doesn't move, and Object › Set Goal… is enabled. Double-click a tile in the
+      right half of the grid → the pane opens on **that** object (not its new
+      neighbour). Return or Space on a selected tile opens it too. With the pane
+      open, a single click on another tile switches it and nothing moves. ✕ → the
+      grid is full width again and the tile stays selected; View › Show Inspector
+      brings the pane back on the current selection.
 
 #### 1.0 pages — Overview catalog board (UI Phase 8c)  ⚙ *(board states + scope, geometry, click/tooltip, paint, picker persistence, empty store, goal bars, mini bars — `test_goals.py`, `test_ui_overview_board.py`)*
 On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a

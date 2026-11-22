@@ -4,7 +4,7 @@ selection; other pages route here via `select_object`. Sort persists across
 in-session rebuilds; list/grid choice and grid zoom persist across launches."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSize, QThread, Signal
+from PySide6.QtCore import QEvent, Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QTableWidget,
     QTableWidgetItem, QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
@@ -117,6 +117,12 @@ class CatalogPage(QWidget):
         self._grid_delegate = self.grid_view.tile_delegate()
         self.grid_view.tileSideChanged.connect(self._request_grid_thumbnails)
         self.grid_view.selectionModel().selectionChanged.connect(self._on_grid_select)
+        # Grid: a click selects, a double-click (or Return / Space) opens the
+        # inspector. Opening it narrows the justified grid and reflows every tile,
+        # so a single click that opened it put a double-click's second click on a
+        # different object. Selecting alone never changes the layout.
+        self.grid_view.doubleClicked.connect(self._on_grid_double_click)
+        self.grid_view.installEventFilter(self)
         connect_context_menu(self.grid_view, self._show_context_menu)
 
         # Map view = the sky chart (ROADMAP item 12). Rendering costs ~0.1s, so
@@ -233,7 +239,8 @@ class CatalogPage(QWidget):
         self._search.clear()
         if self._catalog_filter is not None:
             self._catalog_combo.setCurrentIndex(0)   # "All objects" → triggers rebuild
-        self._select_slug(slug)
+        if self._select_slug(slug):
+            self.open_inspector()          # a route asks to see the object
 
     def _on_catalog_changed(self, _idx: int):
         self._catalog_filter = self._catalog_combo.currentData()
@@ -664,7 +671,31 @@ class CatalogPage(QWidget):
     def _on_grid_select(self, *_args):
         if self._view_mode != "grid":
             return
-        self._show_selection(self._selected_slug())
+        slug = self._selected_slug()
+        if not slug or not self.detail.isHidden():
+            # Nothing selected closes it; an open inspector follows the
+            # selection (the splitter holds still, so nothing reflows).
+            self._show_selection(slug)
+        else:
+            self.selection_changed.emit(slug)   # selected, inspector stays shut
+
+    def _on_grid_double_click(self, idx):
+        if self._view_mode == "grid" and idx.isValid():
+            self.open_inspector(idx.data(KEY_ROLE))
+
+    def eventFilter(self, obj, ev):
+        if (obj is self.grid_view and ev.type() == QEvent.Type.KeyPress
+                and ev.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space)
+                and self._selected_slug()):
+            self.open_inspector()
+            return True
+        return super().eventFilter(obj, ev)
+
+    def open_inspector(self, slug: str | None = None) -> None:
+        """Show the inspector for `slug` (default: the selection)."""
+        slug = slug or self._selected_slug()
+        if slug and slug in self._cat:
+            self._show_selection(slug)
 
     def _show_selection(self, slug):
         if not slug:
@@ -690,11 +721,13 @@ class CatalogPage(QWidget):
             self.map_view.set_selected(None)
         elif self._view_mode == "list":
             self.table.clearSelection()
-        else:
-            self.grid_view.clearSelection()
+        # The grid keeps its selection: the inspector opens on a double-click
+        # there, so the Object menu still has something to act on.
         self.detail.hide()
 
     def _refresh_open_detail(self):
+        if self.detail.isHidden():
+            return                         # rebuilt when it next opens
         slug = self._selected_slug()
         if slug and slug in self._cat:
             self.detail.show_object(slug, self._cat[slug], self._totals.get(slug, {}))
