@@ -633,6 +633,49 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 8 · D, Import empty state *(2026-11-22, `feature/ui-p8-import-empty`)*
+
+Fourth of six Phase 8 PRs. It closes critique §P2 *Empty states*: Import used to
+show two empty tables, column headers, five disabled buttons and a "Nothing held."
+frame before anything happened.
+
+- **`ImportPage` is a `QStackedWidget`** over the holding area, still in the
+  vertical splitter.
+  - **Start page (index 0):** a 48 px Lucide `download`, a serif title, one muted
+    line and a note label (`_start_note`, hidden unless there's a reason to be
+    here). Then the primary button (`setDefault` = accent):
+    - `Import from Seestar — <volume>` when `find_seestar_myworks()` finds one,
+      with *Choose Another Folder…* beside it;
+    - otherwise `Choose Folder…`.
+
+    Up to `START_RECENTS = 3` recent places follow. These are the `import_recents`
+    setting, filtered to folders that still exist, as `link` buttons with a
+    `folder-open` icon.
+  - **Scan page (index 1):** the old preview, with the source row replaced by a
+    rich path label and *Change Source…*. Import is now the default button.
+- **Transitions:**
+  - `show_start(note)` clears `_root`, the groups and the table, then repopulates
+    the start page.
+  - `_on_scan_done` with no groups returns there. The note says "N file(s)
+    imported.  Nothing left to import." after an import, and "No capture files
+    were found in <name> …" otherwise. A folder not found, a cancel or a failure
+    also return there.
+  - `_set_empty` is gone.
+  - `reload()` repopulates the start page only while it's showing, so a sync never
+    yanks the preview away.
+- **The column is `setFixedWidth(460)`, not a maximum.** A centred column with
+  wrapped labels shrinks to its hint, and the labels measured their height at
+  that width. The description and the second recent button were clipped in the
+  first cocoa render.
+- **New QSS `QPushButton[link="true"]`:** transparent until hovered, in
+  `text_primary`. Not the accent: brass on paper is 4.26:1, short of AA for text.
+- **Window width:** main's Source combo + Browse row forced the window to about
+  1588 pt on the Import place. The start page doesn't (cocoa render at 1280).
+- **Tests:** `_source`/`_on_source_chosen` are gone. The recents and Seestar tests
+  now drive the start page; `test_ui_import_empty.py` is new.
+
+---
+
 ## UI 1.0 redesign — Phase 8 · C, Overview catalog board *(2026-11-21, `feature/ui-p8-overview-board`)*
 
 Third of six Phase 8 PRs (critique §2.3, "the signature visual is missing").

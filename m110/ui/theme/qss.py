@@ -336,6 +336,16 @@ QPushButton:default {{
 }}
 QPushButton:default:hover {{ background-color: {t.accent_hover}; border-color: {t.accent_hover}; }}
 QPushButton:disabled {{ color: {t.text_disabled}; border-color: {ctl_border}; }}
+/* A quiet, text-like button (a list of places to pick from): no fill or border
+   until hovered. Primary text, not the accent: brass on paper is 4.3:1, short of
+   AA for text. */
+QPushButton[link="true"] {{
+    background-color: transparent;
+    border-color: transparent;
+    color: {t.text_primary};
+}}
+QPushButton[link="true"]:hover {{ background-color: {t.control_hover}; }}
+QPushButton[link="true"]:disabled {{ color: {t.text_disabled}; }}
 
 /* ── inputs ── */
 /* QDateEdit/QDateTimeEdit are QAbstractSpinBox kin but NOT covered by the

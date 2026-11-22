@@ -144,17 +144,20 @@ def test_import_page_browse_remembers_recents(tmp_path, monkeypatch, qtbot):
     page = ImportPage()
     qtbot.addWidget(page)
 
-    page._remember_recent("/some/place/A")
-    page._remember_recent("/some/place/B")
-    assert config.get_setting(RECENTS_KEY)[:2] == ["/some/place/B", "/some/place/A"]
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    page._remember_recent(str(a))
+    page._remember_recent(str(b))
+    assert config.get_setting(RECENTS_KEY)[:2] == [str(b), str(a)]
     # a re-visited path floats to the front, no duplicate
-    page._remember_recent("/some/place/A")
-    assert config.get_setting(RECENTS_KEY)[0] == "/some/place/A"
-    assert config.get_setting(RECENTS_KEY).count("/some/place/A") == 1
-    # and it surfaces as a selectable source place
+    page._remember_recent(str(a))
+    assert config.get_setting(RECENTS_KEY)[0] == str(a)
+    assert config.get_setting(RECENTS_KEY).count(str(a)) == 1
+    # and it surfaces on the start page as a recent place (one that's gone doesn't)
+    page._remember_recent("/some/place/gone")
     page.reload()
-    datas = [page._source.itemData(i) for i in range(page._source.count())]
-    assert "/some/place/A" in datas
+    assert [btn.toolTip() for btn in page._recent_btns] == [str(a), str(b)]
 
 
 def _held_fits(folder, name, **headers):
@@ -284,10 +287,8 @@ def test_picking_the_seestar_brings_its_dark_library(tmp_path, monkeypatch, qtbo
     from m110.ui.pages.import_page import ImportPage
     page = ImportPage()
     qtbot.addWidget(page)
-    i = next(i for i in range(page._source.count())
-             if page._source.itemText(i).startswith("Seestar device"))
-    page._source.setCurrentIndex(i)
-    page._on_source_chosen(i)
+    assert page._primary_btn.text().startswith("Import from Seestar")
+    page._primary_btn.click()
     _scan(page, qtbot, 2)                     # M 72's lights + the dark library
     rows = {page.table.item(r, 2).text(): page.table.item(r, 6).text()
             for r in range(page.table.rowCount())}

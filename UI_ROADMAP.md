@@ -358,7 +358,15 @@ can't validate macOS painting and renders differently per machine).
   saved as `overview_board_goal`); Goals = bar rows; the integration table's Status
   is a mini bar. An empty store shows the board too.
 - Settings window, with Backup folded in.
-- Import empty state (one primary action; tables appear with data).
+- ✅ **D · Import empty state** (`feature/ui-p8-import-empty`). `ImportPage` is a
+  `QStackedWidget`: a start page (glyph, serif "Import captures", one line, **one
+  primary action** — *Import from Seestar — <volume>* when mounted, else *Choose
+  Folder…*; *Choose Another Folder…* beside a device; up to three recent places
+  as quiet `link` buttons) and the scan page (path + *Change Source…*, the
+  preview, the action row with Import as the default). A scan with no rows, a
+  cancel, a failure or an import that empties the source returns to the start
+  page with a note. The holding area is shown only while something is held. The
+  Source combo + Browse… are gone (the start page is the picker).
 - Tables: aligned headers, right-aligned tabular numbers, no identity-losing truncation; Planning "#" → Rank.
 - Night-vision theme wired to View and Settings.
 
