@@ -421,6 +421,16 @@ On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a
 - [ ] On a **fresh, empty store** the welcome card is followed by an all-empty
       board for Messier.
 
+#### Deep Sky hover text  ⚙ *(shared text, list = grid = map, marker names — `test_ui_library_tooltips.py`, `test_ui_sky_map.py`)*
+On **cocoa**, against the test corpus.
+- [ ] **Deep Sky › List:** hover any cell of M42's row → "M42 / Orion Nebula /
+      Initial · 0:04 · 1 session". The Status cell adds the status explanation and
+      the per-telescope goal lines below.
+- [ ] **Grid:** hover the M42 tile → the same three lines.
+- [ ] **Map:** hover M42's ring → its picture, then the same three lines. Pick
+      *Messier* in the catalog menu and hover an unshot member (M31) → "M31 /
+      Andromeda Galaxy / Not captured yet".
+
 #### Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.

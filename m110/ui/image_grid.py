@@ -56,6 +56,7 @@ class TileItem:
     status_text: str | None = None   # status label override (else the status's label)
     muted: bool = False
     badge: str = ""     # short glyph drawn over the thumbnail (e.g. "▶" for video)
+    tooltip: str = ""   # the hover text; else title, status and subtitle
 
 
 class TileModel(QAbstractListModel):
@@ -98,7 +99,8 @@ class TileModel(QAbstractListModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             # The caption carries the title and status only; the rest is on hover
             # (and the whole title, when the tile had to elide it).
-            return "\n".join(x for x in (it.title, it.status_text, it.subtitle) if x)
+            return it.tooltip or "\n".join(
+                x for x in (it.title, it.status_text, it.subtitle) if x)
         if role == KEY_ROLE:
             return it.key
         if role == STATUS_ROLE:

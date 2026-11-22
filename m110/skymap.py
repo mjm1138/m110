@@ -208,8 +208,8 @@ def render(
     appears only when something is far enough south to need one, which is exactly
     when the UI should offer an N|S toggle.
 
-    Every marker gains a **`slug`** and its **`status`** alongside uranometria's
-    own fields, so a click maps straight back to an object and a host can key a
+    Every marker gains a **`slug`**, its common **`name`** and its **`status`**
+    alongside uranometria's own fields, so a click maps straight back to an object and a host can key a
     legend off what is actually on the chart. Doing the slug here rather than in
     the caller keeps the uid→slug correspondence next to the code that
     establishes it — a caller re-deriving it from its own list would be wrong the
@@ -256,9 +256,11 @@ def render(
         config, palette=palette, font_family=font_family, allow_online=False
     )
     by_slug = goals.scoped_totals(derived.totals_by_slug(), scope)
+    names = dict(zip(charted, (o.get("name", "") for o in config["objects"])))
     for chart in charts:
         chart["objects"] = [] if empty else [
             {**m, "slug": charted[m["uid"]],
+             "name": names[charted[m["uid"]]],
              "status": object_status(charted[m["uid"]], by_slug)}
             for m in chart["objects"]
         ]

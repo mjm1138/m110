@@ -62,6 +62,9 @@ class SkyMapCanvas(QWidget):
         self._hover: str | None = None
         self._selected: str | None = None
         self._message = ""
+        # slug → hover text; the host supplies it so the map says what its other
+        # views say. Without one a marker reads as its designation and name.
+        self.describe = None
 
     # ---- content -------------------------------------------------------
     def set_chart(self, chart: dict | None):
@@ -71,6 +74,8 @@ class SkyMapCanvas(QWidget):
         else:
             self._renderer = QSvgRenderer(chart["svg"].encode())
             self._markers = chart["objects"]
+        self._hover = None                  # the next move re-reads the tooltip
+        self.setToolTip("")
         self.reset_view()
 
     def set_message(self, text: str):
@@ -203,11 +208,18 @@ class SkyMapCanvas(QWidget):
         hit = self._marker_at(pos)
         slug = hit["slug"] if hit else None
         self.setCursor(Qt.PointingHandCursor if hit else Qt.ArrowCursor)
-        self.setToolTip(_tooltip(hit) if hit else "")
         if slug != self._hover:
+            # Once per marker entered, not per mouse move: the text is built
+            # from the catalog, and the tooltip only changes with the marker.
+            self.setToolTip(_tooltip(hit, self._describe(hit)) if hit else "")
             self._hover = slug
             self.object_hovered.emit(slug or "")
             self.update()
+
+    def _describe(self, marker: dict) -> str | None:
+        if self.describe is None or not marker.get("slug"):
+            return None
+        return self.describe(marker["slug"]) or None
 
     def mouseReleaseEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -355,14 +367,18 @@ class SkyMapView(QWidget):
 TOOLTIP_THUMB_PX = 220
 
 
-def _tooltip(marker: dict) -> str:
-    """Designation plus its hero, if the object has one.
+def _tooltip(marker: dict, text: str | None = None) -> str:
+    """The hover text (`text`, else designation and common name) plus the
+    object's hero, if it has one.
 
     Qt tooltips take rich text, so the hero is an `<img>` at a fixed width —
     which is why the marker carries its image path: `skymap` deliberately
     doesn't embed photos in the SVG, it hands the path back for exactly this.
     """
-    name = html.escape(str(marker.get("disp") or ""))
+    if text is None:
+        text = "\n".join(x for x in (str(marker.get("disp") or ""),
+                                     str(marker.get("name") or "")) if x)
+    name = html.escape(text).replace("\n", "<br>")
     image = marker.get("image")
     if not image or not Path(image).is_file():
         return name
