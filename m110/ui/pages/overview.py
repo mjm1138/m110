@@ -2,11 +2,14 @@
 pages into one pane of **collapsible sections** (the macOS disclosure pattern via
 `widgets.CollapsibleSection`). Each section's open/closed state persists across
 launches (settings key `overview_sections`), so each user keeps the layout they
-want. Goal *progress* is the hero; goal *setup* (activate catalogs, custom goals)
-is demoted to a collapsed "Manage goals" section.
+want. The hero is the **catalog board** (UI 1.0 Phase 8 · C): one active goal
+drawn as a wall of cells — every member, filled in as it's captured — with a
+picker when more than one goal is active (`overview_board_goal`). Goal progress
+follows as bars; goal *setup* (activate catalogs, custom goals) is demoted to a
+collapsed "Manage goals" section.
 
-Empty store → a welcome + guided-import CTA (goal progress still shows, since the
-north-star is motivating even at 0%)."""
+Empty store → a welcome + guided-import CTA, then the (empty) board and goals —
+the north star is motivating even at 0%."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
@@ -14,17 +17,24 @@ from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea, QTableWidgetItem,
     QHeaderView, QPushButton, QMenu, QCheckBox, QInputDialog, QMessageBox, QFrame,
-    QComboBox,
+    QComboBox, QGridLayout,
 )
 
-from m110 import (catalog, config, derived, devices, integration_goals, pins, refresh,
-                  goals as goals_mod)
+from m110 import (catalog, config, derived, devices, integration_goals, objects, pins,
+                  refresh, goals as goals_mod)
+from m110.ui.catalog_board import (
+    PROGRESS_ROLE, STATUS_KEY_ROLE, STATUS_OF, CatalogBoard, GoalBar, StatusBarDelegate,
+)
 from m110.ui.widgets import (
     clear_layout, make_numeric,
     NumItem, status_label, make_table, CollapsibleSection, fit_table_height,
-    connect_context_menu, defer, STATUS_TOOLTIP,
+    connect_context_menu, defer, serif_label, ThumbnailLoader, STATUS_TOOLTIP,
 )
 from m110.ui.theme import status_color
+from m110.ui.theme.fonts import tabular
+from m110.ui.theme.tokens import SPACE
+
+BOARD_GOAL_KEY = "overview_board_goal"     # which active goal the board shows
 
 
 def _num(value, text=None) -> NumItem:
@@ -69,6 +79,9 @@ class OverviewPage(QScrollArea):
         self._sec_state = dict(config.get_setting(self.SETTING, {}) or {})
         self._expanded: dict[str, bool] = {}   # manage-goals sub-groups (in-memory)
         self._building = False
+        # Outlives each rebuild, so the board's thumbnails stay cached across syncs.
+        self._thumb_loader = ThumbnailLoader(self)
+        self.board: CatalogBoard | None = None
         self.reload()
 
     # ---- section plumbing ----
@@ -107,11 +120,14 @@ class OverviewPage(QScrollArea):
         # The place's name is the header bar's title (one page-header rule).
 
         goals = derived.load_goals()
+        self.board = None
 
-        # Fresh store: welcome + guided-import CTA (goals still show — motivating),
-        # plus Manage goals so a new user can pick a catalog before their first capture.
+        # Fresh store: welcome + guided-import CTA (the board and goals still show —
+        # motivating), plus Manage goals so a new user can pick a catalog before
+        # their first capture.
         if not derived.totals_by_slug():
             self._add_welcome()
+            self._add_board_section({})
             gsec = self._section("goals", "Goals", True)
             self._fill_goals(gsec.body, goals)
             self._lay.addWidget(gsec)
@@ -125,6 +141,7 @@ class OverviewPage(QScrollArea):
         summary = derived.load_summary()
         by_slug = derived.totals_by_slug()
 
+        self._add_board_section(by_slug)
         for key, label, default in self.SECTIONS:
             sec = self._section(key, label, default)
             if key == "goals":
@@ -144,28 +161,122 @@ class OverviewPage(QScrollArea):
         self._lay.addStretch(1)
         self._building = False
 
+    # ---- the catalog board (the hero) ----
+    def board_goal(self) -> str | None:
+        """The active goal the board shows: the saved choice while it's still
+        active, else the first active goal."""
+        active = list(goals_mod.active_goal_ids())
+        if not active:
+            return None
+        saved = config.get_setting(BOARD_GOAL_KEY, None)
+        return saved if saved in active else active[0]
+
+    def _add_board_section(self, by_slug: dict):
+        gid = self.board_goal()
+        if gid is None:
+            return
+        cells = goals_mod.board(gid, by_slug)
+        if not cells:
+            return
+        sec = self._section("board", goals_mod.goal_name(gid) + self._scope_suffix(gid),
+                            True)
+        self._fill_board(sec.body, gid, cells)
+        self._lay.addWidget(sec)
+
+    def _fill_board(self, body, gid: str, cells: list[dict]):
+        n = goals_mod.board_counts(cells)
+        head = QHBoxLayout()
+        head.setSpacing(SPACE["sm"])
+        count = serif_label(f"{n['captured']} / {n['total']}", "heading")
+        count.setObjectName("boardCount")
+        head.addWidget(count, 0, Qt.AlignBaseline)
+        pct = round(100 * n["captured"] / n["total"]) if n["total"] else 0
+        sub = QLabel(f"captured · {n['deep']} deep · {pct}%")
+        sub.setProperty("muted", True)
+        sub.setObjectName("boardSummary")
+        head.addWidget(sub, 0, Qt.AlignBaseline)
+        head.addStretch(1)
+        head.addWidget(self._board_legend())
+        active = list(goals_mod.active_goal_ids())
+        if len(active) > 1:
+            picker = QComboBox()
+            picker.setObjectName("boardGoalPicker")
+            picker.setAccessibleName("Goal shown on the board")
+            picker.setToolTip("Which goal the board shows")
+            for a in active:
+                picker.addItem(goals_mod.goal_name(a), a)
+            picker.setCurrentIndex(max(0, picker.findData(gid)))
+            picker.currentIndexChanged.connect(
+                lambda _i, box=picker: self._on_board_goal(box))
+            head.addWidget(picker)
+        body.addLayout(head)
+
+        ref = catalog.load_reference()
+        thumbs = {}
+        for c in cells:
+            if c["state"] != "missing":
+                hp = objects.hero_path(c["slug"])
+                if hp:
+                    thumbs[c["slug"]] = hp
+        names = {c["slug"]: (ref.get(c["slug"]) or {}).get("name") or "" for c in cells}
+        self.board = CatalogBoard(loader=self._thumb_loader)
+        self.board.set_cells(cells, thumbs, names)
+        self.board.object_activated.connect(self.open_object.emit)
+        body.addWidget(self.board)
+
+    @staticmethod
+    def _board_legend() -> QLabel:
+        dots = []
+        for state, word in (("deep", "Deep"), ("progress", "In progress"),
+                            ("initial", "Initial")):
+            c = status_color(STATUS_OF[state])
+            dots.append(f"<span style='color:{c.name()}'>●</span>&nbsp;{word}")
+        lbl = QLabel("&nbsp;&nbsp; ".join(dots))
+        lbl.setTextFormat(Qt.RichText)
+        lbl.setProperty("caption", True)
+        lbl.setToolTip("A cell's foot fills toward its integration goal; "
+                       "an empty slot isn't captured yet")
+        return lbl
+
+    def _on_board_goal(self, box: QComboBox):
+        if self._building:
+            return
+        config.save_setting(BOARD_GOAL_KEY, box.currentData())
+        # The rebuild tears down the combo whose signal is still running.
+        defer(self, self.reload)
+
     # ---- section fillers (each appends into a QVBoxLayout `body`) ----
     def _fill_goals(self, body, goals):
+        """Each active goal as a row: name · a two-segment bar (deep, then
+        captured) · "11 / 110" · "1 deep" — progress you can see at a glance,
+        where the old table read "11/110 (10.0%)"."""
         if not goals:
             body.addWidget(QLabel("<i>No active goals. Pick one under "
                                   "“Manage goals”.</i>"))
             return
-        # No stretch: a stretched last column would push its right-aligned
-        # percentages to the far edge, away from their row.
-        g_tbl = make_table(["Goal", "Captured", "Deep", "Total", "Progress"])
-        g_tbl.setSortingEnabled(False)
-        for g in goals:
-            r = g_tbl.rowCount()
-            g_tbl.insertRow(r)
-            g_tbl.setItem(r, 0, QTableWidgetItem(g.get("name", g.get("id", ""))))
-            g_tbl.setItem(r, 1, _num(g.get("captured", 0)))
-            g_tbl.setItem(r, 2, _num(g.get("deep", 0)))
-            g_tbl.setItem(r, 3, _num(g.get("total", 0)))
-            g_tbl.setItem(r, 4, make_numeric(QTableWidgetItem(
-                f"{g.get('percent', 0)}%")))
-        g_tbl.resizeColumnsToContents()
-        fit_table_height(g_tbl)
-        body.addWidget(g_tbl)
+        holder = QWidget()
+        holder.setObjectName("goalBars")
+        grid = QGridLayout(holder)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(SPACE["md"])
+        grid.setVerticalSpacing(SPACE["sm"])
+        grid.setColumnStretch(1, 1)
+        for r, g in enumerate(goals):
+            gid = g.get("id", "")
+            name = QLabel(g.get("name", gid) + self._scope_suffix(gid))
+            grid.addWidget(name, r, 0)
+            grid.addWidget(GoalBar(g.get("captured", 0), g.get("deep", 0),
+                                   g.get("total", 0)), r, 1, Qt.AlignVCenter)
+            frac = QLabel(f"{g.get('captured', 0)} / {g.get('total', 0)}")
+            frac.setFont(tabular(frac.font()))
+            frac.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            grid.addWidget(frac, r, 2)
+            deep = QLabel(f"{g.get('deep', 0)} deep")
+            deep.setProperty("muted", True)
+            deep.setFont(tabular(deep.font()))
+            deep.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            grid.addWidget(deep, r, 3)
+        body.addWidget(holder)
 
     def _fill_category(self, body, summary):
         # "Total" column dropped (item 21) — it read as confusing next to the Total
@@ -224,7 +335,12 @@ class OverviewPage(QScrollArea):
             st = QTableWidgetItem(status_label(t.get("status"), True, t.get("progress")))
             st.setForeground(status_color(t.get("status")))
             st.setToolTip(STATUS_TOOLTIP.get(t.get("status"), ""))
+            st.setData(STATUS_KEY_ROLE, t.get("status"))
+            st.setData(PROGRESS_ROLE, 1.0 if t.get("status") == "deep_stack"
+                       else float(t.get("progress") or 0.0))
             ci.setItem(r, 5, st)
+        # The status as a mini bar toward the goal, then its word.
+        ci.setItemDelegateForColumn(5, StatusBarDelegate(ci))
         ci.resizeColumnsToContents()
         fit_table_height(ci, max_rows=10)
         self._wire_open(ci)

@@ -400,6 +400,27 @@ On **cocoa**, against the test corpus (§0.3), in light and dark.
 - [ ] An **uncaptured** object (Library › All of a catalog, pick one not shot): the
       card says *Not captured yet*; Details shows the catalogue facts only.
 
+#### 1.0 pages — Overview catalog board (UI Phase 8c)  ⚙ *(board states + scope, geometry, click/tooltip, paint, picker persistence, empty store, goal bars, mini bars — `test_goals.py`, `test_ui_overview_board.py`)*
+On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a
+"Travel scope" goal scoped to the S30), in light and dark.
+- [ ] The Overview opens on the **board**: M1 … M110 in order. M13, M42, M51, M63,
+      M81 show their pictures; other captured ones are tinted cells; the rest are
+      empty slots. A captured cell's foot is a coloured line (M51 full green =
+      Deep; the others a short terracotta stub = Initial).
+- [ ] Above it: "11 / 110 captured · 1 deep · 10%", the Deep / In progress /
+      Initial legend, and a goal menu (three goals are active). Pick *Caldwell* →
+      the board redraws with C1 … C109; quit and relaunch → still Caldwell.
+- [ ] Hover a cell → "M81 — Bode's Galaxy / Initial"; an empty one says *Not
+      captured yet*. Click a captured cell → Deep Sky opens on that object; an
+      empty slot does nothing.
+- [ ] Resize the window and collapse the sidebar → the board reflows to fill its
+      width (no ragged right edge), and the page has no empty space below the
+      last section.
+- [ ] **Goals** are bar rows (green = deep, blue = captured) with "11 / 110 · 1
+      deep"; *Integration Time and Sessions* shows a small bar before each status.
+- [ ] On a **fresh, empty store** the welcome card is followed by an all-empty
+      board for Messier.
+
 #### Auto-sync (no manual Refresh needed)
 - [ ] **On launch** the Library syncs with disk (capture status reflects current
       `Images/`), without pressing anything.

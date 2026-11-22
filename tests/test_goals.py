@@ -267,3 +267,47 @@ def test_build_goals_custom(tmp_path, monkeypatch):
     out = {g["id"]: g for g in build_derived.build_goals(totals, [gid])}
     g = out[gid]
     assert g["name"] == "My List" and g["total"] == 2 and g["captured"] == 1
+
+
+# ── the Overview's catalog board (UI 1.0 Phase 8 · C) ───────────────────────
+
+def test_board_lists_every_member_in_catalog_order_with_state():
+    by_slug = {
+        "m31": {"status": "deep_stack", "progress": 1.4},
+        "m51": {"status": "in_progress", "progress": 0.62},
+        "m81": {"status": "initial", "progress": 0.04},
+    }
+    cells = goals.board("messier", by_slug)
+    assert len(cells) == 110
+    assert [c["label"] for c in cells[:3]] == ["M1", "M2", "M3"]
+    assert cells[-1]["label"] == "M110"
+    by = {c["slug"]: c for c in cells}
+    assert by["m31"]["state"] == "deep" and by["m31"]["progress"] == 1.0
+    assert by["m51"]["state"] == "progress" and by["m51"]["progress"] == 0.62
+    assert by["m81"]["state"] == "initial"
+    assert by["m1"]["state"] == "missing" and by["m1"]["progress"] == 0.0
+    assert goals.board_counts(cells) == {"total": 110, "captured": 3, "deep": 1}
+    # agrees with the goal's own rollup
+    g = build_derived.build_goals({"by_slug": by_slug}, ["messier"])[0]
+    assert (g["captured"], g["deep"], g["total"]) == (3, 1, 110)
+
+
+def test_board_respects_the_goals_telescope_scope(tmp_path, monkeypatch):
+    from tests._helpers import seed_root
+    seed_root(tmp_path, monkeypatch)
+    by_slug = {"m31": {"status": "deep_stack", "progress": 1.0, "by_model": {
+        "seestar_s50": {"integration_min": 600, "status": "deep_stack", "fraction": 1.0}}}}
+    assert goals.board_counts(goals.board("messier", by_slug))["captured"] == 1
+    goals.set_goal_scope("messier", "seestar_s30")          # the S30 never shot M31
+    assert goals.board_counts(goals.board("messier", by_slug))["captured"] == 0
+
+
+def test_board_custom_goal_labels_and_unknown(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "GOALS_TOML", tmp_path / "goals.toml")
+    monkeypatch.setattr(config, "LIBRARY_TOML", tmp_path / "library.toml")
+    config._seed_library(config.LIBRARY_TOML)
+    gid = goals.create_custom_goal("Mine", ["m51", "m31"])
+    cells = goals.board(gid, {"m51": {"status": "initial"}})
+    assert [c["label"] for c in cells] == ["M31", "M51"]     # reference ids, sorted
+    assert [c["state"] for c in cells] == ["missing", "initial"]
+    assert goals.board("no-such-goal", {}) == []

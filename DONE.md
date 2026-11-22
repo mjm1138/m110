@@ -633,6 +633,54 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 8 · C, Overview catalog board *(2026-11-21, `feature/ui-p8-overview-board`)*
+
+Third of six Phase 8 PRs (critique §2.3, "the signature visual is missing").
+
+- **Engine: `goals.board(gid, by_slug)`** (Qt-free).
+  - Returns every member as `{slug, label, state, progress}`, sorted by
+    `catalog_sort_key(label)`.
+  - The states are `missing|initial|progress|deep`. Deep forces `progress = 1`;
+    the others are clamped to 0..1.
+  - It goes through `scoped_totals(…, goal_scope(gid))`, so a goal tracked for one
+    telescope fills only that telescope's captures. It agrees with
+    `build_goals` by construction (tested).
+  - Custom goals store bare slugs, so a custom cell's label is the reference
+    `id`.
+  - `board_counts` gives the header's numbers.
+- **`CatalogBoard`** is one painted widget, not 110 children.
+  - Geometry: `grid()` is `image_grid.justify(width − 2·pad, CELL_TARGET = 52,
+    gap)`; `heightForWidth` gives rows × cell.
+  - **Gotcha:** `minimumSizeHint` must stay one row. A QVBoxLayout adds each
+    child's minimum height to its own, and `heightForWidth(3 cells)` for 110
+    members is about 37 rows. The Overview grew thousands of px of empty page
+    under its sections. Only a scrolled render showed it; the top-of-page shot
+    looked perfect.
+  - Painting: hero thumbnails through the page's long-lived `ThumbnailLoader`, at
+    cell × DPR. Captured cells have a status-hued foot (`_BAR` = 3 px) filling to
+    the goal, at least 8% so Initial still shows. Captured without a hero gets a
+    status tint. Missing cells are an `on_well().surface` slot at alpha 150.
+  - Interaction: `index_at` treats gaps as nothing. Hover sets the cursor and a
+    highlight. `ToolTip` events call `tooltip_for`. A release on a captured cell
+    `defer`s `object_activated` (it switches pages). Missing cells aren't
+    clickable, since an uncaptured object may not be in the Library.
+- **Overview.**
+  - The board section is first and titled with the goal and its scope suffix. Its
+    header holds a serif "11 / 110", "captured · 1 deep · 10%", a legend, and a
+    picker when more than one goal is active.
+  - `BOARD_GOAL_KEY = "overview_board_goal"` falls back to the first active goal
+    when the saved one isn't active. A picker change saves, then
+    `defer(self.reload)`, because the rebuild deletes the combo whose signal is
+    running.
+  - The Goals table became a `QGridLayout` of name · `GoalBar` · "n / total" ·
+    "k deep". `GoalBar.segments` is separate so it can be tested.
+  - The integration table's Status column uses `StatusBarDelegate`, reading
+    `STATUS_KEY_ROLE`/`PROGRESS_ROLE`. The cell text stays the label, for copy and
+    accessibility.
+  - An empty store gets the welcome, then an all-missing board.
+
+---
+
 ## UI 1.0 redesign — Phase 8 · B, grid tiles + inspector *(2026-11-21, `feature/ui-p8-grid-inspector`)*
 
 Second of six Phase 8 PRs (critique §2.4).

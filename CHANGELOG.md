@@ -47,6 +47,17 @@ changes a **user** would notice, per release.
   button is now an ✕ icon.
 - **The Journal feed doesn't repeat each object's name** as a heading inside its
   notes.
+- **The Overview opens on your catalog board.** Every object in a goal (all 110
+  Messier objects, say) is a tile in catalogue order: captured ones show their
+  picture, and a coloured line along the bottom fills toward the object's
+  integration goal (Initial, in progress, Deep). Objects you haven't captured yet
+  are empty slots. Hover for the name and status, and click a captured one to open
+  it. If more than one goal is active, a menu beside the count picks which goal
+  the board shows, and the Overview remembers your choice. A new, empty store
+  shows the board too.
+- **Goals show as progress bars.** Each active goal is one row: a bar (deep, then
+  captured) and its count, instead of a table of numbers. In *Integration Time and
+  Sessions*, each object's status has a small bar toward its goal.
 
 ### Fixed
 - **Old Overview tables no longer show through a dialog.** When a sync finished

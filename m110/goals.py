@@ -154,6 +154,52 @@ def list_goals() -> list[dict]:
     return out
 
 
+# Board cell states, in the order a goal is worked through.
+BOARD_STATES = ("missing", "initial", "progress", "deep")
+_STATE_OF = {"deep_stack": "deep", "in_progress": "progress"}
+
+
+def board(gid: str, by_slug: dict) -> list[dict]:
+    """One goal as the Overview's catalog board: every member in catalog order
+    (M1 … M110), each ``{slug, label, state, progress}``.
+
+    `state` is ``missing`` (nothing captured that counts), ``initial``,
+    ``progress`` (part-way to its integration goal) or ``deep``; `progress` is the
+    fraction of the integration goal (0 when missing). It respects the goal's
+    **scope**: a goal tracked for one telescope fills only what that telescope
+    shot (`scoped_totals`), so the board and the goal's counts always agree with
+    `build_derived.build_goals`. `label` is the short designation a cell has room
+    for — the catalog's own ("M81", "C14"), or a custom member's reference id."""
+    members = goal_members(gid)
+    if not members:
+        return []
+    scoped = scoped_totals(by_slug or {}, goal_scope(gid))
+    ref = catalog.load_reference() if custom_goals() else {}
+    out = []
+    for slug, desig in members.items():
+        label = desig
+        if desig == slug:                        # a custom list stores bare slugs
+            label = (ref.get(slug) or {}).get("id") or slug
+        t = scoped.get(slug)
+        if t is None:
+            state, prog = "missing", 0.0
+        else:
+            state = _STATE_OF.get(t.get("status"), "initial")
+            prog = max(0.0, min(1.0, float(t.get("progress") or 0.0)))
+            if state == "deep":
+                prog = 1.0
+        out.append({"slug": slug, "label": label, "state": state, "progress": prog})
+    out.sort(key=lambda c: catalog.catalog_sort_key(c["label"]))
+    return out
+
+
+def board_counts(cells: list[dict]) -> dict:
+    """``{total, captured, deep}`` over a `board()` — the header's numbers."""
+    return {"total": len(cells),
+            "captured": sum(1 for c in cells if c["state"] != "missing"),
+            "deep": sum(1 for c in cells if c["state"] == "deep")}
+
+
 # ── writes ─────────────────────────────────────────────────────────────────--
 
 def set_active_goals(ids) -> dict:
