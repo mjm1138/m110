@@ -204,7 +204,7 @@ def _square_icon(path, size: int) -> QIcon:
     side = min(w, h)
     crop = img.copy((w - side) // 2, (h - side) // 2, side, side)
     scaled = crop.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-    return QIcon(QPixmap.fromImage(scaled))
+    return QIcon(theme.display_pixmap(scaled))
 
 
 # The bundled season strings are hand-set for ~40°N (the reference site). Real
@@ -375,7 +375,7 @@ class DetailPane(QScrollArea):
         # 1 · the hero: full width, edge to edge on the well, height capped.
         hp = objects.hero_path(slug)
         if hp:
-            pm = QPixmap(str(hp))
+            pm = theme.display_pixmap(QPixmap(str(hp)))
             if not pm.isNull():
                 self._hero_widget = ScalableImage(pm, max_height=460, fit="cover")
                 self._hero_widget.setCursor(Qt.PointingHandCursor)

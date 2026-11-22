@@ -17,6 +17,14 @@ from m110.planning import SEASON_MIN_ALT
 # A small, distinguishable palette that reads in light + dark (cycled per target).
 _SERIES = ["#4c8dff", "#e0663a", "#3fb27f", "#c65fd0", "#d6a63c",
            "#3fb8c0", "#e05a7d", "#8a7be0"]
+# Night vision: blue, green and violet curves would spoil dark adaptation, so the
+# series are told apart by the brightness of one red, like the night palette itself.
+_NIGHT_SERIES = ["#ff6b5c", "#b84d42", "#e0503f", "#8c3b32", "#f0604f",
+                 "#a6463c", "#d9594b", "#73302a"]
+
+
+def _series() -> list[str]:
+    return _NIGHT_SERIES if theme.is_night() else _SERIES
 _MARGIN_L, _MARGIN_R, _MARGIN_T, _MARGIN_B = 34, 12, 10, 22
 
 
@@ -121,7 +129,8 @@ class NightTimeline(QWidget):
         series_of = {e.get("slug"): i for i, e in enumerate(entries)}
         for s in schedule:
             idx = series_of.get(s.get("slug"), 0)
-            band = QColor(_SERIES[idx % len(_SERIES)])
+            series = _series()
+            band = QColor(series[idx % len(series)])
             band.setAlpha(70)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(band)
@@ -129,7 +138,8 @@ class NightTimeline(QWidget):
 
         # Each target's altitude curve; a dot + label at its transit peak.
         for i, e in enumerate(entries):
-            color = QColor(_SERIES[i % len(_SERIES)])
+            series = _series()
+            color = QColor(series[i % len(series)])
             samples = e.get("samples") or []
             if not samples:
                 continue

@@ -255,7 +255,9 @@ class TileDelegate(QStyledItemDelegate):
         else:
             painter.fillRect(tile, QColor(w.surface))       # an empty slot on the well
         if state & QStyle.StateFlag.State_MouseOver and not state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(tile, QColor(255, 255, 255, 14))
+            hover = QColor(w.well_text)          # a lift, in the well's own ink
+            hover.setAlpha(14)
+            painter.fillRect(tile, hover)
         painter.setClipping(False)
 
         text, title_rect, status_rect, show_label = self.caption_layout(
@@ -298,7 +300,9 @@ class TileDelegate(QStyledItemDelegate):
         f = QFont(painter.font())
         f.setPixelSize(int(max(9.0, side * 0.55)))
         painter.setFont(f)
-        painter.setPen(QColor(255, 255, 255, 230))
+        ink = QColor(theme.on_well().well_text)   # red in night vision, not white
+        ink.setAlpha(230)
+        painter.setPen(ink)
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
         painter.restore()
 

@@ -589,8 +589,8 @@ class DevicesPage(QWidget):
     def _load_planning(self, d: dict):
         key = d["device"]
         active = pc.active_device_key() == key
-        self.planning_state.setText("<b>Planning plans for this telescope.</b>" if active
-                                    else "Planning plans for another telescope.")
+        self.planning_state.setText("<b>Planning uses this telescope.</b>" if active
+                                    else "Planning uses another telescope.")
         self.use_for_planning.setVisible(not active)
         self._show_limits(pc.device_for(key))
         self._refresh_limits_note(key)

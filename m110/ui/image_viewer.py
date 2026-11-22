@@ -244,6 +244,10 @@ class ImageViewer(QDialog):
     def __init__(self, items, index: int = 0, parent=None, *, export_stem=None):
         super().__init__(parent)
         self._items = [self._normalize(it) for it in items]
+        # Night vision toggled while the viewer is open: re-show through the filter.
+        mgr = theme.manager()
+        if mgr is not None:
+            mgr.changed.connect(self._show_current)
         self._i = max(0, min(index, len(self._items) - 1))
         self._export_stem = export_stem   # object name for export filenames, if known
         self.setWindowTitle("Image viewer")
@@ -367,7 +371,7 @@ class ImageViewer(QDialog):
 
     def _show_current(self):
         it = self._items[self._i]
-        self._image.setSource(QPixmap(str(it["path"])))
+        self._image.setSource(theme.display_pixmap(QPixmap(str(it["path"]))))
         self._caption.setText(f"{it['name']} · {self._i + 1}/{len(self._items)}")
         self._prev.setEnabled(self._i > 0)
         self._next.setEnabled(self._i < len(self._items) - 1)

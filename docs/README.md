@@ -106,7 +106,7 @@ Everything that isn't your object collection lives here as **collapsible section
 - **Edit** — **Undo / Redo** (Remove from Library and pin changes can be undone),
   Copy, Select All, and **Find** (⌘F).
 - **View** — the places (⌘1–⌘8), **as List / Grid / Map**, Hide Sidebar, Hide
-  Inspector (the detail pane), Enter Full Screen.
+  Inspector (the detail pane), **Night Vision** (⇧⌘N), Enter Full Screen.
 - **Object** — everything you can do to the selected object: Set Goal…, Pin as
   Priority, Deprioritize, Process in Siril, Send to AstroWizard…, Stack in
   StackingWizard…, Import Finished Work…, Export for Sharing… (⇧⌘E), Reveal Working
@@ -123,6 +123,9 @@ Everything that isn't your object collection lives here as **collapsible section
 - **Appearance / theme.** M110 follows your system light/dark appearance automatically;
   Settings › Appearance lets you force **Light** or **Dark** instead. The choice
   applies live and is remembered.
+- **Night vision.** At the telescope, **View › Night Vision** (⇧⌘N) turns everything
+  red on black, photos included (shown as dimmed red), so the screen doesn't spoil
+  your dark adaptation. Toggle it off to return to the appearance you had.
 - **Updates.** Once a day at most, M110 checks GitHub for a newer release and shows a
   quiet, dismissible banner if one is available (**Download · Skip this version · ✕**). No
   data is sent; turn the check off in Settings › General.

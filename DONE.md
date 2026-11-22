@@ -633,6 +633,63 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 8 · F, night vision + 1.0 exit audit *(2026-11-22, `feature/ui-p8-night`)*
+
+Last of six Phase 8 PRs; it closes UI 1.0.
+
+- **Mode.** `manager.MODES` gains `night` (`tokens.THEMES` now includes NIGHT, which
+  was contrast-checked since Phase 7). It's only ever chosen explicitly.
+  `ThemeManager.set_night(on)` saves the mode it replaces under
+  `ui_theme_before_night` and returns to it. `apply()` forces the native scheme
+  dark at night (`QStyleHints.setColorScheme`, Qt ≥ 6.8) and releases it to
+  `Unknown` *before* resolving the next mode, so night → system reads the real
+  system appearance, not the forced dark. An app that never went to night never
+  touches the scheme.
+- **Toggles.** View › **Night Vision** (⇧⌘N, checkable, re-synced in
+  `_restyle_pages` with signals blocked) and Settings › Appearance (*Night Vision*
+  item; the combo re-syncs from `ThemeManager.mode` on every theme change).
+- **Images: `theme/night.py`.**
+  - `night_image` is numpy over ARGB32 (scanline padding handled):
+    R = luminance (Rec. 709) × `NIGHT_DIM` 0.5, G = B = 0, alpha and DPR kept.
+  - `display_image` / `display_pixmap` are the only call: the identity by day.
+    Sites: `ThumbnailLoader` (`_shown`: the decode cache keeps originals, so a
+    flip repaints from cache), the detail hero and `_square_icon`, the viewer
+    (re-shows on `changed`), the Journal feed, the media poster, holding
+    thumbnails.
+  - `MainWindow._repaint_images` (deferred; retries every 250 ms while a modal or
+    the journal editor is up) reloads the pages without a `restyle` (theirs
+    already rebuilt) and the open inspector, on a night flip only (`_night_shown`).
+- **Other colour that escaped the palette.**
+  - Map: `_tooltip` drops the `<img>` at night (Qt's rich-text engine draws it from
+    the file, unfilterable). `chart_palette` overrides uranometria's
+    `star_blue`/`star_yellow`/`star_orange` with night reds; stars were #FFEDCF.
+  - The planner's series: `_NIGHT_SERIES`, reds told apart by brightness.
+  - Tile hover, the pin badge ink and the board hover were literal whites; they're
+    now the well's ink token.
+  - `AssistantBanner`/`UpdateBanner` had inline sheets baked at construction, so
+    after any theme switch they kept the old colours: the label showed a black box
+    on a grey strip. They're now `#assistantBanner`/`#updateBanner` rules in
+    `qss.py`.
+  - The QSS glyphs (check, dash, radio dot: white; spin chevrons: fixed grey) are
+    tinted per palette into a temp folder (`qss._tinted_url`; QSS `url()` takes no
+    data URI). The tick is `accent_text` on the accent, which also fixes dark
+    mode's 2:1 white-on-gold tick.
+  - The search field is now `widgets.SearchField`, which re-tints its magnifier on
+    `changed`.
+  - Verified by a pixel scan of six cocoa night renders (cold start and a live
+    dark → night toggle): zero pixels with more green or blue than red, and zero
+    near-neutral bright pixels.
+- **1.0 exit audit.** `tests/test_ui_exit_audit.py` pins each critique P1 in one
+  place: Edit menu, Window menu + ⌘W, the Object menu's verbs, selected contrast
+  in every selectable theme, and search in the header bar. It also checks that no
+  night token or night-sheet hex has more green or blue than red. AA for every
+  text pair stays in `test_theme_contrast.py` (all three palettes). The render
+  goldens pass unchanged. P3 copy: Devices "Planning uses (this|another)
+  telescope."; Planning's *Of goal* → **Progress** (not "Goal", which is already a
+  score-factor label).
+
+---
+
 ## UI 1.0 redesign — Phase 8 · E, Settings window *(2026-11-22, `feature/ui-p8-settings`)*
 
 Fifth of six Phase 8 PRs. It closes critique §P2 *Dialogs* for Preferences and

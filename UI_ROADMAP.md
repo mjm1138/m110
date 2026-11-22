@@ -380,10 +380,34 @@ can't validate macOS painting and renders differently per machine).
   cancel, a failure or an import that empties the source returns to the start
   page with a note. The holding area is shown only while something is held. The
   Source combo + Browse… are gone (the start page is the picker).
-- Tables: aligned headers, right-aligned tabular numbers, no identity-losing truncation; Planning "#" → Rank.
-- Night-vision theme wired to View and Settings.
+- ✅ **F · Night vision + 1.0 exit audit** (`feature/ui-p8-night`). `night` is a
+  fourth `ThemeManager` mode, never system-followed: **View › Night Vision** (⇧⌘N,
+  checkable; `set_night` returns to the mode it replaced, `ui_theme_before_night`)
+  and **Settings › Appearance**. Native parts are forced dark while it's on
+  (`styleHints().setColorScheme`, Qt ≥ 6.8), and released before resolving the next
+  mode. **Images:** `theme.night_image` maps luminance onto red only at 50%
+  (`NIGHT_DIM`); `display_image`/`display_pixmap` apply it at night and are the
+  identity otherwise, at every image site (`ThumbnailLoader` filters on the way out
+  of its cache, the hero, gallery icons, viewer, journal, media poster, holding
+  thumbnails). Map tooltips drop the photo at night (Qt's `<img>` can't be
+  filtered); map stars and the planner's curves take night reds. A night flip
+  re-shows images on every page (`MainWindow._repaint_images`, deferred, waits out a
+  modal). Hard-coded whites (tile hover, pin badge, board hover) → well tokens; the
+  two banners and the QSS glyphs (check, dash, radio dot, chevrons) now follow the
+  theme (tinted per palette), and the search field re-tints. **Exit audit:**
+  `tests/test_ui_exit_audit.py` pins each critique P1 (Edit menu, Window menu +
+  ⌘W, Object menu, selected contrast in every theme, search in the header bar) and
+  that nothing in the night palette or sheet leaves red; a pixel scan of cocoa
+  night renders found none either. P3 copy: Devices "Planning uses this
+  telescope."; Planning "Of goal" → **Progress**.
 
 **1.0 exit:** every P1 in the critique closed, AA contrast in all three themes, goldens refreshed.
+✅ **Met (2026-11-22, Phase 8 · F):** the five P1s are closed and pinned by
+`test_ui_exit_audit.py`; `test_theme_contrast.py` checks AA for every text pair in
+light, dark and night; the engine render goldens (`test_render_golden.py`) pass
+unchanged — Phase 8 never touched thumbnail/hero rendering, so there was nothing to
+refresh. Every critique P2 closed across Phases 7–8; the P3s too (copy in F, the
+duplicate notes title in B).
 
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack

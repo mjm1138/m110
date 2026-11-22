@@ -49,7 +49,7 @@ you've captured), weighing:
   against each object's [integration goal](library.md#integration-goals-how-deep-is-deep-enough)
   **for the telescope you're planning with** — an object finished on one scope is still
   new work on another, unless it's in a goal any telescope can satisfy. Switching
-  telescope re-ranks at once, and the **Of goal** column shows where each target stands;
+  telescope re-ranks at once, and the **Progress** column shows where each target stands;
 - **tonight** — how high, and for how long, it sits in *your* dark sky.
 
 The **tuning weights** re-rank instantly as you adjust them. Right-click

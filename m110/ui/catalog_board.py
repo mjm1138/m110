@@ -301,7 +301,9 @@ class CatalogBoard(QWidget):
             p.fillRect(QRectF(foot.left(), foot.top(), foot.width() * frac, _BAR),
                        status_hue)
         if i == self._hover and not missing:
-            p.fillRect(r, QColor(255, 255, 255, 22))
+            hover = QColor(w.well_text)          # a lift, in the well's own ink
+            hover.setAlpha(22)
+            p.fillRect(r, hover)
         p.restore()
         p.setPen(QColor(w.well_muted if missing else w.well_text))
         label_rect = r.adjusted(SPACE["xs"], 0, -2, -(_BAR + 2))
