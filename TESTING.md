@@ -1417,6 +1417,18 @@ A normal folder for Local and MinIO (§2.5b) for Cloud covers all of this.
       `Plans/<date>_<slug>.md`; the header describes the whole night's moon
       ("… · sets HH:MM"), the footer carries **both** the generation date and the
       plan night; ⚠ appears only on short window-cut descending slots.
+- [ ] **Order + telescope** *(⚙ `test_planning_times.py`)*: below Location come
+      **Plan a night** (open), **Saved field guides**, then **Priority targets**.
+      **Telescope** is always shown: one telescope → its name as plain text; two or
+      more → a picker (switch it → the ranking reorders by that model's goals);
+      a fresh store → "None yet — planning for a Seestar S50".
+- [ ] **Start · Duration · End** *(⚙ `test_planning_times.py`)*: the plan table's
+      End = Start + Duration, including across midnight (23:30 + 1h 20m → 00:50);
+      all three right-aligned. Open the saved guide → its Schedule table has the
+      same three columns. The **Saved field guides** list shows Start · Duration ·
+      End for the whole night (first start → last end). Drop a guide saved before
+      this change into `Plans/` → its span still shows; a guide with no schedule
+      shows "—".
 
 ---
 

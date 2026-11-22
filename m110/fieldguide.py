@@ -12,7 +12,7 @@ telescope-agnostic slice.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import catalog, config, prioritize
@@ -20,6 +20,49 @@ from . import catalog, config, prioritize
 
 def _hm(t) -> str:
     return t.strftime("%H:%M") if isinstance(t, datetime) else "—"
+
+
+def duration_text(minutes) -> str:
+    """A duration the way a sequencer shows it: ``"40m"``, ``"2h"``, ``"1h 30m"``;
+    ``"—"`` for none."""
+    if minutes is None:
+        return "—"
+    m = max(0, int(round(minutes)))
+    h, m = divmod(m, 60)
+    if not h:
+        return f"{m}m"
+    return f"{h}h {m:02d}m" if m else f"{h}h"
+
+
+def slot_times(row: dict) -> tuple:
+    """``(start, end)`` datetimes for a plan row (either may be None).
+
+    A sequenced slot runs ``start`` for ``duration_min``. An unsequenced entry runs
+    from its startable moment (transit for plan dicts that predate it) to the end
+    of its up-window."""
+    if "duration_min" in row and isinstance(row.get("start"), datetime):
+        return row["start"], row["start"] + timedelta(minutes=row["duration_min"])
+    start = row.get("start_time") if "start_time" in row else row.get("transit_time")
+    end = row.get("up_end")
+    start = start if isinstance(start, datetime) else None
+    end = end if isinstance(end, datetime) else None
+    if start and end and end <= start:
+        end = None                                    # nothing left of the window
+    return start, end
+
+
+def time_cells(row: dict) -> tuple[str, str, str]:
+    """``(start, duration, end)`` strings for a plan row: Start · Duration · End,
+    the columns sequencers use. A marginal slot's duration keeps its ⚠."""
+    start, end = slot_times(row)
+    if "duration_min" in row:
+        dur = duration_text(row["duration_min"])
+    else:
+        dur = duration_text((end - start).total_seconds() / 60) if start and end \
+            else "—"
+    if row.get("marginal"):
+        dur += " ⚠"
+    return _hm(start), dur, _hm(end)
 
 
 def _slugify(text: str) -> str:
@@ -111,31 +154,30 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
         # 10-min-aligned slots — object N+1 starts when object N ends.
         lines.append(f"## Schedule ({len(schedule)} targets)")
         lines.append("")
-        lines.append("| # | Object | Start | Duration | Alt | Filter | Moon |")
-        lines.append("|---|--------|-------|----------|-----|--------|------|")
+        lines.append("| # | Object | Start | Duration | End | Alt | Filter | Moon |")
+        lines.append("|---|--------|------:|---------:|----:|----:|--------|------|")
         for i, s in enumerate(schedule, 1):
             flag = "^" if s.get("over_ceiling") else ""
-            dur = f"{s['duration_min']} min" + (" ⚠" if s.get("marginal") else "")
+            st, dur, end = time_cells(s)
             filt = s.get("filter") or prioritize.filter_for_type(
                 (lib.get(s["slug"]) or ref.get(s["slug"]) or {}).get("type", ""))
-            lines.append(f"| {i} | {obj_name(s['slug'])} | {_hm(s['start'])} | "
-                         f"{dur} | {s['alt_start']:.0f}°{flag} | "
-                         f"{filt} | {moon_cell(s)} |")
+            lines.append(f"| {i} | {obj_name(s['slug'])} | {st} | {dur} | {end} | "
+                         f"{s['alt_start']:.0f}°{flag} | {filt} | {moon_cell(s)} |")
         lines.append("")
         seq_entries = [e for e in entries
                        if e["slug"] in {s["slug"] for s in schedule}] or entries
     else:
         lines.append(f"## Targets ({len(entries)}) — in shooting order")
         lines.append("")
-        lines.append("| # | Object | Start | Alt | Up-window | Moon | Filter |")
-        lines.append("|---|--------|-------|-----|-----------|------|--------|")
+        lines.append("| # | Object | Start | Duration | End | Alt | Moon | Filter |")
+        lines.append("|---|--------|------:|---------:|----:|----:|------|--------|")
         for i, e in enumerate(entries, 1):
             filt = prioritize.filter_for_type(
                 (lib.get(e["slug"]) or ref.get(e["slug"]) or {}).get("type", ""))
-            win = f"{_hm(e['up_start'])}–{_hm(e['up_end'])}"
             st, sa = start_cells(e)
-            lines.append(f"| {i} | {obj_name(e['slug'])} | {st} | {sa} | {win} | "
-                         f"{moon_cell(e)} | {filt} |")
+            _st, dur, end = time_cells(e)
+            lines.append(f"| {i} | {obj_name(e['slug'])} | {st} | {dur} | {end} | "
+                         f"{sa} | {moon_cell(e)} | {filt} |")
         lines.append("")
         seq_entries = entries
     rows = schedule or entries
@@ -147,6 +189,8 @@ def render_markdown(site, day: date, plan: dict, *, title: str | None = None) ->
                      "no impact.")
     notes.append("**Start** = the best startable time under the device's "
                  "start-altitude ceiling (a capture may climb past it once running).")
+    if not schedule:
+        notes.append("**End** = when the target leaves the sky window.")
     if any(r.get("over_ceiling") for r in rows):
         notes.append("**^** = starts above the ceiling (no lower slot was clear) — "
                      "expect field rotation near the zenith.")
@@ -205,20 +249,88 @@ def save(day: date, title: str, markdown: str) -> Path:
 _TITLE_RE = re.compile(r"^#\s+(.*)")
 
 
-def _title_of(path: Path) -> str:
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            m = _TITLE_RE.match(line)
-            if m:
-                return m.group(1).strip()
-    except (OSError, UnicodeDecodeError):
-        pass
+def _title_of(path: Path, text: str | None = None) -> str:
+    if text is None:
+        text = _read_quiet(path)
+    for line in text.splitlines():
+        m = _TITLE_RE.match(line)
+        if m:
+            return m.group(1).strip()
     return path.stem
 
 
+def _read_quiet(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+_HM_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
+_DUR_RE = re.compile(r"^(?:(\d+)\s*h)?\s*(?:(\d+)\s*m(?:in)?)?")
+
+
+def _parse_hm(cell: str):
+    m = _HM_RE.match(cell.strip())
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+
+def _parse_minutes(cell: str):
+    """``"1h 30m"`` / ``"40m"`` / ``"2h"`` (this format) or ``"90 min"`` (guides
+    saved before End existed) → minutes; None when it isn't a duration."""
+    m = _DUR_RE.match(cell.strip())
+    if not m or not (m.group(1) or m.group(2)):
+        return None
+    return int(m.group(1) or 0) * 60 + int(m.group(2) or 0)
+
+
+def guide_span(text: str) -> dict | None:
+    """The night a saved guide's **Schedule** covers, read back from its table:
+    ``{start, duration, end}`` strings — the first slot's start to the last slot's
+    end. A guide saved before the End column computes the end from the last slot's
+    start + duration. None for a guide with no schedule (nothing was sequenced)."""
+    lines = text.splitlines()
+    try:
+        i = next(n for n, line in enumerate(lines) if line.startswith("## Schedule"))
+    except StopIteration:
+        return None
+    rows = []
+    for line in lines[i + 1:]:
+        if line.startswith("|"):
+            rows.append([c.strip() for c in line.strip().strip("|").split("|")])
+        elif rows:
+            break
+    if len(rows) < 3:                                 # header, rule, ≥1 slot
+        return None
+    head, body = rows[0], rows[2:]
+    col = {name: n for n, name in enumerate(head)}
+    if "Start" not in col:
+        return None
+
+    def cell(row, name):
+        n = col.get(name)
+        return row[n] if n is not None and n < len(row) else ""
+
+    first = _parse_hm(cell(body[0], "Start"))
+    end = _parse_hm(cell(body[-1], "End")) if "End" in col else None
+    if end is None:
+        last = _parse_hm(cell(body[-1], "Start"))
+        dur = _parse_minutes(cell(body[-1], "Duration"))
+        if last is not None and dur is not None:
+            end = (last + dur) % (24 * 60)
+    if first is None or end is None:
+        return None
+    span = (end - first) % (24 * 60)                  # a night crosses midnight
+
+    def hm(m):
+        return f"{m // 60:02d}:{m % 60:02d}"
+    return {"start": hm(first), "duration": duration_text(span), "end": hm(end)}
+
+
 def list_guides() -> list[dict]:
-    """Saved field guides, newest first: ``[{path, name, date, title}]``. ``date``
-    is parsed from the filename prefix when present, else the file mtime date."""
+    """Saved field guides, newest first: ``[{path, name, date, title, span}]``.
+    ``date`` is parsed from the filename prefix when present, else the file mtime
+    date; ``span`` is :func:`guide_span` (None without a schedule)."""
     d = Path(config.PLANS_DIR)
     if not d.is_dir():
         return []
@@ -228,7 +340,9 @@ def list_guides() -> list[dict]:
             continue
         m = re.match(r"(\d{4}-\d{2}-\d{2})_", p.name)
         dt = m.group(1) if m else date.fromtimestamp(p.stat().st_mtime).isoformat()
-        out.append({"path": p, "name": p.name, "date": dt, "title": _title_of(p)})
+        text = _read_quiet(p)
+        out.append({"path": p, "name": p.name, "date": dt,
+                    "title": _title_of(p, text), "span": guide_span(text)})
     out.sort(key=lambda g: (g["date"], g["name"]), reverse=True)
     return out
 

@@ -409,6 +409,20 @@ unchanged — Phase 8 never touched thumbnail/hero rendering, so there was nothi
 refresh. Every critique P2 closed across Phases 7–8; the P3s too (copy in F, the
 duplicate notes title in B).
 
+#### Phase 8 follow-ups  *(Mike's feedback on the Phase 8 betas, 2026-11-22)*
+The Overview stays as it is. Four follow-ups, one PR each:
+- ✅ **Grid double-click** (`feature/grid-stable-inspector`): a click selects, a
+  double-click opens the inspector, so the grid never reflows under a double-click.
+- ✅ **Planning order + telescope** (`feature/planning-flow-times`): *Plan a night*
+  right under Location (open), then Saved field guides, then Priority targets. The
+  Telescope row is always shown (name / picker / "None yet"); the ranking already
+  judged progress by the active model's goals (`prioritize.rank_for_active`).
+- ✅ **Times in plans** (`feature/planning-flow-times`): Start · Duration · End in
+  the plan table, the saved guide's tables and the guides list
+  (`fieldguide.time_cells`, `guide_span`; old guides still read).
+- ☐ **Import redo:** options shown to Mike first; an empty chosen folder stays that
+  folder ("No frames found in …").
+
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
   across the whole collection (not grouped by object) — a bigger feature + data work;
