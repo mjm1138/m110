@@ -265,7 +265,7 @@ class HandoffDialog(QDialog):
         elif not found:
             box.setInformativeText(
                 f"{self._label} wasn't found on this machine. You can set its "
-                f"location in Preferences → Processing tools.")
+                f"location in Settings › Tools.")
         reveal = box.addButton("Reveal folder", QMessageBox.AcceptRole)
         open_label = (f"Open in {self._label}" if can_open_file
                       else f"Open {self._label}")

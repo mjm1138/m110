@@ -83,7 +83,7 @@ folder, and the detail page's button drops down the same list. Pick the one you 
 to stack.
 
 M110 finds Siril automatically in the usual place. If yours is installed somewhere
-unusual, set its location under **Preferences → Processing tools** (on macOS you can pick
+unusual, set its location under **Settings › Tools** (on macOS you can pick
 `Siril.app` directly; elsewhere, the Siril executable).
 
 > ### ⚠ Quit Siril when you finish an object
@@ -269,8 +269,8 @@ agree. `m110-stack` applies it unless you pass `--no-preset`, and `--set` wins
 over it. An [AI assistant](assistant.md) can talk the settings through and
 propose a preset for you to accept in M110.
 
-**Finding Stackhammer.** M110 uses the path in **Preferences → Processing
-tools** if you set one. Otherwise it uses the binary named by the Stackhammer
+**Finding Stackhammer.** M110 uses the path in **Settings ›
+Tools** if you set one. Otherwise it uses the binary named by the Stackhammer
 script installed in Siril, then `/opt/homebrew/bin`, `/usr/local/bin`,
 `~/.local/bin` and your `PATH`.
 
@@ -299,7 +299,7 @@ folder** and open the file yourself.
 it stacks a night's frames and hands the result straight over. M110 keeps your
 frames ready for it.
 
-Tick **AstroWizard** in **Preferences → Processing workflows you use**, and each
+Tick **AstroWizard** in **Settings › Processing**, and each
 object gets an `astrowizard/` folder containing your subs as hardlinks — no extra
 disk, and they're skipped by backup because the originals are already in it.
 
@@ -358,7 +358,7 @@ cleans them out, and they're not small: a mosaic's run can be several GB, and an
 AstroWizard finish can be a couple of GB on its own. They're included in your
 backups too, so the growth shows up twice.
 
-**Preferences → Processing workflows you use → "Keep the last N processing
+**Settings › Processing → "Keep the last N processing
 sessions"** is the control:
 
 - **A number (default 3 for a new library)** — M110 keeps that many archived runs per

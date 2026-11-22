@@ -131,7 +131,7 @@ def launch_with_file(tool_id: str, path) -> str:
     if not app:
         raise LaunchError(
             f"Couldn't find {tool_label(tool_id)}. Set its location in "
-            f"Preferences → Processing tools.")
+            f"Settings › Tools.")
     args = [a.format(file=str(path)) for a in spec["file_args"]]
     try:
         if sys.platform == "darwin":
@@ -362,7 +362,7 @@ def launch_processing(tool_id: str, working_dir) -> str:
     if not app:
         raise LaunchError(
             f"Couldn't find {tool_label(tool_id)}. Set its location in "
-            f"Preferences → Processing tools.")
+            f"Settings › Tools.")
     spec = _TOOLS[tool_id]
     args = [a.format(dir=str(working_dir)) for a in spec.get("workdir_args", [])]
     try:

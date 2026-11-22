@@ -1,330 +1,508 @@
-"""Preferences dialog — data folder + processing-prep workflows."""
+"""The Settings window — a macOS-style settings window (UI Phase 8 · E).
+
+One non-modal, single-instance window (`MainWindow._show_settings` owns it). A pane
+bar of icon-over-label buttons across the top — General · Processing · Tools ·
+Backup · Assistant · Appearance — switches between panes; the window title follows
+the pane and the window fits each pane's height. **Every change applies at once**:
+there is no OK, Save or Close button (⌘W / the close box closes it). The data folder
+too is saved the moment it's chosen, with an inline note that it takes effect after
+a restart.
+
+Each pane is a short one-line description per group plus caption help text — the
+old single sheet of explanatory paragraphs (critique §P2 *Dialogs*) is gone. The
+Backup pane is `backup_pane.BackupPane`, the former Back up dialog.
+"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QMessageBox, QGroupBox, QCheckBox, QComboBox, QScrollArea,
-    QWidget,
-    QSpinBox,
+    QButtonGroup, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QScrollArea, QSpinBox, QToolButton, QVBoxLayout, QWidget,
 )
 
 from m110 import config, hints, ingest, launch, processing, stackhammer, updates
 from m110.ui import theme
 
+# (key, title, Lucide icon) in bar order.
+PANES = (
+    ("general", "General", "settings"),
+    ("processing", "Processing", "layers"),
+    ("tools", "Tools", "wrench"),
+    ("backup", "Backup", "hard-drive"),
+    ("assistant", "Assistant", "sparkles"),
+    ("appearance", "Appearance", "sun-moon"),
+)
+PANE_TITLES = {k: t for k, t, _ in PANES}
+PANE_SETTING = "settings_pane"      # the pane the window last showed
+WIDTH = 600                         # fixed, like a macOS Settings window
+TAB_ICON = 24
+SCREEN_FRACTION = 0.85              # never open taller than this much of the screen
 
-class PreferencesDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Settings")      # the menu item is "Settings…" (macOS 13+)
-        self.resize(640, 620)
 
+def _caption(text: str) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setProperty("caption", True)
+    lbl.setWordWrap(True)
+    return lbl
+
+
+def _line(text: str) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setWordWrap(True)
+    return lbl
+
+
+def _tab_icon(name: str) -> QIcon:
+    """Muted when unselected, primary text when selected — a checkable
+    QToolButton picks the On/Off state, not the Selected mode `icons.icon` fills."""
+    from m110.ui.theme import icons, tokens
+    t = tokens.active()
+    ic = QIcon()
+    for dpr in (1.0, 2.0):
+        ic.addPixmap(icons.pixmap(name, t.text_secondary, TAB_ICON, dpr),
+                     QIcon.Mode.Normal, QIcon.State.Off)
+        ic.addPixmap(icons.pixmap(name, t.text_primary, TAB_ICON, dpr),
+                     QIcon.Mode.Normal, QIcon.State.On)
+        ic.addPixmap(icons.pixmap(name, t.text_disabled, TAB_ICON, dpr),
+                     QIcon.Mode.Disabled, QIcon.State.Off)
+    return ic
+
+
+class SettingsWindow(QWidget):
+    def __init__(self, parent=None, *, pane: str | None = None):
+        super().__init__(parent, Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         from m110.ui.theme import tokens
         s = tokens.SPACE
 
-        # The settings column scrolls. Without this the dialog's natural height
-        # exceeds a laptop screen (it has grown a group at a time), and Qt
-        # squeezes word-wrapped labels below their heightForWidth — which shows
-        # up as explanatory text with its last line sliced off, not as an
-        # obviously-too-small window. Close stays pinned outside the scroll area.
+        # ── the pane bar ──
+        self._bar = QFrame()
+        self._bar.setObjectName("settingsBar")
+        bar_row = QHBoxLayout(self._bar)
+        bar_row.setContentsMargins(s["sm"], s["sm"], s["sm"], s["sm"])
+        bar_row.setSpacing(s["xs"])
+        bar_row.addStretch(1)
+        self._tab_group = QButtonGroup(self)
+        self._tab_group.setExclusive(True)
+        self._tabs: dict[str, QToolButton] = {}
+        for key, title, icon_name in PANES:
+            b = QToolButton()
+            b.setObjectName("settingsTab")
+            b.setText(title)
+            b.setCheckable(True)
+            b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            b.setIcon(_tab_icon(icon_name))
+            b.setIconSize(QSize(TAB_ICON, TAB_ICON))
+            b.setProperty("iconName", icon_name)
+            b.setMinimumWidth(64)
+            b.clicked.connect(lambda _=False, k=key: self.show_pane(k))
+            self._tab_group.addButton(b)
+            self._tabs[key] = b
+            bar_row.addWidget(b)
+        bar_row.addStretch(1)
+
+        # ── the panes: all in one scrolling column, only the current one shown,
+        # so the column's height-for-width is that pane's (see `_fit`) ──
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Never scroll sideways: content wraps to the viewport (a long data-folder
+        # path would otherwise widen the column and clip every caption).
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._body = QWidget()
+        body = QVBoxLayout(self._body)
+        body.setContentsMargins(s["xl"], s["lg"], s["xl"], s["xl"])
+        body.setSpacing(0)
+        self._scroll.setWidget(self._body)
+
+        builders = {"general": self._build_general,
+                    "processing": self._build_processing,
+                    "tools": self._build_tools,
+                    "backup": self._build_backup,
+                    "assistant": self._build_assistant,
+                    "appearance": self._build_appearance}
+        self._panes: dict[str, QWidget] = {}
+        for key, _title, _icon in PANES:
+            page = QWidget()
+            lay = QVBoxLayout(page)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(s["md"])
+            builders[key](lay)
+            page.setVisible(False)
+            self._panes[key] = page
+            body.addWidget(page)
+        body.addStretch(1)
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
-        # Never scroll sideways: the content must wrap to the viewport width.
-        # Allowed to overflow horizontally, a long data-folder path widens the
-        # whole column and every explanatory line gets clipped at the right edge.
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        body = QWidget()
-        scroll.setWidget(body)
-        outer.addWidget(scroll, 1)
+        outer.addWidget(self._bar)
+        outer.addWidget(self._scroll, 1)
 
-        lay = QVBoxLayout(body)
-        lay.setContentsMargins(s["lg"], s["lg"], s["lg"], s["lg"])
-        lay.setSpacing(s["md"])
-        folder_note = QLabel("Data folder — where M110 stores its catalog, "
-                             "captures, and renders:")
-        folder_note.setWordWrap(True)
-        lay.addWidget(folder_note)
+        self.setFixedWidth(WIDTH)
+        self.setMinimumHeight(240)
+        self._current = ""
+        mgr = theme.manager()
+        if mgr is not None:
+            mgr.changed.connect(self._restyle)
+        start = pane or config.get_setting(PANE_SETTING) or "general"
+        self.show_pane(start if start in PANE_TITLES else "general")
 
+    # ── panes ────────────────────────────────────────────────────────────────
+
+    def show_pane(self, key: str):
+        if key not in self._panes:
+            return
+        if self._current and self._current != key and key != "backup":
+            self._backup.stop_probes()
+        self._current = key
+        for k, page in self._panes.items():
+            page.setVisible(k == key)
+        self._tabs[key].setChecked(True)
+        self.setWindowTitle(PANE_TITLES[key])
+        config.save_setting(PANE_SETTING, key)
+        self._fit()
+
+    def current_pane(self) -> str:
+        return self._current
+
+    def needed_height(self) -> int:
+        """What the pane on screen needs so nothing in it scrolls.
+        Height-for-width, not sizeHint: wrapped captions need it."""
+        lay = self._body.layout()
+        lay.activate()
+        body_h = (lay.heightForWidth(WIDTH) if lay.hasHeightForWidth()
+                  else lay.sizeHint().height())
+        return self._bar.sizeHint().height() + body_h
+
+    def _fit(self):
+        """Size the window to the pane on screen, never taller than the screen
+        (which is what the scroll area is for)."""
+        need = self.needed_height()
+        screen = self.screen().availableGeometry().height() if self.screen() else 0
+        self.resize(WIDTH, min(need, int(screen * SCREEN_FRACTION)) if screen else need)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Styles are polished on show; measure again once they have been.
+        QTimer.singleShot(0, self._fit)
+
+    def _restyle(self):
+        for key, _title, icon_name in PANES:
+            self._tabs[key].setIcon(_tab_icon(icon_name))
+
+    def hideEvent(self, event):
+        # A probe of a slow share mustn't keep running for a window nobody sees.
+        self._backup.stop_probes()
+        super().hideEvent(event)
+
+    def closeEvent(self, event):
+        self._backup.teardown()
+        super().closeEvent(event)
+
+    @staticmethod
+    def _group(lay: QVBoxLayout, title: str) -> QVBoxLayout:
+        from m110.ui.theme import tokens
+        box = QGroupBox(title)
+        inner = QVBoxLayout(box)
+        inner.setSpacing(tokens.SPACE["sm"])
+        lay.addWidget(box)
+        return inner
+
+    # ── General ──────────────────────────────────────────────────────────────
+
+    def _build_general(self, lay: QVBoxLayout):
+        g = self._group(lay, "Data folder")
         row = QHBoxLayout()
-        self._edit = QLineEdit(str(config.DATA_ROOT))
-        # A deep path would otherwise set the dialog's minimum width.
-        self._edit.setMinimumWidth(180)
-        self._edit.setCursorPosition(0)
-        browse = QPushButton("Browse…")
-        browse.clicked.connect(self._browse)
-        row.addWidget(self._edit)
-        row.addWidget(browse)
-        lay.addLayout(row)
+        self._root_edit = QLineEdit(self._pending_root())
+        self._root_edit.setReadOnly(True)
+        self._root_edit.setMinimumWidth(180)      # a deep path mustn't set the width
+        self._root_edit.setCursorPosition(0)
+        self._root_btn = QPushButton("Change…")
+        self._root_btn.clicked.connect(self._change_root)
+        row.addWidget(self._root_edit, 1)
+        row.addWidget(self._root_btn)
+        g.addLayout(row)
+        g.addWidget(_caption("Where M110 keeps your Library, captures and renders. "
+                             f"Default: {config.DEFAULT_DATA_ROOT}"))
+        self._root_note = _caption("")
+        g.addWidget(self._root_note)
+        self._sync_root_note()
 
-        hint = QLabel(f"Default: {config.DEFAULT_DATA_ROOT}\n"
-                      "The folder is created (with a starter catalog) if it doesn't exist. "
-                      "Changing it applies on Close and takes effect after you restart M110.")
-        hint.setProperty("caption", True)
-        hint.setWordWrap(True)
-        lay.addWidget(hint)
+        g = self._group(lay, "Import")
+        self._sub_previews_cb = QCheckBox("Import the Seestar's per-sub JPG previews")
+        self._sub_previews_cb.setChecked(
+            bool(config.get_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, False)))
+        self._sub_previews_cb.toggled.connect(
+            lambda on: config.save_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, bool(on)))
+        g.addWidget(self._sub_previews_cb)
+        g.addWidget(_caption("Kept in Images/<object>/previews/, out of the raw "
+                             "lights and the gallery."))
 
-        # ── processing-prep workflows (persist live on toggle) ───────────────
-        box = QGroupBox("Processing workflows you use:")
-        bl = QVBoxLayout(box)
-        wf_note = QLabel(
-            "M110 keeps a ready-to-go working folder on each object for every "
-            "workflow you tick. Siril's holds your subs and a preset tuned to the "
-            "frame count. AstroWizard's holds your subs too — so StackingWizard "
-            "can stack them in place — alongside the stack you're finishing and "
-            "your exports on the way back into the library.")
-        wf_note.setWordWrap(True)
-        bl.addWidget(wf_note)
+        g = self._group(lay, "Updates")
+        self._update_cb = QCheckBox("Check for updates on launch")
+        self._update_cb.setChecked(updates.check_enabled())
+        self._update_cb.toggled.connect(lambda on: updates.set_check_enabled(bool(on)))
+        g.addWidget(self._update_cb)
+        g.addWidget(_caption("At most once a day, from GitHub. Nothing about you "
+                             "or your Library is sent."))
+
+    @staticmethod
+    def _pending_root() -> str:
+        """The folder M110 will open next launch: the saved choice, else the one
+        it's using now."""
+        saved = config.get_setting("data_root")
+        return str(Path(saved).expanduser()) if saved else str(config.DATA_ROOT)
+
+    def _sync_root_note(self):
+        pending = self._pending_root()
+        changed = Path(pending) != Path(config.DATA_ROOT)
+        self._root_note.setText(
+            f"M110 is using {config.DATA_ROOT} until you restart it." if changed else "")
+        self._root_note.setVisible(changed)
+
+    def _change_root(self):
+        d = QFileDialog.getExistingDirectory(self, "Choose data folder",
+                                             self._root_edit.text())
+        if not d or d == self._root_edit.text():
+            return
+        config.save_data_root(d)
+        config.ensure_data_root(d)          # create + seed now, ready on restart
+        self._root_edit.setText(self._pending_root())
+        self._root_edit.setCursorPosition(0)
+        self._sync_root_note()
+        self._fit()
+
+    # ── Processing ───────────────────────────────────────────────────────────
+
+    def _build_processing(self, lay: QVBoxLayout):
+        g = self._group(lay, "Workflows")
+        g.addWidget(_line("M110 keeps a working folder ready on each object for "
+                          "every workflow you tick."))
         enabled = set(processing.enabled_workflow_ids())
-        self._wf_checks = {}
+        self._wf_checks: dict[str, QCheckBox] = {}
         for w in processing.WORKFLOWS:
             cb = QCheckBox(w.label if w.available else f"{w.label}  (soon)")
             cb.setChecked(w.available and w.id in enabled)
             cb.setEnabled(w.available)
             if not w.available:
                 cb.setToolTip("Support for this workflow is coming.")
-            bl.addWidget(cb)
+            g.addWidget(cb)
             self._wf_checks[w.id] = cb
         # Wire after building so the initial setChecked() can't fire a half-built save.
         for cb in self._wf_checks.values():
             cb.toggled.connect(self._save_workflows)
+        g.addWidget(_caption("Siril's holds your subs and a preset tuned to the frame "
+                             "count; AstroWizard's holds the subs, the stack you're "
+                             "finishing and your exports."))
 
-        # Retention. Every import archives the run it just imported, and those
-        # only ever accumulate — measured at 42 GB on a real library — so this is
-        # the bound on that growth. It is the one place M110 deletes processing
-        # history, hence the explicit "keep everything" position at 0.
+        # Retention. Every import archives the run it just imported, and those only
+        # ever accumulate — measured at 42 GB on a real library — so this is the
+        # bound on that growth, and the one place M110 deletes processing history.
+        g = self._group(lay, "Processing history")
         keep_row = QHBoxLayout()
         keep_row.addWidget(QLabel("Keep the last"))
         self._keep_spin = QSpinBox()
         self._keep_spin.setRange(0, 99)
         self._keep_spin.setSpecialValueText("all")      # 0 reads as "all"
         self._keep_spin.setValue(processing.archive_keep())
-        self._keep_spin.setFixedWidth(70)
         keep_row.addWidget(self._keep_spin)
         keep_row.addWidget(QLabel("processing sessions"))
         keep_row.addStretch(1)
-        bl.addLayout(keep_row)
-        keep_note = QLabel(
-            "When you import finished work, the run that produced it is archived "
-            "inside the object's working folder. Older archived runs beyond this "
-            "many are deleted; the most recent is always kept. Set to \u201call\u201d "
-            "to keep every run.")
-        keep_note.setWordWrap(True)
-        keep_note.setProperty("caption", True)
-        bl.addWidget(keep_note)
+        g.addLayout(keep_row)
+        g.addWidget(_caption("Importing finished work archives the run behind it; "
+                             "older runs beyond this many are deleted, and the newest "
+                             "is always kept."))
         self._keep_spin.valueChanged.connect(processing.set_archive_keep)
 
-        lay.addWidget(box)
+        g = self._group(lay, "Finished-image hints")
+        g.addWidget(_line("Filename keywords that mark finished work, and by-products "
+                          "to skip, when you import."))
+        cur = hints.get_hints()
+        grid = QGridLayout()
+        grid.setColumnStretch(1, 1)
+        self._finished_edit = QLineEdit(", ".join(cur["finished"]))
+        self._finished_edit.setToolTip(
+            "A file whose name contains any of these is treated as finished output.")
+        self._intermediate_edit = QLineEdit(", ".join(cur["intermediate"]))
+        self._intermediate_edit.setToolTip(
+            "A file whose name contains any of these is skipped as a by-product "
+            "(e.g. star layers), never imported as finished.")
+        grid.addWidget(QLabel("Finished:"), 0, 0)
+        grid.addWidget(self._finished_edit, 0, 1)
+        grid.addWidget(QLabel("Intermediate:"), 1, 0)
+        grid.addWidget(self._intermediate_edit, 1, 1)
+        g.addLayout(grid)
+        g.addWidget(_caption("Comma-separated; case doesn't matter."))
+        self._finished_edit.editingFinished.connect(self._save_hints)
+        self._intermediate_edit.editingFinished.connect(self._save_hints)
 
-        # ── processing tools (external app paths; persist live) ──────────────
-        tbox = QGroupBox("Processing tools")
-        tl = QVBoxLayout(tbox)
-        tool_note = QLabel(
-            "M110 launches these for you and gets out of the way. It finds them "
-            "automatically in the usual place — set a path here only if one is "
-            "installed somewhere else. Siril opens with the object's working folder "
-            "already set as its working directory; AstroWizard can't be pointed at a "
-            "folder, so M110 opens the folder alongside it for you to pick the stack "
-            "from. Stackhammer is a command-line stacker that m110-stack and the "
-            "assistant run: left empty, M110 uses the one its Siril script names.")
-        tool_note.setWordWrap(True)
-        tl.addWidget(tool_note)
-        # One row per registered tool, so adding a workflow to `launch._TOOLS` gets
-        # a path override here without touching this dialog.
+    def _save_workflows(self, *_):
+        """Persist the processing-workflow selection (read at ingest time)."""
+        chosen = [wid for wid, cb in self._wf_checks.items()
+                  if cb.isEnabled() and cb.isChecked()]
+        # Written as an explicit map over every workflow, so one added later can
+        # tell "never asked" from "switched off" — see processing.enabled_workflow_ids.
+        processing.set_enabled_workflows(chosen)
+
+    def _save_hints(self, *_):
+        """Persist the finished/intermediate filename hints (read at classify time)."""
+        def _split(text):
+            return [t.strip() for t in text.split(",") if t.strip()]
+        hints.set_hints(_split(self._finished_edit.text()),
+                        _split(self._intermediate_edit.text()))
+
+    # ── Tools ────────────────────────────────────────────────────────────────
+
+    def _build_tools(self, lay: QVBoxLayout):
+        g = self._group(lay, "Processing tools")
+        g.addWidget(_line("M110 finds these in the usual places. Set a path only if "
+                          "one is installed somewhere else."))
+        # One row per registered tool, so adding a tool to `launch._TOOLS` gets a
+        # path override here without touching this window.
+        grid = QGridLayout()
+        grid.setColumnStretch(1, 1)
         self._tool_edits: dict[str, QLineEdit] = {}
-        for tool_id in launch.tool_ids():
+        self._tool_browse: dict[str, QPushButton] = {}
+        for row, tool_id in enumerate(launch.tool_ids()):
             label = launch.tool_label(tool_id)
-            row = QHBoxLayout()
-            row.addWidget(QLabel(f"{label}:"))
             edit = QLineEdit(self._tool_override(tool_id))
             detected = self._detect_tool(tool_id)
             kind = "binary" if launch.is_cli(tool_id) else "application"
             edit.setPlaceholderText(
                 f"Auto-detected: {detected}" if detected
                 else f"Not found — Browse to your {label} {kind}")
+            edit.setMinimumWidth(160)
             browse = QPushButton("Browse…")
             # Bind the id per row: a bare closure over the loop variable would give
             # every button the last tool.
             browse.clicked.connect(lambda _=False, t=tool_id: self._browse_tool(t))
             edit.editingFinished.connect(self._save_app_paths)
-            row.addWidget(edit, 1)
-            row.addWidget(browse)
-            tl.addLayout(row)
+            grid.addWidget(QLabel(f"{label}:"), row, 0)
+            grid.addWidget(edit, row, 1)
+            grid.addWidget(browse, row, 2)
             self._tool_edits[tool_id] = edit
-        lay.addWidget(tbox)
+            self._tool_browse[tool_id] = browse
+        g.addLayout(grid)
+        g.addWidget(_caption("Siril opens in the object's working folder. "
+                             "AstroWizard can't be pointed at a folder, so M110 opens "
+                             "the folder beside it. Stackhammer is the command-line "
+                             "stacker m110-stack and the assistant run; left empty, "
+                             "M110 uses the one Siril's script names."))
 
-        # ── finished-image hints (persist live on edit) ──────────────────────
-        hbox = QGroupBox("Finished-image hints")
-        hl = QVBoxLayout(hbox)
-        hint_note = QLabel(
-            "When importing processed work, M110 recognizes finished renders/stacks "
-            "and skips intermediate by-products by keywords in the filename "
-            "(case-insensitive, comma-separated).")
-        hint_note.setWordWrap(True)
-        hl.addWidget(hint_note)
-        cur_hints = hints.get_hints()
-        frow = QHBoxLayout()
-        frow.addWidget(QLabel("Finished:"))
-        self._finished_edit = QLineEdit(", ".join(cur_hints["finished"]))
-        self._finished_edit.setToolTip(
-            "A file whose name contains any of these is treated as finished output.")
-        frow.addWidget(self._finished_edit, 1)
-        hl.addLayout(frow)
-        irow = QHBoxLayout()
-        irow.addWidget(QLabel("Intermediate:"))
-        self._intermediate_edit = QLineEdit(", ".join(cur_hints["intermediate"]))
-        self._intermediate_edit.setToolTip(
-            "A file whose name contains any of these is skipped as a by-product "
-            "(e.g. star layers), never imported as finished.")
-        irow.addWidget(self._intermediate_edit, 1)
-        hl.addLayout(irow)
-        # Persist live on edit (mirrors the workflows; read at classify time).
-        self._finished_edit.editingFinished.connect(self._save_hints)
-        self._intermediate_edit.editingFinished.connect(self._save_hints)
-        lay.addWidget(hbox)
+    @staticmethod
+    def _detect_tool(tool_id: str) -> str | None:
+        """Where auto-detection finds a tool, for the row's placeholder. A CLI
+        tool has its own search (Stackhammer: the script installed in Siril,
+        the usual install places, PATH)."""
+        if tool_id == stackhammer.TOOL_ID:
+            found = stackhammer.find_binary()
+            return found[0] if found else None
+        return launch.find_app(tool_id)
 
-        # ── import options (persist live) ────────────────────────────────────
-        ibox = QGroupBox("Import")
-        il = QVBoxLayout(ibox)
-        self._sub_previews_cb = QCheckBox(
-            "Import per-sub JPG previews into a previews/ folder")
-        self._sub_previews_cb.setToolTip(
-            "The Seestar saves a full-size .jpg beside every raw sub. Off by default; "
-            "when on, they're archived under Images/<object>/previews/ (kept out of the "
-            "raw lights/ and out of the gallery).")
-        self._sub_previews_cb.setChecked(
-            bool(config.get_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, False)))
-        self._sub_previews_cb.toggled.connect(
-            lambda on: config.save_setting(ingest.IMPORT_SUB_PREVIEWS_KEY, bool(on)))
-        il.addWidget(self._sub_previews_cb)
-        lay.addWidget(ibox)
+    @staticmethod
+    def _tool_override(tool_id: str) -> str:
+        paths = config.get_setting(launch.APP_PATHS_SETTING, {}) or {}
+        return str(paths.get(tool_id) or "")
 
-        # ── appearance (theme) ───────────────────────────────────────────────
-        appearance = QGroupBox("Appearance")
-        al = QHBoxLayout(appearance)
-        al.addWidget(QLabel("Theme:"))
-        self._theme_combo = QComboBox()
-        for mode, label in (("system", "Follow system"), ("light", "Light"),
-                            ("dark", "Dark")):
-            self._theme_combo.addItem(label, mode)
-        cur = config.get_setting(theme.SETTING_KEY, "system")
-        idx = self._theme_combo.findData(cur)
-        self._theme_combo.setCurrentIndex(idx if idx >= 0 else 0)
-        # Apply live as the user changes it (no restart; mirrors the workflows).
-        self._theme_combo.currentIndexChanged.connect(
-            lambda *_: theme.set_mode(self._theme_combo.currentData()))
-        al.addWidget(self._theme_combo, 1)
-        lay.addWidget(appearance)
+    def _browse_tool(self, tool_id: str):
+        # .app bundles on macOS (selectable as a file in the native dialog) and
+        # plain executables elsewhere.
+        label = launch.tool_label(tool_id)
+        cli = launch.is_cli(tool_id)
+        start = self._tool_edits[tool_id].text() or (
+            "/Applications" if sys.platform == "darwin" and not cli else "")
+        f, _ = QFileDialog.getOpenFileName(
+            self, f"Choose the {label} {'binary' if cli else 'application'}", start)
+        if f:
+            self._tool_edits[tool_id].setText(f)
+            self._save_app_paths()
 
-        # ── updates (persist live) ───────────────────────────────────────────
-        ubox = QGroupBox("Updates")
-        ul = QVBoxLayout(ubox)
-        self._update_cb = QCheckBox("Check for updates on launch")
-        self._update_cb.setToolTip(
-            "Once a day at most, M110 checks GitHub for a newer release and shows "
-            "a dismissible banner if one is available. No data is sent.")
-        self._update_cb.setChecked(updates.check_enabled())
-        self._update_cb.toggled.connect(
-            lambda on: updates.set_check_enabled(bool(on)))
-        ul.addWidget(self._update_cb)
-        lay.addWidget(ubox)
+    def _save_app_paths(self, *_):
+        """Persist the external-app path overrides (read at launch time). An empty
+        field clears that tool's override → auto-detection."""
+        paths = dict(config.get_setting(launch.APP_PATHS_SETTING, {}) or {})
+        for tool_id, edit in self._tool_edits.items():
+            val = edit.text().strip()
+            if val:
+                paths[tool_id] = val
+            else:
+                paths.pop(tool_id, None)
+        config.save_setting(launch.APP_PATHS_SETTING, paths)
 
-        # ── AI assistant (any MCP client) ───────────────────────────────────
-        # The server is plain MCP over stdio, so the framing here is
-        # client-neutral: "Connection details…" serves everything, and the
-        # Claude Desktop button is a convenience because its config is a JSON
-        # file we can merge into safely — not because it's the only option.
-        abox = QGroupBox("AI assistant")
-        al2 = QVBoxLayout(abox)
-        blurb = QLabel(
-            "M110 can act as an <b>MCP server</b>, so an AI assistant can read your "
-            "library and help you plan a night, explain the priority ranking, or "
-            "critique an image — grounded in your own data. It can hand you a plan "
-            "or suggest a change, but it can never alter your library.")
-        blurb.setWordWrap(True)
-        al2.addWidget(blurb)
+    # ── Backup ───────────────────────────────────────────────────────────────
 
-        works_with = QLabel(
-            "Works with any MCP-compatible client. Claude Desktop can be set up for "
-            "you; for anything else use Connection details.")
-        works_with.setProperty("caption", True)
-        works_with.setWordWrap(True)
-        al2.addWidget(works_with)
+    def _build_backup(self, lay: QVBoxLayout):
+        from m110.ui.backup_pane import BackupPane
+        self._backup = BackupPane(self)
+        self._backup.size_changed.connect(
+            lambda: self._fit() if self._current == "backup" else None)
+        lay.addWidget(self._backup)
 
-        self._assistant_status = QLabel()
-        self._assistant_status.setProperty("caption", True)
-        self._assistant_status.setWordWrap(True)
-        al2.addWidget(self._assistant_status)
+    # ── Assistant ────────────────────────────────────────────────────────────
+    # The server is plain MCP over stdio, so the framing is client-neutral:
+    # "Connection details…" serves everything, and the Claude Desktop button is a
+    # convenience because its config is a JSON file we can merge into safely.
 
-        arow = QHBoxLayout()
-        self._details_btn = QPushButton("Connection details…")
+    def _build_assistant(self, lay: QVBoxLayout):
+        g = self._group(lay, "AI assistant")
+        g.addWidget(_line("M110 can act as an <b>MCP server</b>, so an AI assistant "
+                          "can read your Library and help you plan a night — but never "
+                          "change it."))
+        g.addWidget(_caption("Works with any MCP-compatible client. Claude Desktop can "
+                             "be set up for you; for anything else use Connection "
+                             "details."))
+        self._assistant_status = _caption("")
+        g.addWidget(self._assistant_status)
+
+        row = QHBoxLayout()
+        self._details_btn = QPushButton("Connection Details…")
         self._details_btn.setToolTip(
             "The command, environment and JSON any MCP client needs.")
         self._details_btn.clicked.connect(self._show_connection_details)
-        self._connect_btn = QPushButton("Set up Claude Desktop…")
+        self._connect_btn = QPushButton("Set Up Claude Desktop…")
         self._connect_btn.clicked.connect(self._connect_desktop)
         self._disconnect_btn = QPushButton("Disconnect")
         self._disconnect_btn.clicked.connect(self._disconnect_desktop)
-        arow.addWidget(self._details_btn)
-        arow.addWidget(self._connect_btn)
-        arow.addWidget(self._disconnect_btn)
-        arow.addStretch(1)
-        al2.addLayout(arow)
+        row.addWidget(self._details_btn)
+        row.addWidget(self._connect_btn)
+        row.addWidget(self._disconnect_btn)
+        row.addStretch(1)
+        g.addLayout(row)
 
         from m110.assistant.tools.saving import SETTING_DIRECT_SAVE
+        g = self._group(lay, "Saving plans")
         self._direct_save_cb = QCheckBox("Let the assistant save plans straight to Plans/")
-        self._direct_save_cb.setToolTip(
-            "Off (default): a plan the assistant saves waits for you to accept it in "
-            "M110.\nOn: it goes straight into your Plans folder.\n\nEither way the "
-            "assistant can only ADD files — it can never change or delete anything.")
         self._direct_save_cb.setChecked(
             bool(config.get_setting(SETTING_DIRECT_SAVE, False)))
         self._direct_save_cb.toggled.connect(
             lambda on: config.save_setting(SETTING_DIRECT_SAVE, bool(on)))
-        al2.addWidget(self._direct_save_cb)
-        lay.addWidget(abox)
+        g.addWidget(self._direct_save_cb)
+        g.addWidget(_caption("Off, a plan it saves waits for you to accept it here. "
+                             "Either way it can only add files, never change or "
+                             "delete anything."))
         self._refresh_assistant_status()
-
-        # Goals (catalogs / custom lists) are managed on the Goals page, not here.
-
-        # Settings here persist live (workflows + theme); only the data folder is
-        # applied on Close (it needs a restart), so a single Close button suffices
-        # — no "Save" (#62).
-        lay.addStretch(1)
-
-        btns = QHBoxLayout()
-        btns.setContentsMargins(s["lg"], s["sm"], s["lg"], s["lg"])
-        btns.addStretch(1)
-        close = QPushButton("Close")
-        close.setDefault(True)
-        close.clicked.connect(self._close)
-        btns.addWidget(close)
-        outer.addLayout(btns)
-
-    # ── AI assistant ─────────────────────────────────────────────────────────
 
     def _refresh_assistant_status(self):
         from m110.assistant import client_config as cc
         ok, why = cc.server_available()
-        path = cc.desktop_config_path()
         connected = cc.is_connected()
-
         if not ok:
             self._assistant_status.setText(why)
         elif connected:
             self._assistant_status.setText(
                 "Claude Desktop is set up. Quit and reopen it to pick up changes.")
         else:
-            # The line above already points at Connection details; don't repeat it.
             self._assistant_status.setText("Claude Desktop isn't set up yet.")
-
         self._details_btn.setEnabled(ok)
         self._connect_btn.setEnabled(ok)
         self._connect_btn.setText("Update Claude Desktop…" if connected
-                                  else "Set up Claude Desktop…")
+                                  else "Set Up Claude Desktop…")
         self._disconnect_btn.setEnabled(ok and connected)
 
     def _connect_desktop(self):
@@ -354,12 +532,13 @@ class PreferencesDialog(QDialog):
             return
 
         try:
-            path, backup = cc.write_desktop_config()
+            _path, backup_path = cc.write_desktop_config()
         except cc.ClientConfigError as exc:
             QMessageBox.warning(self, "Couldn't update Claude Desktop", str(exc))
             return
 
-        note = f"\n\nA backup of the previous config is at:\n{backup}" if backup else ""
+        note = (f"\n\nA backup of the previous config is at:\n{backup_path}"
+                if backup_path else "")
         QMessageBox.information(
             self, "Connected",
             f"M110 was added to Claude Desktop.\n\nQuit and reopen Claude Desktop, "
@@ -387,76 +566,24 @@ class PreferencesDialog(QDialog):
         from m110.ui.mcp_details_dialog import ConnectionDetailsDialog
         ConnectionDetailsDialog(self).exec()
 
-    def _browse(self):
-        d = QFileDialog.getExistingDirectory(self, "Choose data folder", self._edit.text())
-        if d:
-            self._edit.setText(d)
+    # ── Appearance ───────────────────────────────────────────────────────────
 
-    def _save_workflows(self, *_):
-        """Persist the processing-workflow selection immediately (read at ingest
-        time — no restart)."""
-        chosen = [wid for wid, cb in self._wf_checks.items()
-                  if cb.isEnabled() and cb.isChecked()]
-        # Written as an explicit map over every workflow, so one added later can
-        # tell "never asked" from "switched off" — see processing.enabled_workflow_ids.
-        processing.set_enabled_workflows(chosen)
-
-    @staticmethod
-    def _detect_tool(tool_id: str) -> str | None:
-        """Where auto-detection finds a tool, for the row's placeholder. A CLI
-        tool has its own search (Stackhammer: the script installed in Siril,
-        the usual install places, PATH)."""
-        if tool_id == stackhammer.TOOL_ID:
-            found = stackhammer.find_binary()
-            return found[0] if found else None
-        return launch.find_app(tool_id)
-
-    def _tool_override(self, tool_id: str) -> str:
-        paths = config.get_setting(launch.APP_PATHS_SETTING, {}) or {}
-        return str(paths.get(tool_id) or "")
-
-    def _browse_tool(self, tool_id: str):
-        # These are .app bundles on macOS (selectable as a file in the native
-        # dialog) and plain executables elsewhere.
-        import sys
-        label = launch.tool_label(tool_id)
-        cli = launch.is_cli(tool_id)
-        start = self._tool_edits[tool_id].text() or (
-            "/Applications" if sys.platform == "darwin" and not cli else "")
-        f, _ = QFileDialog.getOpenFileName(
-            self, f"Choose the {label} {'binary' if cli else 'application'}", start)
-        if f:
-            self._tool_edits[tool_id].setText(f)
-            self._save_app_paths()
-
-    def _save_app_paths(self, *_):
-        """Persist the external-app path overrides (read at launch time — no
-        restart). An empty field clears that tool's override → auto-detection."""
-        paths = dict(config.get_setting(launch.APP_PATHS_SETTING, {}) or {})
-        for tool_id, edit in self._tool_edits.items():
-            val = edit.text().strip()
-            if val:
-                paths[tool_id] = val
-            else:
-                paths.pop(tool_id, None)
-        config.save_setting(launch.APP_PATHS_SETTING, paths)
-
-    def _save_hints(self, *_):
-        """Persist the finished/intermediate filename hints (read at classify
-        time — no restart)."""
-        def _split(text):
-            return [t.strip() for t in text.split(",") if t.strip()]
-        hints.set_hints(_split(self._finished_edit.text()),
-                        _split(self._intermediate_edit.text()))
-
-    def _close(self):
-        """Apply a data-folder change (if any) on the way out, then close.
-        Workflows + theme were already persisted live."""
-        path = self._edit.text().strip()
-        if path and path != str(config.DATA_ROOT):
-            config.save_data_root(path)
-            config.ensure_data_root(path)   # create + seed now, ready on restart
-            QMessageBox.information(
-                self, "Restart needed",
-                f"Data folder set to:\n{path}\n\nRestart M110 to use it.")
-        self.accept()
+    def _build_appearance(self, lay: QVBoxLayout):
+        g = self._group(lay, "Theme")
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Appearance:"))
+        self._theme_combo = QComboBox()
+        for mode, label in (("system", "Follow System"), ("light", "Light"),
+                            ("dark", "Dark")):
+            self._theme_combo.addItem(label, mode)
+        cur = config.get_setting(theme.SETTING_KEY, "system")
+        idx = self._theme_combo.findData(cur)
+        self._theme_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        # Applied live (no restart); the initial setCurrentIndex is pre-connect.
+        self._theme_combo.currentIndexChanged.connect(
+            lambda *_: theme.set_mode(self._theme_combo.currentData()))
+        row.addWidget(self._theme_combo)
+        row.addStretch(1)
+        g.addLayout(row)
+        g.addWidget(_caption("Follow System switches with macOS, Windows or your "
+                             "desktop's light and dark setting."))

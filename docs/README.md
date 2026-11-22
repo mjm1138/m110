@@ -40,7 +40,7 @@ structure and a starter catalog there; it never writes anywhere else.
 **Your data is yours.** Everything M110 manages lives inside that one folder as plain
 files (FITS, JP/PNG/TIFF, Markdown, TOML). There's no database to corrupt and no
 lock-in — you can browse it in your file manager any time. Changing the data folder
-later (Library → Preferences) takes effect on restart.
+later (**Settings › General**) takes effect on restart.
 
 > 🔒 **M110 never touches your originals.** Ingest is always *preview-then-confirm*,
 > and it **copies** from your telescope rather than moving — your capture files stay
@@ -98,9 +98,9 @@ Everything that isn't your object collection lives here as **collapsible section
   check for captured / deep-stacked.
 - **Manage goals** — pick which catalogs you're working toward, or build a custom list.
 
-### Menus, preferences & updates
+### Menus, settings & updates
 
-- **File** — **Import…** (⌘I), **Publish…**, **Back Up…** / **Restore…** (to a local
+- **File** — **Import…** (⌘I), **Publish…**, **Back Up Now** / **Restore…** (to a local
   drive, the cloud, or both — see **[Backing up your library](backup.md)**), and
   **Settings…** (⌘, — on macOS it's in the M110 menu).
 - **Edit** — **Undo / Redo** (Remove from Library and pin changes can be undone),
@@ -121,12 +121,14 @@ Everything that isn't your object collection lives here as **collapsible section
   bug report). **Check for Updates…** and **About M110** are in the M110 menu on macOS
   and in Help elsewhere.
 - **Appearance / theme.** M110 follows your system light/dark appearance automatically;
-  Preferences → Appearance lets you force **Light** or **Dark** instead. The choice
+  Settings › Appearance lets you force **Light** or **Dark** instead. The choice
   applies live and is remembered.
 - **Updates.** Once a day at most, M110 checks GitHub for a newer release and shows a
   quiet, dismissible banner if one is available (**Download · Skip this version · ✕**). No
-  data is sent; turn the check off in Preferences → Updates.
-- **Other preferences** worth knowing: your **data folder**, the processing **workflows**
+  data is sent; turn the check off in Settings › General.
+- **Settings** (⌘,) is one window with a pane for each area — **General, Processing,
+  Tools, Backup, Assistant, Appearance** — and every change applies at once (there's
+  no Save). Worth knowing: your **data folder**, the processing **workflows**
   to prepare (and your Siril path), the **finished-image hints** that decide what counts as
   a finished render vs. an intermediate, whether to import per-sub JPG previews, and the
   **AI assistant** connection (see **[Using an AI assistant](assistant.md)**).

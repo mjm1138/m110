@@ -195,6 +195,27 @@ QToolButton#headerButton {{
     padding: {SPACE['xs']}px;
 }}
 QToolButton#headerButton:hover {{ background-color: {t.control}; }}
+
+/* ── the Settings window's pane bar (m110/ui/preferences.py) ──
+   A macOS Settings toolbar: icon over label, the selected pane a lifted fill (as a
+   toolbar segment, not the accent — the accent is kept for selected content). */
+QFrame#settingsBar {{
+    background-color: {t.chrome};
+    border-bottom: 1px solid {t.border};
+}}
+QToolButton#settingsTab {{
+    background-color: transparent;
+    border: none;
+    border-radius: {r['md']}px;
+    padding: {SPACE['xs']}px {SPACE['sm']}px;
+    font-size: {FONT_SIZE['caption']}px;
+    color: {t.text_secondary};
+}}
+QToolButton#settingsTab:hover:!checked {{ background-color: {t.control}; }}
+QToolButton#settingsTab:checked {{
+    background-color: {t.control_hover};
+    color: {t.text_primary};
+}}
 /* Icon segments (view switchers) are square-ish, like a toolbar NSSegmentedControl. */
 QFrame#segControl[iconSegments="true"] QToolButton#segButton {{
     padding: 3px {SPACE['sm']}px;
@@ -494,6 +515,11 @@ QGroupBox::title {{
     left: {SPACE['sm']}px;
     padding: 0 {SPACE['xs']}px;
     color: {t.text_secondary};
+}}
+/* Text inside the card sits on the card: the base QWidget rule would paint each
+   label and check box a window-coloured band across it. */
+QGroupBox QLabel, QGroupBox QCheckBox, QGroupBox QRadioButton {{
+    background-color: transparent;
 }}
 
 /* ── menus ── */

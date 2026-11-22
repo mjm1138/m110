@@ -357,7 +357,20 @@ can't validate macOS painting and renders differently per machine).
   goal; "11 / 110 captured · 1 deep · 10%", legend, a goal picker when >1 active,
   saved as `overview_board_goal`); Goals = bar rows; the integration table's Status
   is a mini bar. An empty store shows the board too.
-- Settings window, with Backup folded in.
+- ✅ **E · Settings window** (`feature/ui-p8-settings`). `preferences.SettingsWindow`:
+  a non-modal, single-instance top-level (`MainWindow._show_settings(pane)`), a pane
+  bar of icon-over-label buttons (General · Processing · Tools · Backup · Assistant ·
+  Appearance; Lucide, `#settingsBar`/`#settingsTab` QSS), title = pane, fixed 600 pt
+  wide and fitted to each pane's height (capped at 85% of the screen, then it
+  scrolls), last pane remembered (`settings_pane`). Instant apply everywhere, no
+  OK/Save/Close (⌘W = Close Window, now an application shortcut). Prose → one line +
+  caption per group. Data folder: read-only path + *Change…*, saved at once with an
+  inline restart note. **Backup folded in:** `backup_dialog` → `backup_pane.BackupPane`
+  (summary without links · Local drive | Cloud segment · Restore… / Back Up Now);
+  every slot field persists on commit (`_SlotPanel._commit`), a destination only
+  when valid. File › **Back Up Now** queues every configured slot through the
+  background backup queue (none configured → Settings › Backup); File › Back Up… is
+  gone. "Preferences → …" copy → "Settings › …" app-wide.
 - ✅ **D · Import empty state** (`feature/ui-p8-import-empty`). `ImportPage` is a
   `QStackedWidget`: a start page (glyph, serif "Import captures", one line, **one
   primary action** — *Import from Seestar — <volume>* when mounted, else *Choose

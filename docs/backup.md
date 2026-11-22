@@ -3,16 +3,24 @@
 ← [Back to the guide](README.md)
 
 M110 has a built-in backup system that makes **dated snapshots** of your library.
-Open it from **File › Back Up…**.
+Set it up in **Settings › Backup** (**Settings…**, ⌘,), and run it any time with
+**File › Back Up Now**.
 
-It has two backups you can set up side by side, each on its own tab:
+It has two backups you can set up side by side; the **Local drive | Cloud** switch
+shows one at a time:
 
 - **Local drive** — an external or network drive separate from your working disk.
 - **Cloud** — offsite, in Amazon S3, Backblaze B2, Cloudflare R2, Wasabi, or any
   S3-compatible storage.
 
-The top of the window shows both at a glance: where each one goes, when it last ran,
-and whether it runs automatically. You can use either one, or — best — both.
+The top of the pane shows both at a glance: where each one goes, when it last ran,
+and whether it runs automatically. You can use either one, or — best — both. There's
+no Save button: each setting is kept the moment you change it (a folder or address
+once you press Return or move to the next field).
+
+**File › Back Up Now** backs up to every destination you've set up, one after the
+other, in the background — the status bar says how it went. **Back Up Now** in the
+pane backs up just the one on screen, with a progress window you can cancel.
 
 Whatever the details below, two things are always true:
 
@@ -100,7 +108,7 @@ that can't share files, where mirrored isn't a real option.
 
 ## Backing up to cloud storage
 
-Open the **Cloud** tab (or click **Set up cloud backup…** at the top of the window)
+Switch to **Cloud** in Settings › Backup
 and enter a bucket address as the destination:
 
 ```
@@ -141,23 +149,23 @@ Your light frames are usually around **99% of your library's size**. Backing all
 them up to metered storage can take days and cost real money, and for many people
 that's not what "offsite" needs to mean.
 
-Each tab has its own **Back up:** setting, with two choices:
+Each one has its own **Back up:** setting, with two choices:
 
 - **Everything** — the whole library, light frames included. The right choice for a
-  drive or network share, and the default on the Local drive tab.
+  drive or network share, and the default for Local drive.
 - **Essentials** — everything *except* your raw light frames and archived
   processing runs. Your journals, finished images, stacks, plans, presets and
   settings all still go. This is typically a few percent of the size, and it's the
-  default on the Cloud tab.
+  default for Cloud.
 
 That makes the recommended setup the default one: **Everything to a local drive,
 Essentials to the cloud**. The frames stay where there's room for them, and the work
 you can't recapture is offsite. To set it up:
 
-1. On the **Local drive** tab, choose your drive and tick **Back up automatically**.
-2. On the **Cloud** tab, enter your bucket and keys, press **Test connection**, and
+1. Under **Local drive**, choose your drive and tick **Back up automatically**.
+2. Under **Cloud**, enter your bucket and keys, press **Test connection**, and
    tick **Back up automatically** there too.
-3. Press **Save**. Each backup now runs on its own schedule; when both are due,
+3. That's it — each backup now runs on its own schedule; when both are due,
    M110 does the local one first, then the cloud one.
 
 **Changing to Essentials doesn't delete anything.** Backups you already made keep
@@ -193,7 +201,7 @@ Practical consequences:
 
 ## Automation & retention
 
-Each tab has its own settings, so the local drive and the cloud can run on
+Each has its own settings, so the local drive and the cloud can run on
 different schedules and keep different numbers of backups.
 
 - **Automatic backups** run on a schedule (default: at most one every 12 hours), so a

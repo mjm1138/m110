@@ -1,6 +1,6 @@
-"""Offscreen wiring test for the Preferences dialog.
+"""Offscreen wiring test for the Settings window.
 
-The dialog is the write-path for several settings whose *engine* halves are
+The window is the write-path for several settings whose *engine* halves are
 tested but whose *wiring* was not (a control that silently stopped persisting
 would be invisible to the suite). Each test toggles a control and asserts the
 setting landed. Temp store + settings via `tests/_helpers.seed_root`; the
@@ -16,8 +16,8 @@ from tests._helpers import seed_root  # noqa: E402
 
 
 def _prefs():
-    from m110.ui.preferences import PreferencesDialog
-    return PreferencesDialog()
+    from m110.ui.preferences import SettingsWindow
+    return SettingsWindow()
 
 
 def test_workflow_toggle_persists(tmp_path, monkeypatch, qapp):
@@ -138,7 +138,7 @@ def test_assistant_section_reports_not_connected(tmp_path, monkeypatch, qapp):
     d = _prefs()
     try:
         assert "isn't set up yet" in d._assistant_status.text()
-        assert d._connect_btn.text().startswith("Set up")
+        assert d._connect_btn.text().startswith("Set Up")
         assert not d._disconnect_btn.isEnabled()
     finally:
         d.deleteLater()
@@ -250,44 +250,46 @@ def test_direct_save_toggle_persists(tmp_path, monkeypatch, qapp):
 
 # ── the assistant section is client-neutral ──────────────────────────────────
 
-def test_no_explanatory_text_is_cut_off(tmp_path, monkeypatch, qapp):
-    """Preferences grew a group at a time until it outgrew a laptop screen.
-    Two failure modes, both of which showed up as sliced-off text rather than
-    an obviously-too-small window:
+@pytest.mark.parametrize("pane", ["general", "processing", "tools", "backup",
+                                  "assistant", "appearance"])
+def test_no_explanatory_text_is_cut_off(pane, tmp_path, monkeypatch, qapp):
+    """The window fits each pane's height, so nothing should be squeezed. Two
+    failure modes, both of which showed up as sliced-off text rather than an
+    obviously-too-small window:
 
     * vertical — Qt squeezes word-wrapped labels below their heightForWidth;
     * horizontal — an *unwrapped* label's single-line width becomes the
-      dialog's minimum width, so everything else is clipped at the right edge.
-
-    The scroll area fixes the first; wrapping every explanatory label fixes the
-    second. Both are asserted, because the second is invisible to a
-    heightForWidth check.
+      window's minimum width, so everything else is clipped at the right edge.
     """
-    from PySide6.QtWidgets import QLabel, QScrollArea
+    from PySide6.QtWidgets import QLabel
     seed_root(tmp_path, monkeypatch)
     d = _prefs()
     try:
+        d.show_pane(pane)
         d.show()
         for _ in range(4):
             qapp.processEvents()
-
-        clipped = [lbl.text() for lbl in d.findChildren(QLabel)
-                   if lbl.text() and lbl.wordWrap() and lbl.width() > 0
+        d._fit()
+        qapp.processEvents()
+        page = d._panes[pane]
+        labels = [lbl for lbl in page.findChildren(QLabel)
+                  if lbl.isVisibleTo(d) and lbl.text()]
+        assert labels
+        clipped = [lbl.text()[:60] for lbl in labels if lbl.wordWrap()
                    and lbl.heightForWidth(lbl.width()) > lbl.height()]
         assert not clipped, f"text cut off vertically: {clipped}"
 
-        scroll = d.findChildren(QScrollArea)[0]
-        need = scroll.widget().minimumSizeHint().width()
-        assert need <= scroll.viewport().width(), (
-            f"content needs {need}px in a {scroll.viewport().width()}px viewport — "
+        need = d._body.minimumSizeHint().width()
+        assert need <= d._scroll.viewport().width(), (
+            f"content needs {need}px in a {d._scroll.viewport().width()}px viewport — "
             "something isn't wrapping")
-
-        wide = [lbl.text()[:60] for lbl in d.findChildren(QLabel)
-                if lbl.text() and not lbl.wordWrap()
-                and lbl.sizeHint().width() > scroll.viewport().width()]
-        assert not wide, f"unwrapped labels force the dialog wide: {wide}"
+        # The pane fits: nothing scrolls unless the screen cap stopped the window.
+        if d.height() >= d.needed_height():
+            assert d._scroll.verticalScrollBar().maximum() == 0
     finally:
+        d.close()
         d.deleteLater()
+        qapp.processEvents()
 
 
 def test_assistant_section_does_not_present_itself_as_claude_only(

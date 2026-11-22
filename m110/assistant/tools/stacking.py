@@ -348,7 +348,7 @@ def siril_block() -> dict:
                  if siril else
                  "Siril was not found on this machine. Stacking needs it — "
                  "https://siril.org — or its location can be set in M110 → "
-                 "Preferences → Processing tools."),
+                 "Settings › Tools."),
     }
 
 

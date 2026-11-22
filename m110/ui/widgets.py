@@ -410,7 +410,7 @@ def stack_in_stackingwizard(parent, slug: str) -> None:
         QMessageBox.information(
             parent, "Stack in StackingWizard",
             "This object has no finishing folder with frames in it yet. Tick "
-            "AstroWizard under Preferences → Processing workflows you use, and "
+            "AstroWizard in Settings › Processing, and "
             "M110 will set one up on the next refresh.")
         return
     reveal_in_manager(base)
@@ -435,8 +435,8 @@ def launch_siril(parent, working_dir: Path) -> None:
         box.setText(str(exc))
         box.setInformativeText(
             "Opening the working folder instead — set it as Siril's working "
-            "directory. You can set Siril's location in Preferences → "
-            "Processing tools.")
+            "directory. You can set Siril's location in Settings › "
+            "Tools.")
         reveal_btn = box.addButton("Reveal folder", QMessageBox.AcceptRole)
         box.addButton("OK", QMessageBox.RejectRole)
         box.exec()

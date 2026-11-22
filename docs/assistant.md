@@ -28,11 +28,11 @@ on your machine and reads your files directly.
 
 ## Connecting an assistant
 
-Open **Preferences → AI assistant** (**Settings…**, ⌘,).
+Open **Settings › Assistant** (**Settings…**, ⌘,).
 
 ### Claude Desktop — one click
 
-Click **Set up Claude Desktop…**. M110 adds itself to Claude Desktop's config file
+Click **Set Up Claude Desktop…**. M110 adds itself to Claude Desktop's config file
 and tells you to **quit and reopen Claude Desktop** — then just ask it something
 like *"what should I shoot tonight?"*. That's the whole setup. The button becomes
 **Update Claude Desktop…** afterwards, and **Disconnect** removes the entry again,
@@ -43,7 +43,7 @@ file M110 can safely merge into — not because it's the only assistant that wor
 
 ### Any other MCP client
 
-Click **Connection details…**. M110 is a plain MCP server over stdio, so the same
+Click **Connection Details…**. M110 is a plain MCP server over stdio, so the same
 connection is offered in the three shapes clients ask for, each with a **Copy**
 button:
 
@@ -214,7 +214,7 @@ you imported a session, or retuned the weights yourself — you see the current
 consequence, not a stale one.
 
 If you'd rather skip the queue for plans, tick **Let the assistant save plans
-straight to `Plans/`** in Preferences → AI assistant. That only affects saved plans,
+straight to `Plans/`** in Settings › Assistant. That only affects saved plans,
 and only ever creates new files.
 
 ---
@@ -222,7 +222,7 @@ and only ever creates new files.
 ## Troubleshooting
 
 **"The assistant can't see my library."** Almost always `M110_DATA_ROOT` pointing at
-the wrong folder — check it against the path shown in **Connection details…**. The
+the wrong folder — check it against the path shown in **Connection Details…**. The
 server reports this clearly rather than appearing broken.
 
 **"It says there's no capture data."** The assistant reads M110's *cached* rollups,
@@ -235,7 +235,7 @@ rather than silently recomputing, and a well-behaved assistant will tell you. Pr
 **Recompute** on the Planning page.
 
 **"It's not connecting at all."** Restart the client after setting it up — most read
-their config only at startup. If it still fails, Preferences → AI assistant shows a
+their config only at startup. If it still fails, Settings › Assistant shows a
 status line explaining what's wrong.
 
 ---

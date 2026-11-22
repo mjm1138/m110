@@ -137,7 +137,7 @@ def _from_script_config() -> str | None:
 
 # How `find_binary` found it, in words a user reads.
 SOURCES = {
-    "preferences": "set in M110 → Preferences → Processing tools",
+    "preferences": "set in M110 › Settings › Tools",
     "siril-script": "named by the Stackhammer script installed in Siril",
     "script-config": "last located from the Stackhammer script's window",
     "standard": "found in a standard install location",
@@ -174,11 +174,11 @@ def _on_path() -> str | None:
 
 
 NOT_FOUND = (
-    "Stackhammer was not found. M110 looked at Preferences → Processing tools, "
+    "Stackhammer was not found. M110 looked at Settings › Tools, "
     "the Stackhammer script installed in Siril, /opt/homebrew/bin, /usr/local/bin, "
     "~/.local/bin and PATH. Stackhammer is a separate program for Macs with Apple "
     "silicon (https://github.com/mjm1138/stackhammer); once it is built or "
-    "installed, set its location in M110 → Preferences → Processing tools.")
+    "installed, set its location in M110 › Settings › Tools.")
 
 
 def require_binary() -> tuple[str, str]:

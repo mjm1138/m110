@@ -263,7 +263,7 @@ def test_every_worker_dialog_drains_instead_of_bare_deletelater():
 
     ui = Path(__file__).resolve().parents[1] / "m110" / "ui"
     offenders = []
-    for name in ("backup_dialog", "export_dialog", "restore_dialog", "publish_dialog"):
+    for name in ("backup_pane", "export_dialog", "restore_dialog", "publish_dialog"):
         src = (ui / f"{name}.py").read_text(encoding="utf-8")
         for m in re.finditer(r"def (_finish_worker|_stop_worker|_finish_probe|_stop_probe)"
                              r"\(self[^)]*\):(.*?)(?=\n    def |\n\nclass |\Z)",
