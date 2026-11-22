@@ -31,7 +31,8 @@ def _body_markdown(body: str) -> str | None:
     """Rendered journal markdown if there's content beyond headings/whitespace,
     else None (a fresh stub has only its `# id — name` heading + a comment that
     `journal_to_markdown` strips)."""
-    md = objects.journal_to_markdown(body or "")
+    # The card's own title names the object; drop the journal's `# id — name`.
+    md = objects.journal_to_markdown(objects.strip_title_heading(body or ""))
     leftover = _HEADING_LINE_RE.sub("", md)   # drop heading lines entirely
     return md if leftover.strip() else None
 

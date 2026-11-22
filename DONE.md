@@ -633,6 +633,63 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## UI 1.0 redesign — Phase 8 · B, grid tiles + inspector *(2026-11-21, `feature/ui-p8-grid-inspector`)*
+
+Second of six Phase 8 PRs (critique §2.4).
+
+- **Overlay tiles (`image_grid.TileDelegate`).** The delegate paints everything
+  itself; it no longer calls `CE_ItemViewItem`, so the QSS `::item:selected` border
+  no longer applies to grid cells:
+  - the image, clipped to a rounded square and center-cropped
+  - a scrim from transparent to `on_well().well`, alpha 215, over the bottom 45%
+  - the title, in serif `section` (≥120 px) or `body`
+  - the status dot and caption-size label
+  - hover: white at alpha 14
+  - selection: a 2 px accent outline
+
+  `caption_layout` is separate from `paint` so tests can check the priority: the
+  dot always stays, the status label is dropped first, and only then does the
+  title elide. The subtitle went to `ToolTipRole` along with the title and status.
+  `TileModel._on_thumb` keeps a sharper pixmap if a smaller decode lands after it.
+  The video badge moved to the top-left, clear of the caption.
+- **Justified grid (`JustifiedGridView`).**
+  - `justify(width, target, gap)` gives `cols = width // (target + gap)` and
+    `cell = width // cols`. Every cell carries its own gap, so `(width + gap) //
+    (target + gap)` was off by one and let cells shrink below the target.
+  - **Gotcha:** `QListViewPrivate::prepareItemsLayout` wraps an icon view at
+    `maximumViewportSize − PM_ScrollBarExtent` whenever the vertical bar is
+    as-needed. That holds whether the bar is shown or not, and also for macOS
+    overlay bars. Counting columns against `viewport().width()` therefore always
+    wrapped the last column: same ragged gap, one column fewer. `layout_width()`
+    uses Qt's bound minus 1, because Qt wraps on `>` its last pixel. A left viewport
+    margin equal to the reserved strip makes the two gutters even.
+  - Thumbnails decode at `tile_side × devicePixelRatio`. `tileSideChanged` is
+    debounced by 200 ms and fires only when the tile outgrows what was decoded, so
+    the pages re-request then.
+- **Inspector (`detail.py`).**
+  - `_content` holds two layouts: `_hero_slot` with no margins, then `_lay`, the
+    padded body. Tests that walk `_lay` still work, and the hero runs edge to edge.
+  - `ScalableImage(fit="cover")` scales to the full width at device pixel ratio and
+    center-crops to `min(0.75 × width, max_height)`.
+  - `facts_line`, `fmt_duration` and `details_rows` are module-level, so they can be
+    tested. `details_rows` folds the old `_add_metadata_section` paragraph in
+    after the capture facts.
+  - The Integration card uses `progress` / `progress_model` /
+    `by_model[model].goal_min` from totals. The bar's `status` property selects a
+    QSS chunk colour, not the accent (§2.5).
+  - Process in Siril is `setDefault(True)`: outside a dialog this only gets the
+    `QPushButton:default` accent style.
+  - The table that was titled "Processing" is now "Processing status", so it
+    doesn't share a name with the actions section.
+  - `_NotesView` sizes itself to `document().size()` and has no scrollbars.
+- **`objects.strip_title_heading`** drops only a level-1 heading that is the first
+  content line, plus the blank lines after it. It is used by the inspector and by
+  the Journal feed's `_body_markdown`. The site publisher is unchanged for now. Its
+  object page has an `<h1>` of its own (`object.html`), so the published notes
+  still repeat the name. That is a follow-up: a change to published output.
+
+---
+
 ## UI 1.0 redesign — Phase 8 · A, tables + carry-overs *(2026-11-21, `feature/ui-p8-tables`)*
 
 First of six Phase 8 PRs (UI_ROADMAP → Phase 8).

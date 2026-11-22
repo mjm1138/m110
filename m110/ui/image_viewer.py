@@ -38,6 +38,11 @@ class ScalableImage(QLabel):
     `fit="both"` (the viewer): scales into the available box in *both* dimensions
     and claims no minimum size — so the window can be resized smaller in either
     direction (and never forces the dialog larger than the screen).
+    `fit="cover"` (the inspector hero, UI 1.0): fills the full width, edge to edge
+    on the well, and crops the height to `aspect` × width (at most `max_height`),
+    centred — the picture leads the pane instead of sitting between wide gutters.
+    The whole image is a double-click away in the viewer. Drawn at the screen's
+    pixel density, so it stays sharp on Retina.
 
     Emits `doubleClicked` so a host can treat the image as openable. The signal
     only reports the gesture — **connect it through `widgets.defer`**, because it
@@ -47,12 +52,13 @@ class ScalableImage(QLabel):
     doubleClicked = Signal()
 
     def __init__(self, pixmap: QPixmap, max_height: int | None = None,
-                 fit: str = "width", parent=None):
+                 fit: str = "width", parent=None, aspect: float = 0.75):
         super().__init__(parent)
         self.setProperty("well", True)           # images sit on the dark well
         self._src = pixmap
         self._max_h = max_height
         self._fit = fit
+        self._aspect = aspect
         self.setAlignment(Qt.AlignCenter)
         if fit == "both":
             self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -77,6 +83,10 @@ class ScalableImage(QLabel):
                                       Qt.SmoothTransformation)
             self.setPixmap(scaled)
             return
+        if self._fit == "cover":
+            self.setPixmap(self.cover_pixmap(self.width()))
+            self.setMinimumHeight(self.cover_height(self.width()))
+            return
         w = min(max(1, self.width()), self._src.width())
         scaled = self._src.scaledToWidth(w, Qt.SmoothTransformation)
         if self._max_h and scaled.height() > self._max_h:
@@ -84,6 +94,27 @@ class ScalableImage(QLabel):
                 min(self._max_h, self._src.height()), Qt.SmoothTransformation)
         self.setPixmap(scaled)
         self.setMinimumHeight(scaled.height())
+
+    def cover_height(self, width: int) -> int:
+        """The cover hero's height at `width`: the image's own height at that
+        width, cropped to `aspect` × width and to `max_height`."""
+        width = max(1, int(width))
+        sw, sh = max(1, self._src.width()), max(1, self._src.height())
+        natural = round(width * sh / sw)
+        cap = round(width * self._aspect)
+        if self._max_h:
+            cap = min(cap, self._max_h)
+        return max(1, min(natural, cap))
+
+    def cover_pixmap(self, width: int) -> QPixmap:
+        width = max(1, int(width))
+        h = self.cover_height(width)
+        dpr = max(1.0, self.devicePixelRatioF())
+        pw, ph = round(width * dpr), round(h * dpr)
+        scaled = self._src.scaledToWidth(pw, Qt.SmoothTransformation)
+        out = scaled.copy(0, max(0, (scaled.height() - ph) // 2), pw, min(ph, scaled.height()))
+        out.setDevicePixelRatio(dpr)
+        return out
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

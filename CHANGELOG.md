@@ -27,6 +27,26 @@ changes a **user** would notice, per release.
 - **The window buttons sit level with the title bar on macOS.** The close,
   minimise and zoom buttons are centred on the header bar instead of near the top
   edge.
+- **Picture-first grid tiles.** Deep Sky and Media tiles are now the image itself,
+  with the name over a soft shadow at the bottom and the status as a small coloured
+  dot and label ("Deep", "62%", "Initial"). The integration time and session count
+  moved to the tile's tooltip. Names that are too long lose the status label
+  before they get cut short. Media filenames are shortened in the middle, so the
+  extension stays visible.
+- **The grid fills the width.** Rows of tiles now stretch to the full width of the
+  window, with no ragged gap on the right. The Tile size slider sets roughly how
+  big the tiles are, and they adjust as you resize the window or open the detail
+  pane. Thumbnails are sharper on Retina screens.
+- **A redesigned object pane.** The picture now runs the full width of the pane at
+  the top, followed by the name, an **Integration** card (total time, a bar
+  towards your goal and the goal itself), a **Details** list (sessions, frames,
+  filters, last capture, telescope, then the catalogue facts), the
+  **Processing** buttons with *Process in Siril* highlighted, and your notes. The
+  notes no longer repeat the object's name as a big heading (the file keeps it,
+  and Edit shows it), and they take only as much room as they need. The close
+  button is now an ✕ icon.
+- **The Journal feed doesn't repeat each object's name** as a heading inside its
+  notes.
 
 ### Fixed
 - **Old Overview tables no longer show through a dialog.** When a sync finished

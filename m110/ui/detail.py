@@ -1,9 +1,12 @@
-"""Shared per-object detail pane (used by the Catalog page; opened from anywhere).
+"""Shared per-object detail pane — the inspector (used by the Catalog page; opened
+from anywhere).
 
-Header + status + hero (scales to the pane) + **Notes** (view/edit the raw
-`journal.md` — the object's entry in the Journal) + gallery (double-click → image
-viewer) + an Import-finished-work entry when a processing sandbox has output to
-bring back.
+In the 1.0 order (mock A): the hero, full width and edge to edge on the well · the
+serif title and its facts · an **Integration** card (total, progress to the goal,
+status) · **Details** as an aligned key/value grid · **Processing** actions ·
+**Notes** (the object's `journal.md`, shown without its own `# title` line; Edit
+shows the raw file) · the gallery (double-click → image viewer) · integration
+goals per telescope · the processing-status and sessions tables.
 """
 from __future__ import annotations
 
@@ -14,7 +17,8 @@ from PySide6.QtGui import QPixmap, QIcon, QImageReader, QDesktopServices
 from PySide6.QtWidgets import (
     QLabel, QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QListWidget,
     QListWidgetItem, QScrollArea, QPlainTextEdit, QPushButton, QTableWidgetItem,
-    QToolButton, QMenu, QMessageBox, QDialog,
+    QToolButton, QMenu, QMessageBox, QDialog, QFrame, QGridLayout, QProgressBar,
+    QSizePolicy,
 )
 
 from m110 import (build_images, config, derived, devices, integration_goals, objects,
@@ -23,6 +27,8 @@ from m110.build_derived import session_device
 from m110.ui import theme
 from m110.ui.handoff_dialog import can_hand_off
 from m110.ui.image_viewer import ScalableImage, ImageViewer
+from m110.ui.theme import icons
+from m110.ui.theme.fonts import tabular
 from m110.ui.widgets import (
     status_label, targets_for_slug, make_table, make_numeric, keep_identity_column,
     fit_table_height,
@@ -35,18 +41,6 @@ from m110.ui.widgets import (
 _GALLERY_TILE = 120   # px — square icon size for the object-page contact sheet
 
 
-def _status_pill(status, progress=None) -> QLabel:
-    """A small tinted rounded status chip (matches the Library table pill), colored
-    from the active theme. Built per render, so it re-themes on reload."""
-    lbl = QLabel(status_label(status, True, progress))
-    lbl.setToolTip(STATUS_TOOLTIP.get(status, ""))
-    c = theme.status_color(status)
-    lbl.setStyleSheet(
-        f"color:{c.name()}; "
-        f"background-color: rgba({c.red()},{c.green()},{c.blue()},0.16); "
-        f"border-radius: 9px; padding: 1px 9px;")
-    return lbl
-
 
 def _section_label(text: str) -> QLabel:
     lbl = section_label(text)
@@ -57,6 +51,122 @@ def _section_label(text: str) -> QLabel:
 def _fmt_hm(minutes: float) -> str:
     m = int(round(minutes or 0))
     return f"{m // 60}:{m % 60:02d}"
+
+
+def fmt_duration(minutes: float) -> str:
+    """Integration in words for the inspector card: "29 h 57 m", "45 m", "20 h"."""
+    m = int(round(minutes or 0))
+    h, m = divmod(m, 60)
+    if not h:
+        return f"{m} m"
+    return f"{h} h" if not m else f"{h} h {m:02d} m"
+
+
+def facts_line(e: dict) -> str:
+    """The line under the title: "Galaxy · mag 6.9 · 27′×14′ · Feb–Apr"."""
+    kind = str(e.get("type") or "").replace("_", " ").strip()
+    bits = [kind[:1].upper() + kind[1:]] if kind else []
+    if e.get("magnitude") is not None:
+        bits.append(f"mag {e['magnitude']}")
+    if e.get("size"):
+        bits.append(str(e["size"]))
+    if e.get("season"):
+        bits.append(str(e["season"]))
+    return " · ".join(bits)
+
+
+def details_rows(slug: str, e: dict, t: dict | None) -> list[tuple[str, str]]:
+    """The inspector's DETAILS grid, in order: what was captured (sessions,
+    frames, filters, last capture, telescope) and then what the object is
+    (catalogs, type, magnitude, size, season, coordinates, …). One list, so the
+    old "Object details" paragraph and the status line's numbers live in one place."""
+    from m110 import catalog
+    t = t or {}
+    rows: list[tuple[str, str]] = []
+    if t:
+        rows.append(("Sessions", str(t.get("session_count", 0))))
+        rows.append(("Frames", f"{int(t.get('frames', 0) or 0):,}"))
+        if t.get("filters"):
+            rows.append(("Filters", " · ".join(t["filters"])))
+        if t.get("last_capture"):
+            rows.append(("Last capture", str(t["last_capture"])))
+        devs = sorted(t.get("by_device") or {})
+        if devs:
+            reg = devices.load_registry()
+            rows.append(("Telescope" if len(devs) == 1 else "Telescopes",
+                         ", ".join(devices.label(d, reg) for d in devs)))
+    cats = catalog.catalogs_for_slug(slug)
+    if cats:
+        rows.append(("Catalogs", ", ".join(f"{n} ({d})" for n, d in cats)))
+    if e.get("type"):
+        rows.append(("Type", str(e["type"]).replace("_", " ")))
+    if e.get("magnitude") is not None:
+        rows.append(("Magnitude", str(e["magnitude"])))
+    if e.get("size"):
+        rows.append(("Size", str(e["size"])))
+    if e.get("season"):
+        rows.append((f"Season (at {_SEASON_LATITUDE})", str(e["season"])))
+    # Coordinates: prefer the Library entry, else the bundled reference (so a
+    # migrated store without per-entry coords still shows them). Both decimal
+    # degrees and sexagesimal (HMS/DMS) — the latter for mounts that want it.
+    ra, dec = e.get("ra_deg"), e.get("dec_deg")
+    if ra is None or dec is None:
+        rd = catalog.load_coords().get(slug)
+        if rd:
+            ra, dec = rd
+    if ra is not None and dec is not None:
+        rows.append(("RA", f"{_ra_hms(ra)}  ({float(ra):.4f}°)"))
+        rows.append(("Dec", f"{_dec_dms(dec)}  ({float(dec):+.4f}°)"))
+    if e.get("filter"):
+        rows.append(("Filter rule", str(e["filter"])))
+    targets = targets_for_slug(slug)
+    if targets:
+        rows.append(("Capture targets", ", ".join(sorted(targets))))
+    # A framing whose frames don't stack with the object's main capture (a
+    # mosaic) is tracked apart, so its hours are missing from the total above —
+    # say where they went rather than letting them vanish.
+    apart = [(f, d) for f, d in (t.get("framings") or {}).items() if not d.get("counted")]
+    for folder, d in sorted(apart):
+        rows.append((f"Tracked separately · {folder}",
+                     f"{_fmt_hm(d.get('integration_min', 0.0))} · "
+                     f"{d.get('frames', 0)} frames · "
+                     f"{d.get('session_count', 0)} sessions "
+                     f"(not stackable with the above)"))
+    if e.get("notes"):
+        rows.append(("Remarks", str(e["notes"])))
+    rows.append(("Slug", slug))
+    return rows
+
+
+class _NotesView(QTextBrowser):
+    """The rendered notes, as tall as their text: the pane scrolls, so a fixed
+    220 px box only left a well of empty space under a two-line note (or a
+    second scrollbar under a long one)."""
+
+    def __init__(self, markdown: str):
+        super().__init__()
+        self.setProperty("type", "notes")              # the notebook voice: serif
+        self.setFont(serif_font(theme.tokens.FONT_SIZE["section"]))
+        self.setOpenExternalLinks(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.document().documentLayout().documentSizeChanged.connect(self._fit)
+        self.setMarkdown(markdown)
+
+    def _fit(self, *_):
+        doc_h = self.document().size().height()
+        m = self.contentsMargins()
+        self.setFixedHeight(max(40, int(doc_h) + m.top() + m.bottom() + 4))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.document().setTextWidth(self.viewport().width())
+        self._fit()
+
+
+def _notes_view(markdown: str) -> QTextBrowser:
+    return _NotesView(markdown)
 
 
 def _gallery_meta(slug: str, im: dict) -> dict[str, str]:
@@ -142,11 +252,20 @@ class DetailPane(QScrollArea):
         super().__init__()
         self.setWidgetResizable(True)
         self._content = QWidget()
-        self._lay = QVBoxLayout(self._content)
-        self._lay.setAlignment(Qt.AlignTop)
         s = theme.tokens.SPACE
+        # Two stacked layouts: the hero's slot runs edge to edge (no margins), the
+        # body below it is padded. Everything but the hero goes in `_lay`.
+        outer = QVBoxLayout(self._content)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        self._hero_slot = QVBoxLayout()
+        self._hero_slot.setContentsMargins(0, 0, 0, 0)
+        outer.addLayout(self._hero_slot)
+        self._lay = QVBoxLayout()
+        self._lay.setAlignment(Qt.AlignTop)
         self._lay.setContentsMargins(s["md"], s["md"], s["md"], s["md"])
         self._lay.setSpacing(s["sm"])
+        outer.addLayout(self._lay, 1)
         self.setWidget(self._content)
         self._current = None        # (slug, e, t) of the shown object
         self._goal_models: list[str] = []
@@ -226,6 +345,8 @@ class DetailPane(QScrollArea):
     def _clear(self):
         self._gallery = None
         self._galleries = []
+        self._hero_widget = None
+        self._clear_layout(self._hero_slot)
         self._clear_layout(self._lay)
 
     @staticmethod
@@ -250,53 +371,36 @@ class DetailPane(QScrollArea):
 
         from m110 import catalog
         ids = catalog.object_identifiers(slug, e)
+
+        # 1 · the hero: full width, edge to edge on the well, height capped.
+        hp = objects.hero_path(slug)
+        if hp:
+            pm = QPixmap(str(hp))
+            if not pm.isNull():
+                self._hero_widget = ScalableImage(pm, max_height=460, fit="cover")
+                self._hero_widget.setCursor(Qt.PointingHandCursor)
+                self._hero_widget.setToolTip("Double-click to open in the viewer")
+                self._hero_widget.doubleClicked.connect(self._open_hero_viewer)
+                connect_context_menu(self._hero_widget, self._hero_context_menu)
+                self._hero_slot.addWidget(self._hero_widget)
+
+        # 2 · the title block: serif name + its facts, and the close button.
         title = object_title(" · ".join(ids), e.get("name") or "")
         self._close_btn = QToolButton()
-        self._close_btn.setText("✕")
+        self._close_btn.setIcon(icons.icon("x"))
         self._close_btn.setAutoRaise(True)
         self._close_btn.setToolTip("Close")
+        self._close_btn.setAccessibleName("Close")
         self._close_btn.setCursor(Qt.PointingHandCursor)
         self._close_btn.clicked.connect(self.closed.emit)
         header_row = QHBoxLayout()
         header_row.addWidget(title, 1)
         header_row.addWidget(self._close_btn, 0, Qt.AlignTop)
         self._lay.addLayout(header_row)
-
-        bits = [str(e.get("type") or "").replace("_", " ")]
-        if e.get("magnitude") is not None:
-            bits.append(f"mag {e['magnitude']}")
-        if e.get("size"):
-            bits.append(str(e["size"]))
-        if e.get("season"):
-            bits.append(str(e["season"]))
-        meta = QLabel(" · ".join(b for b in bits if b))
-        meta.setProperty("muted", True)
-        self._lay.addWidget(meta)
-
-        if captured:
-            stat_row = QHBoxLayout()
-            stat_row.setSpacing(theme.tokens.SPACE["sm"])
-            stat_row.addWidget(_status_pill(t.get("status"), t.get("progress")))
-            stats = QLabel(f"{t.get('integration_hms', '')} · "
-                           f"{t.get('session_count', '')} sessions · "
-                           f"{t.get('frames', '')} frames")
-            stats.setProperty("muted", True)
-            stat_row.addWidget(stats)
-            stat_row.addStretch(1)
-            self._lay.addLayout(stat_row)
-        else:
-            self._lay.addWidget(QLabel("<i>not captured</i>"))
-
-        hp = objects.hero_path(slug)
-        if hp:
-            pm = QPixmap(str(hp))
-            if not pm.isNull():
-                self._hero_widget = ScalableImage(pm, max_height=460)
-                self._hero_widget.setCursor(Qt.PointingHandCursor)
-                self._hero_widget.setToolTip("Double-click to open in the viewer")
-                self._hero_widget.doubleClicked.connect(self._open_hero_viewer)
-                connect_context_menu(self._hero_widget, self._hero_context_menu)
-                self._lay.addWidget(self._hero_widget)
+        facts = QLabel(facts_line(e))
+        facts.setProperty("muted", True)
+        facts.setWordWrap(True)
+        self._lay.addWidget(facts)
 
         fm, body = objects.read_journal(slug)
         if fm.get("hero_caption"):
@@ -305,29 +409,29 @@ class DetailPane(QScrollArea):
             cap.setProperty("caption", True)
             self._lay.addWidget(cap)
 
+        # 3 · Integration · 4 · Details · 5 · Processing
+        self._lay.addWidget(self._integration_card(t))
+        self._add_details_section(slug, e, t)
+        if captured:
+            self._add_action_row(slug)
+
+        # 6 · Notes — without the journal's own `# id — name` (the title above
+        # already says it); Edit shows the file as written.
         header = QHBoxLayout()
-        header.addWidget(section_label("Notes"))
+        header.addWidget(_section_label("Notes"))
         header.addStretch(1)
         edit_btn = QPushButton("Edit")
         edit_btn.setToolTip("Edit this object's notes (Objects/<id>/journal.md)")
         edit_btn.clicked.connect(self._enter_edit)
-        header.addWidget(edit_btn)
+        header.addWidget(edit_btn, 0, Qt.AlignBottom)
         self._lay.addLayout(header)
-        if body.strip():
-            tb = QTextBrowser()
-            tb.setProperty("type", "notes")              # the notebook voice: serif
-            tb.setFont(serif_font(theme.tokens.FONT_SIZE["section"]))
-            tb.setMarkdown(objects.journal_to_markdown(body))
-            tb.setOpenExternalLinks(True)
-            tb.setMinimumHeight(220)
-            self._lay.addWidget(tb)
+        shown = objects.strip_title_heading(body)
+        if shown.strip():
+            self._lay.addWidget(_notes_view(objects.journal_to_markdown(shown)))
         else:
             empty = QLabel("<i>No notes yet — click Edit to start.</i>")
             empty.setProperty("muted", True)
             self._lay.addWidget(empty)
-
-        if captured:
-            self._add_action_row(slug)
 
         imgs = [im for im in derived.images_for(slug) if im.get("thumb")]
         if imgs:
@@ -338,10 +442,13 @@ class DetailPane(QScrollArea):
             self._galleries = []
             finished = [im for im in imgs if self._img_state(im, curation) == "finished"]
             working = [im for im in imgs if self._img_state(im, curation) == "working"]
-            self._lay.addWidget(QLabel(
-                f"<b>Gallery</b> ({len(imgs)}) — <span style='color:"
-                f"{theme.active_tokens().text_secondary}'>double-click to view · "
-                f"right-click to curate</span>"))
+            gal_head = QHBoxLayout()
+            gal_head.addWidget(_section_label(f"Gallery ({len(imgs)})"))
+            gal_head.addStretch(1)
+            hint = QLabel("Double-click to view · right-click to curate")
+            hint.setProperty("caption", True)
+            gal_head.addWidget(hint, 0, Qt.AlignBottom)
+            self._lay.addLayout(gal_head)
             if finished:
                 self._add_gallery_group("Finished", finished, slug)
             if working:
@@ -351,13 +458,96 @@ class DetailPane(QScrollArea):
                                         working, slug)
             self._gallery = self._galleries[0] if self._galleries else None
 
+        # 7 · the per-telescope goals and the two tables
         if captured:
             self._add_goals_section(slug, e, t)
             self._add_processing_section(slug)
             self._add_sessions_section(slug)
-        self._add_metadata_section(slug, e, t)
 
         self._lay.addStretch(1)
+
+    # ---- 1.0 inspector blocks ----
+    def _integration_card(self, t: dict) -> QFrame:
+        """Total integration, a bar to the goal, and the status in words —
+        "Deep · goal 20 h on Seestar S50" — for the telescope model the object's
+        status rolls up to (`progress_model`). Uncaptured: says so."""
+        card = QFrame()
+        card.setProperty("card", True)
+        card.setObjectName("integrationCard")
+        s = theme.tokens.SPACE
+        v = QVBoxLayout(card)
+        v.setContentsMargins(s["md"], s["sm"] + 2, s["md"], s["sm"] + 2)
+        v.setSpacing(s["xs"] + 2)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Integration"))
+        top.addStretch(1)
+        total = QLabel(fmt_duration(t.get("integration_min", 0.0)) if t else "—")
+        f = tabular(total.font())
+        f.setWeight(f.Weight.DemiBold)
+        total.setFont(f)
+        total.setObjectName("integrationTotal")
+        top.addWidget(total)
+        v.addLayout(top)
+        if not t:
+            note = QLabel("Not captured yet")
+            note.setProperty("muted", True)
+            v.addWidget(note)
+            return card
+        status = t.get("status")
+        progress = max(0.0, min(1.0, float(t.get("progress") or 0.0)))
+        bar = QProgressBar()
+        bar.setObjectName("integrationBar")
+        bar.setProperty("status", status or "")
+        bar.setRange(0, 1000)
+        bar.setValue(round(progress * 1000))
+        bar.setTextVisible(False)
+        bar.setFixedHeight(6)
+        bar.setToolTip(f"{int(progress * 100)}% of the integration goal")
+        v.addWidget(bar)
+        v.addWidget(self._status_line(t))
+        return card
+
+    @staticmethod
+    def _status_line(t: dict) -> QLabel:
+        status = t.get("status")
+        words = status_label(status, True, t.get("progress"))      # Deep · 62% · Initial
+        model = t.get("progress_model")
+        goal_min = ((t.get("by_model") or {}).get(model) or {}).get("goal_min")
+        text = words
+        if goal_min:
+            reg = devices.load_registry()
+            text += (f" · goal {fmt_duration(goal_min)} on "
+                     f"{integration_goals.model_label(model, reg)}")
+        c = theme.status_color(status)
+        lbl = QLabel(f"<span style='color:{c.name()}'>●</span>&nbsp; {text}")
+        lbl.setTextFormat(Qt.RichText)
+        lbl.setProperty("muted", True)
+        lbl.setWordWrap(True)
+        lbl.setToolTip(STATUS_TOOLTIP.get(status, ""))
+        lbl.setObjectName("integrationStatus")
+        return lbl
+
+    def _add_details_section(self, slug: str, e: dict, t: dict):
+        """DETAILS: capture facts first (what you shot), then the object's own
+        (what it is), as an aligned key/value grid — not a paragraph of
+        `Key: value` lines."""
+        self._lay.addWidget(_section_label("Details"))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(theme.tokens.SPACE["lg"])
+        grid.setVerticalSpacing(theme.tokens.SPACE["xs"])
+        grid.setColumnStretch(1, 1)
+        for r, (k, val) in enumerate(details_rows(slug, e, t)):
+            key = QLabel(k)
+            key.setProperty("muted", True)
+            key.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            value = QLabel(val)
+            value.setWordWrap(True)
+            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value.setFont(tabular(value.font()))
+            value.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            grid.addWidget(key, r, 0)
+            grid.addWidget(value, r, 1)
+        self._lay.addLayout(grid)
 
 
     def _add_goals_section(self, slug: str, e: dict, t: dict):
@@ -432,11 +622,12 @@ class DetailPane(QScrollArea):
         defer(self, rerender)
 
     def _add_action_row(self, slug: str):
-        """The object's processing actions, as one wrapping row.
+        """PROCESSING: the object's processing actions, as one wrapping row, with
+        **Process in Siril** as the accent button (the usual next step).
 
-        Sits *below* the hero and notes: the pane opens on the picture and the
-        write-up, and the tool buttons are the next step, not the headline. A
-        `FlowLayout` rather than a `QHBoxLayout` — with every workflow available
+        Sits *below* the hero and the facts: the pane opens on the picture and
+        what's known about it, and the tool buttons are the next step, not the
+        headline. A `FlowLayout` rather than a `QHBoxLayout` — with every workflow available
         this is five buttons, and a horizontal box's minimum width is the sum of
         theirs, which in a `QScrollArea` meant the whole pane grew a horizontal
         scrollbar in any window narrower than the row. The flow row wraps instead.
@@ -454,7 +645,11 @@ class DetailPane(QScrollArea):
             imp_btn.clicked.connect(lambda: self.import_requested.emit(slug))
             btn_row.addWidget(imp_btn)
         if self._has_working_folder(slug):
-            btn_row.addWidget(self._siril_button(working_dirs_for_slug(slug)))
+            siril_btn = self._siril_button(working_dirs_for_slug(slug))
+            # Outside a dialog `default` only styles: the accent fill (QSS
+            # `QPushButton:default`), like the default button of a sheet.
+            siril_btn.setDefault(True)
+            btn_row.addWidget(siril_btn)
             rev_btn = QPushButton("Reveal Working Folder")
             rev_btn.setToolTip("Open this object's Siril working folder "
                                "(Images/<target>/siril/). Point Siril's "
@@ -479,6 +674,7 @@ class DetailPane(QScrollArea):
             btn_row.addWidget(sw_btn)
             btn_row.addWidget(aw_btn)
         if btn_row.count():
+            self._lay.addWidget(_section_label("Processing"))
             self._lay.addLayout(btn_row)
         else:
             btn_row.deleteLater()
@@ -523,7 +719,7 @@ class DetailPane(QScrollArea):
                 f"{latest} · {f.get('latest_processed_at', '')}" if latest else "—",
             ])
         self._section_table(
-            "Processing",
+            "Processing status",
             ["Target", "Status", "Raw integ", "In stack", "+ new", "Latest stack"],
             rows, numeric=(2, 3, 4))
 
@@ -547,62 +743,6 @@ class DetailPane(QScrollArea):
             "Sessions", ["Date", "Frames", "Exp (s)", "Filter", "Integration", "Mount",
                          "Device",
                          "Dark"], out, numeric=(1, 2, 4))
-
-    def _add_metadata_section(self, slug: str, e: dict, totals: dict | None = None):
-        from m110 import catalog
-        targets = targets_for_slug(slug)
-        rows = []
-        cats = catalog.catalogs_for_slug(slug)
-        if cats:
-            rows.append(("Catalogs", ", ".join(f"{n} ({d})" for n, d in cats)))
-        if e.get("type"):
-            rows.append(("Type", str(e["type"]).replace("_", " ")))
-        if e.get("magnitude") is not None:
-            rows.append(("Magnitude", str(e["magnitude"])))
-        if e.get("size"):
-            rows.append(("Size", str(e["size"])))
-        if e.get("season"):
-            rows.append((f"Season (at {_SEASON_LATITUDE})", str(e["season"])))
-
-        # Coordinates: prefer the Library entry, else the bundled reference (so a
-        # migrated store without per-entry coords still shows them). Both decimal
-        # degrees and sexagesimal (HMS/DMS) — the latter for mounts that want it.
-        ra, dec = e.get("ra_deg"), e.get("dec_deg")
-        if ra is None or dec is None:
-            from m110 import catalog
-            rd = catalog.load_coords().get(slug)
-            if rd:
-                ra, dec = rd
-        if ra is not None and dec is not None:
-            rows.append(("RA", f"{_ra_hms(ra)}  ({float(ra):.4f}°)"))
-            rows.append(("Dec", f"{_dec_dms(dec)}  ({float(dec):+.4f}°)"))
-
-        if e.get("filter"):
-            rows.append(("Filter rule", str(e["filter"])))
-        rows.append(("Slug", slug))
-        if targets:
-            rows.append(("Capture targets", ", ".join(sorted(targets))))
-        # A framing whose frames don't stack with the object's main capture (a
-        # mosaic) is tracked apart, so its hours are missing from the headline
-        # above — say where they went rather than letting them vanish.
-        apart = [(f, d) for f, d in ((totals or {}).get("framings") or {}).items()
-                 if not d.get("counted")]
-        for folder, d in sorted(apart):
-            rows.append((f"Tracked separately · {folder}",
-                         f"{_fmt_hm(d.get('integration_min', 0.0))} · "
-                         f"{d.get('frames', 0)} frames · "
-                         f"{d.get('session_count', 0)} sessions "
-                         f"(not stackable with the above)"))
-        if e.get("notes"):
-            rows.append(("Remarks", str(e["notes"])))
-        self._lay.addWidget(_section_label("Object details"))
-        body = "<br>".join(
-            f"<b>{k}:</b> {v}" for k, v in rows)
-        lbl = QLabel(body)
-        lbl.setTextFormat(Qt.RichText)
-        lbl.setWordWrap(True)
-        lbl.setProperty("muted", True)
-        self._lay.addWidget(lbl)
 
     @staticmethod
     def _img_state(im: dict, curation: dict) -> str:

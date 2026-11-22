@@ -333,9 +333,20 @@ can't validate macOS painting and renders differently per machine).
   (pyobjc, `m110/ui/macos_chrome.py`), so AppKit lays out a 52 pt band and centres the
   buttons itself; **stale Overview tables** under a modal fixed (`widgets.clear_layout`
   hides before `deleteLater`; post-sync modals `defer`red).
+- ✅ **B · Grid tiles + inspector** (`feature/ui-p8-grid-inspector`). Tiles are the
+  image (center-cropped, rounded) with the title bottom-left on a well-coloured scrim
+  and a status dot + label bottom-right; subtitle → tooltip; the label drops before
+  the title elides; selection is a brass outline (`image_grid.TileDelegate`, shared
+  by Deep Sky and Media — Media in the system font, middle-elided). **Justified**:
+  `image_grid.JustifiedGridView` fits `width // (target + gap)` columns and widens the
+  cells to fill the row, against Qt's own wrap bounds (viewport − reserved scrollbar);
+  thumbnails decode at the tile's device-pixel size. **Inspector** in mock A's order:
+  hero `fit="cover"` edge to edge · serif title + facts · Integration card (total,
+  status-hued bar, "Deep · goal 4 h on S50") · DETAILS key/value grid (capture facts,
+  then the old "Object details") · PROCESSING (Process in Siril = accent) · Notes
+  without the leading H1 (`objects.strip_title_heading`; also the Journal feed) ·
+  gallery · goals · Processing status · Sessions. Lucide `x` close button.
 - Overview catalog board.
-- Grid tiles: overlay captions and a justified layout.
-- Inspector: full-width hero on the well, key/value details, notes without the duplicate H1.
 - Settings window, with Backup folded in.
 - Import empty state (one primary action; tables appear with data).
 - Tables: aligned headers, right-aligned tabular numbers, no identity-losing truncation; Planning "#" → Rank.

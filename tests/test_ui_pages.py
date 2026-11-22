@@ -178,7 +178,7 @@ def test_detail_enrichment_sections(tmp_path, monkeypatch, qapp):
         assert "Processing" in labels      # per-object processing section
         assert "Sessions" in labels        # per-object sessions section
         assert "Notes" in labels           # per-object notes section (the journal body)
-        assert "Object details" in labels  # metadata block
+        assert "Details" in labels         # the key/value grid (1.0: one block)
         assert slug in labels              # metadata shows the slug
         # comprehensive details incl. RA/Dec (decimal + sexagesimal) when coords known
         assert "Type" in labels and "Magnitude" in labels
@@ -531,7 +531,7 @@ def test_media_view_mode_and_zoom_persist(tmp_path, monkeypatch, qapp):
         page.set_view_mode("list")
         assert config.get_setting(MEDIA_VIEW_KEY) == "list"
         page._zoom_slider.setValue(200)
-        assert page._grid_delegate._tile_size == 200      # live, no re-decode
+        assert page.grid_view.target_size() == 200        # live, no re-decode
         page._zoom_slider.sliderReleased.emit()           # commit on release
         assert config.get_setting(MEDIA_ZOOM_KEY) == 200
     finally:
@@ -741,7 +741,7 @@ def test_library_grid_zoom_changes_tile_size_and_persists(tmp_path, monkeypatch,
     page = CatalogPage()
     try:
         page._zoom_slider.setValue(200)
-        assert page._grid_delegate._tile_size == 200
+        assert page.grid_view.target_size() == 200
         page._zoom_slider.sliderReleased.emit()
         assert config.get_setting("library_grid_zoom") == 200
     finally:

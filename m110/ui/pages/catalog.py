@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QSize, QThread, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QTableWidget,
     QTableWidgetItem, QMessageBox, QInputDialog, QLineEdit, QLabel, QComboBox,
-    QHeaderView, QMenu, QListView, QSlider,
+    QHeaderView, QMenu, QSlider,
 )
 
 from m110 import (config, derived, devices, goals, integration_goals, objects, pins,
@@ -20,7 +20,7 @@ from m110.catalog import (
 from m110.ui import undo
 from m110.ui.detail import DetailPane
 from m110.ui.image_grid import (
-    TileItem, TileModel, TileDelegate, KEY_ROLE,
+    TileItem, TileModel, JustifiedGridView, KEY_ROLE,
     GRID_ZOOM_MIN, GRID_ZOOM_MAX, GRID_ZOOM_DEFAULT,
 )
 from m110.ui.sky_map import SkyMapView, chart_palette, status_colors
@@ -96,15 +96,11 @@ class CatalogPage(QWidget):
         self.table.itemSelectionChanged.connect(self._on_table_select)
 
         self._grid_model = TileModel(self)
-        self.grid_view = QListView()
-        self.grid_view.setProperty("well", True)      # images sit on the dark well
-        self.grid_view.setViewMode(QListView.IconMode)
-        self.grid_view.setResizeMode(QListView.Adjust)
-        self.grid_view.setMovement(QListView.Static)
-        self.grid_view.setUniformItemSizes(True)
+        # Justified: the slider sets a target tile size, the rows fill the width.
+        self.grid_view = JustifiedGridView(self._zoom)
         self.grid_view.setModel(self._grid_model)
-        self._grid_delegate = TileDelegate(self._zoom, self.grid_view)
-        self.grid_view.setItemDelegate(self._grid_delegate)
+        self._grid_delegate = self.grid_view.tile_delegate()
+        self.grid_view.tileSideChanged.connect(self._request_grid_thumbnails)
         self.grid_view.selectionModel().selectionChanged.connect(self._on_grid_select)
         connect_context_menu(self.grid_view, self._show_context_menu)
 
@@ -319,7 +315,7 @@ class CatalogPage(QWidget):
         self._map_dirty = True
         prev = self._selected_slug() if self._view_mode == "grid" else None
         self._grid_model.set_items(kept)
-        self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        self._request_grid_thumbnails()
         self._render_map()
         if prev and not self._select_slug(prev):
             self._show_selection(None)
@@ -706,12 +702,18 @@ class CatalogPage(QWidget):
 
     def _on_zoom_changing(self, value: int):
         self._zoom = value
-        self._grid_delegate.set_tile_size(value)
-        self.grid_view.doItemsLayout()
+        self.grid_view.set_target_size(value)
 
     def _on_zoom_released(self):
-        self._grid_model.request_thumbnails(self._thumb_loader, self._zoom)
+        self._request_grid_thumbnails()
         config.save_setting(LIBRARY_ZOOM_KEY, self._zoom)
+
+    def _request_grid_thumbnails(self, *_):
+        """Decode tiles at their real size in device pixels (they grow with the
+        window: the grid is justified)."""
+        px = self.grid_view.thumbnail_px()
+        self.grid_view.note_decoded(px)
+        self._grid_model.request_thumbnails(self._thumb_loader, px)
 
     # ---- editing lock ----
     def _on_detail_editing(self, editing: bool):
