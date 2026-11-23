@@ -662,6 +662,17 @@ are **idempotent, version-stamped, same-filesystem renames, resume-safe, and nev
 destructive**. **Rule:** any change to the on-disk layout or file formats bumps the
 version and adds a migration step that brings older stores forward in place.
 
+**A restore into the store is version-gated** (`backup.storegate`, #40d). Every
+snapshot records the `.store_version` it was taken at, and the restore dialog can put
+back any subset of files, so a subset from an older snapshot would land in an older
+shape under the current stamp, where `migrate_store` never looks again. The writer
+(`backup.restore_into_store`) therefore **refuses** a snapshot from a *newer* store
+(nothing migrates backwards; extracting to a folder is still allowed), and after
+restoring from an *older* or unversioned one it runs every step again
+(`migrate.migrate_restored`, which ignores the stamp). That is safe because each step
+detects its own structure rather than trusting the stamp. **Rule:** a new step must
+stay a no-op on a store that's already current, or a restore will re-run it.
+
 ---
 
 ## Data flow

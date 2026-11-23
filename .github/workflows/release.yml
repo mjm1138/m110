@@ -41,7 +41,7 @@ jobs:
       # Map view at all. Same precedent as astroquery (#64). The specs collect its
       # package data; without that the frozen import dies (0.3.0b1).
       - name: Install the optional sky-map dependency
-        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria@3257dbcc52f195303926810f6038f8bbe79df01d"
       - name: Fetch appimagetool
         run: |
           wget -qO /tmp/appimagetool \
@@ -74,7 +74,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[build]"
       - name: Install the optional sky-map dependency   # see the Linux job
-        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria@3257dbcc52f195303926810f6038f8bbe79df01d"
       - name: Build installer
         shell: pwsh
         run: ./packaging/windows/build_windows.ps1

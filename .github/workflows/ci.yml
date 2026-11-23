@@ -61,7 +61,7 @@ jobs:
       # tests in tests/test_skymap.py skip, which would quietly leave the chart
       # path uncovered on CI; the engine itself degrades via SkymapDepsMissing.
       - name: Install the optional sky-map dependency
-        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+        run: pip install "uranometria @ git+https://github.com/devonjones/uranometria@3257dbcc52f195303926810f6038f8bbe79df01d"
 
       - name: Run the test suite
         run: pytest -q

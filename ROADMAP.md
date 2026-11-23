@@ -47,11 +47,18 @@ gate is a hardening list plus a freeze, not more milestones.
 
 ### The freeze
 
-- Once 0.3.0-beta.9 is cut, the next cycle is a **freeze**: the blockers below and
-  regression fixes only. No new rail pages, no new top-level store directories, no
-  `.store_version` bump.
-- Tag 1.0 after **one or two consecutive betas with no store-shape change** and no
-  open blocker.
+- **The freeze starts at `1.0.0-beta.1`** *(re-set 2026-11-23)*. It was first set to
+  start after 0.3.0-beta.9, but it didn't hold: beta.10 and the cycle after it landed
+  integration goals, the whole 1.0 redesign, Stackhammer, N.I.N.A./PINS import and the
+  **store v6** bump. The feature surface is now complete (the redesign's 1.0 exit audit
+  passed 2026-11-22), so the next release is cut as `1.0.0-beta.1` and the clock
+  starts there.
+- From then on: the blockers below and regression fixes only. No new rail pages, no
+  new top-level store directories, no `.store_version` bump. **Store v6 is the 1.0
+  layout.**
+- **Path:** `1.0.0-beta.N` while blockers are open → **`1.0.0-rc.1`** once none are
+  open and the store shape hasn't changed → **`1.0.0`** after one or two clean release
+  candidates, with the installers smoke-tested on real hardware on all three platforms.
 - **Draco does not gate 1.0.** Device-level calibration on `main` is additive, and the
   header-stamp shim lives only on `feature/draco`. But Draco work must not land store
   changes during the freeze; it ships in 1.x.
@@ -61,25 +68,31 @@ gate is a hardening list plus a freeze, not more milestones.
 Each one points at its full entry in [`BUGS.md`](BUGS.md).
 
 **Data safety**
-- [ ] **#40d — Restore has no store-version gate** *(Backup & restore)*. Restoring an
+- [x] **#40d — Restore has no store-version gate** *(Backup & restore)* — done
+  2026-11-23 (`backup.storegate`). Restoring an
   older snapshot into a newer store must migrate it or refuse. Highest priority:
   1.0 implicitly promises that your data survives an upgrade.
 - [ ] **No user-facing way to merge or rename a capture target** *(Import)*. A
   mis-filed capture has no way out today. That's a hole in the data model, not polish.
 
 **Correctness of shipped flows**
-- [ ] **A library re-match leaves the previous master linked in a Siril job**
-  *(Processing)*.
-- [ ] **The library flat is matched per target, not per filter job** *(Processing)*.
-  Both give wrong output in device-library calibration, which landed after
+- [x] **A library re-match leaves the previous master linked in a Siril job**
+  *(Processing)* — already fixed (`siril._retire_stale_links`).
+- [x] **The library flat is matched per target, not per filter job** *(Processing)* —
+  already fixed (#203); regression test added 2026-11-23.
+  Both gave wrong output in device-library calibration, which landed after
   0.3.0-beta.8.
+- [ ] **The failures-by-night report undercounts** *(Processing)*. It counts only
+  "did not solve" lines and misses Siril's "no stars found", so the `--exclude-night`
+  advice built on it is too optimistic. *(Added 2026-11-23.)*
 
 **Supportability**
 - [ ] **A failed stack's log is destroyed by the next attempt** *(Processing)*. Beta
   reports need that log.
 
 **Security & release integrity**
-- [ ] **F8 — pin `uranometria`** to a SHA or tag *(Security)*. BUGS rates it Medium
+- [x] **F8 — pin `uranometria`** to a SHA or tag *(Security)* — done 2026-11-23
+  (`3257dbc`). BUGS rates it Medium
   once packaged builds install it the same way, and `release.yml` now does (the Linux
   and Windows jobs), so the trigger has fired. One line in each of `ci.yml` and
   `release.yml`.
@@ -87,6 +100,9 @@ Each one points at its full entry in [`BUGS.md`](BUGS.md).
   cheap; same shape as the fixed F1.
 - [ ] **`release.py` smoke phase can watch the wrong run** *(Packaging & release)*. It
   has to fail closed before a 1.0 tag relies on it.
+- [ ] **`release.py` macOS phase dies if the Mac sleeps during notarization**
+  *(Packaging & release)*. Run the notarize step under `caffeinate -i`. Pairs with the
+  smoke fix: both before a 1.0 tag relies on the script. *(Added 2026-11-23.)*
 
 **Platform QE**
 - [ ] **Smoke-test the packaged installers on real hardware for all three platforms**,

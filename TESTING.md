@@ -1179,6 +1179,17 @@ hdiutil attach /tmp/m110test.dmg          # mounts at /Volumes/M110TEST
       misses until they want it back. Same check on `Images/M106/siril/`.
 - [ ] **Restore an OLDER backup**, in each format, to a scratch folder; spot-check that a
       file you changed between backups comes back with its *old* contents.
+- [ ] **Restore into the store from an older layout (#40d).** On a temp root, set
+      `.m110_internal_data/.store_version` to `5`, add
+      `Images/M101/seestar-stacks/Stacked_test.fit`, and back up (mirrored). Relaunch,
+      and the store migrates: the file is now under `device-stacks/`. Delete it there,
+      then restore **only** `Images/M101/seestar-stacks/Stacked_test.fit` **into the
+      Library store**. Pass: it comes back under `device-stacks/`, there's no
+      `seestar-stacks/` folder, the completion message says the files were moved to
+      where this version keeps them, and the M101 gallery shows the stack after a Sync.
+      Then edit that snapshot's `.m110-backup-manifest.json` to `"store_version": "99"`
+      and try again. Restoring into the store is refused ("made by a newer version of
+      M110"), but extracting the same file to a folder still works.
 - [ ] **Verify integrity** passes on a snapshot of each format.
 - [ ] **Recovery without M110.** In `M110-Backups/<store>/`, run
       `python3 restore.py latest-manifest.json.gz /tmp/recovered` and confirm the tree

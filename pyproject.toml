@@ -75,7 +75,7 @@ s3 = ["boto3>=1.34", "keyring>=24"]
 # rejected on upload *anywhere* in the metadata, extras included — so declaring
 # it now would be a landmine on the first `pip install m110`. Install it
 # explicitly instead (CI does; packaged builds will):
-#     pip install "uranometria @ git+https://github.com/devonjones/uranometria"
+#     pip install "uranometria @ git+https://github.com/devonjones/uranometria@3257dbcc52f195303926810f6038f8bbe79df01d"
 # `m110.skymap` degrades via SkymapDepsMissing when it's absent. Swap this for a
 # real `skymap = ["uranometria>=0.11"]` extra once it's published.
 dev = ["pytest>=8", "pytest-qt>=4.4", "astroquery>=0.4", "jinja2>=3", "markdown>=3",
