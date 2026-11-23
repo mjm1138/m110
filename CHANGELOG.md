@@ -131,6 +131,24 @@ changes a **user** would notice, per release.
 - **A sync that finished while you were editing notes is no longer lost.** The
   pages now update once you save or cancel the edit, instead of waiting for the
   next sync.
+- **Restoring from an older backup puts files where this version looks for them.**
+  When you restored just some files into your Library from a backup made by an
+  earlier version of M110, they could come back in the old layout. A telescope's
+  stack, for example, went back into a `seestar-stacks` folder that nothing reads
+  any more, so it seemed to be missing. Restored files are now moved into the
+  current layout. A backup made by a *newer* version of M110 can't be restored into
+  your Library (update M110 first), but you can still extract its files to a folder.
+
+### Security
+- **The sky map's chart library is pinned to a reviewed version.** M110's builds
+  installed [uranometria](https://github.com/devonjones/uranometria) from whatever
+  its main branch held on the day of the build. That library isn't on PyPI, so the
+  usual dependency checks (Dependabot, `pip-audit`) can't see it. An unreviewed
+  upstream change, accidental or malicious, would have gone straight into the Linux
+  and Windows downloads. Builds now install one fixed commit, and moving to a new
+  one is a reviewed change. We know of no problem with the library itself; this was
+  finding F8 (Medium once it reached packaged builds) in
+  [`docs-archive/SECURITY_ASSESSMENT.md`](docs-archive/SECURITY_ASSESSMENT.md).
 
 ### Added
 - **Objects pick up new darks and flats by themselves.** When you import

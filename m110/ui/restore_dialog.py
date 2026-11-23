@@ -258,6 +258,12 @@ class RestoreDialog(QDialog):
             return
         into_store = self._to_store.isChecked()
         target = config.DATA_ROOT if into_store else self._out_path
+        # A newer store's layout can't go back into this version's Library (#40d);
+        # extracting it to a folder is still fine.
+        if into_store and backup.store_compat(snap.store_version) == backup.storegate.NEWER:
+            QMessageBox.warning(self, "Restore",
+                                backup.storegate.newer_store_message(snap.store_version))
+            return
 
         prev = backup.preview_restore(snap, rels, target)
         overwrite = False
@@ -274,8 +280,14 @@ class RestoreDialog(QDialog):
                 return
             overwrite = btn == QMessageBox.Yes
 
-        self._run(lambda **kw: backup.restore(snap, rels, target, overwrite=overwrite, **kw),
-                  self._on_restore_done, "Restoring…")
+        if into_store:
+            # The store writer: brings an older snapshot's files up to this layout.
+            fn = lambda **kw: backup.restore_into_store(  # noqa: E731
+                snap, rels, root=target, overwrite=overwrite, **kw)
+        else:
+            fn = lambda **kw: backup.restore(  # noqa: E731
+                snap, rels, target, overwrite=overwrite, **kw)
+        self._run(fn, self._on_restore_done, "Restoring…")
 
     def _on_restore_done(self, res):
         if res.get("cancelled"):
@@ -284,7 +296,10 @@ class RestoreDialog(QDialog):
             self, "Restore complete",
             f"Restored {res.get('written', 0)} file(s)"
             + (f", skipped {res.get('skipped', 0)} existing." if res.get("skipped")
-               else "."))
+               else ".")
+            + ("\n\nThis backup came from an earlier version of M110, so the restored "
+               "files were moved to where this version keeps them."
+               if res.get("migrated") else ""))
 
     # ---- worker plumbing (shared by verify + restore) ----
     def _run(self, fn, on_done, label):

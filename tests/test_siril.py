@@ -291,6 +291,38 @@ def test_prep_multi_filter_links_calibration_into_each_job_dir(tmp_path, monkeyp
     assert not (sb / "darks").exists() and not (sb / "biases").exists()
 
 
+def _fits(path, **cards):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h = fits.PrimaryHDU(np.zeros((2, 2), dtype="uint16"))
+    for k, v in cards.items():
+        h.header[k.replace("_", "-")] = v
+    h.writeto(path)
+
+
+def test_library_flat_is_matched_per_filter_job(tmp_path, monkeypatch):
+    """A flat belongs to one filter: on a two-filter target each job gets the device
+    library's flat for ITS filter, not the dominant filter's flat in every job
+    (the 1.0 blocker "library flat matched per target, not per filter job")."""
+    seed_root(tmp_path, monkeypatch)
+    dev, target = "DWARF 3", "M101"
+    for filt, n in (("Duo-Band", 5), ("Astro", 2)):     # Duo-Band dominates
+        for i in range(n):
+            _fits(config.lights_dir(target) / f"Light_{target}_300s_{filt}_2026091{i}-220000.fits",
+                  EXPTIME=300.0, GAIN=60, XBINNING=1, YBINNING=1, DET_TEMP=13,
+                  FILTER=filt, TELESCOP=dev, OBJECT=target,
+                  DATE_OBS="2026-09-19T22:05:35")
+        _fits(config.calibration_dir(dev, "flats") / f"flat_{filt}.fits",
+              IMAGETYP="Master Flat", XBINNING=1, FILTER=filt, NCOMBINE=30)
+    plan = siril.plan_prep(target)
+    assert plan.filters == ["Astro", "Duo-Band"]
+    sb = config.siril_dir(target)
+    flats = sorted((dst, os.path.basename(src)) for src, dst in plan.calib_links
+                   if os.path.basename(os.path.dirname(dst)) == "flats")
+    assert flats == [(str(sb / "Astro" / "flats" / "flat_Astro.fits"), "flat_Astro.fits"),
+                     (str(sb / "Duo-Band" / "flats" / "flat_Duo-Band.fits"),
+                      "flat_Duo-Band.fits")]
+
+
 # ── autoprep (ingest hook) ───────────────────────────────────────────────────
 
 def test_autoprep_sets_up_and_skips_pending(tmp_path, monkeypatch):

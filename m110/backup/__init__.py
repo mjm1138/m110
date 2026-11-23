@@ -16,6 +16,7 @@ it never changes the on-disk store layout (no `.store_version` impact).
     recovery    the artifacts that make a pooled backup readable without M110
     retention   prune oldest snapshots; sweep unreferenced objects
     formats     which format a destination gets; dispatch by snapshot
+    storegate   a restore INTO the store: refuse a newer layout, migrate an older one
     probe       pre-flight inspection of a destination
     slots       the local + cloud slots and their saved settings
     schedule    when an automatic backup is due
@@ -56,6 +57,7 @@ from .slots import (DEFAULTS as SLOT_DEFAULTS, SETTING_DESTINATIONS, SLOT_CLOUD,
                     SLOT_LABELS, SLOT_LOCAL, SLOTS, SlotSettings,
                     check_slot_destination, configured_slots, load_slot, load_slots,
                     record_backup, save_slot, slot_for_destination, update_slot)
+from .storegate import restore_into_store, store_compat
 from .scope import (DEFAULT_SCOPE, SCOPE_BLURBS, SCOPE_ESSENTIALS, SCOPE_EVERYTHING,
                     SCOPE_LABELS, SCOPES, is_excluded, iter_source_files)
 
@@ -102,6 +104,6 @@ __all__ = [
     "due_for_scheduled_backup", "format_of", "is_excluded", "iter_source_files",
     "list_snapshots", "options_from_settings", "parse_destination",
     "preferred_format", "preview_restore", "probe_destination", "resolve_format",
-    "restore", "snapshot_files", "store_backup_root", "supports_hardlinks",
+    "restore", "restore_into_store", "snapshot_files", "store_compat", "store_backup_root", "supports_hardlinks",
     "sweep_incomplete", "sweep_objects", "verify",
 ]

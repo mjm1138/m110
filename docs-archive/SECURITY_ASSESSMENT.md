@@ -226,7 +226,12 @@ however convenient — user review is the actual control; (c) state the exposure
 the assistant skills so the model itself treats library text as data. Track as an
 issue rather than a blocker for 0.3.0-beta.1.
 
-### F8 — `uranometria` installed from an unpinned git URL · **Low** (CI) / **Medium** (if packaged the same way) · OPEN
+### F8 — `uranometria` installed from an unpinned git URL · **Low** (CI) / **Medium** (if packaged the same way) · FIXED
+
+**Fixed 2026-11-23 (`feature/pre-1.0-beta`):** every install line — `ci.yml`, both
+`release.yml` jobs, the `packaging/macos/build_app.sh` prereq and the `pyproject.toml`
+note — is pinned to commit `3257dbc` (upstream HEAD, already the local build env's
+revision). A bump is a reviewed edit of those lines. Original finding:
 
 **Where:** the sky map needs `uranometria`, which is not yet on PyPI, so it is
 deliberately kept out of `pyproject.toml` (a direct URL requirement would break any

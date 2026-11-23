@@ -633,6 +633,40 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## 1.0 pre-cut batch — restore version gate, `uranometria` pin, blocker audit *(2026-11-23, `feature/pre-1.0-beta`)*
+
+The first batch of the 1.0 freeze, after auditing ROADMAP's nine 1.0 blockers
+against the code.
+
+- **#40d — restore has a store-version gate.** New `backup/storegate.py`:
+  `store_compat(snapshot_version)` → `same`/`older`/`newer`/`unknown`, and
+  `restore_into_store(snap, rels, root=…)` is the writer for a restore into the
+  store. It refuses `newer` with a `BackupError` before writing anything (extracting
+  to a folder goes through plain `formats.restore` and is never gated), and after any
+  write from an `older` or `unknown` snapshot it calls the new
+  `migrate.migrate_restored(root)`. `migrate_store` was split into the stamp check
+  plus `_run_steps`, so `migrate_restored` re-runs every step whatever the stamp
+  says. That works because every step already detects its own structure:
+  `_has_old_layout`, `catalog.toml` without `library.toml`, pseudo-objects that
+  `add_captured_objects` no longer creates, a header that is already there, and
+  `seestar-stacks/` merged keep-both. The case that made it matter is v6: a single
+  `Images/<t>/seestar-stacks/x.fit` restored from a v5 snapshot used to sit where
+  nothing reads it, under a stamp that said there was nothing to migrate
+  (`tests/test_restore_store_gate.py` reproduces that with a plain restore). The
+  dialog checks `store_compat` up front, so the refusal arrives before the overwrite
+  question, and it routes "Restore into the Library store" through the gate. A full
+  restore that also brings back the old `.store_version` lands at the current stamp
+  too.
+- **F8 — `uranometria` pinned** to `3257dbc` (upstream HEAD on 2026-11-10, and
+  already the revision the local build venv had pinned) in `ci.yml`, both
+  `release.yml` jobs, `packaging/macos/build_app.sh` and the `pyproject.toml` note.
+- **Blocker audit.** "A re-match leaves the previous master linked" was already
+  fixed by `siril._retire_stale_links` (tests in `test_rematch.py`). "Library flat
+  matched per target" was already fixed when `plan_prep` began matching each
+  filter's own frames (`_calibration_subsets`, #203), but no test pinned it:
+  `test_siril.py::test_library_flat_is_matched_per_filter_job` now does, using a
+  two-filter Dwarf 3 target where the dominant filter's flat used to win.
+
 ## Phase 8 follow-up — Planning order, telescope, Start · Duration · End *(2026-11-22, `feature/planning-flow-times`)*
 
 - **Order:** `PlanningPage` lays out Location/Telescope → *Plan a night*

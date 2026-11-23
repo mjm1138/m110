@@ -88,7 +88,7 @@ Legend: `[ ]` open · `[~]` partially done
   `drizzle=0` takes the `--no-drizzle` branch; negative values raise `StackingError`.
   `tests/test_stacking.py` (zero-valued overrides section, on a two-tile mosaic).
 
-- [ ] **A library re-match leaves the previous master linked in a Siril job.**
+- [x] **A library re-match leaves the previous master linked in a Siril job** (done — `siril._retire_stale_links`, tests in `test_rematch.py`; already fixed, ticked in the 2026-11-23 blocker audit).
   `apply_prep` is idempotent and never removes a link, so when the matched master
   changes (new library darks arrive, or the lights' temperature shifts) the job's
   `darks/` holds two files — the Naztronomy script then treats them as raw subs, and
@@ -96,7 +96,7 @@ Legend: `[ ]` open · `[~]` partially done
   `darks/`/`flats/`/`biases/` dir whose links all point into `Calibration/` with the
   new match (never touch a user-placed file).
 
-- [ ] **The library flat is matched per target, not per filter job.** `plan_prep`
+- [x] **The library flat is matched per target, not per filter job** (done — `plan_prep` matches each filter on its own frames, `_calibration_subsets`, #203; regression test `test_library_flat_is_matched_per_filter_job` added 2026-11-23). `plan_prep`
   calls `calibration.match_for_target` once, so on a multi-filter target the flat
   for the dominant filter is linked into every filter's job. Fix: match per job
   (`facts_from_frames` over that job's lights). Latent until a device ships
@@ -1028,7 +1028,7 @@ dark from the 20 matching raw 30 s darks and calibrated with it.
   to recover pointing. Extends the #26 holding area; pulls in a plate-solver dependency,
   so deferred until real-world messy imports demand more than manual assign.
 
-- [ ] **#40d — Restore has no store-version gate.** `backup` records `store_version` in each
+- [x] **#40d — Restore has no store-version gate** (done 2026-11-23, `feature/pre-1.0-beta`). `backup.restore_into_store` refuses a newer-store snapshot and re-runs every migration step (`migrate.migrate_restored`) after restoring from an older or unversioned one; the dialog routes store restores through it. v6 made it bite: a partially restored `seestar-stacks/` file was stranded. Original report: `backup` records `store_version` in each
   snapshot manifest and `.store_version` isn't denylisted, so a **full** restore brings back the
   old stamp and `migrate` re-runs on next launch (self-healing ✓). But `restore_dialog` offers a
   **per-file checkable tree** and neither dialog reads `store_version` — so a **partial** restore
@@ -1407,7 +1407,7 @@ dark from the 20 matching raw 30 s darks and calibrated with it.
 Open findings from the 2026-07-30 assessment refresh. Nothing rated above Low; none
 is a release blocker for 0.3.0-beta.1 except F8, which is one line.
 
-- [ ] **F8 — `uranometria` is installed from an unpinned git URL.** `.github/workflows/ci.yml:64`
+- [x] **F8 — `uranometria` is installed from an unpinned git URL** (done 2026-11-23, `feature/pre-1.0-beta`: pinned to `3257dbc` everywhere it is installed). `.github/workflows/ci.yml:64`
   runs `pip install "uranometria @ git+https://github.com/devonjones/uranometria"`, which
   resolves to whatever is on the default branch at install time — no tag, no SHA, no hash.
   Because it isn't a registry package it is **invisible to Dependabot** and `pip-audit`

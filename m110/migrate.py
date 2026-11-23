@@ -142,6 +142,18 @@ def migrate_store(root) -> bool:
     root = Path(root).expanduser()
     if _read_version(root) >= STORE_VERSION:
         return False
+    return _run_steps(root)
+
+
+def migrate_restored(root) -> bool:
+    """Run every step again, whatever the stamp says. A restore into the store from
+    an older snapshot can put files back in an older shape under the current stamp,
+    where `migrate_store` would never look (BUGS #40d; `backup.storegate`). Safe on
+    a current store: each step detects its own structure, and none overwrites."""
+    return _run_steps(Path(root).expanduser())
+
+
+def _run_steps(root: Path) -> bool:
     changed = False
     if _has_old_layout(root):
         _reshape_v0_to_v2(root)
