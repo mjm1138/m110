@@ -721,7 +721,7 @@ class MainWindow(QMainWindow):
         """The Deep Sky detail pane (the inspector) — hide it, or bring it back."""
         d = self.catalog.detail
         if d.isHidden() and self._selected_slug():
-            d.show()
+            self.catalog.open_inspector()   # rebuilt: a closed one isn't kept current
         else:
             d.hide()
         self._update_view_menu()

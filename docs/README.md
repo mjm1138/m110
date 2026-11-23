@@ -79,7 +79,8 @@ the top bar shows them as a sortable **List**, the **Grid**, or a sky **Map**
 (also **View › as List / as Grid / as Map**). Beside it are a catalog filter
 (Messier, Caldwell, …) and a search field.
 
-Click any object to open its **detail pane** — where most per-object work happens:
+Click a row in the List (or **double-click** a tile in the Grid) to open an object's
+**detail pane** — where most per-object work happens:
 hero image, notes, the gallery (split into *Finished* and *Working files*), the
 object's capture sessions, and its processing status. Set a hero, mark an image
 finished/working, or import finished Siril work from here.

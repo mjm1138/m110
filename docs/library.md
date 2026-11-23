@@ -42,8 +42,12 @@ Media is scanned right through, including subfolders — so stacked results you 
 next to a video, or a whole folder of output from a tool like AutoStakkert, show up
 as photos rather than staying hidden.
 
-Click any object to open its **detail pane**: the hero, object notes, the gallery, its
-capture sessions, and its processing status.
+Click a row in the List view to open an object's **detail pane**: the hero, object
+notes, the gallery, its capture sessions, and its processing status. In the **Grid**,
+a click only selects a tile (so the grid never moves under the pointer);
+**double-click** it, or press **Return** or **Space**, to open the pane. Once the pane
+is open, a single click on another tile switches to it. ✕ closes the pane and leaves
+the tile selected, so the Object menu still applies to it.
 
 The sessions table has a **Device** column naming the telescope that shot each
 session, so two telescopes on the same object on the same night are two sessions, not
@@ -63,7 +67,7 @@ months' work shows up as a bright patch of sky, and the gaps show you what's sti
 The key lists only the colors actually on the chart, so an unfiltered map of a collection
 you've shot every object in doesn't explain a grey you can't see.
 
-- **Click** a marker to open that object, exactly as clicking a row or tile does; **hover**
+- **Click** a marker to open that object, exactly as clicking a row does; **hover**
   one to see its hero image.
 - **Filter to a goal** and the rest of that catalog joins the chart in the muted
   not-yet-shot colour, so the map becomes a picture of your progress against the list —
