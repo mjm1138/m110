@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -54,9 +54,9 @@ made. <a href="#what-it-can-and-cant-do">More on this below</a>.</p>
 </ul>
 <hr />
 <h2 id="connecting-an-assistant">Connecting an assistant</h2>
-<p>Open <strong>Preferences → AI assistant</strong> (Library → Preferences, or Cmd+, on macOS).</p>
+<p>Open <strong>Settings › Assistant</strong> (<strong>Settings…</strong>, ⌘,).</p>
 <h3 id="claude-desktop-one-click">Claude Desktop — one click</h3>
-<p>Click <strong>Set up Claude Desktop…</strong>. M110 adds itself to Claude Desktop's config file
+<p>Click <strong>Set Up Claude Desktop…</strong>. M110 adds itself to Claude Desktop's config file
 and tells you to <strong>quit and reopen Claude Desktop</strong> — then just ask it something
 like <em>"what should I shoot tonight?"</em>. That's the whole setup. The button becomes
 <strong>Update Claude Desktop…</strong> afterwards, and <strong>Disconnect</strong> removes the entry again,
@@ -64,7 +64,7 @@ leaving any other servers you've configured alone.</p>
 <p>Claude Desktop gets the one-click path only because its configuration is a JSON
 file M110 can safely merge into — not because it's the only assistant that works.</p>
 <h3 id="any-other-mcp-client">Any other MCP client</h3>
-<p>Click <strong>Connection details…</strong>. M110 is a plain MCP server over stdio, so the same
+<p>Click <strong>Connection Details…</strong>. M110 is a plain MCP server over stdio, so the same
 connection is offered in the three shapes clients ask for, each with a <strong>Copy</strong>
 button:</p>
 <ul>
@@ -127,7 +127,7 @@ nothing can be changed without you doing it yourself — but it's a reason to re
 proposals rather than rubber-stamping them, the same as with any AI suggestion.</p>
 <hr />
 <h2 id="skills-the-procedures-it-follows">Skills — the procedures it follows</h2>
-<p>M110 ships four <strong>skills</strong>: written procedures the assistant reads before working,
+<p>M110 ships five <strong>skills</strong>: written procedures the assistant reads before working,
 so it uses the engine properly instead of improvising. Most MCP clients surface
 these as slash-commands or prompts; an assistant can also fetch one itself.</p>
 <table>
@@ -151,6 +151,10 @@ these as slash-commands or prompts; an assistant can also fetch one itself.</p>
 <td>Measure a target's light frames and propose Siril stacking settings — coverage depth, drizzle, rejection, weighting, feathering — with the reason for each, plus the disk cost and the command to run. Also covers the awkward cases: mosaics, mixed exposures, and targets shot through more than one filter (which stack separately and are combined afterwards). It measures; <strong>you</strong> run the stack. Takes the object.</td>
 </tr>
 <tr>
+<td><strong>Stack with Stackhammer</strong></td>
+<td>The same conversation for <a href="processing.html#stacking-with-stackhammer">Stackhammer</a>, the faster stacking engine for Siril on Apple silicon. Stackhammer reports every one of its settings with its reason; the assistant relays them, tries alternatives, and either hands you the command or stages a preset so the Stackhammer window in Siril opens on what you agreed. Takes the object.</td>
+</tr>
+<tr>
 <td><strong>Explain the numbers</strong></td>
 <td>How to talk about M110's figures without inventing any. This one applies to <em>every</em> answer about your library, not just when you invoke it — the others build on it.</td>
 </tr>
@@ -163,7 +167,7 @@ M110's sequencer already handles them together. The assistant asks the engine an
 reports the answer.</p>
 <hr />
 <h2 id="tools-what-it-can-look-at">Tools — what it can look at</h2>
-<p>Sixteen operations, grouped by what you'd ask for. <strong>Every one is read-only except
+<p>Nineteen operations, grouped by what you'd ask for. <strong>Every one is read-only except
 <em>Save field guide</em></strong>, which can only create a new file.</p>
 <h3 id="getting-oriented">Getting oriented</h3>
 <table>
@@ -193,6 +197,10 @@ reports the answer.</p>
 <tr>
 <td><code>plan_stack</code></td>
 <td>Measures a capture folder's light frames and proposes Siril stacking settings, each with its reason, plus the projected disk cost and the exact command to run. Ask it "what if we skipped drizzle?" and it recomputes the whole proposal, disk included, so the answer is a real number. It reads headers only — it does not stack.</td>
+</tr>
+<tr>
+<td><code>plan_stackhammer</code></td>
+<td>Asks Stackhammer what it would do with a capture folder: the lights, the darks, flats and biases it matched and why, the Siril steps that preprocess them, and every Stackhammer setting with its value, choices and reason. Once the folder holds a plate-solved sequence it also reports the frames the quality filters keep, the canvas and the coverage depth. It runs only Stackhammer's read-only commands — it does not stack. Needs Stackhammer installed.</td>
 </tr>
 <tr>
 <td><code>get_skill</code></td>
@@ -268,6 +276,10 @@ you for it.</p>
 <td>Proposes how many minutes an object needs on one telescope (or clearing it back to the default) — with the object's progress before and after, and the ranking change when it's the telescope you're planning with.</td>
 </tr>
 <tr>
+<td><code>propose_stackhammer_preset</code></td>
+<td>Proposes the Stackhammer settings one capture folder should be stacked with, as that folder's preset, with a table of what changes. Applying it writes one small file in the folder's Siril working directory (the preset it replaces is kept); nothing is stacked.</td>
+</tr>
+<tr>
 <td><code>propose_journal_entry</code></td>
 <td>Proposes text for an object's journal (a critique, a session note, a processing decision). Returns markdown for you to paste — it does not write.</td>
 </tr>
@@ -301,17 +313,20 @@ twice, so a proposal can't come with a made-up outcome attached.</p>
 <strong>Review…</strong> button. Click it to see each item and accept or discard it. The strip
 stays until the queue is empty, and is hidden entirely when there's nothing
 waiting.</p>
-<p>For a proposal, M110 re-runs the preview <strong>against your library as it is now</strong>, not
+<p>A Stackhammer preset proposal is checked differently: it is about one file, so
+M110 warns only if that folder's preset changed after the suggestion was made
+(you saved your own from the Stackhammer window, say).</p>
+<p>For a ranking proposal, M110 re-runs the preview <strong>against your library as it is now</strong>, not
 as it was when the assistant made the suggestion. If your data changed in between —
 you imported a session, or retuned the weights yourself — you see the current
 consequence, not a stale one.</p>
 <p>If you'd rather skip the queue for plans, tick <strong>Let the assistant save plans
-straight to <code>Plans/</code></strong> in Preferences → AI assistant. That only affects saved plans,
+straight to <code>Plans/</code></strong> in Settings › Assistant. That only affects saved plans,
 and only ever creates new files.</p>
 <hr />
 <h2 id="troubleshooting">Troubleshooting</h2>
 <p><strong>"The assistant can't see my library."</strong> Almost always <code>M110_DATA_ROOT</code> pointing at
-the wrong folder — check it against the path shown in <strong>Connection details…</strong>. The
+the wrong folder — check it against the path shown in <strong>Connection Details…</strong>. The
 server reports this clearly rather than appearing broken.</p>
 <p><strong>"It says there's no capture data."</strong> The assistant reads M110's <em>cached</em> rollups,
 so a brand-new library needs one <strong>Refresh</strong> (Ctrl+R) first. Rankings additionally
@@ -321,11 +336,11 @@ that the read-only server deliberately can't run for you.</p>
 rather than silently recomputing, and a well-behaved assistant will tell you. Press
 <strong>Recompute</strong> on the Planning page.</p>
 <p><strong>"It's not connecting at all."</strong> Restart the client after setting it up — most read
-their config only at startup. If it still fails, Preferences → AI assistant shows a
+their config only at startup. If it still fails, Settings › Assistant shows a
 status line explaining what's wrong.</p>
 <hr />
 <p>Back to the <strong><a href="index.html">User Guide contents</a></strong>.</p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

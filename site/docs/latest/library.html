@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html" class="on">The library & object metadata</a>
@@ -34,8 +34,8 @@
 covers the three ways to view it, how to add and describe objects, and how to curate
 each object's images.</p>
 <h2 id="four-views-of-your-collection">Four views of your collection</h2>
-<p>A segmented control at the top of the Library switches how you see your objects — your
-choice is remembered:</p>
+<p>The view switcher in the top bar (or <strong>View › as List / as Grid / as Map</strong>) switches how
+you see your objects — your choice is remembered:</p>
 <ul>
 <li><strong>Grid</strong> (the default home view) — a wall of hero thumbnails, one tile per object,
   each with its designations, status, and integration time. Drag the zoom slider to
@@ -43,18 +43,18 @@ choice is remembered:</p>
 <li><strong>List</strong> — a sortable table (Object, Name, Type, Season, Mag, Size, Filter, Status,
   Integration, Sessions). Click a header to sort; the Object column sorts <em>naturally</em>
   (M1, M2, … M10, M100 — not alphabetically) and by catalog (Messier before NGC).</li>
-<li><strong>Feed</strong> — a reverse-chronological stream of object cards (hero + notes), a photo-blog
-  of your imaging that re-orders as you reprocess.</li>
 <li><strong>Map</strong> — your collection plotted on a star chart, so you can see where in the sky
   you've been working and what's still empty. See <a href="#the-sky-map">The sky map</a> below.</li>
 </ul>
 <p>The <strong>catalog filter</strong> lists the catalogs you've set as <strong>goals</strong> (turn them on under
 Overview → Manage goals); catalogs you aren't working aren't offered.</p>
-<p>A separate <strong>Deep sky · Media</strong> toggle switches the whole page between your catalog
-objects and your non-catalog <strong>Media</strong> (lunar, planetary, scenery, startrails — photos
-and videos). A search box and a <strong>catalog filter</strong> (All / Messier / Caldwell / …) narrow
-the deep-sky views, and a stat row shows captured / total counts and integration time.</p>
-<p>Media has its own <strong>List</strong> and <strong>Grid</strong> views, in the same place as the deep-sky ones,
+<p>The reverse-chronological stream of object cards (hero + notes) that used to be the
+Feed view is now the <strong>Journal</strong>, its own place in the sidebar.</p>
+<p>Your non-catalog <strong>Media</strong> (lunar, planetary, scenery, startrails — photos and videos)
+is its own place in the sidebar too. A search field and a <strong>catalog filter</strong>
+(All / Messier / Caldwell / …) in the top bar narrow the Deep Sky views, and the bar's
+summary line shows object, captured and deep counts and integration time.</p>
+<p>Media has its own <strong>List</strong> and <strong>Grid</strong> views, in the same place in the top bar,
 plus a category filter, a <strong>Photos · Videos</strong> switch and a search box. Videos show the
 preview frame your telescope saved next to the clip, marked with a small ▶; opening one
 hands it to your usual video player (M110 doesn't play video itself). Selecting anything
@@ -63,8 +63,13 @@ buttons to open it, reveal it in your file manager, or export a shareable copy.<
 <p>Media is scanned right through, including subfolders — so stacked results you saved
 next to a video, or a whole folder of output from a tool like AutoStakkert, show up
 as photos rather than staying hidden.</p>
-<p>Click any object to open its <strong>detail pane</strong>: the hero, object notes, the gallery, its
-capture sessions, and its processing status.</p>
+<p>Click a row in the List view to open an object's <strong>detail pane</strong>: the hero, object
+notes, the gallery, its capture sessions, and its processing status. In the <strong>Grid</strong>,
+a click only selects a tile (so the grid never moves under the pointer);
+<strong>double-click</strong> it, or press <strong>Return</strong> or <strong>Space</strong>, to open the pane. Once the pane
+is open, a single click on another tile switches to it. The object's name and <strong>✕</strong>
+stay at the top of the pane while you scroll it; ✕ closes the pane and leaves the
+tile selected, so the Object menu still applies to it.</p>
 <p>The sessions table has a <strong>Device</strong> column naming the telescope that shot each
 session, so two telescopes on the same object on the same night are two sessions, not
 one merged row. For a Seestar, the <strong>Dark</strong> column shows which dark the telescope
@@ -80,7 +85,7 @@ months' work shows up as a bright patch of sky, and the gaps show you what's sti
 The key lists only the colors actually on the chart, so an unfiltered map of a collection
 you've shot every object in doesn't explain a grey you can't see.</p>
 <ul>
-<li><strong>Click</strong> a marker to open that object, exactly as clicking a row or tile does; <strong>hover</strong>
+<li><strong>Click</strong> a marker to open that object, exactly as clicking a row does; <strong>hover</strong>
   one to see its hero image.</li>
 <li><strong>Filter to a goal</strong> and the rest of that catalog joins the chart in the muted
   not-yet-shot colour, so the map becomes a picture of your progress against the list —
@@ -104,9 +109,9 @@ install; nothing else in the Library is affected.</p>
 <p>Every object has an <strong>integration goal</strong> for each telescope you shoot it with: the
 minutes of captured light it needs before you'd call it done. Its status follows it:</p>
 <ul>
-<li><strong>Initial</strong> (amber) — under a quarter of the way there;</li>
-<li><strong>62% of goal</strong> (blue) — on its way;</li>
-<li><strong>Deep Stack</strong> (green) — goal reached.</li>
+<li><strong>Initial</strong> (terracotta) — under a quarter of the way there;</li>
+<li><strong>62%</strong> (slate blue) — on its way;</li>
+<li><strong>Deep</strong> (sage green) — goal reached.</li>
 </ul>
 <p>Unless you set one, the goal is a <strong>default</strong> for the object's type (a faint nebula
 needs far more than a cluster), scaled by the telescope's speed: a faster f-ratio
@@ -182,10 +187,10 @@ which folder it's in, and you can override any image:</p>
   and Linux) hand the file off to your OS; Reveal opens the folder with the file selected.</li>
 </ul>
 <p>What counts as a "finished" render versus an intermediate by-product is decided by
-filename keywords you control in <strong>Preferences → Finished-image hints</strong> (defaults:
+filename keywords you control in <strong>Settings › Processing → Finished-image hints</strong> (defaults:
 <code>processed</code>, <code>final</code>, <code>finished</code>, and the intermediates <code>starless</code>, <code>starmask</code>).</p>
 <p>Next: <strong><a href="devices.html">Your telescopes — the Devices page →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

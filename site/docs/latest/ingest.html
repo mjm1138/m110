@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html" class="on">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -55,8 +55,10 @@ pointing), so it works across devices regardless of their filename conventions.<
 <code>MyWorks/</code>. Importing from the Seestar brings those in too, filed under
 <code>Calibration/&lt;telescope&gt;/darks/</code> (the telescope is named from the subs on the same
 device, e.g. <code>S50_15e7e390</code>). Reconnecting copies only darks you don't have yet.</p>
-<p>M110 <strong>never applies</strong> these darks: the Seestar already subtracts a dark from every
-sub before saving it, so subtracting one again would do it twice. They're kept as a
+<p>M110 <strong>never applies</strong> these darks to the Seestar app's subs. The app already
+subtracts a dark from every sub before saving it, so subtracting one again would do
+it twice. (Frames from the same Seestar driven by N.I.N.A. are not dark-subtracted;
+see below.) They're kept as a
 record of what the telescope did:</p>
 <ul>
 <li>The <strong>Dark</strong> column in an object's Sessions table (and in the full session log)
@@ -74,6 +76,33 @@ record of what the telescope did:</p>
 when each dark was made (its filename time) and the sensor temperature. A link says
 <strong>confirmed</strong> when the dark was made for that capture minutes before it started at
 the same temperature, and <strong>inferred</strong> otherwise.</p>
+<h3 id="nina-and-pins">N.I.N.A. and PINS</h3>
+<p>Frames captured with <strong>N.I.N.A.</strong> or <strong>PINS</strong> (N.I.N.A. on a Raspberry Pi), for
+example a Seestar driven over Alpaca, import from any folder layout: N.I.N.A.'s file
+pattern is your choice, so M110 reads the headers rather than the folder names. The
+preview labels these rows <strong>N.I.N.A.</strong></p>
+<ul>
+<li><strong>Mosaic panels</strong> named by N.I.N.A.'s framing assistant ("M 45 Panel 1",
+  "M 45 Panel 2" and so on, in any language N.I.N.A. uses) import together as one
+  <strong>M45_mosaic</strong> dataset.</li>
+<li><strong>Darks, flats and biases</strong> shot without a target go to your telescope's library,
+  <code>Calibration/&lt;telescope&gt;/</code>. A Seestar keeps one name whether you captured with its
+  app or with N.I.N.A.: M110 reads its serial from the camera name.</li>
+<li><strong>Darks are applied.</strong> Unlike the Seestar app, N.I.N.A. saves frames without
+  subtracting a dark. M110 groups N.I.N.A.'s single dark frames by exposure, gain,
+  night and temperature. When you stack, <code>m110-stack</code> builds a master from the
+  matching group first, and Siril prep links the group for the Naztronomy script.
+  An object can hold both N.I.N.A. and Seestar-app captures (N.I.N.A.'s "IR" filter
+  on a Seestar is the app's "IRCUT"). Siril prep gives each kind its own job folder.
+  For example, <code>siril/IRCUT/</code> holds the app subs with no darks, and
+  <code>siril/IRCUT_30s/</code> holds the N.I.N.A. subs with theirs, so the Naztronomy script
+  calibrates each correctly. Stack each folder and combine the stacks in Siril, or
+  point <code>m110-stack</code> at either folder: it stacks both together in one pass, each with
+  its own calibration.</li>
+<li>A target named for a field, such as "NGC 2024 IC 434", gets a dropdown in the
+  preview offering the catalog objects in its name. If you accept <strong>Remember
+  alias?</strong>, M110 remembers that target name, not the folder.</li>
+</ul>
 <h2 id="where-things-land-the-library-layout">Where things land — the library layout</h2>
 <p>Your data folder is organized around <strong>two views of the same collection</strong>:</p>
 <pre><code>&lt;data folder&gt;/            (default ~/Documents/M110)
@@ -82,7 +111,7 @@ the same temperature, and <strong>inferred</strong> otherwise.</p>
   Images/&lt;target&gt;/            one folder per capture target
     lights/                     raw light subs — the immutable originals
     stacks/                     Siril stacks you've imported back
-    seestar-stacks/             the device's own in-app stacks
+    device-stacks/              the telescope's own in-app stacks
     finished/                   your finished, hand-processed renders
     working_files/              processing by-products (starless, crop, stretch…)
     previews/                   per-sub JPG previews (only if you opt in)
@@ -105,8 +134,9 @@ finished renders in separate folders on purpose:</p>
 <li><code>lights/</code> holds <strong>only</strong> raw light subs. M110 treats these as immutable — it reads
   them but never writes into this folder. This is what everything else is derived
   from, so keep it clean.</li>
-<li><code>stacks/</code> and <code>seestar-stacks/</code> hold integrated stacks (yours from Siril, and the
-  device's in-app stacks respectively).</li>
+<li><code>stacks/</code> and <code>device-stacks/</code> hold integrated stacks (yours from Siril, and the
+  telescope's own in-app stacks — Seestar, Dwarf or Draco — respectively).
+  (Older versions called it <code>seestar-stacks/</code>; M110 renames it for you.)</li>
 <li><code>finished/</code> holds your deliverables — the images you've hand-processed and are
   proud of.</li>
 </ul>
@@ -114,7 +144,7 @@ finished renders in separate folders on purpose:</p>
 <strong>Library</strong> page and each object's <strong>detail pane</strong>, which groups the gallery into
 "Finished" and "Working files."</p>
 <p>Next: <strong><a href="library.html">The library &amp; object metadata →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

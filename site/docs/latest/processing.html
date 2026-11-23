@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -89,8 +89,12 @@ changes.</p>
 Library, on the Processing page, or use the <strong>Process in Siril</strong> button on its detail
 page — and M110 launches Siril already pointed at that object's <code>siril/</code> sandbox as its
 <strong>working directory</strong>.</p>
+<p>When the sandbox is split into job folders (one per filter, such as <code>LP</code> and <code>IRCUT</code>,
+or one per calibration set), <strong>Process in Siril</strong> becomes a submenu listing each
+folder, and the detail page's button drops down the same list. Pick the one you want
+to stack.</p>
 <p>M110 finds Siril automatically in the usual place. If yours is installed somewhere
-unusual, set its location under <strong>Preferences → Processing tools</strong> (on macOS you can pick
+unusual, set its location under <strong>Settings › Tools</strong> (on macOS you can pick
 <code>Siril.app</code> directly; elsewhere, the Siril executable).</p>
 <blockquote>
 <h3 id="quit-siril-when-you-finish-an-object">⚠ Quit Siril when you finish an object</h3>
@@ -226,6 +230,42 @@ sign of it. Set your own bar with <code>--min-solved</code> (a percentage; 25 by
 reimplementing anything. If you've connected an <a href="assistant.html">AI assistant</a>, it can
 talk the settings through with you and hand you the command; it can't start a stack
 itself.</p>
+<h3 id="stacking-with-stackhammer">Stacking with Stackhammer</h3>
+<p><a href="https://github.com/mjm1138/stackhammer">Stackhammer</a> is a separate stacking
+engine for Siril on Macs with Apple silicon. Siril still calibrates and
+plate-solves your subs; Stackhammer then does the stack itself on the GPU, and
+adds <strong>local normalization</strong>, which lets nights taken under different skies (a
+moonlit one, a hazy one, the panels of a mosaic) stack without leaving
+gradients or steps. It is early software that you build from source, and M110
+works with it when it is there:</p>
+<pre><code>m110-stack &quot;M101&quot; --engine stackhammer
+m110-stack &quot;M101&quot; --engine stackhammer --run
+</code></pre>
+<p>The first line proposes and writes nothing: your lights, the calibration frames
+Stackhammer matched for them and why, the Siril steps it will run, and every
+Stackhammer setting with its reason. The second preprocesses in Siril, stacks,
+and removes the intermediates. The stack lands at the top of the target's
+<code>siril/</code> folder, named from its frames, with its depth and rejection maps in
+<code>siril/stackhammer/</code>. <code>--handoff</code>, <code>--restack</code>, <code>--keep-process</code> and <code>-v</code> work as
+they do for the Siril engine.</p>
+<p>Stackhammer's settings are its own, so they are set by its own names with
+<code>--set</code>, not with the Siril engine's flags:</p>
+<pre><code>m110-stack &quot;M101&quot; --engine stackhammer --set weight=noise --set drizzle=true
+</code></pre>
+<p>Settings you want to keep for a target live in a <strong>preset</strong>,
+<code>siril/presets/stackhammer_presets.json</code>. It is the same file the Stackhammer
+script inside Siril loads when its window opens, so the two ways of running
+agree. <code>m110-stack</code> applies it unless you pass <code>--no-preset</code>, and <code>--set</code> wins
+over it. An <a href="assistant.html">AI assistant</a> can talk the settings through and
+propose a preset for you to accept in M110.</p>
+<p><strong>Finding Stackhammer.</strong> M110 uses the path in <strong>Settings ›
+Tools</strong> if you set one. Otherwise it uses the binary named by the Stackhammer
+script installed in Siril, then <code>/opt/homebrew/bin</code>, <code>/usr/local/bin</code>,
+<code>~/.local/bin</code> and your <code>PATH</code>.</p>
+<p>Two limits for now. A target whose subs need different calibration, which M110
+splits into several folders per filter, is stacked one folder at a time by
+Stackhammer (the Siril engine stacks the group together). And there is no
+button for it in the app yet: it is <code>m110-stack</code> or the script in Siril.</p>
 <h3 id="handing-a-stack-to-astrowizard">Handing a stack to AstroWizard</h3>
 <p><code>m110-stack "M101" --run --handoff</code> also drops the finished stack into
 <code>Images/M101/astrowizard/</code>, ready to open in
@@ -241,7 +281,7 @@ folder</strong> and open the file yourself.</p>
 <p><a href="https://astrowizard.lukomatico.com/">StackingWizard</a> is AstroWizard's companion:
 it stacks a night's frames and hands the result straight over. M110 keeps your
 frames ready for it.</p>
-<p>Tick <strong>AstroWizard</strong> in <strong>Preferences → Processing workflows you use</strong>, and each
+<p>Tick <strong>AstroWizard</strong> in <strong>Settings › Processing</strong>, and each
 object gets an <code>astrowizard/</code> folder containing your subs as hardlinks — no extra
 disk, and they're skipped by backup because the originals are already in it.</p>
 <p>Then use <strong>Stack in StackingWizard…</strong> on the object. M110 opens the app and
@@ -290,7 +330,7 @@ attempt.</p>
 cleans them out, and they're not small: a mosaic's run can be several GB, and an
 AstroWizard finish can be a couple of GB on its own. They're included in your
 backups too, so the growth shows up twice.</p>
-<p><strong>Preferences → Processing workflows you use → "Keep the last N processing
+<p><strong>Settings › Processing → "Keep the last N processing
 sessions"</strong> is the control:</p>
 <ul>
 <li><strong>A number (default 3 for a new library)</strong> — M110 keeps that many archived runs per
@@ -345,7 +385,7 @@ data for every processing run.</p>
   — it's the same file. Treat subs as read-only everywhere.</li>
 </ul>
 <p>Next: <strong><a href="backup.html">Backing up your library →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

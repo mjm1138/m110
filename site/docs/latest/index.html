@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html" class="on">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -40,7 +40,7 @@ each page links to the next.</p>
 <li><a href="#getting-started">Getting started</a> — install, first launch, your data folder</li>
 <li><a href="#getting-around">Getting around</a> — the navigation rail, menus, and updates</li>
 <li><strong><a href="ingest.html">Ingest &amp; the library layout</a></strong> — how captures come in, and where they land on disk</li>
-<li><strong><a href="library.html">The library &amp; object metadata</a></strong> — the List/Grid/Feed views, adding objects, filling in details, and per-image curation</li>
+<li><strong><a href="library.html">The library &amp; object metadata</a></strong> — the List/Grid/Map views, adding objects, filling in details, and per-image curation</li>
 <li><strong><a href="devices.html">Your telescopes — the Devices page</a></strong> — nicknames, planning limits, optics, what each telescope captured, and the Seestar's dark library</li>
 <li><strong><a href="processing.html">Processing prep &amp; hardlinks</a></strong> — the Siril sandbox, <strong>Process in Siril</strong> (one-click launch — and why to quit Siril between objects), the <strong>AstroWizard</strong> round-trip, <strong>keeping working files under control</strong> (how many past runs M110 keeps), and <em>what hardlinks mean for your files</em> (important)</li>
 <li><strong><a href="backup.html">Backing up your library</a></strong> — local and cloud snapshots, retention, and how hardlinked backups behave</li>
@@ -63,7 +63,7 @@ structure and a starter catalog there; it never writes anywhere else.</p>
 <p><strong>Your data is yours.</strong> Everything M110 manages lives inside that one folder as plain
 files (FITS, JP/PNG/TIFF, Markdown, TOML). There's no database to corrupt and no
 lock-in — you can browse it in your file manager any time. Changing the data folder
-later (Library → Preferences) takes effect on restart.</p>
+later (<strong>Settings › General</strong>) takes effect on restart.</p>
 <blockquote>
 <p>🔒 <strong>M110 never touches your originals.</strong> Ingest is always <em>preview-then-confirm</em>,
 and it <strong>copies</strong> from your telescope rather than moving — your capture files stay
@@ -71,25 +71,38 @@ exactly where they are until you say otherwise.</p>
 </blockquote>
 <hr />
 <h2 id="getting-around">Getting around</h2>
-<p>M110 has a <strong>navigation rail</strong> down the left side with six pages. The <strong>Library</strong> is
-home — it opens there once you have a collection. (A brand-new, empty library opens on
-<strong>Overview</strong> instead, with a welcome card and an <em>Import images…</em> button to get you
-started.)</p>
+<p>M110 has a <strong>sidebar</strong> down the left side, grouped like a Mac source list:
+<strong>Overview</strong>, then <em>Library</em> (<strong>Deep Sky</strong>, <strong>Media</strong>, <strong>Journal</strong>), <em>Workflow</em>
+(<strong>Import</strong>, <strong>Processing</strong>) and <em>Observing</em> (<strong>Planning</strong>, <strong>Devices</strong>). ⌘1–⌘8 jump
+to them in that order. M110 opens on <strong>Overview</strong> (a brand-new, empty library shows a
+welcome card and an <em>Import images…</em> button there). Drag the sidebar's edge to resize
+it, or hide it with <strong>View › Hide Sidebar</strong> (⌃⌘S) or the button at the top left.</p>
+<p>The bar across the top names the place you're in, with a one-line summary
+("65 objects · 34 deep · 316.8 h"). On the right it holds that place's controls:
+the view switcher, the catalog picker and a <strong>search</strong> field (<strong>⌘F</strong>).</p>
 <table>
 <thead>
 <tr>
-<th>Page</th>
+<th>Place</th>
 <th>What it's for</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Library</strong></td>
+<td><strong>Overview</strong></td>
+<td>A dashboard of collapsible sections: goal progress, priority targets, integration time &amp; recent sessions, progress by category, and goal setup.</td>
+</tr>
+<tr>
+<td><strong>Deep Sky</strong></td>
 <td>Your collection — every object you've shot (and any you're tracking). This is the hub.</td>
 </tr>
 <tr>
-<td><strong>Overview</strong></td>
-<td>A dashboard of collapsible sections: goal progress, priority targets, integration time &amp; recent sessions, progress by category, and goal setup.</td>
+<td><strong>Media</strong></td>
+<td>Lunar, planetary, scenery and startrail photos and videos.</td>
+</tr>
+<tr>
+<td><strong>Journal</strong></td>
+<td>A reverse-chronological stream of object cards (hero + notes), a photo-blog of your imaging.</td>
 </tr>
 <tr>
 <td><strong>Planning</strong></td>
@@ -109,17 +122,13 @@ started.)</p>
 </tr>
 </tbody>
 </table>
-<h3 id="the-library">The Library</h3>
-<p>The Library opens as a <strong>thumbnail grid</strong> (a wall of your objects). A control row at the
-top gives you two segmented toggles:</p>
-<ul>
-<li><strong>Deep sky · Media</strong> — switch the whole page between your catalog objects and your
-  non-catalog <strong>Media</strong> (lunar, planetary, scenery, startrails).</li>
-<li><strong>List · Grid · Feed</strong> — view your deep-sky objects as a sortable <strong>table</strong>, the
-  <strong>grid</strong>, or a reverse-chronological <strong>Feed</strong> of object cards (a photo-blog of your
-  imaging). Plus a search box and a catalog filter (Messier, Caldwell, …).</li>
-</ul>
-<p>Click any object to open its <strong>detail pane</strong> — where most per-object work happens:
+<h3 id="deep-sky">Deep Sky</h3>
+<p>Deep Sky opens as a <strong>thumbnail grid</strong> (a wall of your objects). The view switcher in
+the top bar shows them as a sortable <strong>List</strong>, the <strong>Grid</strong>, or a sky <strong>Map</strong>
+(also <strong>View › as List / as Grid / as Map</strong>). Beside it are a catalog filter
+(Messier, Caldwell, …) and a search field.</p>
+<p>Click a row in the List (or <strong>double-click</strong> a tile in the Grid) to open an object's
+<strong>detail pane</strong> — where most per-object work happens:
 hero image, notes, the gallery (split into <em>Finished</em> and <em>Working files</em>), the
 object's capture sessions, and its processing status. Set a hero, mark an image
 finished/working, or import finished Siril work from here.</p>
@@ -128,7 +137,7 @@ finished/working, or import finished Siril work from here.</p>
 (click a heading's triangle to open/close it; your choices are remembered):</p>
 <ul>
 <li><strong>Goals</strong> — progress toward each catalog you're tracking.</li>
-<li><strong>Priority targets</strong> — objects you've pinned (right-click → <em>Pin as priority</em> in the
+<li><strong>Priority targets</strong> — objects you've pinned (<strong>Object › Pin as Priority</strong>, or right-click in the
   Library). The <strong>Planning</strong> page adds the automatic ranking on top; pins always win.</li>
 <li><strong>Integration Time and Sessions</strong> — hours per object, your last few sessions, and a
   <strong>View all sessions…</strong> button for the full log.</li>
@@ -136,24 +145,40 @@ finished/working, or import finished Siril work from here.</p>
   check for captured / deep-stacked.</li>
 <li><strong>Manage goals</strong> — pick which catalogs you're working toward, or build a custom list.</li>
 </ul>
-<h3 id="menus-preferences-updates">Menus, preferences &amp; updates</h3>
+<h3 id="menus-settings-updates">Menus, settings &amp; updates</h3>
 <ul>
-<li><strong>File menu</strong> — <strong>Import…</strong>, <strong>Publish / share…</strong>, Exit.</li>
-<li><strong>Library menu</strong> — Refresh (Ctrl+R), <strong>Add object…</strong>, <strong>Fill missing metadata…</strong> /
-  <strong>Enrich online…</strong> (see <strong><a href="library.html">the library page</a></strong>).</li>
-<li><strong>Tools menu</strong> — Prepare working folders, Clean up imported sidecars, <strong>Back up…</strong> /
-  <strong>Restore…</strong> (to a local drive, the cloud, or both — see
-  <strong><a href="backup.html">Backing up your library</a></strong>), and <strong>Preferences</strong> (Cmd+, — on macOS it
-  lives under the app menu).</li>
-<li><strong>Help menu</strong> — <strong>User guide</strong> (opens this guide), <strong>Check for updates…</strong>, <strong>Report a
-  problem…</strong> (a pre-filled bug report), and <strong>About M110</strong>.</li>
+<li><strong>File</strong> — <strong>Import…</strong> (⌘I), <strong>Publish…</strong>, <strong>Back Up Now</strong> / <strong>Restore…</strong> (to a local
+  drive, the cloud, or both — see <strong><a href="backup.html">Backing up your library</a></strong>), and
+  <strong>Settings…</strong> (⌘, — on macOS it's in the M110 menu).</li>
+<li><strong>Edit</strong> — <strong>Undo / Redo</strong> (Remove from Library and pin changes can be undone),
+  Copy, Select All, and <strong>Find</strong> (⌘F).</li>
+<li><strong>View</strong> — the places (⌘1–⌘8), <strong>as List / Grid / Map</strong>, Hide Sidebar, Hide
+  Inspector (the detail pane), <strong>Night Vision</strong> (⇧⌘N), Enter Full Screen.</li>
+<li><strong>Object</strong> — everything you can do to the selected object: Set Goal…, Pin as
+  Priority, Deprioritize, Process in Siril, Send to AstroWizard…, Stack in
+  StackingWizard…, Import Finished Work…, Export for Sharing… (⇧⌘E), Reveal Working
+  Folder (⇧⌘R), Include in Publishing, Fill In Missing Metadata, Enrich Online, and
+  Remove from Library (⌘⌫). Right-click menus are shortcuts to the same commands.</li>
+<li><strong>Library</strong> — Refresh (⌘R), <strong>Add Object…</strong>, <strong>Fill All Missing Metadata…</strong> /
+  <strong>Enrich All Online…</strong> (see <strong><a href="library.html">the library page</a></strong>), Rebuild Working
+  Folders, Clean Up Imported Sidecars….</li>
+<li><strong>Window</strong> — Minimize (⌘M), Zoom, and the list of open windows (the image viewer
+  is its own window).</li>
+<li><strong>Help</strong> — <strong>M110 Help</strong> (opens this guide), <strong>Report a Problem…</strong> (a pre-filled
+  bug report). <strong>Check for Updates…</strong> and <strong>About M110</strong> are in the M110 menu on macOS
+  and in Help elsewhere.</li>
 <li><strong>Appearance / theme.</strong> M110 follows your system light/dark appearance automatically;
-  Preferences → Appearance lets you force <strong>Light</strong> or <strong>Dark</strong> instead. The choice
+  Settings › Appearance lets you force <strong>Light</strong> or <strong>Dark</strong> instead. The choice
   applies live and is remembered.</li>
+<li><strong>Night vision.</strong> At the telescope, <strong>View › Night Vision</strong> (⇧⌘N) turns everything
+  red on black, photos included (shown as dimmed red), so the screen doesn't spoil
+  your dark adaptation. Toggle it off to return to the appearance you had.</li>
 <li><strong>Updates.</strong> Once a day at most, M110 checks GitHub for a newer release and shows a
   quiet, dismissible banner if one is available (<strong>Download · Skip this version · ✕</strong>). No
-  data is sent; turn the check off in Preferences → Updates.</li>
-<li><strong>Other preferences</strong> worth knowing: your <strong>data folder</strong>, the processing <strong>workflows</strong>
+  data is sent; turn the check off in Settings › General.</li>
+<li><strong>Settings</strong> (⌘,) is one window with a pane for each area — <strong>General, Processing,
+  Tools, Backup, Assistant, Appearance</strong> — and every change applies at once (there's
+  no Save). Worth knowing: your <strong>data folder</strong>, the processing <strong>workflows</strong>
   to prepare (and your Siril path), the <strong>finished-image hints</strong> that decide what counts as
   a finished render vs. an intermediate, whether to import per-sub JPG previews, and the
   <strong>AI assistant</strong> connection (see <strong><a href="assistant.html">Using an AI assistant</a></strong>).</li>
@@ -161,7 +186,7 @@ finished/working, or import finished Siril work from here.</p>
 <p><strong>Slow operations</strong> (refresh, ingest, backup) run in the background with a progress
 dialog you can cancel — the window never freezes.</p>
 <p>Next: <strong><a href="ingest.html">Ingest &amp; the library layout →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

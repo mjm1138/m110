@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -31,15 +31,22 @@
     <article class="card"><h1 id="backing-up-your-library">Backing up your library</h1>
 <p>← <a href="index.html">Back to the guide</a></p>
 <p>M110 has a built-in backup system that makes <strong>dated snapshots</strong> of your library.
-Open it from <strong>Tools → Back up…</strong>.</p>
-<p>It has two backups you can set up side by side, each on its own tab:</p>
+Set it up in <strong>Settings › Backup</strong> (<strong>Settings…</strong>, ⌘,), and run it any time with
+<strong>File › Back Up Now</strong>.</p>
+<p>It has two backups you can set up side by side; the <strong>Local drive | Cloud</strong> switch
+shows one at a time:</p>
 <ul>
 <li><strong>Local drive</strong> — an external or network drive separate from your working disk.</li>
 <li><strong>Cloud</strong> — offsite, in Amazon S3, Backblaze B2, Cloudflare R2, Wasabi, or any
   S3-compatible storage.</li>
 </ul>
-<p>The top of the window shows both at a glance: where each one goes, when it last ran,
-and whether it runs automatically. You can use either one, or — best — both.</p>
+<p>The top of the pane shows both at a glance: where each one goes, when it last ran,
+and whether it runs automatically. You can use either one, or — best — both. There's
+no Save button: each setting is kept the moment you change it (a folder or address
+once you press Return or move to the next field).</p>
+<p><strong>File › Back Up Now</strong> backs up to every destination you've set up, one after the
+other, in the background — the status bar says how it went. <strong>Back Up Now</strong> in the
+pane backs up just the one on screen, with a progress window you can cancel.</p>
 <p>Whatever the details below, two things are always true:</p>
 <ul>
 <li><strong>Only what changed is stored</strong> each time. Your raw subs never change, so they're
@@ -106,7 +113,7 @@ listable, verifiable and restorable in both formats — switching never strands 
 backup you already have. The only case where M110 decides for you is a destination
 that can't share files, where mirrored isn't a real option.</p>
 <h2 id="backing-up-to-cloud-storage">Backing up to cloud storage</h2>
-<p>Open the <strong>Cloud</strong> tab (or click <strong>Set up cloud backup…</strong> at the top of the window)
+<p>Switch to <strong>Cloud</strong> in Settings › Backup
 and enter a bucket address as the destination:</p>
 <pre><code>s3://your-bucket/m110-backups
 </code></pre>
@@ -156,23 +163,23 @@ backup restores on its own.</p>
 <p>Your light frames are usually around <strong>99% of your library's size</strong>. Backing all of
 them up to metered storage can take days and cost real money, and for many people
 that's not what "offsite" needs to mean.</p>
-<p>Each tab has its own <strong>Back up:</strong> setting, with two choices:</p>
+<p>Each one has its own <strong>Back up:</strong> setting, with two choices:</p>
 <ul>
 <li><strong>Everything</strong> — the whole library, light frames included. The right choice for a
-  drive or network share, and the default on the Local drive tab.</li>
+  drive or network share, and the default for Local drive.</li>
 <li><strong>Essentials</strong> — everything <em>except</em> your raw light frames and archived
   processing runs. Your journals, finished images, stacks, plans, presets and
   settings all still go. This is typically a few percent of the size, and it's the
-  default on the Cloud tab.</li>
+  default for Cloud.</li>
 </ul>
 <p>That makes the recommended setup the default one: <strong>Everything to a local drive,
 Essentials to the cloud</strong>. The frames stay where there's room for them, and the work
 you can't recapture is offsite. To set it up:</p>
 <ol>
-<li>On the <strong>Local drive</strong> tab, choose your drive and tick <strong>Back up automatically</strong>.</li>
-<li>On the <strong>Cloud</strong> tab, enter your bucket and keys, press <strong>Test connection</strong>, and
+<li>Under <strong>Local drive</strong>, choose your drive and tick <strong>Back up automatically</strong>.</li>
+<li>Under <strong>Cloud</strong>, enter your bucket and keys, press <strong>Test connection</strong>, and
    tick <strong>Back up automatically</strong> there too.</li>
-<li>Press <strong>Save</strong>. Each backup now runs on its own schedule; when both are due,
+<li>That's it — each backup now runs on its own schedule; when both are due,
    M110 does the local one first, then the cloud one.</li>
 </ol>
 <p><strong>Changing to Essentials doesn't delete anything.</strong> Backups you already made keep
@@ -206,7 +213,7 @@ but the implications are <strong>opposite</strong>:</p>
   files read-only for this reason; copy a file out before working on it.</li>
 </ul>
 <h2 id="automation-retention">Automation &amp; retention</h2>
-<p>Each tab has its own settings, so the local drive and the cloud can run on
+<p>Each has its own settings, so the local drive and the cloud can run on
 different schedules and keep different numbers of backups.</p>
 <ul>
 <li><strong>Automatic backups</strong> run on a schedule (default: at most one every 12 hours), so a
@@ -218,7 +225,7 @@ different schedules and keep different numbers of backups.</p>
   destination. (Local drive only — cloud storage has no volume to fill.)</li>
 </ul>
 <h2 id="restoring">Restoring</h2>
-<p><strong>Tools → Restore…</strong> (or <strong>Restore…</strong> in the Back up window) lets you pick a backup
+<p><strong>File › Restore…</strong> (or <strong>Restore…</strong> in the Back up window) lets you pick a backup
 by date — from either your local drive or the cloud, if you use both — choose
 specific files or the whole tree, and either <strong>extract to a folder</strong> (safe default)
 or restore <strong>into your library</strong> (with a conflict preview and confirmation first).
@@ -235,7 +242,7 @@ Siril rebuilds every time you stack. Your catalog, notes, subs, stacks, finished
 renders and past processing runs are all included.</p>
 </blockquote>
 <p>Next: <strong><a href="planning.html">Session planning →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>

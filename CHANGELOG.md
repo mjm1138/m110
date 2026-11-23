@@ -10,6 +10,8 @@ changes a **user** would notice, per release.
 
 ## [Unreleased]
 
+## [1.0.0-beta.1] - 2026-11-23
+
 ### Changed
 - **Planning puts tonight's plan first.** *Plan a night* now sits right under
   Location and opens by default, followed by your saved field guides; the ranked

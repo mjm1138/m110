@@ -13,7 +13,7 @@
 <div class="shell">
   <aside class="side">
     <a class="brand" href="/"><img src="/assets/app-icon.png" alt=""><b>M110</b></a>
-    <div class="vbar"><span class="vtag">v0.3.0-beta.10</span><a href="/docs/">all versions</a></div>
+    <div class="vbar"><span class="vtag">v1.0.0-beta.1</span><a href="/docs/">all versions</a></div>
     <nav><a href="index.html">M110 — User Guide</a>
       <a href="ingest.html">Ingest & the library layout</a>
       <a href="library.html">The library & object metadata</a>
@@ -31,7 +31,7 @@
     <article class="card"><h1 id="session-planning">Session planning</h1>
 <p>← <a href="index.html">Back to the guide</a></p>
 <p>The <strong>Planning</strong> page answers two questions: <em>what should I shoot next?</em> and <em>what
-should I shoot </em><em>tonight</em><em>, in what order?</em> Everything on it is computed from your
+should I shoot <strong>tonight</strong>, in what order?</em> Everything on it is computed from your
 own library — what you've captured, what your goals are, and where you observe from.</p>
 <h2 id="site-profiles">Site profiles</h2>
 <p>Planning starts with <strong>where you are</strong>. A <em>site profile</em> holds a location's
@@ -49,10 +49,13 @@ coordinates, elevation, and timezone; open <strong>Manage site profiles</strong>
   which punch through the glow.</li>
 </ul>
 <p>The <strong>Location</strong> selector at the top picks the active profile; the ranking and the
-planner both use it.</p>
+planner both use it. Below it, in order: <strong>Plan a night</strong>, your <strong>Saved field
+guides</strong>, and the <strong>Priority targets</strong> ranking the planner draws from.</p>
 <h2 id="which-telescope">Which telescope</h2>
-<p>Once M110 knows more than one telescope, a <strong>Telescope</strong> picker appears next to
-Location. Planning plans for the telescope you pick, with that model's limits: the
+<p><strong>Telescope</strong>, next to Location, shows which telescope you're planning for. With one
+telescope it's just its name; with more than one it's a picker; before your first
+capture it reads <em>None yet — planning for a Seestar S50</em>. Planning plans for that
+telescope, with that model's limits: the
 altitude it may start a capture at (a Seestar refuses to start near the zenith; a
 Dwarf's ceiling is a softer 80°), its exposure and gain. The ranking follows it too
 (see below). You can also choose it with <strong>Use for planning</strong> on the
@@ -70,7 +73,7 @@ you've captured), weighing:</p>
   against each object's <a href="library.html#integration-goals-how-deep-is-deep-enough">integration goal</a>
   <strong>for the telescope you're planning with</strong> — an object finished on one scope is still
   new work on another, unless it's in a goal any telescope can satisfy. Switching
-  telescope re-ranks at once, and the <strong>Of goal</strong> column shows where each target stands;</li>
+  telescope re-ranks at once, and the <strong>Progress</strong> column shows where each target stands;</li>
 <li><strong>tonight</strong> — how high, and for how long, it sits in <em>your</em> dark sky.</li>
 </ul>
 <p>The <strong>tuning weights</strong> re-rank instantly as you adjust them. Right-click
@@ -103,7 +106,11 @@ than wasting dark hours.</p>
 </tr>
 <tr>
 <td><strong>Duration</strong></td>
-<td>Slot length. <strong>⚠</strong> marks a short <em>last-chance</em> slot on a target sinking toward the horizon — expect heavy frame rejection; keep or drop it knowingly.</td>
+<td>Slot length ("1h 30m"). <strong>⚠</strong> marks a short <em>last-chance</em> slot on a target sinking toward the horizon — expect heavy frame rejection; keep or drop it knowingly.</td>
+</tr>
+<tr>
+<td><strong>End</strong></td>
+<td>When the slot ends and the next target starts — the time most sequencers ask for.</td>
 </tr>
 <tr>
 <td><strong>Alt</strong></td>
@@ -126,12 +133,15 @@ conditions.</p>
 <p><strong>Save field guide…</strong> writes the plan as clean Markdown into the <strong><code>Plans/</code></strong> folder
 of your library — dark window, moon summary, the schedule table, and your per-object
 remarks. Each guide records when it was generated, which night it's for, and which telescope.</p>
-<p>Saved guides are listed on the Planning page under <strong>Saved field guides</strong>.
+<p>Saved guides are listed on the Planning page under <strong>Saved field guides</strong>, with the
+night each one covers: when its schedule starts, how long it runs, and when it ends.
+Guides saved by earlier versions show the same span (worked out from their last
+slot); a guide with no schedule shows "—".
 <strong>Double-click</strong> one to read it in the app (from there you can copy or print it), or
 <strong>right-click</strong> a row for <strong>View</strong>, <strong>Reveal in file manager</strong> (to open the <code>Plans/</code>
 folder), and <strong>Delete</strong>.</p>
 <p>Next: <strong><a href="publishing.html">Publishing your collection →</a></strong></p></article>
-    <p class="foot">M110 v0.3.0-beta.10 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
+    <p class="foot">M110 v1.0.0-beta.1 · <a href="https://github.com/mjm1138/m110">source</a> · <a href="/docs/">other versions</a></p>
   </main>
 </div>
 </body>
