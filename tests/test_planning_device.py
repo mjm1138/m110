@@ -76,7 +76,7 @@ def test_a_field_guide_names_the_telescope(tmp_path, monkeypatch):
 pytest.importorskip("PySide6")
 
 
-def test_planning_page_offers_a_telescope_only_when_there_is_a_choice(
+def test_planning_page_offers_a_picker_only_when_there_is_a_choice(
         tmp_path, monkeypatch, qtbot):
     seed_root(tmp_path, monkeypatch)
     from m110 import prioritize
@@ -86,6 +86,7 @@ def test_planning_page_offers_a_telescope_only_when_there_is_a_choice(
     page = PlanningPage()
     qtbot.addWidget(page)
     assert page.device_picker.isHidden()
+    assert page.device_name.text() == "S50"          # one telescope: its name
     _devices_json((DWARF, "DwarfLab Dwarf 3", False), (S50, "S50", False))
     page.reload()
     assert not page.device_picker.isHidden() and page.device_picker.currentData() == DWARF

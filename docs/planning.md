@@ -24,12 +24,15 @@ Two optional layers make the math match *your* sky:
   which punch through the glow.
 
 The **Location** selector at the top picks the active profile; the ranking and the
-planner both use it.
+planner both use it. Below it, in order: **Plan a night**, your **Saved field
+guides**, and the **Priority targets** ranking the planner draws from.
 
 ## Which telescope
 
-Once M110 knows more than one telescope, a **Telescope** picker appears next to
-Location. Planning plans for the telescope you pick, with that model's limits: the
+**Telescope**, next to Location, shows which telescope you're planning for. With one
+telescope it's just its name; with more than one it's a picker; before your first
+capture it reads *None yet — planning for a Seestar S50*. Planning plans for that
+telescope, with that model's limits: the
 altitude it may start a capture at (a Seestar refuses to start near the zenith; a
 Dwarf's ceiling is a softer 80°), its exposure and gain. The ranking follows it too
 (see below). You can also choose it with **Use for planning** on the
@@ -77,7 +80,8 @@ than wasting dark hours.
 | Column | Meaning |
 |---|---|
 | **Start** | The slot's start time — always at or below your telescope's start-altitude ceiling (a Seestar refuses to *start* near the zenith; the capture may climb past it once running). |
-| **Duration** | Slot length. **⚠** marks a short *last-chance* slot on a target sinking toward the horizon — expect heavy frame rejection; keep or drop it knowingly. |
+| **Duration** | Slot length ("1h 30m"). **⚠** marks a short *last-chance* slot on a target sinking toward the horizon — expect heavy frame rejection; keep or drop it knowingly. |
+| **End** | When the slot ends and the next target starts — the time most sequencers ask for. |
 | **Alt** | Altitude at the start. **^** means a start above the ceiling (only on devices where that's a quality guideline, not a hard refusal). |
 | **Moon** | Separation from the moon at that slot, with its impact (phase × proximity, filter-aware — narrowband is largely immune). **—** means the moon is below the horizon then: no impact. |
 
@@ -96,7 +100,10 @@ conditions.
 of your library — dark window, moon summary, the schedule table, and your per-object
 remarks. Each guide records when it was generated, which night it's for, and which telescope.
 
-Saved guides are listed on the Planning page under **Saved field guides**.
+Saved guides are listed on the Planning page under **Saved field guides**, with the
+night each one covers: when its schedule starts, how long it runs, and when it ends.
+Guides saved by earlier versions show the same span (worked out from their last
+slot); a guide with no schedule shows "—".
 **Double-click** one to read it in the app (from there you can copy or print it), or
 **right-click** a row for **View**, **Reveal in file manager** (to open the `Plans/`
 folder), and **Delete**.

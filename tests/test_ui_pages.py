@@ -2009,7 +2009,7 @@ def test_saved_guides_row_actions_moved_to_a_context_menu(
         tbl = page._guides_table
         assert tbl.rowCount() == 3
         # The action column is gone entirely — no cell widgets left to clip.
-        assert tbl.columnCount() == 2
+        assert tbl.columnCount() == 5           # Date · Start · Duration · End · Title
         assert all(tbl.cellWidget(r, c) is None
                    for r in range(tbl.rowCount()) for c in range(tbl.columnCount()))
 

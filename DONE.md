@@ -633,6 +633,39 @@ so the fix is `wait()`-before-delete, not a test).
 
 ---
 
+## Phase 8 follow-up — Planning order, telescope, Start · Duration · End *(2026-11-22, `feature/planning-flow-times`)*
+
+- **Order:** `PlanningPage` lays out Location/Telescope → *Plan a night*
+  (`expanded=True` now) → *Saved field guides* → *Priority targets* → *Manage site
+  profiles*. The caption says so.
+- **Telescope:** `_reload_devices` used to hide the label and picker unless
+  `planning_devices()` had 2+ entries, so a one-telescope user never saw what the
+  plan was for. Now the label is always shown, with the combo for 2+ and a
+  `device_name` label otherwise (its name, or `NO_DEVICE_TEXT` = "None yet —
+  planning for a Seestar S50", the `REFERENCE_MODEL` fallback).
+  - **Checked, not changed:** the ranking honours the chosen telescope's goals.
+    The picker → `pc.set_active_device` → `integration_goals.active_model()` →
+    `prioritize.rank_for_active` → `_progress_basis` resolves the goal for that
+    model (or an any-telescope goal's best model). `_on_device_changed` re-ranks
+    from the cached contexts, which already carry `integration_by_model`.
+- **Times:** `fieldguide.duration_text` ("40m", "2h", "1h 30m"),
+  `slot_times`/`time_cells` (Start · Duration · End for a sequenced slot, = start +
+  `duration_min`; for an unsequenced entry, start_time — transit for pre-Phase-3
+  dicts — to `up_end`, the marginal ⚠ kept on Duration).
+  - **Plan table:** `PLAN_COLUMNS` = Include · Object · Start · Duration · End ·
+    Alt · Moon. The unsequenced rows used to put the up-window range under
+    "Duration".
+  - **Markdown:** both tables gain End (right-aligned with `---:`, which
+    `QTextBrowser.setMarkdown` honours); the unsequenced table drops Up-window.
+  - **Guides list:** `GUIDE_COLUMNS` = Date · Start · Duration · End · Title, from
+    `fieldguide.guide_span(text)`: it reads the `## Schedule` table back by header
+    name, first Start → last End, and for a guide saved before End existed, last
+    Start + its Duration ("90 min" parses as well as "1h 30m"), wrapping midnight.
+    No schedule → None → "—". `list_guides` reads each file once for title + span.
+- **Tests:** `tests/test_planning_times.py` (formatting, midnight, old/new/odd
+  guides, the list, section order, the telescope row's 0/1/2+ states, switching
+  telescope re-ranks for its model, both plan tables, the guides list);
+  `test_ui_pages.py` guide-table column count.
 ## Phase 8 follow-up — the grid holds still on a click *(2026-11-22, `feature/grid-stable-inspector`)*
 
 Mike kept double-clicking a Deep Sky tile and getting a *different* object.

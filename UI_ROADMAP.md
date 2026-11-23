@@ -417,10 +417,13 @@ The Overview stays as it is. Four follow-ups, one PR each:
   grid stays wide open while nothing is open: a click selects, a double-click /
   Return / Space opens the inspector (the Photos/Finder convention); once open, a
   click retargets it without moving the splitter. List and Map unchanged.
-- ☐ **Planning order + telescope:** *Plan a night* right under Location; the
-  Telescope row always shown.
-- ☐ **Times in plans:** Start · Duration · End in the plan table, the saved guide and
-  the guides list.
+- ✅ **Planning order + telescope** (`feature/planning-flow-times`): *Plan a night*
+  right under Location (open), then Saved field guides, then Priority targets. The
+  Telescope row is always shown (name / picker / "None yet"); the ranking already
+  judged progress by the active model's goals (`prioritize.rank_for_active`).
+- ✅ **Times in plans** (`feature/planning-flow-times`): Start · Duration · End in
+  the plan table, the saved guide's tables and the guides list
+  (`fieldguide.time_cells`, `guide_span`; old guides still read).
 - ✅ **Import redo** (`feature/import-redo`). Mike disliked D's start page ("feels
   like a bug" when an empty folder fell back to it) and picked **option B** of three
   cocoa prototypes (A: the previous page polished; B: A + the next step inline;
