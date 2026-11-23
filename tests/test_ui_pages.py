@@ -700,7 +700,7 @@ def test_library_grid_search_preserves_selection_when_still_matching(tmp_path, m
     page = CatalogPage()
     try:
         page._set_view_mode("grid")
-        page._select_slug(slug)
+        page.select_object(slug)
         assert not page.detail.isHidden()
 
         page._search.setText(tid.lower())               # still matches this object
@@ -716,7 +716,7 @@ def test_library_grid_search_preserves_selection_when_still_matching(tmp_path, m
         qapp.processEvents()
 
 
-def test_library_grid_click_routes_to_detail_pane(tmp_path, monkeypatch, qapp):
+def test_library_grid_click_selects_and_double_click_opens(tmp_path, monkeypatch, qapp):
     root = seed_root(tmp_path, monkeypatch)
     slug, tid = seed_capture(root)
     from m110.ui.pages.catalog import CatalogPage
@@ -725,8 +725,13 @@ def test_library_grid_click_routes_to_detail_pane(tmp_path, monkeypatch, qapp):
         page._set_view_mode("grid")
         idx = page._grid_model.index_of(slug)
         assert idx.isValid()
+        seen = []
+        page.selection_changed.connect(seen.append)
         page.grid_view.selectionModel().select(
             idx, page.grid_view.selectionModel().SelectionFlag.ClearAndSelect)
+        assert page.detail.isHidden()               # selecting alone moves nothing
+        assert seen == [slug]                       # …but the Object menu knows
+        page.grid_view.doubleClicked.emit(idx)
         assert not page.detail.isHidden()
         assert page.detail._current[0] == slug
     finally:

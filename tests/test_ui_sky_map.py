@@ -325,7 +325,10 @@ def test_closing_the_detail_pane_works_in_every_view(tmp_path, monkeypatch, qapp
             page.detail.closed.emit()
             qapp.processEvents()
             assert page.detail.isHidden(), f"{mode}: ✕ left the pane open"
-            assert page._selected_slug() is None, f"{mode}: selection survived ✕"
+            # The grid keeps its selection (its inspector opens on a double-click,
+            # so a click there only selects); List and Map clear theirs.
+            want = "m81" if mode == "grid" else None
+            assert page._selected_slug() == want, f"{mode}: selection after ✕"
         # The map also drops its ring, not just its slug.
         assert page.map_view.canvas.selected() is None
     finally:

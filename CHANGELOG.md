@@ -25,6 +25,13 @@ changes a **user** would notice, per release.
   when each night's schedule starts and ends; guides saved earlier show their span
   too. A plan with no sequenced schedule now shows each target's start, how long
   it stays up, and when it leaves, instead of a time range under "Duration".
+- **Deep Sky's grid holds still when you click.** A click on a tile now only
+  selects it; **double-click** it (or press Return or Space) to open its details
+  beside the grid. Opening the details narrows the grid, so before, a double-click's
+  second click could land on a different object that had moved under the pointer.
+  Once the details are open, a single click on another tile switches to it, and
+  nothing moves. ✕ closes the details and keeps the tile selected, so the Object
+  menu still acts on it. The List and Map views work as before.
 - **Tables line up.** Every number column now has its heading right-aligned over
   its figures, and numbers use tabular figures throughout: on the Overview,
   Planning, Processing, Devices, Sessions, the object pane and Import. A sorted

@@ -411,8 +411,12 @@ duplicate notes title in B).
 
 #### Phase 8 follow-ups  *(Mike's feedback on the Phase 8 betas, 2026-11-22)*
 The Overview stays as it is. Four follow-ups, one PR each:
-- ✅ **Grid double-click** (`feature/grid-stable-inspector`): a click selects, a
-  double-click opens the inspector, so the grid never reflows under a double-click.
+- ✅ **Grid double-click** (`feature/grid-stable-inspector`). A click that opened the
+  inspector narrowed the justified grid from 8 columns to 4 (measured at 1280 wide),
+  so a double-click's second click hit a tile that had moved under the cursor. The
+  grid stays wide open while nothing is open: a click selects, a double-click /
+  Return / Space opens the inspector (the Photos/Finder convention); once open, a
+  click retargets it without moving the splitter. List and Map unchanged.
 - ✅ **Planning order + telescope** (`feature/planning-flow-times`): *Plan a night*
   right under Location (open), then Saved field guides, then Priority targets. The
   Telescope row is always shown (name / picker / "None yet"); the ranking already

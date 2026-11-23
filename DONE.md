@@ -666,6 +666,36 @@ so the fix is `wait()`-before-delete, not a test).
   guides, the list, section order, the telescope row's 0/1/2+ states, switching
   telescope re-ranks for its model, both plan tables, the guides list);
   `test_ui_pages.py` guide-table column count.
+## Phase 8 follow-up — the grid holds still on a click *(2026-11-22, `feature/grid-stable-inspector`)*
+
+Mike kept double-clicking a Deep Sky tile and getting a *different* object.
+
+- **Cause (measured offscreen at 1280 wide, 40 objects):** the inspector is hidden
+  until something is selected. The first click showed it, the splitter went from
+  `[1280, 0]` to `[701, 575]`, and the justified grid went from 8 columns to 4.
+  Tile 5 moved from (780, 0) to (167, 167), so the second click hit whatever was
+  there now. Selection changes after that never moved the splitter; the jump came
+  on every first open, and again after each ✕.
+- **Fix, Grid only (`pages/catalog.py`):**
+  - `_on_grid_select` opens nothing while the inspector is hidden. It still emits
+    `selection_changed`, so the Object menu follows. An open inspector follows the
+    selection; losing the selection closes it.
+  - `grid_view.doubleClicked` → `_on_grid_double_click` → `open_inspector(slug)`.
+    An `eventFilter` on the grid does the same for Return / Enter / Space when
+    something is selected.
+  - `select_object` (the route other pages use) calls `open_inspector()`.
+  - `_on_detail_closed` no longer clears the grid's selection; List and Map still
+    clear theirs (a click opens there, so a kept selection couldn't reopen).
+  - `_refresh_open_detail` skips a hidden inspector, and `MainWindow.toggle_inspector`
+    reopens through `open_inspector()`, because a closed one isn't kept current.
+- **Not a click-blackout timer:** Mike preferred the wide-open grid to a permanent
+  inspector column, and chose double-click-opens over a delayed single-click open.
+- **Kept:** QListView in SingleSelection keeps its selection on a click in empty
+  space; that was already so and is pinned by a test.
+- **Tests:** `test_ui_grid_double_click.py` (real `QTest` clicks at one point on a
+  1280-wide page: same object, no layout change, Return/Space, retarget without
+  reflow, ✕ keeps the selection). `test_ui_pages.py` and `test_ui_sky_map.py` updated
+  for the new grid semantics.
 
 ---
 
