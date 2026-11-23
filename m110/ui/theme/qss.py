@@ -259,6 +259,13 @@ QLineEdit#searchField {{ padding-left: {SPACE['xs']}px; }}
 QSplitter#shellSplitter::handle {{ background-color: {t.border}; }}
 /* Scroll areas are page furniture, not boxes: tone separates them. */
 QScrollArea {{ border: none; }}
+/* The inspector's pinned title block: the pane's own tone, a hairline under it
+   for the body that scrolls beneath. */
+QFrame#inspectorHeader {{
+    background-color: {t.window};
+    border: none;
+    border-bottom: 1px solid {t.border};
+}}
 
 /* ── tables ── */
 QTableView, QTableWidget {{

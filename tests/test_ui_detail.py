@@ -321,8 +321,9 @@ def test_gallery_set_hero_writes_and_rerenders(tmp_path, monkeypatch, qapp):
 
 
 def test_inspector_sections_follow_mock_a_and_actions_wrap(tmp_path, monkeypatch, qapp):
-    """UI 1.0 order (mock A): the hero edge to edge above everything (its own
-    margin-less slot), then title · Integration card · DETAILS · PROCESSING ·
+    """UI 1.0 order (mock A): the title pinned above everything
+    (`test_ui_inspector_header.py`), the hero edge to edge under it (its own
+    margin-less slot), then Integration card · DETAILS · PROCESSING ·
     Notes. The processing actions (Import / Process / Reveal / Send / Stack) are
     a wrapping `FlowLayout` — a `QHBoxLayout`'s minimum width, the sum of five
     buttons, forced the whole pane into a horizontal scrollbar — and Process in

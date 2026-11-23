@@ -267,6 +267,21 @@ class DetailPane(QScrollArea):
         self._lay.setSpacing(s["sm"])
         outer.addLayout(self._lay, 1)
         self.setWidget(self._content)
+        # The title block — name, facts, ✕ at the top right — is pinned above the
+        # scrolling body: a child of the scroll area itself (not of `_content`),
+        # with the viewport pushed down to make room for it (`_place_header`). The
+        # name and the close button never scroll away, and the hero sits under it.
+        self._header = QFrame(self)
+        self._header.setObjectName("inspectorHeader")
+        self._header_lay = QVBoxLayout(self._header)
+        self._header_lay.setContentsMargins(s["md"], s["md"], s["md"], s["sm"])
+        self._header_lay.setSpacing(s["xs"])
+        self._header.hide()
+        # Viewport margins don't move the scrollbars: a spacer the header's height
+        # at the top of the vertical one starts it below the header, not under it.
+        self._bar_spacer = QWidget()
+        self._bar_spacer.setFixedHeight(0)
+        self.addScrollBarWidget(self._bar_spacer, Qt.AlignTop)
         self._current = None        # (slug, e, t) of the shown object
         self._goal_models: list[str] = []
         self._editing = False
@@ -346,8 +361,31 @@ class DetailPane(QScrollArea):
         self._gallery = None
         self._galleries = []
         self._hero_widget = None
+        self._clear_layout(self._header_lay)
+        self._header.hide()                     # placeholder + editor: no header
+        self._place_header()
         self._clear_layout(self._hero_slot)
         self._clear_layout(self._lay)
+
+    def _place_header(self):
+        """Fit the pinned header to the pane's width (the title wraps) and push the
+        viewport — and its scrollbar — down by its height."""
+        fw = self.frameWidth()
+        w = self.width() - 2 * fw
+        h = 0
+        if not self._header.isHidden():
+            lay = self._header_lay
+            h = (lay.totalHeightForWidth(w) if lay.hasHeightForWidth()
+                 else lay.totalSizeHint().height())
+            self._header.setGeometry(fw, fw, w, h)
+            self._header.raise_()
+        if self.viewportMargins().top() != h:
+            self.setViewportMargins(0, h, 0, 0)
+            self._bar_spacer.setFixedHeight(h)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place_header()
 
     @staticmethod
     def _clear_layout(layout):
@@ -384,7 +422,8 @@ class DetailPane(QScrollArea):
                 connect_context_menu(self._hero_widget, self._hero_context_menu)
                 self._hero_slot.addWidget(self._hero_widget)
 
-        # 2 · the title block: serif name + its facts, and the close button.
+        # 2 · the title block, pinned above the hero (`_header`): serif name + its
+        # facts, and the close button at the pane's top right.
         title = object_title(" · ".join(ids), e.get("name") or "")
         self._close_btn = QToolButton()
         self._close_btn.setIcon(icons.icon("x"))
@@ -396,11 +435,13 @@ class DetailPane(QScrollArea):
         header_row = QHBoxLayout()
         header_row.addWidget(title, 1)
         header_row.addWidget(self._close_btn, 0, Qt.AlignTop)
-        self._lay.addLayout(header_row)
+        self._header_lay.addLayout(header_row)
         facts = QLabel(facts_line(e))
         facts.setProperty("muted", True)
         facts.setWordWrap(True)
-        self._lay.addWidget(facts)
+        self._header_lay.addWidget(facts)
+        self._header.show()
+        self._place_header()
 
         fm, body = objects.read_journal(slug)
         if fm.get("hero_caption"):

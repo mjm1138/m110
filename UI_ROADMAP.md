@@ -435,6 +435,10 @@ The Overview stays as it is. Four follow-ups, one PR each:
   next step (Seestar / Choose Folder…, recents); a chosen folder with no frames →
   "No frames found in <folder>", folder still chosen, Rescan live. The combo no
   longer forces the window width; the holding area is one line while empty.
+- ✅ **Inspector header** (`feature/inspector-header`). Mike: the ✕ under the hero
+  was hard to find. Of three cocoa mock-ups (A: title above the hero; B: A, pinned;
+  C: ✕ on the hero) he picked **B**: the title block (name, facts, ✕ top right) is
+  pinned above the scrolling body, the hero under it.
 
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
