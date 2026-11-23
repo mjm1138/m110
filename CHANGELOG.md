@@ -31,7 +31,9 @@ changes a **user** would notice, per release.
   second click could land on a different object that had moved under the pointer.
   Once the details are open, a single click on another tile switches to it, and
   nothing moves. ✕ closes the details and keeps the tile selected, so the Object
-  menu still acts on it. The List and Map views work as before.
+  menu still acts on it. The List and Map views work as before. The grid
+  scrolls to keep the object you opened in view while it reflows beside the details
+  (and when you resize the window), the same as opening an object from Processing.
 - **Tables line up.** Every number column now has its heading right-aligned over
   its figures, and numbers use tabular figures throughout: on the Overview,
   Planning, Processing, Devices, Sessions, the object pane and Import. A sorted

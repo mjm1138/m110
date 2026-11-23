@@ -407,6 +407,11 @@ On **cocoa**, against the test corpus (§0.3), in light and dark.
       open, a single click on another tile switches it and nothing moves. ✕ → the
       grid is full width again and the tile stays selected; View › Show Inspector
       brings the pane back on the current selection.
+- [ ] **The opened tile stays in view** *(⚙ `test_ui_grid_double_click.py`)*:
+      scroll so a tile in the **bottom-right** of the grid is on screen and
+      double-click it → the grid narrows and scrolls so that tile (brass outline) is
+      still visible beside the pane. Narrow the window with a tile selected → it
+      stays on screen; scroll it away first → the resize doesn't jump back to it.
 
 #### 1.0 pages — Overview catalog board (UI Phase 8c)  ⚙ *(board states + scope, geometry, click/tooltip, paint, picker persistence, empty store, goal bars, mini bars — `test_goals.py`, `test_ui_overview_board.py`)*
 On **cocoa**, against the test corpus (§0.3: Messier 11/110, Caldwell, and a
