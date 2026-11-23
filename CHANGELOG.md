@@ -94,14 +94,14 @@ changes a **user** would notice, per release.
   Back Up Now** backs up to every destination you've set up, one after the other,
   in the background, and the status bar says how it went. With nothing set up yet,
   it opens the Backup pane instead.
-- **Import starts with one clear action.** Instead of empty tables and greyed-out
-  buttons, the Import page opens on a short welcome with one button: **Import from
-  Seestar — <name>** when a Seestar is connected, otherwise **Choose Folder…**.
-  Your recent folders are listed underneath, one click each. The table of what
-  was found appears once a scan finds something, with **Change Source…** to go
-  back. A folder with nothing to import, a cancelled scan, or an import that
-  leaves nothing behind brings you back to the start with a line saying so. The
-  holding area only appears while files are waiting in it.
+- **Import keeps its Source row, and says what to do next.** The Source menu and
+  **Browse…** stay at the top of the Import page as before. Until you pick a
+  source, the space where the table goes offers the next step: **Import from
+  Seestar — <name>** when a Seestar is connected, otherwise **Choose Folder…**,
+  plus your recent folders one click away. A folder with nothing to import stays
+  chosen and says **No frames found in <folder>**, with Rescan ready, instead of
+  going back to the start. A long folder path no longer widens the window, and the
+  holding area shrinks to one line ("Nothing held.") while it's empty.
 
 ### Fixed
 - **Old Overview tables no longer show through a dialog.** When a sync finished

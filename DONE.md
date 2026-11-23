@@ -666,6 +666,44 @@ Mike kept double-clicking a Deep Sky tile and getting a *different* object.
 
 ---
 
+## Phase 8 follow-up — Import redo, option B *(2026-11-22, `feature/import-redo`)*
+
+Mike on D's start page: "I don't think the new import view is an improvement … I
+don't like that it falls back to a no selection view if the chosen folder is empty;
+feels like a bug." Three cocoa prototypes (`scratchpad/proto/import_protos.py`,
+never shipped) — A: the pre-D page polished; B: A + the next step inline; C: a
+sources sidebar — and Mike picked **B**.
+
+- **Base:** `import_page.py` is the pre-D page (`049a4b8^`), which already had
+  Phase 8 · A's aligned number columns. D's start/scan `QStackedWidget`,
+  `show_start`/`showing_start`, *Change Source…* and `_start_note` are gone.
+- **Table area** = `QStackedWidget` (`_area`: the table | `_build_message()`):
+  - `_show_message(title, body)` replaces the table with a centred, fixed-width
+    (`MESSAGE_WIDTH`) serif title + muted body, no actions. Used for a chosen
+    folder with no frames ("No frames found in <folder>"), a missing folder, a
+    cancel, a failure, and an import that empties the source ("N file(s)
+    imported." / "Nothing left to import in <folder>."). `_root` stays set, so the
+    Source row keeps naming the folder and Rescan stays live.
+  - `_show_start()` (only while `_root is None`) adds the next step: *Import from
+    Seestar — <volume>* or *Choose Folder…* (accent), *Choose Another Folder…*, and
+    up to `START_RECENTS` existing recents as `link` buttons.
+  - Wrapped labels keep the height they measured for their previous text, so each
+    message sets `setMinimumHeight(heightForWidth(MESSAGE_WIDTH))` (the first
+    cocoa render clipped the empty-folder body to one line).
+- **Source combo:** `AdjustToMinimumContentsLengthWithIcon` + `SOURCE_MIN_CHARS`,
+  recents labelled "<folder> — <parent>" with the full path as `ToolTipRole` — the
+  pre-D row forced the window to ~1588 pt on Import. `_populate_sources` always
+  lists and selects the chosen folder, even one that isn't a place.
+  "Choose a source…" goes back to the next step.
+- **Buttons:** Import is the accent only while enabled (`_set_import_enabled` —
+  a disabled default button still reads gold); Select all/none only with rows.
+- **Holding area:** one line, "Nothing held." (the explanation moved to its
+  tooltip), table and bulk bar (now a `_bulk_bar` widget) hidden; `_fit_holding`
+  gives the splitter back on a change only, leaving a dragged splitter alone.
+- **Tests:** `test_ui_import_source.py` replaces `test_ui_import_empty.py`.
+
+---
+
 ## UI 1.0 redesign — Phase 8 · F, night vision + 1.0 exit audit *(2026-11-22, `feature/ui-p8-night`)*
 
 Last of six Phase 8 PRs; it closes UI 1.0.
