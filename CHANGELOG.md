@@ -11,6 +11,20 @@ changes a **user** would notice, per release.
 ## [Unreleased]
 
 ### Changed
+- **Planning puts tonight's plan first.** *Plan a night* now sits right under
+  Location and opens by default, followed by your saved field guides; the ranked
+  priority targets are further down.
+- **Planning always shows the telescope.** The Telescope next to Location used to
+  appear only when you had more than one; now it always says which telescope the
+  plan and the ranking are for (its name, a picker when there's a choice, or
+  "None yet — planning for a Seestar S50" before your first capture). The ranking
+  judges each target by that telescope's integration goals.
+- **Plans show Start, Duration and End.** The night plan, saved field guides and
+  the list of saved guides now show each slot's start, its length ("1h 30m") and
+  its end time, the way most sequencers list a night. The saved-guides list shows
+  when each night's schedule starts and ends; guides saved earlier show their span
+  too. A plan with no sequenced schedule now shows each target's start, how long
+  it stays up, and when it leaves, instead of a time range under "Duration".
 - **Deep Sky's grid holds still when you click.** A click on a tile now only
   selects it; **double-click** it (or press Return or Space) to open its details
   beside the grid. Opening the details narrows the grid, so before, a double-click's

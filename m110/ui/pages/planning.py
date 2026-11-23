@@ -74,6 +74,13 @@ class _PlannerWorker(QThread):
         self.done.emit(plan)
 
 
+NO_DEVICE_TEXT = "None yet — planning for a Seestar S50"
+# Start · Duration · End, the columns sequencers use (most show the end time).
+PLAN_COLUMNS = ["Include", "Object", "Start", "Duration", "End", "Alt", "Moon"]
+GUIDE_COLUMNS = ["Date", "Start", "Duration", "End", "Title"]
+GUIDE_TITLE_COL = GUIDE_COLUMNS.index("Title")
+
+
 class PlanningPage(QScrollArea):
     open_object = Signal(str)
     pins_changed = Signal()
@@ -99,8 +106,9 @@ class PlanningPage(QScrollArea):
         self.setWidget(content)
 
         # The place's name is the header bar's title (one page-header rule).
-        cap = QLabel("Pick where you're observing from, then work your ranked "
-                     "priority targets. Tune the ranking with the strategy + weights.")
+        cap = QLabel("Pick where you're observing from and with which telescope, "
+                     "then plan a night. Your ranked priority targets are below; tune "
+                     "the ranking with the strategy + weights.")
         cap.setProperty("caption", True)
         cap.setWordWrap(True)
         lay.addWidget(cap)
@@ -110,27 +118,33 @@ class PlanningPage(QScrollArea):
         self.selector = QComboBox()
         self.selector.currentIndexChanged.connect(self._on_location_changed)
         loc.addWidget(self.selector, 1)
-        # The telescope the night plan is for — its start-altitude ceiling and
-        # exposure limits (planning_config.device_for). Hidden until M110 knows
-        # more than one telescope: with one, there is nothing to choose.
+        # The telescope the plan and the ranking are for — its start-altitude
+        # ceiling and exposure limits (planning_config.device_for), and its
+        # integration goals (prioritize.rank_for_active). Always shown, so you can
+        # see what you're planning for: a picker with a choice, else its name.
         self.device_label = QLabel("Telescope:")
         loc.addWidget(self.device_label)
         self.device_picker = QComboBox()
         self.device_picker.currentIndexChanged.connect(self._on_device_changed)
         loc.addWidget(self.device_picker, 1)
+        self.device_name = QLabel()
+        self.device_name.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        loc.addWidget(self.device_name, 1)
         lay.addLayout(loc)
 
-        self._priority_sec = CollapsibleSection("Priority targets", expanded=True)
-        self._build_priority_controls(self._priority_sec.body)
-        lay.addWidget(self._priority_sec)
-
-        self._plan_sec = CollapsibleSection("Plan a night", expanded=False)
+        # Plan a night sits right under the location: it is what you come here
+        # for on an observing night. The ranking it draws from is further down.
+        self._plan_sec = CollapsibleSection("Plan a night", expanded=True)
         self._build_planner(self._plan_sec.body)
         lay.addWidget(self._plan_sec)
 
         self._guides_sec = CollapsibleSection("Saved field guides", expanded=False)
         self._build_guides(self._guides_sec.body)
         lay.addWidget(self._guides_sec)
+
+        self._priority_sec = CollapsibleSection("Priority targets", expanded=True)
+        self._build_priority_controls(self._priority_sec.body)
+        lay.addWidget(self._priority_sec)
 
         prof_sec = CollapsibleSection("Manage site profiles", expanded=False)
         frame = QFrame()
@@ -275,9 +289,8 @@ class PlanningPage(QScrollArea):
         ctl.addWidget(self._save_btn)
         body.addLayout(ctl)
 
-        self._plan_table = compact_table(QTableWidget(0, 6))
-        self._plan_table.setHorizontalHeaderLabels(
-            ["Include", "Object", "Start", "Duration", "Alt", "Moon"])
+        self._plan_table = compact_table(QTableWidget(0, len(PLAN_COLUMNS)))
+        self._plan_table.setHorizontalHeaderLabels(PLAN_COLUMNS)
         self._plan_table.verticalHeader().setVisible(False)
         self._plan_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._plan_table.setSelectionMode(QTableWidget.SingleSelection)
@@ -434,22 +447,25 @@ class PlanningPage(QScrollArea):
                 chk.setData(Qt.UserRole, s["slug"])
                 self._plan_table.setItem(r, 0, chk)
                 self._plan_table.setItem(r, 1, QTableWidgetItem(obj_name(s["slug"])))
-                start_item = QTableWidgetItem(hm(s["start"]))
+                st, dur, end = fieldguide.time_cells(s)
+                start_item = QTableWidgetItem(st)
                 start_item.setToolTip("Slot start (10-minute aligned; under the "
                                       "device's start-altitude ceiling — the capture "
                                       "may climb past it once running).")
                 self._plan_table.setItem(r, 2, start_item)
-                dur_item = QTableWidgetItem(
-                    f"{s['duration_min']} min" + (" ⚠" if s.get("marginal") else ""))
+                dur_item = QTableWidgetItem(dur)
                 if s.get("marginal"):
                     dur_item.setToolTip("Last-chance slot: cut short by the target's "
                                         "closing window while it descends — expect "
                                         "heavy frame rejection; keep or drop knowingly.")
                 self._plan_table.setItem(r, 3, dur_item)
+                end_item = QTableWidgetItem(end)
+                end_item.setToolTip("Slot end — the next target starts here.")
+                self._plan_table.setItem(r, 4, end_item)
                 flag = "^" if s.get("over_ceiling") else ""
-                self._plan_table.setItem(r, 4, QTableWidgetItem(
+                self._plan_table.setItem(r, 5, QTableWidgetItem(
                     f"{s['alt_start']:.0f}°{flag}"))
-                self._plan_table.setItem(r, 5, moon_item(s))
+                self._plan_table.setItem(r, 6, moon_item(s))
         else:
             # No sequence (pre-Phase-4 state / nothing schedulable): per-target rows.
             self._plan_table.setRowCount(len(self._entries))
@@ -464,14 +480,17 @@ class PlanningPage(QScrollArea):
                 self._plan_table.setItem(r, 0, chk)
                 self._plan_table.setItem(r, 1, QTableWidgetItem(obj_name(slug)))
                 st, sa = fieldguide.start_cells(e)   # startable slot, not transit (#37)
+                _st, dur, end = fieldguide.time_cells(e)
                 self._plan_table.setItem(r, 2, QTableWidgetItem(st))
-                self._plan_table.setItem(r, 3, QTableWidgetItem(
-                    f"{hm(e['up_start'])}–{hm(e['up_end'])}"))
-                self._plan_table.setItem(r, 4, QTableWidgetItem(sa))
-                self._plan_table.setItem(r, 5, moon_item(e))
-        # Start, Duration, Alt and Moon are numbers: right-aligned, tabular.
+                self._plan_table.setItem(r, 3, QTableWidgetItem(dur))
+                end_item = QTableWidgetItem(end)
+                end_item.setToolTip("When the target leaves the sky window.")
+                self._plan_table.setItem(r, 4, end_item)
+                self._plan_table.setItem(r, 5, QTableWidgetItem(sa))
+                self._plan_table.setItem(r, 6, moon_item(e))
+        # Start, Duration, End, Alt and Moon are numbers: right-aligned, tabular.
         for r in range(self._plan_table.rowCount()):
-            for c in range(2, 6):
+            for c in range(2, len(PLAN_COLUMNS)):
                 it = self._plan_table.item(r, c)
                 if it is not None:
                     make_numeric(it)
@@ -576,8 +595,8 @@ class PlanningPage(QScrollArea):
     # its Assign/Reveal/Discard, because Assign is the *primary* action performed on
     # row after row in a triage pass and a menu would make that flow slower.
     def _build_guides(self, body):
-        self._guides_table = compact_table(QTableWidget(0, 2))
-        self._guides_table.setHorizontalHeaderLabels(["Date", "Title"])
+        self._guides_table = compact_table(QTableWidget(0, len(GUIDE_COLUMNS)))
+        self._guides_table.setHorizontalHeaderLabels(GUIDE_COLUMNS)
         self._guides_table.verticalHeader().setVisible(False)
         self._guides_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._guides_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -587,7 +606,7 @@ class PlanningPage(QScrollArea):
         connect_context_menu(self._guides_table, self._guides_menu)
         from PySide6.QtWidgets import QHeaderView
         self._guides_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch)
+            GUIDE_TITLE_COL, QHeaderView.Stretch)
         body.addWidget(self._guides_table)
         # The actions are discoverable by convention elsewhere in the app, but this
         # pane is visited rarely — so say it once, quietly, instead of relying on
@@ -642,10 +661,17 @@ class PlanningPage(QScrollArea):
         self._guides_table.setRowCount(len(self._guides))
         for r, g in enumerate(self._guides):
             self._guides_table.setItem(r, 0, QTableWidgetItem(g["date"]))
-            self._guides_table.setItem(r, 1, QTableWidgetItem(g["title"]))
+            span = g.get("span") or {}
+            for c, key in ((1, "start"), (2, "duration"), (3, "end")):
+                it = make_numeric(QTableWidgetItem(span.get(key, "—")))
+                if not span:
+                    it.setToolTip("This guide has no schedule.")
+                self._guides_table.setItem(r, c, it)
+            self._guides_table.setItem(r, GUIDE_TITLE_COL, QTableWidgetItem(g["title"]))
         self._guides_table.resizeColumnsToContents()
         from PySide6.QtWidgets import QHeaderView
-        self._guides_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self._guides_table.horizontalHeader().setSectionResizeMode(
+            GUIDE_TITLE_COL, QHeaderView.Stretch)
         fit_table_height(self._guides_table, max_rows=10)
 
     def _view_guide(self, r: int):
@@ -685,8 +711,16 @@ class PlanningPage(QScrollArea):
         i = self.device_picker.findData(active)
         self.device_picker.setCurrentIndex(max(i, 0))
         many = self.device_picker.count() > 1
-        self.device_label.setVisible(many)
         self.device_picker.setVisible(many)
+        self.device_name.setVisible(not many)
+        if self.device_picker.count() == 1:
+            self.device_name.setText(self.device_picker.itemText(0))
+            self.device_name.setToolTip("The only telescope M110 knows. Planning and "
+                                        "the ranking use its limits and goals.")
+        elif not many:
+            self.device_name.setText(NO_DEVICE_TEXT)
+            self.device_name.setToolTip("No captures yet, so M110 plans with a "
+                                        "Seestar S50's limits and goals.")
         self._loading = False
 
     def _on_device_changed(self, _idx: int):
