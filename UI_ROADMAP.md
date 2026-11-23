@@ -417,6 +417,9 @@ The Overview stays as it is. Four follow-ups, one PR each:
   grid stays wide open while nothing is open: a click selects, a double-click /
   Return / Space opens the inspector (the Photos/Finder convention); once open, a
   click retargets it without moving the splitter. List and Map unchanged.
+  Then (`feature/grid-scroll-to-selection`), Mike: the reflow pushed the opened tile
+  below the fold. `JustifiedGridView.resizeEvent` now scrolls a selected tile that
+  was on screen back into view after every relayout.
 - ✅ **Planning order + telescope** (`feature/planning-flow-times`): *Plan a night*
   right under Location (open), then Saved field guides, then Priority targets. The
   Telescope row is always shown (name / picker / "None yet"); the ranking already

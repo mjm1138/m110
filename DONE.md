@@ -666,6 +666,29 @@ so the fix is `wait()`-before-delete, not a test).
   guides, the list, section order, the telescope row's 0/1/2+ states, switching
   telescope re-ranks for its model, both plan tables, the guides list);
   `test_ui_pages.py` guide-table column count.
+## Phase 8 follow-up — the opened tile stays in view *(2026-11-23, `feature/grid-scroll-to-selection`)*
+
+Mike, after the double-click fix: the inspector opens, the grid reflows from 8
+columns to 4, and the tile he opened lands below the fold. Opening the same object
+from Processing already showed it, because `_select_slug` calls `scrollTo` (and the
+page switch gave the reflow time to land first).
+
+- **Fix, in `image_grid.JustifiedGridView.resizeEvent`** (so it covers every
+  reflow — the inspector, a window resize, the sidebar): before `_relayout`,
+  `_visible_selection(event.oldSize())` checks whether the current, selected tile
+  intersected the *old* viewport (positions are still the old layout's until the
+  relayout); after it, `scrollTo(idx)` (EnsureVisible). A selection you'd scrolled
+  away from is left alone, so a resize never yanks the grid back to it.
+- **Measured on cocoa** (test corpus, 1280 wide): the bottom-right visible tile
+  went from y=728 in a 620-high viewport (off screen) to y=438.
+- **Tests** in `test_ui_grid_double_click.py`: a real double-click on a top-right
+  and a bottom-right tile keeps it in view; a window resize keeps an on-screen
+  selection in view and leaves an off-screen one alone (110 objects, so the grid
+  really scrolls). "In view" = the tile's centre: the right-hand column overhangs
+  the viewport edge by a pixel (the justify −1).
+
+---
+
 ## Phase 8 follow-up — the grid holds still on a click *(2026-11-22, `feature/grid-stable-inspector`)*
 
 Mike kept double-clicking a Deep Sky tile and getting a *different* object.

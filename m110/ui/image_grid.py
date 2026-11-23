@@ -15,7 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import (
-    QAbstractListModel, QModelIndex, QPointF, QRectF, QSize, Qt, QTimer, Signal,
+    QAbstractListModel, QModelIndex, QPoint, QPointF, QRect, QRectF, QSize, Qt,
+    QTimer, Signal,
 )
 from PySide6.QtGui import (
     QColor, QFont, QFontMetricsF, QLinearGradient, QPainter, QPainterPath, QPen,
@@ -408,6 +409,22 @@ class JustifiedGridView(QListView):
             self._decoded_px = px
             self.tileSideChanged.emit(px)
 
+    def _visible_selection(self, size: QSize):
+        """The current tile, if it is selected and was on screen in a viewport of
+        `size` (positions are still the old layout's until `_relayout`)."""
+        idx = self.currentIndex()
+        sm = self.selectionModel()
+        if not idx.isValid() or sm is None or not sm.isSelected(idx):
+            return None
+        rect = self.visualRect(idx)
+        return idx if QRect(QPoint(0, 0), size).intersects(rect) else None
+
     def resizeEvent(self, event):
+        # A reflow moves every tile (opening the inspector halves the columns), so
+        # a selected tile that was on screen is scrolled back into view — one
+        # you'd scrolled away from is left alone.
+        keep = self._visible_selection(event.oldSize())
         super().resizeEvent(event)
         self._relayout()
+        if keep is not None:
+            self.scrollTo(keep)

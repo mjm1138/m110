@@ -164,3 +164,62 @@ def test_a_closed_inspector_reopens_on_the_current_selection(page, qapp):
     assert page.detail.isHidden()
     page.open_inspector()
     assert page.detail._current[0] == later
+
+
+def _in_view(gv, idx):
+    """The tile is on screen (its centre is inside the viewport: the right-hand
+    column can overhang the edge by a pixel)."""
+    return gv.viewport().rect().contains(gv.visualRect(idx).center())
+
+
+@pytest.mark.parametrize("row", [7, 39])           # top-right · bottom-right
+def test_the_opened_object_stays_in_view_after_the_reflow(page, qapp, row):
+    """Opening narrows the grid 8 → 4 columns; the tile you double-clicked moves
+    down the list and is scrolled back into view (as a route from Processing
+    already does), not left below the fold."""
+    gv = page.grid_view
+    idx = gv.model().index(row, 0)
+    gv.scrollTo(idx)
+    _settle(qapp)
+    pos = gv.visualRect(idx).center()
+    assert _hit(page, pos) == idx.data(KEY_ROLE)
+    _click(page, qapp, pos)
+    _click(page, qapp, pos, double=True)
+    assert not page.detail.isHidden()
+    assert gv.columns() < 8                          # it did reflow…
+    assert _in_view(gv, idx)                         # …and the tile is still there
+
+
+@pytest.fixture
+def tall(tmp_path, monkeypatch, qapp, qtbot):
+    """All 110 Messier objects: the grid scrolls by several screens."""
+    return _page(tmp_path, monkeypatch, qapp, qtbot, n=110)
+
+
+def test_a_resize_keeps_a_visible_selection_in_view(tall, qapp):
+    """Any reflow — the window narrowing too — keeps a selected tile that was on
+    screen on screen."""
+    gv = tall.grid_view
+    idx = gv.model().index(47, 0)                    # mid-list, right-hand column
+    gv.scrollTo(idx)
+    _settle(qapp)
+    assert _in_view(gv, idx)
+    _click(tall, qapp, gv.visualRect(idx).center())
+    tall.resize(700, 760)
+    _settle(qapp)
+    assert gv.columns() < 8
+    assert _in_view(gv, idx)
+
+
+def test_a_resize_leaves_an_offscreen_selection_alone(tall, qapp):
+    """A selection you've scrolled away from doesn't yank the grid back on a
+    resize."""
+    gv = tall.grid_view
+    idx = gv.model().index(100, 0)
+    tall._select_slug(idx.data(KEY_ROLE))
+    gv.verticalScrollBar().setValue(0)
+    _settle(qapp)
+    assert not gv.viewport().rect().intersects(gv.visualRect(idx))
+    tall.resize(700, 760)
+    _settle(qapp)
+    assert gv.verticalScrollBar().value() == 0
