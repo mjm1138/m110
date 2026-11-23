@@ -467,25 +467,27 @@ On **cocoa**, against the test corpus (§0.3), in light and dark.
 - [ ] Nothing reads "Preferences" anymore (errors about a missing Siril/Stackhammer
       say **Settings › Tools**).
 
-#### 1.0 pages — Import empty state (UI Phase 8d)  ⚙ *(start page, primary action per device, scan reveals the table, Change Source, nothing-found note, post-import note, holding visibility, busy — `test_ui_import_empty.py`, `test_ui_import.py`)*
+#### Import — Source row + next step (Phase 8 follow-up, option B)  ⚙ *(next step per device, recents, scan into the table, back to "Choose a source…", empty folder stays chosen, missing folder, post-import, cancel/fail, holding one line, combo width, busy — `test_ui_import_source.py`, `test_ui_import.py`)*
 On **cocoa**, against the test corpus (§0.3), in light and dark.
-- [ ] With no Seestar mounted, **Import** shows only the start page: the download
-      glyph, "Import captures", one line, and one accent button, **Choose
-      Folder…**. No empty tables, no disabled buttons.
+- [ ] **Import** opens with the **Source** row (menu + **Browse…**) on top. With no
+      Seestar mounted, the table area says "Import captures" with one accent
+      button, **Choose Folder…**. Rescan, Select all/none and Import are greyed.
 - [ ] Mount the corpus's device folder (or a real Seestar) and revisit Import → the
       button reads **Import from Seestar — <volume>**, with **Choose Another
-      Folder…** under it. Click it → the scan runs, then the preview table appears.
-- [ ] **Recent** lists up to three folders you've imported from (a missing drive
-      drops out); clicking one scans it.
-- [ ] On the preview, **Change Source…** returns to the start page.
-- [ ] Choose an empty folder → back on the start page with "No capture files were
-      found in <folder> …". Cancel a scan → "Scan cancelled.".
-- [ ] Import everything from a source → the start page says "N file(s) imported.
-      Nothing left to import."
-- [ ] The **Holding area** appears below either state only while files are held
-      (the corpus has some); Discard or assign them all → it disappears.
-- [ ] The window doesn't widen when you open Import (it used to be pushed to ~1590
-      pt by the old Source row).
+      Folder…** under it, and up to three recent folders as links. Click it → the
+      scan runs, the table appears, and Source shows the Seestar.
+- [ ] Choose an **empty folder** → Source still shows that folder and the table
+      area says **No frames found in <folder>**; Rescan stays enabled. It never goes
+      back to "Import captures". Copy a FITS in and **Rescan** → it's found.
+- [ ] Pick a recent folder that's on an unplugged drive from Source → "Folder not
+      found: <name>", folder still chosen. Cancel a scan → "Scan cancelled".
+- [ ] Import everything from a source → "N file(s) imported." / "Nothing left to
+      import in <folder>."
+- [ ] Pick **Choose a source…** in the Source menu → back to the next step.
+- [ ] The **Holding area** is one line, "Nothing held.", while nothing is held; with
+      held files it has its table and the assign bar.
+- [ ] A recent folder with a very long path doesn't widen the window; its menu entry
+      is "<folder> — <parent>" with the full path as a tooltip.
 
 #### Deep Sky hover text  ⚙ *(shared text, list = grid = map, marker names — `test_ui_library_tooltips.py`, `test_ui_sky_map.py`)*
 On **cocoa**, against the test corpus.

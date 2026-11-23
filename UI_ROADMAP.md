@@ -424,8 +424,14 @@ The Overview stays as it is. Four follow-ups, one PR each:
 - ✅ **Times in plans** (`feature/planning-flow-times`): Start · Duration · End in
   the plan table, the saved guide's tables and the guides list
   (`fieldguide.time_cells`, `guide_span`; old guides still read).
-- ☐ **Import redo:** options shown to Mike first; an empty chosen folder stays that
-  folder ("No frames found in …").
+- ✅ **Import redo** (`feature/import-redo`). Mike disliked D's start page ("feels
+  like a bug" when an empty folder fell back to it) and picked **option B** of three
+  cocoa prototypes (A: the previous page polished; B: A + the next step inline;
+  C: a sources sidebar). The pre-D page is back — Source combo + Browse… on top —
+  with the table area a `QStackedWidget` (table | message): nothing chosen → the
+  next step (Seestar / Choose Folder…, recents); a chosen folder with no frames →
+  "No frames found in <folder>", folder still chosen, Rescan live. The combo no
+  longer forces the window width; the holding area is one line while empty.
 
 ### Phase 4+ — Later  *(deferred)*
 - **Cross-object image browser:** a Lightroom-catalog-style view of every render/stack
