@@ -46,8 +46,9 @@ Click a row in the List view to open an object's **detail pane**: the hero, obje
 notes, the gallery, its capture sessions, and its processing status. In the **Grid**,
 a click only selects a tile (so the grid never moves under the pointer);
 **double-click** it, or press **Return** or **Space**, to open the pane. Once the pane
-is open, a single click on another tile switches to it. ✕ closes the pane and leaves
-the tile selected, so the Object menu still applies to it.
+is open, a single click on another tile switches to it. The object's name and **✕**
+stay at the top of the pane while you scroll it; ✕ closes the pane and leaves the
+tile selected, so the Object menu still applies to it.
 
 The sessions table has a **Device** column naming the telescope that shot each
 session, so two telescopes on the same object on the same night are two sessions, not

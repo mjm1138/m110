@@ -666,6 +666,38 @@ so the fix is `wait()`-before-delete, not a test).
   guides, the list, section order, the telescope row's 0/1/2+ states, switching
   telescope re-ranks for its model, both plan tables, the guides list);
   `test_ui_pages.py` guide-table column count.
+## Phase 8 follow-up — the inspector's title block is pinned *(2026-11-23, `feature/inspector-header`)*
+
+Mike: the ✕ to close the inspector was "unintuitive in its location" — it sat under
+the hero beside the title, looking like it hung there by itself, and it scrolled
+away with the body. Three cocoa mock-ups (`scratchpad/proto/inspector_protos.py`,
+never shipped): **A** the title block above the hero; **B** A, pinned; **C** the ✕
+as a round button on the hero's corner. Mike picked **B**.
+
+- **`detail.DetailPane`** stays a `QScrollArea`. The title block (`object_title`
+  + ✕ row, `facts_line`) goes into `_header`, a `QFrame#inspectorHeader` that is a
+  child of the scroll area itself, not of `_content`. `_place_header` sizes it with
+  `totalHeightForWidth` (the serif title wraps in a narrow pane) and pushes the
+  viewport down with `setViewportMargins(0, h, 0, 0)`; `resizeEvent` re-places it.
+- **The scrollbar:** viewport margins don't move scrollbars — the vertical one ran
+  the full height *under* the header, its thumb hidden at the top. A spacer widget
+  added with `addScrollBarWidget(…, Qt.AlignTop)`, kept at the header's height,
+  starts it below the header.
+- **Sizing:** the prototype's `max(heightForWidth, sizeHint)` left a gap under the
+  title (a word-wrapped label's `sizeHint` guesses a narrower width, so more lines);
+  the built one uses the layout's height-for-width only.
+- `_clear` empties and hides the header, so the placeholder and the Notes editor
+  have none (the ✕ would otherwise sit over unsaved edits). The hero caption stays
+  in the body, under the hero it describes.
+- **QSS:** `QFrame#inspectorHeader` — `t.window` behind it (the pane's tone), a
+  `t.border` hairline under it.
+- **Tests:** `test_ui_inspector_header.py` — the ✕ top right inside the header and
+  the hero below it; the header holds still at the bottom of the scroll and the
+  scrollbar starts below it; a narrow pane grows the header; placeholder/editor
+  have none; re-showing doesn't pile up titles.
+
+---
+
 ## Phase 8 follow-up — the opened tile stays in view *(2026-11-23, `feature/grid-scroll-to-selection`)*
 
 Mike, after the double-click fix: the inspector opens, the grid reflows from 8

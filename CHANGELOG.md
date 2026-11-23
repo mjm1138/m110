@@ -25,6 +25,11 @@ changes a **user** would notice, per release.
   when each night's schedule starts and ends; guides saved earlier show their span
   too. A plan with no sequenced schedule now shows each target's start, how long
   it stays up, and when it leaves, instead of a time range under "Duration".
+- **The object's name and close button stay at the top of the details pane.** The
+  name, common name and facts line now sit above the hero image, with **✕** at the
+  pane's top right, and they stay put while you scroll through the details, notes
+  and gallery. Before, the ✕ sat under the image beside the name and scrolled away
+  with everything else.
 - **Deep Sky's grid holds still when you click.** A click on a tile now only
   selects it; **double-click** it (or press Return or Space) to open its details
   beside the grid. Opening the details narrows the grid, so before, a double-click's

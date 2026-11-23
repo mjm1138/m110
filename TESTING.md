@@ -387,12 +387,17 @@ On **cocoa**, against the test corpus (§0.3), in light and dark.
       blown-up thumbnail.
 - [ ] **Media › Grid:** the same tiles; a long filename keeps its start and its
       extension ("2026-08-1…r-RAW.avi"); videos show ▶ top-left.
-- [ ] **Object pane** (open M81): the hero fills the pane's width at the top, with
-      no gutters; double-click → the viewer shows the whole image. Below: the serif
-      name with an ✕ that closes the pane · "Galaxy · mag 6.9 · …" · the
-      **Integration** card (total, a bar in the status colour, "Initial · goal 4 h on
+- [ ] **Object pane** (open M81): at the top, the serif name with an ✕ at the
+      pane's top right that closes it, and "Galaxy · mag 6.9 · …" under it
+      *(⚙ `test_ui_inspector_header.py`)*. Below that, the hero fills the pane's
+      width, with no gutters; double-click → the viewer shows the whole image. Then
+      the **Integration** card (total, a bar in the status colour, "Initial · goal 4 h on
       ZWO Seestar S50") · **Details** as two aligned columns, capture facts first ·
       **Processing** with *Process in Siril* filled in the accent · **Notes**.
+- [ ] **Scroll the object pane** to the gallery → the name, facts and ✕ stay
+      pinned at the top with a hairline under them; the scrollbar starts below
+      them. Narrow the pane until the name wraps → the header grows to fit. **Edit**
+      the notes → the header goes away while editing and comes back on Cancel.
 - [ ] **Notes** don't open with "M81 — Bode's Galaxy" again; the box is as tall as
       the text (no inner scrollbar, no empty well). **Edit** shows the `# M81 —
       Bode's Galaxy` line still in the file. The Journal feed's cards don't repeat
