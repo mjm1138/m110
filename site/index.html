@@ -99,6 +99,7 @@
   /* Screenshots */
   .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
   .shot { margin: 0; }
+  .shot.wide { grid-column: 1 / -1; }   /* the lead shot spans the row */
   .shot img {
     width: 100%; height: auto; display: block; border-radius: 12px;
     border: 1px solid var(--card-border); box-shadow: var(--shadow);
@@ -162,12 +163,12 @@
   <h1>M110</h1>
   <p class="tagline">Complete the catalog.</p>
   <p class="pitch"><strong>A photo library for your smart telescope.</strong> M110 is a desktop
-  app that turns a growing pile of Seestar or DwarfLab captures into an organized deep-sky
-  library. Catalog, capture tracking, ingest, processing-prep, session planning,
+  app that turns a growing pile of Seestar, DwarfLab, or N.I.N.A. captures into an organized
+  deep-sky library. Catalog, capture tracking, ingest, calibration, stacking, session planning,
   a sky map of everything you've shot, and safe backups, with a north-star goal to chase.</p>
   <p>
     <a class="btn" href="#download">Download for macOS · Linux · Windows</a>
-    <a class="btn secondary" href="https://github.com/mjm1138/m110/blob/main/docs/README.md">Read the user guide</a>
+    <a class="btn secondary" href="docs/latest/">Read the user guide</a>
   </p>
 </header>
 
@@ -186,8 +187,9 @@
     <div class="feature">
       <div class="ico">🗂️</div>
       <h3>A real library</h3>
-      <p>Every object you've shot, organized by catalog (Messier, Caldwell, and more)
-      with status, integration time, and a per-object journal.</p>
+      <p>Every object you've shot, organized by catalog (Messier, Caldwell, and more), with a
+      per-object journal. Sessions, frames, filters, and integration roll up from your FITS
+      headers, so you know what's done and what needs another night.</p>
     </div>
     <div class="feature">
       <div class="ico">🗺️</div>
@@ -198,33 +200,38 @@
     <div class="feature">
       <div class="ico">📥</div>
       <h3>One-click ingest</h3>
-      <p>Point M110 at your Seestar, DwarfLab scope, or a folder; it groups, names, and files your
-      subs, stacks, and finished renders. You preview before anything is written.</p>
-    </div>
-    <div class="feature">
-      <div class="ico">🔭</div>
-      <h3>Capture tracking</h3>
-      <p>Sessions, frames, filters, and integration roll up automatically from your
-      FITS headers, so you know what's done and what needs another night.</p>
+      <p>Point M110 at your Seestar, DwarfLab scope, a N.I.N.A. or PINS session, or any folder; it
+      groups, names, and files your subs, calibration frames, stacks, and finished renders. You
+      preview before anything is written.</p>
     </div>
     <div class="feature">
       <div class="ico">✨</div>
-      <h3>Processing-prep</h3>
-      <p>Automatically arranges a clean, contained processing sandbox per target (Siril today, other workflows coming). Lights
-      linked, a tuned stacking preset ready. When you're done, it imports your finished work back.</p>
+      <h3>Stacking &amp; processing</h3>
+      <p>Let M110 stack for you with Siril (or Stackhammer, on Apple silicon), or open a ready-made Siril sandbox
+      with your lights linked and a tuned preset. Hand the stack to AstroWizard or
+      StackingWizard, and your finished work comes back into the library.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">🌡️</div>
+      <h3>Calibration, handled</h3>
+      <p>A dark and flat library for each telescope, matched to every capture from its FITS
+      headers. Seestar subs already dark-subtracted on the scope are never darked twice, and
+      the Devices page shows which dark each night got.</p>
     </div>
     <div class="feature">
       <div class="ico">🎯</div>
       <h3>A goal to chase</h3>
       <p>Track your progress through a curated catalog (Messier, Caldwell, and more) or
-      your own custom goals. You'll know what you've got, and what targets are yet to be captured. M110 is named for the 110th
+      your own custom goals, on a board of every object, for any telescope or just one.
+      Each target goes from initial to in progress to deep. M110 is named for the 110th
       and final Messier object.</p>
     </div>
     <div class="feature">
       <div class="ico">🌙</div>
       <h3>Plan your nights</h3>
       <p>See what's up tonight, ranked by your goals and priorities. M110 creates a moon-aware
-      schedule, an altitude timeline, and a printable field guide for the session.</p>
+      schedule, an altitude timeline, and a printable field guide for the session, and
+      Night Vision turns the whole app red at the scope.</p>
     </div>
     <div class="feature">
       <div class="ico">💬</div>
@@ -236,8 +243,9 @@
     <div class="feature">
       <div class="ico">💾</div>
       <h3>Safe by design</h3>
-      <p>Local-first, open source, and careful with your data. Built-in,
-      multi-mode backups so your irreplaceable library stays protected.</p>
+      <p>Local-first, open source, and careful with your data. Built-in backups to a
+      local drive and an S3-compatible cloud bucket at the same time, so your irreplaceable
+      library stays protected.</p>
     </div>
   </div>
 </section>
@@ -246,30 +254,40 @@
   <h2 class="center">Look inside</h2>
   <p class="center muted" style="margin:-8px auto 28px;">Click any screenshot to enlarge.</p>
   <div class="shots">
+    <figure class="shot wide">
+      <img src="assets/shot-overview.jpg" width="1240" height="780" loading="lazy"
+           alt="M110 Overview: the Messier catalog board, one tile per object showing its picture and whether it's deep, in progress, or initial, above goal progress bars">
+      <figcaption>All 110, on one board</figcaption>
+    </figure>
     <figure class="shot">
       <img src="assets/shot-library.jpg" width="1240" height="780" loading="lazy"
-           alt="M110's Library grid: A gallery of deep-sky captures with status chips and integration times">
+           alt="M110's Deep Sky grid: a gallery of deep-sky captures, each tile showing its status or how close it is to its integration goal">
       <figcaption>Your whole library, at a glance</figcaption>
     </figure>
     <figure class="shot">
       <img src="assets/shot-detail.jpg" width="1240" height="780" loading="lazy"
-           alt="M110 object detail: The M81 and M82 galaxies as a hero image with capture stats and notes">
+           alt="M110 object detail: M81 as a cover image beside the grid, with its integration progress toward its goal and capture details">
       <figcaption>Every object, with its story</figcaption>
     </figure>
     <figure class="shot">
       <img src="assets/shot-skymap.jpg" width="1240" height="780" loading="lazy"
-           alt="M110's sky map: The Messier catalog plotted on a star chart, with captured objects in green and amber and the rest of the goal in grey.">
+           alt="M110's sky map: the Messier catalog plotted on a star chart, colored by status, with the uncaptured rest of the goal in grey">
       <figcaption>See your progress written on the sky</figcaption>
     </figure>
     <figure class="shot">
-      <img src="assets/shot-summary.jpg" width="1240" height="780" loading="lazy"
-           alt="M110 Overview: Goal progress, integration time by object, and recent sessions">
-      <figcaption>Track your progress toward your goals</figcaption>
+      <img src="assets/shot-planning.jpg" width="1240" height="780" loading="lazy"
+           alt="M110 Planning: tonight's plan on an altitude timeline, with each target's start, duration, end, altitude, and moon separation">
+      <figcaption>Know what to shoot tonight</figcaption>
     </figure>
     <figure class="shot">
-      <img src="assets/shot-planning.jpg" width="1240" height="780" loading="lazy"
-           alt="M110 Planning: Tonight's priority targets ranked by goal, season, and visibility">
-      <figcaption>Know what to shoot tonight</figcaption>
+      <img src="assets/shot-night.jpg" width="1240" height="780" loading="lazy"
+           alt="M110 in Night Vision: the night plan and altitude timeline drawn entirely in dim red">
+      <figcaption>Night Vision, for use at the scope</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="assets/shot-devices.jpg" width="1240" height="780" loading="lazy"
+           alt="M110 Devices page: a Seestar S50's dark library by temperature, and each capture with the dark it got and how far off it was">
+      <figcaption>Know which dark every night got</figcaption>
     </figure>
   </div>
 </section>
