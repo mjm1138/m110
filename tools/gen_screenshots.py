@@ -94,9 +94,11 @@ def build(root: Path, out_dir: Path):
     from m110 import config
     os.environ["M110_DATA_ROOT"] = str(root)
     config.set_data_root(root)
-    # Never touch the user's real ~/.m110/settings.json — theme + view prefs go to
-    # a throwaway file, so screenshots don't change their preferences.
-    config.SETTINGS_FILE = Path(tempfile.mkdtemp()) / "settings.json"
+    # Never touch the user's real ~/.m110 — theme + view prefs (and anything else
+    # the app keeps there) go to a throwaway dir, so screenshots don't change their
+    # preferences. Night Vision below *saves* the mode, so this matters.
+    config.APP_CONFIG_DIR = Path(tempfile.mkdtemp())
+    config.SETTINGS_FILE = config.APP_CONFIG_DIR / "settings.json"
 
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv[:1])
@@ -109,6 +111,15 @@ def build(root: Path, out_dir: Path):
     win._ready = False                          # READ-ONLY: no launch refresh / net thread
     win.resize(W, H)
     win.statusBar().hide()                      # keep the local data-root path out of frame
+    # Offscreen, the menu bar renders *inside* the window (macOS puts it at the top
+    # of the screen), which no user ever sees — leave it out of the frame.
+    win.menuBar().hide()
+    # The assistant's "N suggested changes" strip is the user's queue, not the
+    # product — keep it out of every shot (and stop a refresh re-showing it).
+    banner = getattr(win, "_assistant_banner", None)
+    if banner is not None:
+        banner.refresh = lambda: 0
+        banner.hide()
     win.show()
     _pump(app, 1.0)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -122,7 +133,9 @@ def build(root: Path, out_dir: Path):
     if slug:
         win.open_object(slug)
         try:
-            win.catalog.splitter.setSizes([320, 900])   # favour the detail/hero pane
+            # Two grid columns beside the inspector: the shot reads as "the
+            # library, with one object open", not as one huge picture.
+            win.catalog.splitter.setSizes([520, 700])
         except Exception:
             pass
         _shot(win, app, out_dir / "shot-detail.jpg")
@@ -164,7 +177,7 @@ def build(root: Path, out_dir: Path):
 
     # 4) Overview — the dashboard
     win.go_to(win._overview_index)
-    _shot(win, app, out_dir / "shot-summary.jpg", settle=2.5)
+    _shot(win, app, out_dir / "shot-overview.jpg", settle=2.5)
 
     # 5) Planning — the priority ranking, plus a night plan + timeline if it computes
     win.go_to(win._planning_index)
@@ -188,6 +201,40 @@ def build(root: Path, out_dir: Path):
     except Exception as e:
         print(f"  (planning night-plan skipped: {e})")
     _shot(win, app, out_dir / "shot-planning.jpg", settle=2.0)
+
+    # 6) Night Vision — the same night plan, red, the way it's used at the scope.
+    try:
+        theme.set_night(True)
+        _pump(app, 1.0)
+        _shot(win, app, out_dir / "shot-night.jpg", settle=1.5)
+    except Exception as e:
+        print(f"  (night vision not rendered: {e})")
+    finally:
+        theme.set_mode("dark")
+        _pump(app, 0.5)
+
+    # 7) Devices — the telescope with the most captures: its dark library,
+    # which dark each capture got, and the sensor chart.
+    try:
+        win.go_to(win._devices_index)
+        page = win.devices
+        page.reload()
+        devs = sorted(page._visible_devices(),
+                      key=lambda d: -len(d.get("captures") or []))
+        if devs:
+            page.select_device(devs[0]["device"])
+            # Fold the editable forms so the calibration story — the dark
+            # library, which dark each capture got, sensor health — is in frame.
+            for sec in (page._id_sec, page._plan_sec, page._optics_sec,
+                        page._obj_sec):
+                sec._btn.setChecked(False)
+            page.splitter.setSizes([300, 900])  # the list is a picker; the detail is the story
+            _pump(app, 0.5)
+            _shot(win, app, out_dir / "shot-devices.jpg", settle=2.0)
+        else:
+            print("  (no telescopes in this library — skipping shot-devices.jpg)")
+    except Exception as e:
+        print(f"  (devices page not rendered: {e})")
 
     win.close()
     _pump(app, 0.3)
